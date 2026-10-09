@@ -63,7 +63,12 @@ export type ProviderSettlementStructuralTargetV2 = Omit<
 
 export type ProviderStructuralLineEdit = Pick<
   LineSemantics,
-  'rawCode' | 'rawName' | 'component' | 'postingTreatment' | 'taxRole' | 'amountCents'
+  | 'rawCode'
+  | 'rawName'
+  | 'component'
+  | 'postingTreatment'
+  | 'taxRole'
+  | 'amountCents'
 >;
 
 export type ProviderStructuralLineAddition = ProviderStructuralLineEdit & {
@@ -74,7 +79,11 @@ export type ProviderStructuralTargetChangeV2 = {
   version: 2;
   expectedBaseAuthorityHash: string;
   changes: Array<
-    | { action: 'UPDATE'; effectiveLineStableId: string; values: ProviderStructuralLineEdit }
+    | {
+        action: 'UPDATE';
+        effectiveLineStableId: string;
+        values: ProviderStructuralLineEdit;
+      }
     | { action: 'REMOVE'; effectiveLineStableId: string }
     | { action: 'ADD'; values: ProviderStructuralLineAddition }
   >;
@@ -99,20 +108,30 @@ const optional = (value: unknown, field: string): string | null => {
   return value.trim() || null;
 };
 
-const semantics = (raw: ProviderStructuralLineEdit, occurredAt: string | null): LineSemantics => {
+const semantics = (
+  raw: ProviderStructuralLineEdit,
+  occurredAt: string | null,
+): LineSemantics => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return fail('line semantics must be an object');
   }
-  if (!Object.values(AccountingFinancialComponent).includes(raw.component) ||
-      !Object.values(AccountingFinancialPostingTreatment).includes(raw.postingTreatment) ||
-      !Object.values(AccountingFinancialTaxRole).includes(raw.taxRole)) {
+  if (
+    !Object.values(AccountingFinancialComponent).includes(raw.component) ||
+    !Object.values(AccountingFinancialPostingTreatment).includes(
+      raw.postingTreatment,
+    ) ||
+    !Object.values(AccountingFinancialTaxRole).includes(raw.taxRole)
+  ) {
     return fail('line classification is invalid');
   }
   if (!Number.isSafeInteger(raw.amountCents)) {
     return fail('line amount must be a safe integer number of cents');
   }
-  if (occurredAt !== null && (!Number.isFinite(Date.parse(occurredAt)) ||
-      new Date(occurredAt).toISOString() !== occurredAt)) {
+  if (
+    occurredAt !== null &&
+    (!Number.isFinite(Date.parse(occurredAt)) ||
+      new Date(occurredAt).toISOString() !== occurredAt)
+  ) {
     return fail('line occurredAt must be a canonical ISO timestamp or null');
   }
   return {
@@ -126,7 +145,9 @@ const semantics = (raw: ProviderStructuralLineEdit, occurredAt: string | null): 
   };
 };
 
-const normalizedLines = (lines: ProviderStructuralLineV2[]): ProviderStructuralLineV2[] => {
+const normalizedLines = (
+  lines: ProviderStructuralLineV2[],
+): ProviderStructuralLineV2[] => {
   if (!Array.isArray(lines)) return fail('target lines must be an array');
   const ids = new Set<string>();
   const positions = new Set<number>();
@@ -136,49 +157,81 @@ const normalizedLines = (lines: ProviderStructuralLineV2[]): ProviderStructuralL
       return fail('target line must be an object');
     }
     const id = required(line.effectiveLineStableId, 'effectiveLineStableId');
-    const evidenceDocumentStableId = required(line.evidenceDocumentStableId, 'evidenceDocumentStableId');
+    const evidenceDocumentStableId = required(
+      line.evidenceDocumentStableId,
+      'evidenceDocumentStableId',
+    );
     if (ids.has(id)) return fail('duplicate effective line identity');
     ids.add(id);
-    if (!Number.isSafeInteger(line.effectiveLineNo) || line.effectiveLineNo < 1 ||
-        positions.has(line.effectiveLineNo)) {
+    if (
+      !Number.isSafeInteger(line.effectiveLineNo) ||
+      line.effectiveLineNo < 1 ||
+      positions.has(line.effectiveLineNo)
+    ) {
       return fail('effective line order must have unique positive integers');
     }
     positions.add(line.effectiveLineNo);
     const business = semantics(line, line.occurredAt);
     if (line.origin === 'CORRECTION_ADDED') {
-      if (line.sourceLine !== null) return fail('correction-added line must not claim source provenance');
-      if (!id.startsWith('correction-line:')) return fail('correction-added identity requires correction-line namespace');
+      if (line.sourceLine !== null)
+        return fail('correction-added line must not claim source provenance');
+      if (!id.startsWith('correction-line:'))
+        return fail(
+          'correction-added identity requires correction-line namespace',
+        );
       return {
-        ...business, origin: 'CORRECTION_ADDED' as const,
-        effectiveLineStableId: id, effectiveLineNo: line.effectiveLineNo,
-        evidenceDocumentStableId, sourceLine: null,
+        ...business,
+        origin: 'CORRECTION_ADDED' as const,
+        effectiveLineStableId: id,
+        effectiveLineNo: line.effectiveLineNo,
+        evidenceDocumentStableId,
+        sourceLine: null,
       };
     }
-    if (line.origin !== 'SOURCE_LINE' || !line.sourceLine ||
-        typeof line.sourceLine !== 'object') {
+    if (
+      line.origin !== 'SOURCE_LINE' ||
+      !line.sourceLine ||
+      typeof line.sourceLine !== 'object'
+    ) {
       return fail('source line must preserve source provenance');
     }
     const sourceLine = {
-      documentStableId: required(line.sourceLine.documentStableId, 'source document'),
-      lineStableId: required(line.sourceLine.lineStableId, 'source line identity'),
+      documentStableId: required(
+        line.sourceLine.documentStableId,
+        'source document',
+      ),
+      lineStableId: required(
+        line.sourceLine.lineStableId,
+        'source line identity',
+      ),
       lineNo: line.sourceLine.lineNo,
     };
-    if (!Number.isSafeInteger(sourceLine.lineNo) || sourceLine.lineNo < 1 ||
-        id !== sourceLine.lineStableId ||
-        evidenceDocumentStableId !== sourceLine.documentStableId) {
+    if (
+      !Number.isSafeInteger(sourceLine.lineNo) ||
+      sourceLine.lineNo < 1 ||
+      id !== sourceLine.lineStableId ||
+      evidenceDocumentStableId !== sourceLine.documentStableId
+    ) {
       return fail('source line provenance must match its immutable identity');
     }
-    const sourceKey = sourceLine.documentStableId + ':' + sourceLine.lineStableId;
+    const sourceKey =
+      sourceLine.documentStableId + ':' + sourceLine.lineStableId;
     if (sourceKeys.has(sourceKey)) return fail('duplicate source provenance');
     sourceKeys.add(sourceKey);
     return {
-      ...business, origin: 'SOURCE_LINE' as const,
-      effectiveLineStableId: id, effectiveLineNo: line.effectiveLineNo,
-      evidenceDocumentStableId, sourceLine,
+      ...business,
+      origin: 'SOURCE_LINE' as const,
+      effectiveLineStableId: id,
+      effectiveLineNo: line.effectiveLineNo,
+      evidenceDocumentStableId,
+      sourceLine,
     };
   });
-  return normalized.sort((a, b) => a.effectiveLineNo - b.effectiveLineNo ||
-    a.effectiveLineStableId.localeCompare(b.effectiveLineStableId));
+  return normalized.sort(
+    (a, b) =>
+      a.effectiveLineNo - b.effectiveLineNo ||
+      a.effectiveLineStableId.localeCompare(b.effectiveLineStableId),
+  );
 };
 
 /** Read-only upgrade of existing v1 authority; never fabricates source evidence. */
@@ -207,7 +260,12 @@ export const upgradeProviderCorrectionTargetToV2 = (
 export const normalizeProviderStructuralTarget = (
   input: ProviderSettlementStructuralTargetV2,
 ): ProviderSettlementStructuralTargetV2 => {
-  if (!input || typeof input !== 'object' || Array.isArray(input) || input.version !== 2) {
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    Array.isArray(input) ||
+    input.version !== 2
+  ) {
     return fail('structural target requires version 2');
   }
   // Reuse the established v1 envelope validation; its line count/identity policy is
@@ -224,7 +282,9 @@ export const normalizeProviderStructuralTarget = (
   ]);
   for (const line of lines) {
     if (!allowedEvidence.has(line.evidenceDocumentStableId)) {
-      return fail('line references evidence outside the frozen Provider authority');
+      return fail(
+        'line references evidence outside the frozen Provider authority',
+      );
     }
   }
   return { ...checkedEnvelope, version: 2, lines };
@@ -233,7 +293,8 @@ export const normalizeProviderStructuralTarget = (
 export const hashProviderStructuralTarget = (
   target: ProviderSettlementStructuralTargetV2,
 ): string => {
-  const { basedOnAuthorityHash, ...authority } = normalizeProviderStructuralTarget(target);
+  const { basedOnAuthorityHash, ...authority } =
+    normalizeProviderStructuralTarget(target);
   void basedOnAuthorityHash;
   return hashAccountingJson(authority);
 };
@@ -256,21 +317,33 @@ export const applyProviderStructuralTargetChange = (params: {
   let lines: ProviderStructuralLineV2[] = [...base.lines];
   const touched = new Set<string>();
   for (const operation of change.changes) {
-    if (!operation || typeof operation !== 'object') return fail('invalid structural operation');
+    if (!operation || typeof operation !== 'object')
+      return fail('invalid structural operation');
     if (operation.action === 'ADD') {
-      if (typeof params.validateAddedLine !== 'function') return fail('added-line validator is required');
+      if (typeof params.validateAddedLine !== 'function')
+        return fail('added-line validator is required');
       params.validateAddedLine(operation.values);
-      const id = required(params.nextCorrectionLineStableId(), 'server-created correction line ID');
-      if (!id.startsWith('correction-line:') ||
-          lines.some((line) => line.effectiveLineStableId === id)) {
-        return fail('generated correction line identity is invalid or duplicated');
+      const id = required(
+        params.nextCorrectionLineStableId(),
+        'server-created correction line ID',
+      );
+      if (
+        !id.startsWith('correction-line:') ||
+        lines.some((line) => line.effectiveLineStableId === id)
+      ) {
+        return fail(
+          'generated correction line identity is invalid or duplicated',
+        );
       }
       lines.push({
         ...semantics(operation.values, null),
         origin: 'CORRECTION_ADDED',
         effectiveLineStableId: id,
         effectiveLineNo: lines.length + 1,
-        evidenceDocumentStableId: required(operation.values.evidenceDocumentStableId, 'evidence document'),
+        evidenceDocumentStableId: required(
+          operation.values.evidenceDocumentStableId,
+          'evidence document',
+        ),
         sourceLine: null,
       });
       continue;
@@ -278,15 +351,23 @@ export const applyProviderStructuralTargetChange = (params: {
     if (operation.action !== 'UPDATE' && operation.action !== 'REMOVE') {
       return fail('unknown structural operation');
     }
-    const id = required(operation.effectiveLineStableId, 'effective line identity');
-    if (touched.has(id)) return fail('effective line may only be edited once per revision');
+    const id = required(
+      operation.effectiveLineStableId,
+      'effective line identity',
+    );
+    if (touched.has(id))
+      return fail('effective line may only be edited once per revision');
     touched.add(id);
     const index = lines.findIndex((line) => line.effectiveLineStableId === id);
-    if (index < 0) return fail('structural operation references an unknown effective line');
+    if (index < 0)
+      return fail('structural operation references an unknown effective line');
     if (operation.action === 'REMOVE') {
       // Removing a control or payout anchor would allow inventing a reconciled total.
       const existing = lines[index];
-      if (existing?.postingTreatment !== AccountingFinancialPostingTreatment.POSTABLE) {
+      if (
+        existing?.postingTreatment !==
+        AccountingFinancialPostingTreatment.POSTABLE
+      ) {
         return fail('non-postable control/evidence lines cannot be removed');
       }
       lines.splice(index, 1);
@@ -294,9 +375,15 @@ export const applyProviderStructuralTargetChange = (params: {
       const existing = lines[index];
       if (!existing) return fail('missing effective line');
       const update = semantics(operation.values, existing.occurredAt);
-      if (existing.postingTreatment === AccountingFinancialPostingTreatment.CONTROL_TOTAL ||
-          existing.component === AccountingFinancialComponent.CONTROL_TOTAL) {
-        if (update.postingTreatment === AccountingFinancialPostingTreatment.POSTABLE) {
+      if (
+        existing.postingTreatment ===
+          AccountingFinancialPostingTreatment.CONTROL_TOTAL ||
+        existing.component === AccountingFinancialComponent.CONTROL_TOTAL
+      ) {
+        if (
+          update.postingTreatment ===
+          AccountingFinancialPostingTreatment.POSTABLE
+        ) {
           return fail('CONTROL_TOTAL cannot become POSTABLE');
         }
       }
@@ -310,4 +397,3 @@ export const applyProviderStructuralTargetChange = (params: {
     lines,
   });
 };
-

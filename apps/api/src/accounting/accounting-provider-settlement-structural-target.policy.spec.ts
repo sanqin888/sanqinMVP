@@ -83,15 +83,17 @@ describe('Provider correction structural target v2 pure policy', () => {
       'accounting.provider-settlement-correction-target.v2',
     );
     expect(v2.document).toEqual(v1.document);
-    expect(v2.lines[1]).toEqual(expect.objectContaining({
-      origin: 'SOURCE_LINE',
-      effectiveLineNo: 2,
-      sourceLine: {
-        documentStableId: 'statement_1',
-        lineStableId: 'line_transfer',
-        lineNo: 10,
-      },
-    }));
+    expect(v2.lines[1]).toEqual(
+      expect.objectContaining({
+        origin: 'SOURCE_LINE',
+        effectiveLineNo: 2,
+        sourceLine: {
+          documentStableId: 'statement_1',
+          lineStableId: 'line_transfer',
+          lineNo: 10,
+        },
+      }),
+    );
     expect(v2.lines[1]?.effectiveLineStableId).toBe('line_transfer');
   });
 
@@ -110,16 +112,20 @@ describe('Provider correction structural target v2 pure policy', () => {
       },
     });
     expect(next.lines).toHaveLength(3);
-    expect(next.lines[2]).toEqual(expect.objectContaining({
-      origin: 'CORRECTION_ADDED',
-      effectiveLineStableId: 'correction-line:case_1:1',
-      effectiveLineNo: 3,
-      evidenceDocumentStableId: 'statement_1',
-      sourceLine: null,
-    }));
+    expect(next.lines[2]).toEqual(
+      expect.objectContaining({
+        origin: 'CORRECTION_ADDED',
+        effectiveLineStableId: 'correction-line:case_1:1',
+        effectiveLineNo: 3,
+        evidenceDocumentStableId: 'statement_1',
+        sourceLine: null,
+      }),
+    );
     expect(next.lines[1]?.origin).toBe('SOURCE_LINE');
     expect(next.basedOnAuthorityHash).toBe(hashProviderStructuralTarget(base));
-    expect(hashProviderStructuralTarget(next)).not.toBe(hashProviderStructuralTarget(base));
+    expect(hashProviderStructuralTarget(next)).not.toBe(
+      hashProviderStructuralTarget(base),
+    );
   });
 
   it('allows removal from effective target without rewriting source provenance', () => {
@@ -153,45 +159,69 @@ describe('Provider correction structural target v2 pure policy', () => {
       validateAddedLine: () => undefined,
     };
     expect(() => applyProviderStructuralTargetChange(args)).toThrow('stale');
-    expect(() => applyProviderStructuralTargetChange({
-      ...args,
-      input: { ...change, expectedBaseAuthorityHash: hashProviderStructuralTarget(base) },
-      nextCorrectionLineStableId: () => 'line_sales',
-    })).toThrow('generated correction line identity');
-    expect(() => normalizeProviderStructuralTarget({
-      ...base,
-      lines: [...base.lines, {
-        ...base.lines[0]!,
-        origin: 'CORRECTION_ADDED',
-        effectiveLineStableId: 'correction-line:fake',
-        effectiveLineNo: 3,
-        sourceLine: base.lines[0]!.sourceLine,
-      } as never],
-    })).toThrow('must not claim source provenance');
-    expect(() => applyProviderStructuralTargetChange({
-      ...args,
-      input: {
-        version: 2,
-        expectedBaseAuthorityHash: hashProviderStructuralTarget(base),
-        changes: [{ action: 'ADD', values: { ...added, evidenceDocumentStableId: 'other_doc' } }],
-      },
-    })).toThrow('outside the frozen Provider authority');
+    expect(() =>
+      applyProviderStructuralTargetChange({
+        ...args,
+        input: {
+          ...change,
+          expectedBaseAuthorityHash: hashProviderStructuralTarget(base),
+        },
+        nextCorrectionLineStableId: () => 'line_sales',
+      }),
+    ).toThrow('generated correction line identity');
+    expect(() =>
+      normalizeProviderStructuralTarget({
+        ...base,
+        lines: [
+          ...base.lines,
+          {
+            ...base.lines[0],
+            origin: 'CORRECTION_ADDED',
+            effectiveLineStableId: 'correction-line:fake',
+            effectiveLineNo: 3,
+            sourceLine: base.lines[0].sourceLine,
+          } as never,
+        ],
+      }),
+    ).toThrow('must not claim source provenance');
+    expect(() =>
+      applyProviderStructuralTargetChange({
+        ...args,
+        input: {
+          version: 2,
+          expectedBaseAuthorityHash: hashProviderStructuralTarget(base),
+          changes: [
+            {
+              action: 'ADD',
+              values: { ...added, evidenceDocumentStableId: 'other_doc' },
+            },
+          ],
+        },
+      }),
+    ).toThrow('outside the frozen Provider authority');
   });
 
   it('does not remove control lines or accept duplicate effective IDs', () => {
     const base = upgradeProviderCorrectionTargetToV2(original());
-    expect(() => applyProviderStructuralTargetChange({
-      base,
-      input: {
-        version: 2,
-        expectedBaseAuthorityHash: hashProviderStructuralTarget(base),
-        changes: [{ action: 'REMOVE', effectiveLineStableId: 'line_transfer' }],
-      },
-      nextCorrectionLineStableId: () => 'correction-line:unused',
-      validateAddedLine: () => undefined,
-    })).toThrow('non-postable');
-    expect(() => normalizeProviderStructuralTarget({
-      ...base, lines: [base.lines[0]!, base.lines[0]!],
-    })).toThrow('duplicate effective line identity');
+    expect(() =>
+      applyProviderStructuralTargetChange({
+        base,
+        input: {
+          version: 2,
+          expectedBaseAuthorityHash: hashProviderStructuralTarget(base),
+          changes: [
+            { action: 'REMOVE', effectiveLineStableId: 'line_transfer' },
+          ],
+        },
+        nextCorrectionLineStableId: () => 'correction-line:unused',
+        validateAddedLine: () => undefined,
+      }),
+    ).toThrow('non-postable');
+    expect(() =>
+      normalizeProviderStructuralTarget({
+        ...base,
+        lines: [base.lines[0], base.lines[0]],
+      }),
+    ).toThrow('duplicate effective line identity');
   });
 });
