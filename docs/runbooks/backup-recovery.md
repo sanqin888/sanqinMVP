@@ -1,12 +1,12 @@
 # SanQ backup and recovery runbook
 
-> **C3-B source compatibility warning (pending production C4 approval):**
-> The backup script/helper/systemd templates in dev now describe the proposed
-> /opt/sanq/runtime + /srv/sanq target layout. The existing production VM still
-> uses the legacy /home/ubuntu/sanq-app paths. **Do not install the new source
-> templates on the current VM using the historical instructions below.** The
-> matched, operator-approved C4 cutover is required first. See
-> docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md. No cutover has occurred.
+> **Production C4-P2-C status (2026-10-09 UTC):** The separately authorized
+> runtime/data cutover is complete. Active layout: `/opt/sanq/runtime`,
+> `/srv/sanq/uploads`, `/srv/sanq/backups`; the backup service still runs as
+> `ubuntu` with `ExecStart=/home/ubuntu/backup-db.sh`, and logs to journald.
+> The legacy installation commands below are **historical, not current production
+> instructions**. C4-P2-D off-VM clean restore and business acceptance remain
+> PENDING; see `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`.
 
 ## Scope
 
@@ -82,9 +82,10 @@ because a partial archive exists.
 
 ## Production installation / update
 
-**STOP: The installation recipe in this section is historical for the legacy
-production layout. Do not run it against C3-B source until a separately
-approved C4 coordinated runtime/data cutover.**
+**HISTORICAL ONLY:** This installation/rollback recipe predates C4-P2-C. The
+cutover is already completed; do not re-run these legacy checkout commands on
+the active VM. Future upgrades and rollback require a freshly reviewed,
+source-matched Runtime change plan and explicit production authorization.
 
 Repository source files under ops/backup/ are the reviewed source of truth.
 Installing or changing production files is a separate production mutation and
