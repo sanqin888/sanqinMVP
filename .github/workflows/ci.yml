@@ -281,7 +281,9 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        # Docker Official PostgreSQL image via ECR Public to avoid Docker Hub 429 on hosted runners.
+        # Keep the same major-version/Alpine variant and existing health check.
+        image: public.ecr.aws/docker/library/postgres:15-alpine
         env:
           POSTGRES_USER: sanq_e2e
           POSTGRES_PASSWORD: sanq_e2e
