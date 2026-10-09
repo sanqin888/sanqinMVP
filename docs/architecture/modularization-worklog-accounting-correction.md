@@ -92,6 +92,25 @@ not authorized yet. Details in
 `docs/architecture/accounting-document-recognition-human-review-plan.md`
 §16.13D.
 
+## 2026-10-09 — Provider Structural Correction SC-E1 generic schema transition
+
+**State:** LOCAL IMPLEMENTED / REVIEW PENDING / NO REMOTE PR. Baseline:
+latest origin/dev after SC-D PR #2767 / CI #7110 all green /
+dev merge `e69365b7`. SC-D is MERGED (its earlier local-pending entry
+above is superseded by this delivery record).
+
+**Scope:** Extend Common A3's Preview authority with an optional, owner-attested
+v1 schema-transition bridge (from schema/hash, to schema, equivalent-base hash).
+Same-schema corrections remain unchanged; mismatched schemas without owner
+evidence remain rejected. Provider owner derives the v1 → v2 equivalent base
+from immutable source authority and retains its strict historical Fantuan
+two-ADD policy. The bridge is included in the immutable planHash.
+
+**Gates:** v2 POST remains blocked; no Prisma, migration, dependency, or
+production write. GitHub Actions validation and controlled verification remain
+pending separately. Other owners need their own validated equivalence proof
+before electing into the generic transition contract.
+
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 
 **PR / SHA:** local branch `feat/accounting-correction-e1-clover-bridge`; baseline

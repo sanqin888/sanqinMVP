@@ -2104,6 +2104,32 @@ review source and this slice introduces no Prisma/migration,
 dependency/lockfile, Common A3, new context edge, scanner
 baseline or accounting ownership movement.
 
+### 16.13E SC-E1 — owner-attested cross-schema correction readiness (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / REVIEW REQUIRED / NO POST UNLOCK**.
+
+Common A3 now treats cross-schema authority as an explicit owner-attested
+schema transition, rather than silently assuming base and target schemas are
+interchangeable. The generic immutable transition records source schema/hash,
+target schema and an owner-calculated equivalent-base hash; Common requires
+the transition to match the actual base and target, hashes it into the frozen
+Preview planHash, and refuses missing/mismatched/spurious declarations.
+Existing same-schema owners require no transition and remain fail-closed.
+
+The Provider owner is the first consumer: it creates the equivalent v2 base
+from the immutable original v1 source, validates all retained source rows and
+the allowed two additions before emitting the transition. This specific
+Fantuan policy is **not** implemented in Common A3; other owners may only use
+the generic bridge after independently implementing and testing their own
+source-to-target equivalence proof.
+
+The v2 Provider POST gate stays deliberately closed. This slice changes no
+Journal writer, persisted schema, database migration, production data or
+runtime deployment. Before authorizing activation, separately verify full
+end-to-end DRAFT → Preview → READY, stale-source and concurrent replay behavior,
+and controlled production Journal / Analytics parity. Local lint/test/build
+were not executed under AGENTS.md; GitHub Actions remains the remote gate.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:

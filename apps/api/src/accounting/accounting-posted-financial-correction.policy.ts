@@ -38,6 +38,13 @@ export type AccountingPostedCorrectionPreviewPlanInputV1 = {
   baseAuthorityHash: string;
   targetAuthoritySchema: string;
   targetAuthorityHash: string;
+  schemaTransition?: {
+    version: 1;
+    fromSchema: string;
+    fromHash: string;
+    toSchema: string;
+    equivalentBaseHash: string;
+  };
   currency: string;
   originalJournals: AccountingPostedCorrectionPostedJournalAnchorV1[];
   priorCorrectionJournals: AccountingPostedCorrectionPostedJournalAnchorV1[];
@@ -624,9 +631,24 @@ export const buildPostedFinancialCorrectionPreviewPlan = (
     input.targetAuthoritySchema,
     'targetAuthoritySchema',
   );
-  if (baseAuthoritySchema !== targetAuthoritySchema) {
+  const transition = input.schemaTransition;
+  if (baseAuthoritySchema === targetAuthoritySchema) {
+    if (transition) {
+      throw new AccountingPostedFinancialCorrectionPolicyError(
+        'same-schema corrections must not declare a schema transition',
+      );
+    }
+  } else if (
+    !transition ||
+    transition.version !== 1 ||
+    transition.fromSchema !== baseAuthoritySchema ||
+    transition.fromHash !== baseAuthorityHash ||
+    transition.toSchema !== targetAuthoritySchema ||
+    !/^[a-f0-9]{64}$/.test(transition.equivalentBaseHash) ||
+    transition.equivalentBaseHash === input.targetAuthorityHash
+  ) {
     throw new AccountingPostedFinancialCorrectionPolicyError(
-      'base and target authority must use the same correction-target schema',
+      'base and target authority must use the same correction-target schema or a verified owner schema transition',
     );
   }
   const targetAuthorityHash = requireSha256(
@@ -719,6 +741,7 @@ export const buildPostedFinancialCorrectionPreviewPlan = (
     baseAuthorityHash,
     targetAuthoritySchema,
     targetAuthorityHash,
+    ...(transition ? { schemaTransition: transition } : {}),
     originalJournalSetHash: originalJournalSet.journalSetHash,
     priorCorrectionJournalSetHash: priorCorrectionJournalSet.journalSetHash,
     baseJournalSetHash: currentEffectiveJournalSet.journalSetHash,

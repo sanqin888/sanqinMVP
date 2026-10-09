@@ -827,6 +827,15 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         baseAuthoritySchema:
           ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
         baseAuthorityHash: current.baseAuthorityHash,
+        schemaTransition: {
+          version: 1 as const,
+          fromSchema: current.baseAuthoritySchema,
+          fromHash: current.baseAuthorityHash,
+          toSchema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+          equivalentBaseHash: hashProviderStructuralTarget(
+            upgradeProviderCorrectionTargetToV2(current.context.sourceTarget),
+          ),
+        },
         currency: target.document.currency,
         originalJournals: current.context.originalJournals,
         targetJournals: [
