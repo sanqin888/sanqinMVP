@@ -34,6 +34,14 @@ describe('Provider posted correction runtime UI', () => {
     expect(panelSource).toContain('UNKNOWN');
   });
 
+  it('disables the legacy fixed-line editor for structural v2 and historical missing components', () => {
+    expect(panelSource).toContain('structuralReadOnly');
+    expect(panelSource).toContain('structuralBaseAuthorityHash');
+    expect(panelSource).toContain('draft?.version === 1');
+    expect(panelSource).toContain('displayLines.map');
+    expect(panelSource).toContain('!structuralReadOnly &&');
+  });
+
   it('shows current-effective authority and correction history without provider/month special cases', () => {
     expect(panelSource).toContain('Current Effective');
     expect(panelSource).toContain('Correction history');

@@ -10,8 +10,8 @@ The authoritative work-package design/status remains
 
 **Delivery:** SC-A PR #2763 / dev merge `1fc8003c` / CI #7093 green;
 SC-B1 PR #2764 / dev merge `49fe8ef5` / CI #7097 green.
-SC-B2 current branch `feat/accounting-provider-structural-sc-b2`,
-baseline `origin/dev@49fe8ef5`; **LOCAL IMPLEMENTED / USER REVIEW PENDING**.
+SC-B2 PR #2765 / final PR head `fac30666` / dev merge `0503e15f` /
+CI #7100 green; baseline `origin/dev@49fe8ef5`; **MERGED**.
 
 **Boundary/behavior:** SC-A added a pure Provider-owned v2 structural target
 with separate effective/source identities and explicit provenance. SC-B1
@@ -26,14 +26,44 @@ activation hash checks. No Common A3 modification, schema/migration,
 dependency, context edge, direct-import allowance, scanner ceiling or
 SCC changes. Current architecture graph/baseline stays unchanged.
 
-**Remaining gates:** SC-C v1/v2 latest-effective/facade/Analytics readers
-and SC-D Web structural editor, followed by controlled production
-verification. Local lint/build/test are intentionally deferred to
-GitHub Actions after review; no SC-B2 PR, merge, deployment or
-production mutation is claimed.
+**Remaining gates:** SC-C v1/v2 latest-effective/facade/Analytics
+reader expansion is in local review (entry below); SC-D Web structural
+editor and controlled production verification remain pending.
+SC-B2 CI passed and its PR merged, but no production deployment or
+production correction is claimed.
 
 **Details:** `docs/architecture/accounting-document-recognition-human-review-plan.md`
 §16.13A/B1/B2 and `docs/architecture/current-dependency-graph.md`.
+
+## 2026-10-09 — Accounting Provider Structural Correction SC-C v1/v2 current-effective readers
+
+**PR/SHA:** local branch `feat/accounting-provider-structural-sc-c`;
+source baseline `origin/dev@0503e15f`, remote delivery not yet authorized.
+
+**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRISMA /
+NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+
+**Owner/boundary:** The Accounting Provider-owned current-effective
+decoder now validates both v1/v2 immutable correction authority
+schemas and hashes; Adapter/latest POSTED, Provider Correction
+facade/history and Platform Analytics use that authority without
+misrepresenting correction-added lines as original source. The Web
+fixed-line panel is fail-closed/read-only for structural cases
+until SC-D supplies the deliberate v2 workflow. No Common A3 or
+Journal writer change is made. The persisted compatibility
+`accounting.provider-correction-structural-v2.v1` is registered
+with a read parity/rollback/deletion gate; this introduces no
+new inter-context dependency or direct-import allowance.
+
+**Remaining:** v2 POST remains gated at Adapter activation until
+SC-D safe operator UI and controlled production acceptance;
+no production source, Journal, Human Review or data write
+occurs in this local slice. Local lint/build/tests not run;
+remote CI is a later explicit approval step.
+
+**Owner plan:** `docs/architecture/accounting-document-recognition-human-review-plan.md`
+§16.13C; `docs/architecture/current-dependency-graph.md`;
+`docs/architecture/active-compatibility-register.json` and Markdown view.
 
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 

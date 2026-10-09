@@ -78,6 +78,11 @@ import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provi
 import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
 import { tryRebuildHistoricalFantuanPostingProof } from './accounting-provider-settlement-historical-base.policy';
 import {
+  currentProviderEffectiveLines,
+  readProviderCurrentAuthority,
+  sameProviderEnvelope,
+} from './accounting-provider-settlement-current-authority.policy';
+import {
   AccountingProviderStructuralAdapterPolicyError,
   assertHistoricalFantuanStructuralTarget,
   buildHistoricalFantuanStructuralTarget,
@@ -88,6 +93,7 @@ import {
   AccountingProviderSettlementStructuralTargetError,
   hashProviderStructuralTarget,
   normalizeProviderStructuralTarget,
+  upgradeProviderCorrectionTargetToV2,
   type ProviderSettlementStructuralTargetV2,
 } from './accounting-provider-settlement-structural-target.policy';
 import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
@@ -234,7 +240,10 @@ type OriginalPostingContext = {
 
 type CurrentBusinessAuthority = {
   context: OriginalPostingContext;
-  baseTarget: ProviderSettlementCorrectionTargetV1;
+  baseTarget:
+    | ProviderSettlementCorrectionTargetV1
+    | ProviderSettlementStructuralTargetV2;
+  baseAuthoritySchema: string;
   baseAuthorityHash: string;
 };
 
@@ -567,6 +576,34 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       targetVersion,
       this.prisma,
     );
+    if (current.baseTarget.version === 2) {
+      return {
+        version: 1 as const,
+        targetKind: this.targetKind,
+        targetStableId,
+        targetVersion,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: current.baseAuthorityHash,
+        targetJson: current.baseTarget,
+        draftInput: null,
+        effectiveLines: currentProviderEffectiveLines({
+          schema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+          hash: current.baseAuthorityHash,
+          target: current.baseTarget,
+        }),
+        structuralBaseAuthorityHash: null,
+      };
+    }
+    const structuralEligible =
+      current.baseAuthoritySchema ===
+        ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA &&
+      current.baseAuthorityHash ===
+        hashProviderSettlementCorrectionTarget(current.context.sourceTarget) &&
+      !!tryRebuildHistoricalFantuanPostingProof({
+        source: current.context.sourceTarget,
+        occurredAt: current.context.originalProviderJournal.occurredAt,
+      });
     return {
       version: 1 as const,
       targetKind: this.targetKind,
@@ -576,6 +613,12 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
       targetAuthorityHash: current.baseAuthorityHash,
       targetJson: current.baseTarget,
+      structuralBaseAuthorityHash: structuralEligible
+        ? hashProviderStructuralTarget(
+            upgradeProviderCorrectionTargetToV2(current.context.sourceTarget),
+          )
+        : null,
+      effectiveLines: null,
       draftInput: {
         version: 1 as const,
         expectedBaseAuthorityHash: current.baseAuthorityHash,
@@ -668,6 +711,11 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     ) {
       throw new BadRequestException(
         'Historical Fantuan missing components require structural v2; v1 control-total edits are forbidden',
+      );
+    }
+    if (current.baseTarget.version !== 1) {
+      throw new ConflictException(
+        'POSTED structural v2 Provider authority cannot be edited through v1',
       );
     }
     let target: ProviderSettlementCorrectionTargetV1;
@@ -794,6 +842,11 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         'Historical Fantuan missing components require structural v2; v1 control-total edits are forbidden',
       );
     }
+    if (current.baseTarget.version !== 1) {
+      throw new ConflictException(
+        'POSTED structural v2 Provider authority cannot be edited through v1',
+      );
+    }
     let target: ProviderSettlementCorrectionTargetV1;
     try {
       target = normalizeProviderSettlementCorrectionTarget(
@@ -882,12 +935,12 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         'Provider correction activation target identity changed before POSTED',
       );
     }
-    // Until the current-effective/facade/Analytics v2 reader cutover (SC-C),
-    // a POSTED v2 authority would become unreadable through the v1 owner
-    // facade. Fail closed even if an internal caller reaches this lifecycle.
+    // SC-C now reads v1/v2 persisted authorities, but SC-D must deliver the
+    // operator-safe v2 editor and controlled production verification before
+    // this irreversible POST gate is deliberately enabled.
     if (target.version === 2) {
       throw new ConflictException(
-        'Provider structural v2 POST is gated until SC-C current-effective readers are deployed',
+        'Provider structural v2 POST remains gated until SC-D operator acceptance',
       );
     }
     const sourceDocument =
@@ -929,36 +982,51 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       return {
         context,
         baseTarget: context.sourceTarget,
+        baseAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
         baseAuthorityHash: hashProviderSettlementCorrectionTarget(
           context.sourceTarget,
         ),
       };
     }
-    if (
-      latest.targetAuthoritySchema !==
-      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
-    ) {
+    let authority: ReturnType<typeof readProviderCurrentAuthority>;
+    try {
+      authority = readProviderCurrentAuthority({
+        schema: latest.targetAuthoritySchema,
+        targetJson: latest.targetJson,
+        expectedHash: latest.targetAuthorityHash,
+      });
+    } catch (error) {
       throw new ConflictException(
-        'latest POSTED Provider correction is missing typed target authority',
+        'latest POSTED Provider correction typed authority is invalid: ' +
+          (error instanceof Error ? error.message : String(error)),
       );
     }
-
-    const baseTarget = normalizeProviderSettlementCorrectionTarget(
-      latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
-    );
-    assertSameTargetStructure(context.sourceTarget, baseTarget);
-    if (
-      hashProviderSettlementCorrectionTarget(baseTarget) !==
-      latest.targetAuthorityHash
-    ) {
+    if (!sameProviderEnvelope(context.sourceTarget, authority.target)) {
       throw new ConflictException(
-        'latest POSTED Provider correction target hash is inconsistent',
+        'latest POSTED Provider correction changed frozen Provider authority',
       );
+    }
+    if (authority.target.version === 1) {
+      assertSameTargetStructure(context.sourceTarget, authority.target);
+    } else {
+      try {
+        assertHistoricalFantuanStructuralTarget(
+          context.sourceTarget,
+          authority.target,
+        );
+      } catch (error) {
+        throw new ConflictException(
+          'latest POSTED structural Provider authority is invalid: ' +
+            (error instanceof Error ? error.message : String(error)),
+        );
+      }
     }
     return {
       context,
-      baseTarget,
-      baseAuthorityHash: latest.targetAuthorityHash,
+      baseTarget: authority.target,
+      baseAuthoritySchema: authority.schema,
+      baseAuthorityHash: authority.hash,
     };
   }
 

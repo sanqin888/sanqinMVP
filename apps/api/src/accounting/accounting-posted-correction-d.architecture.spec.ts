@@ -56,12 +56,21 @@ describe('Correction-D current-effective read-model architecture', () => {
       'readAccountingPostedCorrectionProjections',
     );
     expect(platformAnalyticsSource).toContain('currentEffectiveLines');
-    expect(platformAnalyticsSource).toContain(
+    expect(platformAnalyticsSource).toContain('readProviderCurrentAuthority');
+    expect(platformAnalyticsSource).toContain('currentProviderEffectiveLines');
+    const providerAuthoritySource = read(
+      'accounting-provider-settlement-current-authority.policy.ts',
+    );
+    expect(providerAuthoritySource).toContain(
       'ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA',
     );
-    expect(platformAnalyticsSource).toContain(
+    expect(providerAuthoritySource).toContain(
+      'ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA',
+    );
+    expect(providerAuthoritySource).toContain(
       'hashProviderSettlementCorrectionTarget',
     );
+    expect(providerAuthoritySource).toContain('hashProviderStructuralTarget');
   });
 
   it('keeps original Expense facts separate from current-effective values', () => {

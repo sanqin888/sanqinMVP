@@ -1981,7 +1981,7 @@ persistence edits are included.
 
 ### 16.13B2 Structural Provider correction — SC-B2 v2 Adapter (2026-10-09)
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NOT PUSHED**.
+State: **MERGED / PR #2765 / DEV `0503e15f` / CI #7100 GREEN**.
 Source baseline: `origin/dev@49fe8ef5`; branch:
 `feat/accounting-provider-structural-sc-b2`.
 
@@ -2013,9 +2013,54 @@ v2-aware**. No Provider source or Human Review row is modified.
 Correction facade, `readCurrentEffectiveTarget`, latest POSTED
 authority consumer and Platform Analytics to read v1/v2 before any
 structural v2 POSTED correction is allowed in production; SC-D must
-provide the safe client workflow. This SC-B2 is local and not yet tested
-by CI; no Prisma, migration, dependency, Common A3 or cross-context
-ownership change is required.
+provide the safe client workflow. SC-B2 is merged and CI green; no
+Prisma, migration, dependency, Common A3 or cross-context ownership
+change was required.
+
+### 16.13C Provider v1/v2 current-effective reader expansion (2026-10-09)
+
+State: **SC-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO REMOTE PR**.
+Source baseline: `origin/dev@0503e15f`; branch:
+`feat/accounting-provider-structural-sc-c`.
+
+One Accounting-owned typed decoder verifies both
+`accounting.provider-settlement-correction-target.v1` and `v2`
+persisted schemas, versioned normalization and exact persisted hash.
+It provides a shared current-effective view of source/effective IDs,
+preserves the `SOURCE_LINE` immutable source provenance, and labels
+`CORRECTION_ADDED` with evidenceDocumentStableId and sourceLine=null.
+Unsupported schemas, invalid provenance and hash mismatch fail closed,
+with no silent fallback to raw parser rows.
+
+Provider Adapter latest-POSTED projection now permits typed v2
+current-effective targets only after comparing the frozen envelope and
+re-verifying the strictly audited Fantuan source + two additions. v1
+read/update contracts remain usable, but never convert a POSTED v2
+authority into a v1 editable row set. Provider Correction facade can
+accept additive v2 `changes` drafts against a separate structural
+base hash, serializes both v1/v2 stored Revision histories, and returns
+the authoritative v2 effective lines read-only after posting.
+Platform Analytics uses the same verified v1/v2 decoder for
+Provider totals, including previously omitted Marketing Fee/tax in
+the corrected latest-effective projection. Canonical Journal-native
+analytics stay unchanged; no second posting or revenue overlay exists.
+
+The current Web legacy fixed-line correction panel retains its v1
+behavior for ordinary records but switches to read-only display when
+v2 is current or the historical record requires structural correction;
+it does not fake new source-line IDs or allow obsolete v1 edits.
+SC-D is still responsible for the safe structural editor, POST
+operator acknowledgement and controlled production verification.
+**SC-C intentionally retains the v2 activation POST guard**
+until those gates are implemented/reviewed, despite now being
+able to decode future v2 authorities.
+
+Registered compatibility:
+`accounting.provider-correction-structural-v2.v1`
+(in both active-compatibility-register sources), with no Prisma,
+migration, Common A3, dependency, context-import or scanner-baseline
+change. No local lint/build/tests under AGENTS; remote CI requires
+the next authorization.
 
 ### 16.14 Explicit non-goals
 
