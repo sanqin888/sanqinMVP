@@ -15,6 +15,7 @@ import type {
   ProviderPostedCorrectionPreview,
   ProviderPostedCorrectionReasonCode,
   ProviderPostedCorrectionRecord,
+  ProviderPostedCorrectionStructuralChangeV2,
 } from '../contracts/settlements';
 
 const COMPONENTS: AccountingFinancialComponent[] = [
@@ -239,6 +240,8 @@ export function ProviderPostedCorrectionPanel({
   const [postUnknown, setPostUnknown] = useState(false);
   const [confirmationText, setConfirmationText] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
+  const [structuralAcknowledged, setStructuralAcknowledged] = useState(false);
+  const [structuralReadyHash, setStructuralReadyHash] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,6 +254,10 @@ export function ProviderPostedCorrectionPanel({
       'accounting.provider-settlement-correction-target.v2' ||
     !!record?.currentEffective?.structuralBaseAuthorityHash ||
     activeDraft?.version === 2;
+  const structuralDraft: ProviderPostedCorrectionStructuralChangeV2 | null =
+    activeDraft?.version === 2
+      ? activeDraft
+      : (record?.currentEffective?.structuralProposal ?? null);
   const displayLines =
     record?.currentEffective?.effectiveLines?.map((line) => ({
       ...line,
@@ -276,6 +283,8 @@ export function ProviderPostedCorrectionPanel({
     );
     setConfirmationText('');
     setAcknowledged(false);
+    setStructuralAcknowledged(false);
+    setStructuralReadyHash('');
     setDirty(false);
     setPostUnknown(false);
   }, []);
@@ -320,6 +329,16 @@ export function ProviderPostedCorrectionPanel({
   }
 
   function buildTarget() {
+    if (structuralReadOnly) {
+      if (!structuralDraft) {
+        throw new Error(
+          isZh
+            ? '没有可用的服务器结构性修正建议，请刷新。'
+            : 'No server-owned structural proposal is available. Refresh first.',
+        );
+      }
+      return structuralDraft;
+    }
     const lines: ProviderPostedCorrectionDraftLine[] = [];
     for (const row of rows) {
       const amountCents = parseAmountCents(row.amountText);
@@ -361,6 +380,7 @@ export function ProviderPostedCorrectionPanel({
 
   async function saveDraft() {
     if (!record || record.status !== 'READY') return;
+    if (structuralReadOnly && (active || !structuralAcknowledged)) return;
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -378,7 +398,7 @@ export function ProviderPostedCorrectionPanel({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 expectedVersion: active.version,
-                reasonCode,
+                reasonCode: structuralReadOnly ? 'MISSING_COMPONENT' : reasonCode,
                 note: note.trim() || null,
                 target,
               }),
@@ -390,7 +410,7 @@ export function ProviderPostedCorrectionPanel({
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                reasonCode,
+                reasonCode: structuralReadOnly ? 'MISSING_COMPONENT' : reasonCode,
                 note: note.trim() || null,
                 target,
               }),
@@ -425,6 +445,8 @@ export function ProviderPostedCorrectionPanel({
       setPreview(next);
       setConfirmationText('');
       setAcknowledged(false);
+      setStructuralAcknowledged(false);
+      setStructuralReadyHash('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -434,6 +456,13 @@ export function ProviderPostedCorrectionPanel({
 
   async function markReady() {
     if (!active || active.status !== 'DRAFT' || !preview || dirty) return;
+    if (
+      structuralReadOnly &&
+      (!structuralAcknowledged ||
+        structuralReadyHash.trim() !== preview.planHash)
+    ) {
+      return;
+    }
     setTransitioning(true);
     setError(null);
     setMessage(null);
@@ -455,9 +484,13 @@ export function ProviderPostedCorrectionPanel({
       setRecord(next);
       seed(next);
       setMessage(
-        isZh
-          ? 'Correction 已冻结为 READY。最终 POST 前仍会重新验证 authority。'
-          : 'Correction is frozen as READY. Authority will be revalidated again before POST.',
+        structuralReadOnly
+          ? isZh
+            ? '结构性 Correction 已冻结为 READY。v2 POST 仍处于后端阻止状态。'
+            : 'Structural correction is READY. Backend v2 POST remains blocked.'
+          : isZh
+            ? 'Correction 已冻结为 READY。最终 POST 前仍会重新验证 authority。'
+            : 'Correction is frozen as READY. Authority will be revalidated again before POST.',
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -919,10 +952,183 @@ export function ProviderPostedCorrectionPanel({
                 </div>
               </div>
               {structuralReadOnly ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                  {isZh
-                    ? '该账单需要结构性修正，当前 v1 固定行编辑器已关闭。请使用后续的 v2 专用流程；现有数据保持只读。'
-                    : 'This statement requires structural correction. The legacy fixed-line editor is disabled; use the dedicated v2 workflow. Existing facts remain read-only.'}
+                <div className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950">
+                  <div>
+                    <p className="font-semibold">
+                      {isZh
+                        ? '结构性修正 v2 · 缺失费用补录'
+                        : 'Structural v2 correction · missing fee lines'}
+                    </p>
+                    <p className="mt-1 leading-5">
+                      {isZh
+                        ? '原始 10 行、原始 Journal 及来源证据保持不变。下面仅显示服务器根据原账单控制总额验证的新增行，不允许在这里修改金额或冒充原始来源行。'
+                        : 'The ten original lines, posted Journal and source evidence stay immutable. Only server-validated added lines are shown; amounts and source provenance are not browser-editable.'}
+                    </p>
+                  </div>
+                  {structuralDraft ? (
+                    <>
+                      <div className="rounded-lg border border-amber-200 bg-white p-3">
+                        <p className="font-semibold">MISSING_COMPONENT · ADD × 2</p>
+                        <p className="mt-1 break-all font-mono text-[10px] text-slate-600">
+                          structural base: {structuralDraft.expectedBaseAuthorityHash}
+                        </p>
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full min-w-[620px] text-left">
+                            <thead className="border-b border-slate-200 text-slate-500">
+                              <tr>
+                                <th className="py-2">{isZh ? '新增费用' : 'Added expense'}</th>
+                                <th className="py-2">Component</th>
+                                <th className="py-2">Tax role</th>
+                                <th className="py-2 text-right">{isZh ? '账单金额' : 'Statement amount'}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {structuralDraft.changes.map((change) => (
+                                <tr key={change.values.rawName ?? change.values.component}>
+                                  <td className="py-2">{change.values.rawName}</td>
+                                  <td className="py-2 font-mono">{change.values.component}</td>
+                                  <td className="py-2 font-mono">{change.values.taxRole}</td>
+                                  <td className="py-2 text-right font-semibold">
+                                    {money(change.values.amountCents)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="mt-2 break-all text-[10px] text-slate-500">
+                          {isZh ? '证据单据' : 'Evidence document'}:
+                          {' '}{record.document.documentStableId}
+                        </p>
+                      </div>
+                      {!active ? (
+                        <label className="block text-xs">
+                          <span className="font-medium">
+                            {isZh ? '修正原因备注（可选）' : 'Correction note (optional)'}
+                          </span>
+                          <textarea
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                            maxLength={2000}
+                            rows={2}
+                            className="mt-1 w-full rounded-lg border border-amber-300 bg-white p-2"
+                            disabled={saving || transitioning || posting}
+                          />
+                        </label>
+                      ) : null}
+                      {active?.status !== 'READY' ? (
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={structuralAcknowledged}
+                            onChange={(event) =>
+                              setStructuralAcknowledged(event.target.checked)
+                            }
+                            className="mt-0.5"
+                          />
+                          <span>
+                            {active
+                              ? isZh
+                                ? '我已对照 Preview 的 Delta 和完整 planHash，确认新增费用及税额。'
+                                : 'I reviewed the Preview delta and full planHash for both added fees.'
+                              : isZh
+                                ? '我已核对原始账单、服务器建议的两条新增费用及来源。'
+                                : 'I reviewed the original statement and both server-proposed missing lines.'}
+                          </span>
+                        </label>
+                      ) : null}
+                      {active?.status === 'DRAFT' &&
+                      preview?.status === 'READY' ? (
+                        <label className="block">
+                          <span className="font-medium">
+                            {isZh
+                              ? '核对并输入完整 Preview planHash'
+                              : 'Verify and enter the full Preview planHash'}
+                          </span>
+                          <input
+                            type="text"
+                            value={structuralReadyHash}
+                            onChange={(event) =>
+                              setStructuralReadyHash(event.target.value)
+                            }
+                            placeholder="planHash (64 hex characters)"
+                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-2 font-mono"
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        </label>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        {!active ? (
+                          <button
+                            type="button"
+                            onClick={() => void saveDraft()}
+                            disabled={
+                              !structuralAcknowledged ||
+                              saving ||
+                              transitioning ||
+                              posting ||
+                              postUnknown ||
+                              record.status !== 'READY'
+                            }
+                            className="rounded bg-violet-700 px-3 py-2 font-semibold text-white disabled:opacity-50"
+                          >
+                            {isZh ? '创建 v2 Correction 草稿' : 'Create v2 correction draft'}
+                          </button>
+                        ) : null}
+                        {active?.status === 'DRAFT' ? (
+                          <button
+                            type="button"
+                            onClick={() => void buildPreview()}
+                            disabled={previewing || transitioning || posting || postUnknown}
+                            className="rounded border border-amber-400 bg-white px-3 py-2 font-semibold disabled:opacity-50"
+                          >
+                            {previewing ? (isZh ? '预览中…' : 'Previewing…') : 'Build Preview'}
+                          </button>
+                        ) : null}
+                        {active?.status === 'DRAFT' &&
+                        preview?.status === 'READY' ? (
+                          <button
+                            type="button"
+                            onClick={() => void markReady()}
+                            disabled={
+                              !structuralAcknowledged ||
+                              structuralReadyHash.trim() !== preview.planHash ||
+                              transitioning ||
+                              posting ||
+                              postUnknown
+                            }
+                            className="rounded bg-amber-700 px-3 py-2 font-semibold text-white disabled:opacity-50"
+                          >
+                            {isZh ? '确认 Delta / planHash → READY' : 'Confirm delta / planHash → READY'}
+                          </button>
+                        ) : null}
+                        {active ? (
+                          <button
+                            type="button"
+                            onClick={() => void cancelCorrection()}
+                            disabled={transitioning || posting || postUnknown}
+                            className="rounded border border-red-300 bg-white px-3 py-2 font-semibold text-red-800 disabled:opacity-50"
+                          >
+                            {isZh ? '取消 Correction' : 'Cancel correction'}
+                          </button>
+                        ) : null}
+                      </div>
+                      {active?.status === 'READY' ? (
+                        <p className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-800">
+                          {isZh
+                            ? 'v2 修正已达到 READY，但正式 POST 仍被服务器阻止。需单独审批受控生产验证后才能开放，不会在本页自动入账。'
+                            : 'The v2 correction is READY, but backend POST remains blocked until a separately approved controlled production verification. This page will not post it.'}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p>
+                      {isZh
+                        ? '当前 v2 authority 只读，或缺少受控结构性修正建议。旧版固定行编辑器不可用。'
+                        : 'Current v2 authority is read-only, or no audited structural proposal is available. The legacy editor remains disabled.'}
+                    </p>
+                  )}
                 </div>
               ) : null}
             </>

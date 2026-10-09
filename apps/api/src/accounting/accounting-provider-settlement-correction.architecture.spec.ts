@@ -20,6 +20,10 @@ const fantuanPolicySource = readFileSync(
   resolve(__dirname, 'accounting-fantuan-adjustment-detail.policy.ts'),
   'utf8',
 );
+const structuralAdapterSource = readFileSync(
+  resolve(__dirname, 'accounting-provider-settlement-structural-adapter.policy.ts'),
+  'utf8',
+);
 const currentAuthoritySource = readFileSync(
   resolve(
     __dirname,
@@ -73,7 +77,26 @@ describe('Provider Settlement posted correction adapter architecture', () => {
       'ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA',
     );
     expect(adapterSource).toContain(
-      'Provider structural v2 POST remains gated until SC-D operator acceptance',
+      'Provider structural v2 POST remains gated until controlled production verification is authorized',
+    );
+  });
+
+  it('supplies a server-verified Fantuan structural proposal without a browser-derived fee formula', () => {
+    expect(structuralAdapterSource).toContain(
+      'buildHistoricalFantuanStructuralProposal',
+    );
+    expect(structuralAdapterSource).toContain(
+      'expectedFantuanMissingLines(source)',
+    );
+    expect(adapterSource).toContain(
+      'buildHistoricalFantuanStructuralProposal',
+    );
+    expect(adapterSource).toContain(
+      'tryRebuildHistoricalFantuanPostingProof',
+    );
+    expect(providerFacadeSource).toContain('structuralProposal');
+    expect(adapterSource).toContain(
+      'Provider structural v2 POST remains gated until controlled production verification is authorized',
     );
   });
 
@@ -89,7 +112,7 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     expect(providerFacadeSource).toContain('readProviderCurrentAuthority');
     expect(analyticsSource).toContain('readProviderCurrentAuthority');
     expect(adapterSource).toContain(
-      'Provider structural v2 POST remains gated until SC-D operator acceptance',
+      'Provider structural v2 POST remains gated until controlled production verification is authorized',
     );
   });
 

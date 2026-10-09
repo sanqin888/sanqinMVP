@@ -85,6 +85,7 @@ import {
 import {
   AccountingProviderStructuralAdapterPolicyError,
   assertHistoricalFantuanStructuralTarget,
+  buildHistoricalFantuanStructuralProposal,
   buildHistoricalFantuanStructuralTarget,
   structuralTargetAsSettlementView,
 } from './accounting-provider-settlement-structural-adapter.policy';
@@ -593,6 +594,7 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
           target: current.baseTarget,
         }),
         structuralBaseAuthorityHash: null,
+        structuralProposal: null,
       };
     }
     const structuralEligible =
@@ -617,6 +619,9 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         ? hashProviderStructuralTarget(
             upgradeProviderCorrectionTargetToV2(current.context.sourceTarget),
           )
+        : null,
+      structuralProposal: structuralEligible
+        ? buildHistoricalFantuanStructuralProposal(current.context.sourceTarget)
         : null,
       effectiveLines: null,
       draftInput: {
@@ -940,7 +945,7 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     // this irreversible POST gate is deliberately enabled.
     if (target.version === 2) {
       throw new ConflictException(
-        'Provider structural v2 POST remains gated until SC-D operator acceptance',
+        'Provider structural v2 POST remains gated until controlled production verification is authorized',
       );
     }
     const sourceDocument =
