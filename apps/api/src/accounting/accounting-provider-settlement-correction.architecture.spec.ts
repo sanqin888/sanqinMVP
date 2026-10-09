@@ -20,6 +20,21 @@ const fantuanPolicySource = readFileSync(
   resolve(__dirname, 'accounting-fantuan-adjustment-detail.policy.ts'),
   'utf8',
 );
+const currentAuthoritySource = readFileSync(
+  resolve(
+    __dirname,
+    'accounting-provider-settlement-current-authority.policy.ts',
+  ),
+  'utf8',
+);
+const providerFacadeSource = readFileSync(
+  resolve(__dirname, 'accounting-provider-settlement-correction.service.ts'),
+  'utf8',
+);
+const analyticsSource = readFileSync(
+  resolve(__dirname, 'accounting-platform-analytics.service.ts'),
+  'utf8',
+);
 
 describe('Provider Settlement posted correction adapter architecture', () => {
   it('keeps the typed correction target policy pure and provider-owner scoped', () => {
@@ -58,7 +73,23 @@ describe('Provider Settlement posted correction adapter architecture', () => {
       'ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA',
     );
     expect(adapterSource).toContain(
-      'Provider structural v2 POST is gated until SC-C current-effective readers are deployed',
+      'Provider structural v2 POST remains gated until SC-D operator acceptance',
+    );
+  });
+
+  it('uses one Accounting-only v1/v2 authority reader without a parallel Journal writer', () => {
+    expect(currentAuthoritySource).toContain('readProviderCurrentAuthority');
+    expect(currentAuthoritySource).toContain('hashProviderStructuralTarget');
+    expect(currentAuthoritySource).toContain(
+      'hashProviderSettlementCorrectionTarget',
+    );
+    expect(currentAuthoritySource).not.toContain('@nestjs/common');
+    expect(currentAuthoritySource).not.toContain('JournalService');
+    expect(adapterSource).toContain('readProviderCurrentAuthority');
+    expect(providerFacadeSource).toContain('readProviderCurrentAuthority');
+    expect(analyticsSource).toContain('readProviderCurrentAuthority');
+    expect(adapterSource).toContain(
+      'Provider structural v2 POST remains gated until SC-D operator acceptance',
     );
   });
 

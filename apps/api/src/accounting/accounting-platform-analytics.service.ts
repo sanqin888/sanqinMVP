@@ -32,12 +32,9 @@ import {
 } from './accounting-provider-settlement.policy';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
-  ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
-  AccountingProviderSettlementCorrectionTargetPolicyError,
-  hashProviderSettlementCorrectionTarget,
-  normalizeProviderSettlementCorrectionTarget,
-  type ProviderSettlementCorrectionTargetV1,
-} from './accounting-provider-settlement-correction-target.policy';
+  currentProviderEffectiveLines,
+  readProviderCurrentAuthority,
+} from './accounting-provider-settlement-current-authority.policy';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import {
   accountingPostedCorrectionTargetKey,
@@ -428,39 +425,19 @@ export class AccountingPlatformAnalyticsService {
     if (!latest) {
       return this.effectiveLines(document);
     }
-    if (
-      latest.targetAuthoritySchema !==
-      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
-    ) {
-      throw new ConflictException(
-        `latest POSTED Provider correction has unexpected authority schema: ${document.documentStableId}`,
-      );
-    }
-
-    let target: ProviderSettlementCorrectionTargetV1;
+    let authority: ReturnType<typeof readProviderCurrentAuthority>;
     try {
-      target = normalizeProviderSettlementCorrectionTarget(
-        latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
-      );
+      authority = readProviderCurrentAuthority({
+        schema: latest.targetAuthoritySchema,
+        targetJson: latest.targetJson,
+        expectedHash: latest.targetAuthorityHash,
+      });
     } catch (error) {
-      if (
-        error instanceof AccountingProviderSettlementCorrectionTargetPolicyError
-      ) {
-        throw new ConflictException(
-          `latest POSTED Provider correction target is invalid: ${document.documentStableId}: ${error.message}`,
-        );
-      }
-      throw error;
-    }
-
-    if (
-      hashProviderSettlementCorrectionTarget(target) !==
-      latest.targetAuthorityHash
-    ) {
       throw new ConflictException(
-        `latest POSTED Provider correction authority hash is inconsistent: ${document.documentStableId}`,
+        `latest POSTED Provider correction target is invalid: ${document.documentStableId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    const target = authority.target;
 
     const periodStart = isoDate(document.periodStart);
     const periodEnd = isoDate(document.periodEnd);
@@ -481,9 +458,9 @@ export class AccountingPlatformAnalyticsService {
       );
     }
 
-    return target.lines.map((line) => ({
-      lineStableId: line.lineStableId,
-      lineNo: line.lineNo,
+    return currentProviderEffectiveLines(authority).map((line) => ({
+      lineStableId: line.effectiveLineStableId,
+      lineNo: line.effectiveLineNo,
       rawCode: line.rawCode,
       rawName: line.rawName,
       component: line.component,

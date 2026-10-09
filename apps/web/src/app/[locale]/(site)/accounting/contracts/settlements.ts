@@ -309,6 +309,33 @@ export type ProviderPostedCorrectionDraftInput = {
   lines: ProviderPostedCorrectionDraftLine[];
 };
 
+export type ProviderPostedCorrectionStructuralChangeV2 = {
+  version: 2;
+  expectedBaseAuthorityHash: string;
+  changes: Array<{
+    action: 'ADD';
+    values: Omit<ProviderPostedCorrectionDraftLine, 'lineStableId'> & {
+      evidenceDocumentStableId: string;
+    };
+  }>;
+};
+
+export type ProviderPostedCorrectionEffectiveLine = Omit<
+  ProviderPostedCorrectionDraftLine,
+  'lineStableId'
+> & {
+  effectiveLineStableId: string;
+  effectiveLineNo: number;
+  origin: 'SOURCE_LINE' | 'CORRECTION_ADDED';
+  evidenceDocumentStableId: string;
+  sourceLine: {
+    documentStableId: string;
+    lineStableId: string;
+    lineNo: number;
+  } | null;
+  occurredAt: string | null;
+};
+
 export type ProviderPostedCorrectionPreview = {
   version: 1;
   status: 'READY' | 'NOOP';
@@ -357,7 +384,10 @@ export type ProviderPostedCorrectionCase = {
     revision: number;
     targetAuthoritySchema: string;
     targetAuthorityHash: string;
-    draftInput: ProviderPostedCorrectionDraftInput;
+    draftInput:
+      | ProviderPostedCorrectionDraftInput
+      | ProviderPostedCorrectionStructuralChangeV2;
+    effectiveLines?: ProviderPostedCorrectionEffectiveLine[];
     createdByActorRef: string;
     createdAt: string;
   }>;
@@ -399,7 +429,10 @@ export type ProviderPostedCorrectionRecord = {
   };
   currentEffective: {
     targetAuthorityHash: string;
-    draftInput: ProviderPostedCorrectionDraftInput;
+    targetAuthoritySchema?: string;
+    structuralBaseAuthorityHash?: string;
+    draftInput: ProviderPostedCorrectionDraftInput | null;
+    effectiveLines?: ProviderPostedCorrectionEffectiveLine[];
   } | null;
   corrections: ProviderPostedCorrectionCase[];
 };

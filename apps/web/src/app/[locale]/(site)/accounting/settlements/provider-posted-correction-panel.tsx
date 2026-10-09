@@ -243,6 +243,22 @@ export function ProviderPostedCorrectionPanel({
   const [error, setError] = useState<string | null>(null);
 
   const active = useMemo(() => activeCase(record), [record]);
+  // SC-C is a read-compatible expansion. A v2 case and the historical
+  // missing-component source must not be opened in the legacy fixed-line editor.
+  const activeDraft = active ? latestDraftInput(active) : null;
+  const structuralReadOnly =
+    record?.currentEffective?.targetAuthoritySchema ===
+      'accounting.provider-settlement-correction-target.v2' ||
+    !!record?.currentEffective?.structuralBaseAuthorityHash ||
+    activeDraft?.version === 2;
+  const displayLines =
+    record?.currentEffective?.effectiveLines?.map((line) => ({
+      ...line,
+      lineStableId: line.effectiveLineStableId,
+    })) ??
+    (record?.currentEffective?.draftInput?.version === 1
+      ? record.currentEffective.draftInput.lines
+      : []);
   const readyPreview =
     active?.status === 'READY' ? (active.readyPreview ?? preview) : preview;
 
@@ -252,7 +268,7 @@ export function ProviderPostedCorrectionPanel({
       (nextActive ? latestDraftInput(nextActive) : null) ??
       next.currentEffective?.draftInput ??
       null;
-    setRows(draft?.lines.map(toEditable) ?? []);
+    setRows(draft?.version === 1 ? draft.lines.map(toEditable) : []);
     setReasonCode(nextActive?.reasonCode ?? 'AMOUNT_ERROR');
     setNote(nextActive?.note ?? '');
     setPreview(
@@ -557,6 +573,7 @@ export function ProviderPostedCorrectionPanel({
   }
 
   const postReady =
+    !structuralReadOnly &&
     active?.status === 'READY' &&
     Boolean(active.planHash) &&
     confirmationText.trim() === active.planHash &&
@@ -657,7 +674,7 @@ export function ProviderPostedCorrectionPanel({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {record.currentEffective.draftInput.lines.map((line) => (
+                      {displayLines.map((line) => (
                         <tr key={line.lineStableId}>
                           <td className="px-3 py-2">
                             {line.rawName ?? line.rawCode ?? line.lineStableId}
@@ -677,7 +694,12 @@ export function ProviderPostedCorrectionPanel({
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-violet-200 bg-white p-4">
+              <div
+                className={
+                  'space-y-3 rounded-xl border border-violet-200 bg-white p-4' +
+                  (structuralReadOnly ? ' hidden' : '')
+                }
+              >
                 <div>
                   <p className="text-sm font-semibold text-slate-950">
                     {active
@@ -896,6 +918,13 @@ export function ProviderPostedCorrectionPanel({
                   ) : null}
                 </div>
               </div>
+              {structuralReadOnly ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                  {isZh
+                    ? '该账单需要结构性修正，当前 v1 固定行编辑器已关闭。请使用后续的 v2 专用流程；现有数据保持只读。'
+                    : 'This statement requires structural correction. The legacy fixed-line editor is disabled; use the dedicated v2 workflow. Existing facts remain read-only.'}
+                </div>
+              ) : null}
             </>
           ) : null}
 
@@ -903,7 +932,8 @@ export function ProviderPostedCorrectionPanel({
             <DeltaPreview preview={readyPreview} isZh={isZh} />
           ) : null}
 
-          {active?.status === 'DRAFT' &&
+          {!structuralReadOnly &&
+          active?.status === 'DRAFT' &&
           preview?.status === 'READY' &&
           !dirty ? (
             <button
@@ -922,7 +952,7 @@ export function ProviderPostedCorrectionPanel({
             </button>
           ) : null}
 
-          {active?.status === 'READY' && active.planHash ? (
+          {!structuralReadOnly && active?.status === 'READY' && active.planHash ? (
             <div className="space-y-3 rounded-xl border border-red-300 bg-red-50 p-4">
               <div>
                 <p className="text-sm font-semibold text-red-950">

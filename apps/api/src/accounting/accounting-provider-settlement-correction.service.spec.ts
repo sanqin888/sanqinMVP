@@ -212,6 +212,86 @@ describe('AccountingProviderSettlementCorrectionService', () => {
     expect(correction.previewCase).not.toHaveBeenCalled();
   });
 
+  it('binds structural v2 draft creation to the separate immutable structural hash', async () => {
+    const { service, correction, adapter } = makeService();
+    const structuralHash = sha('c');
+    jest.spyOn(service, 'readRecord').mockResolvedValue({
+      ...currentRecord,
+      currentEffective: {
+        ...currentRecord.currentEffective,
+        structuralBaseAuthorityHash: structuralHash,
+      },
+    } as never);
+    const target = {
+      version: 2,
+      expectedBaseAuthorityHash: structuralHash,
+      changes: [],
+    };
+    await service.createDraft(
+      'provider_doc_1',
+      {
+        reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+        target,
+      },
+      'user_1',
+    );
+    expect(correction.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ targetJson: target }),
+      'user_1',
+      adapter,
+    );
+    await expect(
+      service.createDraft(
+        'provider_doc_1',
+        {
+          reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+          target: { ...target, expectedBaseAuthorityHash: sha('a') },
+        },
+        'user_1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('preserves v2 current-effective read-only lines without fabricating a v1 draft', async () => {
+    const { service, prisma, adapter } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      ...currentRecord.document,
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+    });
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthoritySchema: 'accounting.provider-settlement-correction-target.v2',
+      targetAuthorityHash: sha('c'),
+      structuralBaseAuthorityHash: null,
+      draftInput: null,
+      effectiveLines: [
+        {
+          effectiveLineStableId: 'correction-line:fee',
+          effectiveLineNo: 2,
+          origin: 'CORRECTION_ADDED',
+          sourceLine: null,
+          evidenceDocumentStableId: 'provider_doc_1',
+          rawCode: null,
+          rawName: 'Marketing Fee',
+          component: 'ADVERTISING',
+          postingTreatment: 'POSTABLE',
+          taxRole: 'NONE',
+          amountCents: -28200,
+          occurredAt: null,
+        },
+      ],
+    });
+    const record = await service.readRecord('provider_doc_1');
+    expect(record.currentEffective?.draftInput).toBeNull();
+    expect(record.currentEffective?.effectiveLines).toEqual([
+      expect.objectContaining({
+        origin: 'CORRECTION_ADDED',
+        sourceLine: null,
+        amountCents: -28200,
+      }),
+    ]);
+  });
+
   it('delegates READY and POST to A3 with the Provider adapter and returns fresh state', async () => {
     const { service, prisma, correction, adapter } = makeService();
     prisma.accountingCorrectionCase.findFirst.mockResolvedValue({

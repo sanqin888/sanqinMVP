@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "1b18fb00",
-  "updatedAt": "2026-10-07",
+  "updatedAt": "2026-10-09",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -14,6 +14,30 @@
     "deadline"
   ],
   "active": [
+    {
+      "compat_id": "accounting.provider-correction-structural-v2.v1",
+      "status": "active_read_compatibility_post_gated",
+      "old_owner": "Accounting Provider Settlement correction target v1 immutable source-line edits and persisted POSTED v1 authorities",
+      "new_owner": "Accounting Provider Settlement correction target v2 explicit effective lines with immutable SOURCE_LINE provenance and CORRECTION_ADDED evidence",
+      "dual_write_or_read": [
+        "Accounting-owned current-effective and analytics readers normalize typed persisted v1 and v2 authorities with exact schema and hash checks; original posted source and Journal are never rewritten.",
+        "SC-B2 permits only two server-proven historical Fantuan missing fee/tax additions in a new v2 Revision. Common A3 DELTA writes remain blocked for v2 at activation until SC-D safe UI and controlled production verification are authorized.",
+        "Existing v1 correction history and clients remain readable; old fixed-line UI is read-only when source requires structural correction or latest correction is v2. No parallel financial posting or dual-write exists."
+      ],
+      "parity_metric": "Original 10-line Fantuan Journal plus compensating DELTA must match the fully reconciled 12-line READY Provider target posting vector (Advertising +28200c, HST Recoverable +3666c, Fantuan Pending -31866c), with matching frozen control totals, v1/v2 stable IDs, source provenance and current-effective Analytics fees. All legacy v1 correction reports must retain parity.",
+      "rollback": "Until controlled v2 POST authorization, retain the activation fail-closed guard; older v1 authorities remain readable. A rollback must not rewrite any source, posted Journal, posted authority revision or compensating Journal. If a future v2 POST is permitted, cut back new writes while retaining v2 readers and reconcile any prior postings.",
+      "exit_criteria": "SC-C v1/v2 read and analytics compatibility is source-complete/CI-green; SC-D UI is accepted; controlled production Fantuan correction yields exact Journal + Analytics parity; independently deployed consumers no longer require the v1-only draft shape; and removal has a dedicated authorized contract-contraction review.",
+      "remove_pr": "Future authorized Accounting Provider structural correction v1-contract retirement PR, after compatibility exit evidence",
+      "deadline": "After controlled historical Fantuan repair and proven consumer parity; no forced calendar deletion",
+      "governance_note": "SC-C is additive read-compatibility only and does not change Common A3, Prisma, the original Journal, immutable Provider/Human Review evidence or module ownership. POST remains protected independently of readiness of the new reader.",
+      "evidence": [
+        "docs/architecture/accounting-document-recognition-human-review-plan.md section 16.13",
+        "apps/api/src/accounting/accounting-provider-settlement-current-authority.policy.ts",
+        "apps/api/src/accounting/accounting-provider-settlement-correction.adapter.ts",
+        "apps/api/src/accounting/accounting-platform-analytics.service.ts",
+        "docs/architecture/modularization-worklog-accounting-correction.md"
+      ]
+    },
     {
       "compat_id": "payments.pos-card-legacy.v1",
       "status": "active_preproduction",
