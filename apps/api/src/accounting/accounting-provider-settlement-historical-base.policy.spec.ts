@@ -13,12 +13,7 @@ import {
 import { tryRebuildHistoricalFantuanPostingProof } from './accounting-provider-settlement-historical-base.policy';
 import { buildProviderSettlementDocumentPlan } from './accounting-provider-settlement.policy';
 
-type TestLine = [
-  string,
-  Component,
-  Treatment,
-  number,
-];
+type TestLine = [string, Component, Treatment, number];
 
 const historicalTarget = (): ProviderSettlementCorrectionTargetV1 => {
   const lines: TestLine[] = [
@@ -77,18 +72,20 @@ const historicalTarget = (): ProviderSettlementCorrectionTargetV1 => {
     basedOnAuthorityHash: 'b'.repeat(64),
     supplementaryEvidenceDocumentStableIds: [],
     historicalReversalOriginalJournalEntryStableIds: [],
-    lines: lines.map(([rawName, component, postingTreatment, amountCents], i) => ({
-      sourceDocumentStableId: 'fantuan_sep_statement',
-      lineStableId: 'source_' + String(i + 1),
-      lineNo: i + 1,
-      rawCode: null,
-      rawName,
-      component,
-      postingTreatment,
-      taxRole: TaxRole.NONE,
-      amountCents,
-      occurredAt: null,
-    })),
+    lines: lines.map(
+      ([rawName, component, postingTreatment, amountCents], i) => ({
+        sourceDocumentStableId: 'fantuan_sep_statement',
+        lineStableId: 'source_' + String(i + 1),
+        lineNo: i + 1,
+        rawCode: null,
+        rawName,
+        component,
+        postingTreatment,
+        taxRole: TaxRole.NONE,
+        amountCents,
+        occurredAt: null,
+      }),
+    ),
   });
 };
 
@@ -153,8 +150,11 @@ describe('Provider historical Fantuan posting proof', () => {
         }),
       ]),
     );
-    expect(proof?.lines.some((line) => line.accountStableId ===
-      'account_advertising_expense')).toBe(false);
+    expect(
+      proof?.lines.some(
+        (line) => line.accountStableId === 'account_advertising_expense',
+      ),
+    ).toBe(false);
     expect(hashProviderSettlementCorrectionTarget(target)).toBe(before);
     expect(
       target.lines
@@ -175,10 +175,12 @@ describe('Provider historical Fantuan posting proof', () => {
             : line.amountCents,
       })),
     });
-    expect(tryRebuildHistoricalFantuanPostingProof({
-      source: changed,
-      occurredAt,
-    })).toBeNull();
+    expect(
+      tryRebuildHistoricalFantuanPostingProof({
+        source: changed,
+        occurredAt,
+      }),
+    ).toBeNull();
 
     const wrongProvider = normalizeProviderSettlementCorrectionTarget({
       ...target,
@@ -187,10 +189,12 @@ describe('Provider historical Fantuan posting proof', () => {
         provider: AccountingFinancialProvider.UBER_EATS,
       },
     });
-    expect(tryRebuildHistoricalFantuanPostingProof({
-      source: wrongProvider,
-      occurredAt,
-    })).toBeNull();
+    expect(
+      tryRebuildHistoricalFantuanPostingProof({
+        source: wrongProvider,
+        occurredAt,
+      }),
+    ).toBeNull();
   });
 
   it('rejects partial marketing component evidence and non-statement authority', () => {
@@ -207,16 +211,20 @@ describe('Provider historical Fantuan posting proof', () => {
       ...target,
       lines: [...target.lines, fakeMarketingLine],
     });
-    expect(tryRebuildHistoricalFantuanPostingProof({
-      source: partial,
-      occurredAt,
-    })).toBeNull();
-    expect(tryRebuildHistoricalFantuanPostingProof({
-      source: normalizeProviderSettlementCorrectionTarget({
-        ...target,
-        salesAuthority: 'RECONCILIATION_ONLY',
+    expect(
+      tryRebuildHistoricalFantuanPostingProof({
+        source: partial,
+        occurredAt,
       }),
-      occurredAt,
-    })).toBeNull();
+    ).toBeNull();
+    expect(
+      tryRebuildHistoricalFantuanPostingProof({
+        source: normalizeProviderSettlementCorrectionTarget({
+          ...target,
+          salesAuthority: 'RECONCILIATION_ONLY',
+        }),
+        occurredAt,
+      }),
+    ).toBeNull();
   });
 });

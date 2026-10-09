@@ -87,10 +87,7 @@ export const tryRebuildHistoricalFantuanPostingProof = (params: {
 
   const simulatedControlAmounts = new Map<string, number>();
   for (const check of mismatches) {
-    if (
-      check.controlLineStableId === null ||
-      check.calculatedCents === null
-    ) {
+    if (check.controlLineStableId === null || check.calculatedCents === null) {
       return null;
     }
     simulatedControlAmounts.set(
