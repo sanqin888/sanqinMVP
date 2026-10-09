@@ -1942,6 +1942,43 @@ Until those gates are completed, B1/B2 continue to use the unchanged v1
 DELTA-only path. Do not claim that the Fantuan September 10-to-12-line
 production correction is supported by SC-A alone.
 
+### 16.13B1 Structural Provider correction — SC-B historical base (2026-10-09)
+
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO REMOTE DELIVERY**.
+Source baseline: `origin/dev@1fc8003c`; branch:
+`feat/accounting-provider-structural-sc-b`.
+
+The original posted Provider Journal remains the immutable baseline. For
+historical Fantuan Statements that are currently control-total BLOCKED
+*only* because of the omitted `Marketing Fee` and
+`Marketing Fee GST/HST`, the adapter may reconstruct the historical
+Journal posting vector under a narrowly constrained **read-only proof**.
+The proof checks that the other two Fantuan controls match, both allowed
+controls have positive discrepancy deltas, both missing rows are truly
+absent, and the original Statement is CAD/statement-authoritative without
+supplementary evidence. The proof temporarily uses computed control totals
+in memory to reuse the unmodified Provider settlement policy and discards
+that temporary snapshot immediately afterward. The original document and
+Human Review controls are never overwritten or presented as reconciled.
+
+Admission additionally requires existing immutable evidence gates: original
+typed CREATE audit, Provider group and review authority, original persisted
+Journal authority hash, reconstructed Journal payload hash equality, frozen
+Store/period/Provider and reversal prerequisites. A malformed or unrelated
+historic posting still fails closed. Existing v1 normal UPDATE/DELTA correction
+submissions for this unreconciled source are explicitly rejected: otherwise an
+operator could rewrite the original control totals to hide the missing lines.
+Read-only listing remains possible, but posting waits for the v2 adapter.
+**Only original-baseline admission is relaxed for this verified historical
+mismatch pattern; corrected-target READY, posting account prerequisites,
+and common A3 are unchanged.**
+
+SC-B2 (structural v2 Adapter revision/READY/activation), SC-C
+(facade/latest-effective v1/v2 codec/analytics) and SC-D (safe UI) remain
+pending. This local SC-B1 does **not** permit posting the September 10→12
+correction until those gates land. No Prisma/schema/migration or source
+persistence edits are included.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:

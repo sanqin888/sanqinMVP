@@ -41,6 +41,13 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     expect(adapterSource).toContain('resolveFantuanAdjustmentDetailLines');
   });
 
+  it('requires audited historical proof and blocks v1 edits on unmatched historical controls', () => {
+    expect(adapterSource).toContain('tryRebuildHistoricalFantuanPostingProof');
+    expect(adapterSource).toContain(
+      'Historical Fantuan missing components require structural v2',
+    );
+  });
+
   it('shares Fantuan adjustment-detail resolution between normal settlement preview and posted correction', () => {
     expect(previewSource).toContain('resolveFantuanAdjustmentDetailLines');
     expect(adapterSource).toContain('resolveFantuanAdjustmentDetailLines');
