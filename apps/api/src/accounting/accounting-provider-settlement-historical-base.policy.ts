@@ -117,13 +117,15 @@ export const tryRebuildHistoricalFantuanPostingProof = (params: {
   ) {
     return null;
   }
+  const transferControlLineStableId = transfer.controlLineStableId;
+  const transferCalculatedCents = transfer.calculatedCents;
   const proofDocument: ProviderSettlementDocumentInput = {
     ...firstPass,
     lines: firstPass.lines.map((line) => ({
       ...line,
       amountCents:
-        line.lineStableId === transfer.controlLineStableId
-          ? transfer.calculatedCents
+        line.lineStableId === transferControlLineStableId
+          ? transferCalculatedCents
           : line.amountCents,
     })),
   };
