@@ -56,12 +56,8 @@ describe('Correction-D current-effective read-model architecture', () => {
       'readAccountingPostedCorrectionProjections',
     );
     expect(platformAnalyticsSource).toContain('currentEffectiveLines');
-    expect(platformAnalyticsSource).toContain(
-      'readProviderCurrentAuthority',
-    );
-    expect(platformAnalyticsSource).toContain(
-      'currentProviderEffectiveLines',
-    );
+    expect(platformAnalyticsSource).toContain('readProviderCurrentAuthority');
+    expect(platformAnalyticsSource).toContain('currentProviderEffectiveLines');
     const providerAuthoritySource = read(
       'accounting-provider-settlement-current-authority.policy.ts',
     );
