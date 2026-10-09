@@ -431,6 +431,7 @@ export type ProviderPostedCorrectionRecord = {
     targetAuthorityHash: string;
     targetAuthoritySchema?: string;
     structuralBaseAuthorityHash?: string;
+    structuralProposal?: ProviderPostedCorrectionStructuralChangeV2;
     draftInput: ProviderPostedCorrectionDraftInput | null;
     effectiveLines?: ProviderPostedCorrectionEffectiveLine[];
   } | null;

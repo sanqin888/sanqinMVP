@@ -11,6 +11,7 @@ import {
 } from './accounting-provider-settlement-correction-target.policy';
 import {
   assertHistoricalFantuanStructuralTarget,
+  buildHistoricalFantuanStructuralProposal,
   buildHistoricalFantuanStructuralTarget,
   structuralTargetAsSettlementView,
 } from './accounting-provider-settlement-structural-adapter.policy';
@@ -117,6 +118,37 @@ const additions = (): ProviderStructuralLineAddition[] => [
 ];
 
 describe('Provider structural v2 Adapter source authority', () => {
+  it('proposes only server-derived missing lines with frozen evidence identity', () => {
+    const source = sourceTarget();
+    const proposal = buildHistoricalFantuanStructuralProposal(source);
+    expect(proposal.version).toBe(2);
+    expect(proposal.expectedBaseAuthorityHash).toBe(
+      hashProviderStructuralTarget(upgradeProviderCorrectionTargetToV2(source)),
+    );
+    expect(proposal.changes).toEqual([
+      { action: 'ADD', values: additions()[0] },
+      { action: 'ADD', values: additions()[1] },
+    ]);
+    const target = buildHistoricalFantuanStructuralTarget({
+      source,
+      rawInput: proposal,
+    });
+    expect(
+      target.lines.filter((line) => line.origin === 'CORRECTION_ADDED'),
+    ).toHaveLength(2);
+    const modifiedSource = {
+      ...source,
+      lines: source.lines.map((line) =>
+        line.rawName === 'Marketing and Fantuan Event Charges'
+          ? { ...line, amountCents: -246345 }
+          : line,
+      ),
+    };
+    expect(() =>
+      buildHistoricalFantuanStructuralProposal(modifiedSource),
+    ).toThrow('exactly the two historic Fantuan control discrepancies');
+  });
+
   it('accepts only two reconciled additions and builds a READY 12-line target', () => {
     const source = sourceTarget();
     const base = upgradeProviderCorrectionTargetToV2(source);

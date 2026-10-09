@@ -311,6 +311,9 @@ export class AccountingProviderSettlementCorrectionService {
                   current.structuralBaseAuthorityHash,
               }
             : {}),
+          ...(current.structuralProposal
+            ? { structuralProposal: current.structuralProposal }
+            : {}),
         },
         corrections: corrections.map(serializeCase),
       };

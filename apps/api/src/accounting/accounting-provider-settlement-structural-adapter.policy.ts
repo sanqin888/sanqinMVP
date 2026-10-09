@@ -120,6 +120,35 @@ const expectedFantuanMissingLines = (
   ];
 };
 
+/**
+ * Read-only, server-calculated v2 editor proposal. Reuses the same audited
+ * Fantuan template as the writable adapter, rather than reimplementing fee
+ * sign/control-total calculations in the browser.
+ */
+export const buildHistoricalFantuanStructuralProposal = (
+  source: ProviderSettlementCorrectionTargetV1,
+): ProviderStructuralTargetChangeV2 => {
+  const expected = expectedFantuanMissingLines(source);
+  return {
+    version: 2,
+    expectedBaseAuthorityHash: hashProviderStructuralTarget(
+      upgradeProviderCorrectionTargetToV2(source),
+    ),
+    changes: expected.map((item) => ({
+      action: 'ADD' as const,
+      values: {
+        evidenceDocumentStableId: source.document.documentStableId,
+        rawCode: null,
+        rawName: item.rawName,
+        component: item.component,
+        postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+        taxRole: item.taxRole,
+        amountCents: item.amountCents,
+      },
+    })),
+  };
+};
+
 const validAddedSemantics = (
   actual: ProviderStructuralLineAddition,
   required: AdditionTemplate,

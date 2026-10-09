@@ -2009,17 +2009,16 @@ can validate typed v1/v2 authority hashes; however **v2 POST remains
 fail-closed until SC-C makes current-effective/facade/Analytics readers
 v2-aware**. No Provider source or Human Review row is modified.
 
-**Deployment gate remains CLOSED:** SC-C must upgrade the Provider
-Correction facade, `readCurrentEffectiveTarget`, latest POSTED
-authority consumer and Platform Analytics to read v1/v2 before any
-structural v2 POSTED correction is allowed in production; SC-D must
-provide the safe client workflow. SC-B2 is merged and CI green; no
+**Deployment gate remains CLOSED:** SC-C has delivered v1/v2 typed
+readers across Provider facade/current-effective and Platform Analytics;
+SC-D still requires operator-safe workflow acceptance and separately
+authorized controlled verification before v2 POST can be enabled. SC-B2 is merged and CI green; no
 Prisma, migration, dependency, Common A3 or cross-context ownership
 change was required.
 
 ### 16.13C Provider v1/v2 current-effective reader expansion (2026-10-09)
 
-State: **SC-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO REMOTE PR**.
+State: **SC-C MERGED / PR #2766 / DEV `c7ebdd69` / CI #7104 GREEN**.
 Source baseline: `origin/dev@0503e15f`; branch:
 `feat/accounting-provider-structural-sc-c`.
 
@@ -2059,8 +2058,51 @@ Registered compatibility:
 `accounting.provider-correction-structural-v2.v1`
 (in both active-compatibility-register sources), with no Prisma,
 migration, Common A3, dependency, context-import or scanner-baseline
-change. No local lint/build/tests under AGENTS; remote CI requires
-the next authorization.
+change. SC-C was validated by full GitHub Actions CI #7104.
+
+### 16.13D Provider structural v2 operator workflow — SC-D (2026-10-09)
+
+State: **SC-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PR**.
+Source baseline: `origin/dev@c7ebdd69`; branch:
+`feat/accounting-provider-structural-sc-d`.
+
+The Accounting Provider owner now exposes a single read-only
+`structuralProposal` only when the audited historical Fantuan
+10-row posted baseline is admissible and source authority is
+unchanged. Its exact two added rows (Marketing Fee, Marketing Fee
+GST/HST), tax roles, evidenceDocumentStableId, sign, CAD amounts
+and structural base hash come from the same Provider-owned pure
+policy used by READY validation; Web calculates none of those
+fields, does not create fabricated source identities and does not
+permit editing any of them. The proposal is only present when
+the existing original Journal hash, source CREATE authority and
+two control-total differences validate through SC-B1/B2.
+
+The posted-record panel keeps the existing v1 fixed-row editor
+for ordinary Provider records and provides a separate v2-specific
+display for eligible statements. It shows the two proposed fee/tax
+additions and frozen source reference, requires a fresh explicit
+operator acknowledgement before creating a `MISSING_COMPONENT`
+v2 Correction DRAFT, reuses the common typed Revision / Preview
+and displays its compensating DELTA, and requires *another*
+acknowledgement **plus the entire matching planHash typed by the
+operator** before marking READY. The workflow never uses the
+legacy v1 editor to edit the 10-source-row controls. READY v2
+can be cancelled through the existing common Correction case
+lifecycle. Existing v1 correction and history remain available.
+
+**Important independent production gate:** the v2 POST button is
+not exposed. Provider Adapter activation **continues to reject
+v2 POST**, even when the new UI has reached READY, until the
+user separately accepts a controlled production verification
+procedure and authorizes removal of the fail-closed guard. The
+safe plan is to review SC-D, pass GitHub CI and merge to dev,
+then separately deploy/read/preview/verify exact Journal DELTA
+and Analytics parity before opening the irreversible POST gate.
+No action here changes the original posted Journal or human
+review source and this slice introduces no Prisma/migration,
+dependency/lockfile, Common A3, new context edge, scanner
+baseline or accounting ownership movement.
 
 ### 16.14 Explicit non-goals
 

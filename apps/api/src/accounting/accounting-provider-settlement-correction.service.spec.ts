@@ -104,6 +104,43 @@ describe('AccountingProviderSettlementCorrectionService', () => {
     );
   });
 
+  it('exposes only Provider-owner server-derived structural proposals to the UI', async () => {
+    const { service, prisma, adapter } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      ...currentRecord.document,
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+    });
+    const proposal = {
+      version: 2,
+      expectedBaseAuthorityHash: sha('c'),
+      changes: [
+        {
+          action: 'ADD',
+          values: {
+            evidenceDocumentStableId: 'provider_doc_1',
+            rawCode: null,
+            rawName: 'Marketing Fee',
+            component: 'ADVERTISING',
+            postingTreatment: 'POSTABLE',
+            taxRole: 'NONE',
+            amountCents: -28200,
+          },
+        },
+      ],
+    };
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthorityHash: sha('a'),
+      draftInput: currentRecord.currentEffective.draftInput,
+      structuralBaseAuthorityHash: sha('c'),
+      structuralProposal: proposal,
+    });
+    const record = await service.readRecord('provider_doc_1');
+    expect(record.currentEffective?.structuralProposal).toEqual(proposal);
+    expect(record.currentEffective?.structuralBaseAuthorityHash).toBe(sha('c'));
+    expect(record.currentEffective?.draftInput?.version).toBe(1);
+  });
+
   it('turns owner conflicts into an explicit blocked posted-record state', async () => {
     const { service, prisma, adapter } = makeService();
     prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({

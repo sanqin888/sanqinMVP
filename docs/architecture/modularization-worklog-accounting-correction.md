@@ -37,11 +37,11 @@ production correction is claimed.
 
 ## 2026-10-09 — Accounting Provider Structural Correction SC-C v1/v2 current-effective readers
 
-**PR/SHA:** local branch `feat/accounting-provider-structural-sc-c`;
-source baseline `origin/dev@0503e15f`, remote delivery not yet authorized.
+**PR/SHA:** PR #2766 / final head `f5ef0480` / dev merge
+`c7ebdd69` / CI #7104 all green. Baseline `origin/dev@0503e15f`.
 
-**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRISMA /
-NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+**State:** **MERGED / NO PRISMA / NO MIGRATION / NO DEPENDENCY /
+NO GRAPH OR BASELINE CHANGE**.
 
 **Owner/boundary:** The Accounting Provider-owned current-effective
 decoder now validates both v1/v2 immutable correction authority
@@ -55,15 +55,42 @@ Journal writer change is made. The persisted compatibility
 with a read parity/rollback/deletion gate; this introduces no
 new inter-context dependency or direct-import allowance.
 
-**Remaining:** v2 POST remains gated at Adapter activation until
-SC-D safe operator UI and controlled production acceptance;
+**Remaining:** SC-D operator UI is implemented locally but has not
+passed remote CI or acceptance; v2 POST remains gated at Adapter
+activation until controlled production acceptance;
 no production source, Journal, Human Review or data write
-occurs in this local slice. Local lint/build/tests not run;
-remote CI is a later explicit approval step.
+was performed during SC-C; CI #7104 was green.
 
 **Owner plan:** `docs/architecture/accounting-document-recognition-human-review-plan.md`
 §16.13C; `docs/architecture/current-dependency-graph.md`;
 `docs/architecture/active-compatibility-register.json` and Markdown view.
+
+## 2026-10-09 — Accounting Provider Structural Correction SC-D safe UI
+
+**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO REMOTE PR**.
+Branch `feat/accounting-provider-structural-sc-d` from
+`origin/dev@c7ebdd69`; SC-C merged via PR #2766 / dev
+`c7ebdd69` / CI #7104 all green.
+
+**Behavior:** The Accounting Provider owner supplies an exact
+two-line audited Fantuan correction `structuralProposal`, rather
+than letting Web implement or override fee/tax/control-total
+formulas. The existing Provider posted-record panel now renders
+read-only source identity and approved v2-added fees, separate
+operator acknowledgement before DRAFT, common Preview with
+compensating DELTA, second acknowledgement plus manually typed
+full planHash before READY, and existing cancellation. Ordinary
+v1 UI remains available and historical source-line edits stay
+blocked. Backend v2 POST and client POST remain **fail-closed**;
+operator consent for a controlled production procedure is a
+separate gate after CI and merge. No existing financial fact,
+Prisma, migration, dependency, Common A3, context edge or
+architecture scanner baseline is changed.
+
+**Validation:** Not run locally under AGENTS.md; remote PR is
+not authorized yet. Details in
+`docs/architecture/accounting-document-recognition-human-review-plan.md`
+§16.13D.
 
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 
