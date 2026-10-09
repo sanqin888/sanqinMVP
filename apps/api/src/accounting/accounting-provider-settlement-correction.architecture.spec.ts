@@ -21,7 +21,10 @@ const fantuanPolicySource = readFileSync(
   'utf8',
 );
 const structuralAdapterSource = readFileSync(
-  resolve(__dirname, 'accounting-provider-settlement-structural-adapter.policy.ts'),
+  resolve(
+    __dirname,
+    'accounting-provider-settlement-structural-adapter.policy.ts',
+  ),
   'utf8',
 );
 const currentAuthoritySource = readFileSync(
@@ -88,12 +91,8 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     expect(structuralAdapterSource).toContain(
       'expectedFantuanMissingLines(source)',
     );
-    expect(adapterSource).toContain(
-      'buildHistoricalFantuanStructuralProposal',
-    );
-    expect(adapterSource).toContain(
-      'tryRebuildHistoricalFantuanPostingProof',
-    );
+    expect(adapterSource).toContain('buildHistoricalFantuanStructuralProposal');
+    expect(adapterSource).toContain('tryRebuildHistoricalFantuanPostingProof');
     expect(providerFacadeSource).toContain('structuralProposal');
     expect(adapterSource).toContain(
       'Provider structural v2 POST remains gated until controlled production verification is authorized',

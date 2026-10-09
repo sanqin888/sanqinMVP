@@ -133,8 +133,9 @@ describe('Provider structural v2 Adapter source authority', () => {
       source,
       rawInput: proposal,
     });
-    expect(target.lines.filter((line) => line.origin === 'CORRECTION_ADDED'))
-      .toHaveLength(2);
+    expect(
+      target.lines.filter((line) => line.origin === 'CORRECTION_ADDED'),
+    ).toHaveLength(2);
     const modifiedSource = {
       ...source,
       lines: source.lines.map((line) =>
@@ -143,8 +144,9 @@ describe('Provider structural v2 Adapter source authority', () => {
           : line,
       ),
     };
-    expect(() => buildHistoricalFantuanStructuralProposal(modifiedSource))
-      .toThrow('exactly the two historic Fantuan control discrepancies');
+    expect(() =>
+      buildHistoricalFantuanStructuralProposal(modifiedSource),
+    ).toThrow('exactly the two historic Fantuan control discrepancies');
   });
 
   it('accepts only two reconciled additions and builds a READY 12-line target', () => {
