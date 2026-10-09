@@ -76,6 +76,7 @@ import {
 } from './accounting-clover-fee-reclassification-bridge.policy';
 import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provider-fee-clearing.contract';
 import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
+import { tryRebuildHistoricalFantuanPostingProof } from './accounting-provider-settlement-historical-base.policy';
 import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
 
 const PROVIDER_DOCUMENT_SELECT = {
@@ -595,6 +596,18 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       input.targetVersion,
       db,
     );
+    // The audited historical baseline remains unreconciled. A v1 edit could
+    // otherwise falsify its control totals instead of adding missing lines.
+    if (
+      tryRebuildHistoricalFantuanPostingProof({
+        source: current.context.sourceTarget,
+        occurredAt: current.context.originalProviderJournal.occurredAt,
+      })
+    ) {
+      throw new BadRequestException(
+        'Historical Fantuan missing components require structural v2; v1 control-total edits are forbidden',
+      );
+    }
     let target: ProviderSettlementCorrectionTargetV1;
     try {
       target = applyProviderSettlementCorrectionTargetInput({
@@ -640,6 +653,18 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       input.targetVersion,
       db,
     );
+    // The audited historical baseline remains unreconciled. A v1 edit could
+    // otherwise falsify its control totals instead of adding missing lines.
+    if (
+      tryRebuildHistoricalFantuanPostingProof({
+        source: current.context.sourceTarget,
+        occurredAt: current.context.originalProviderJournal.occurredAt,
+      })
+    ) {
+      throw new ConflictException(
+        'Historical Fantuan missing components require structural v2; v1 control-total edits are forbidden',
+      );
+    }
     let target: ProviderSettlementCorrectionTargetV1;
     try {
       target = normalizeProviderSettlementCorrectionTarget(
@@ -887,10 +912,22 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       groupAuthority,
       sourcePostingAuthorityHash,
     });
-    const rebuiltOriginalJournal = this.buildProviderJournalForTarget(
-      sourceTarget,
-      originalProviderJournal.occurredAt,
-    );
+    // Some historical Fantuan Statements were posted before the missing-fee
+    // control reconciliation guard was tightened. Typed CREATE authority and
+    // the persisted original Journal hash are verified above; reconstruct
+    // their immutable posting vector using simulated controls only when the
+    // narrowly allowed two-control mismatch pattern is proven. This never
+    // makes a corrected target READY or alters source/Human Review authority.
+    const historicalProof = tryRebuildHistoricalFantuanPostingProof({
+      source: sourceTarget,
+      occurredAt: originalProviderJournal.occurredAt,
+    });
+    const rebuiltOriginalJournal =
+      historicalProof ??
+      this.buildProviderJournalForTarget(
+        sourceTarget,
+        originalProviderJournal.occurredAt,
+      );
 
     const reversalJournals: JournalRow[] = [];
     for (const anchor of groupAuthority.historicalReversalAnchors) {
