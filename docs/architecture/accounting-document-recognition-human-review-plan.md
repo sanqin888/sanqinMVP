@@ -1979,6 +1979,44 @@ pending. This local SC-B1 does **not** permit posting the September 10→12
 correction until those gates land. No Prisma/schema/migration or source
 persistence edits are included.
 
+### 16.13B2 Structural Provider correction — SC-B2 v2 Adapter (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NOT PUSHED**.
+Source baseline: `origin/dev@49fe8ef5`; branch:
+`feat/accounting-provider-structural-sc-b2`.
+
+Provider-owner Adapter now recognizes a `version: 2` structural
+correction draft independently of the existing v1 normal DELTA path.
+For the verified historical Fantuan 10-line Statement, SC-B2 admits
+exactly two `CORRECTION_ADDED` lines: `Marketing Fee` and
+`Marketing Fee GST/HST`. Amounts are proved from the original
+`FANTUAN_MARKETING_CHARGES` and `FANTUAN_NET_TAXES` deltas, and
+component/taxRole/posting-treatment/evidence/name/rawCode must match
+server-owned templates. Only `reasonCode=MISSING_COMPONENT` is accepted.
+The server creates deterministic correction-line IDs, preserves all
+ten `SOURCE_LINE` facts without any business mutation, freezes
+Provider/Store/period/source authority, and verifies provenance.
+This deliberately scoped first structural route does not permit
+arbitrary UPDATE, REMOVE, or direct Journal construction.
+
+After v2 normalization and immutable target verification, the existing
+Provider settlement policy must return READY with matching complete
+control totals, a balanced target Journal and valid Accounting dimensions.
+Common A3 then uses its existing DELTA strategy to compute compensation
+against the **unchanged original posted Journal**. The corrected target
+Journal retains original Provider journal identity/header. Activation
+can validate typed v1/v2 authority hashes; however **v2 POST remains
+fail-closed until SC-C makes current-effective/facade/Analytics readers
+v2-aware**. No Provider source or Human Review row is modified.
+
+**Deployment gate remains CLOSED:** SC-C must upgrade the Provider
+Correction facade, `readCurrentEffectiveTarget`, latest POSTED
+authority consumer and Platform Analytics to read v1/v2 before any
+structural v2 POSTED correction is allowed in production; SC-D must
+provide the safe client workflow. This SC-B2 is local and not yet tested
+by CI; no Prisma, migration, dependency, Common A3 or cross-context
+ownership change is required.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:

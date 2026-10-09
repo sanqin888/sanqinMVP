@@ -77,6 +77,19 @@ import {
 import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provider-fee-clearing.contract';
 import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
 import { tryRebuildHistoricalFantuanPostingProof } from './accounting-provider-settlement-historical-base.policy';
+import {
+  AccountingProviderStructuralAdapterPolicyError,
+  assertHistoricalFantuanStructuralTarget,
+  buildHistoricalFantuanStructuralTarget,
+  structuralTargetAsSettlementView,
+} from './accounting-provider-settlement-structural-adapter.policy';
+import {
+  ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+  AccountingProviderSettlementStructuralTargetError,
+  hashProviderStructuralTarget,
+  normalizeProviderStructuralTarget,
+  type ProviderSettlementStructuralTargetV2,
+} from './accounting-provider-settlement-structural-target.policy';
 import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
 
 const PROVIDER_DOCUMENT_SELECT = {
@@ -596,6 +609,55 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       input.targetVersion,
       db,
     );
+    if (jsonRecord(input.targetJson).version === 2) {
+      if (
+        input.reasonCode !==
+        AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
+      ) {
+        throw new BadRequestException(
+          'historical Fantuan structural additions require reasonCode MISSING_COMPONENT',
+        );
+      }
+      if (
+        current.baseAuthorityHash !==
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
+        !tryRebuildHistoricalFantuanPostingProof({
+          source: current.context.sourceTarget,
+          occurredAt: current.context.originalProviderJournal.occurredAt,
+        })
+      ) {
+        throw new BadRequestException(
+          'structural v2 corrections require an audited, uncorrected historical Fantuan baseline',
+        );
+      }
+      let target: ProviderSettlementStructuralTargetV2;
+      try {
+        target = buildHistoricalFantuanStructuralTarget({
+          source: current.context.sourceTarget,
+          rawInput: input.targetJson,
+        });
+      } catch (error) {
+        if (
+          error instanceof AccountingProviderStructuralAdapterPolicyError ||
+          error instanceof AccountingProviderSettlementStructuralTargetError
+        ) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      return {
+        version: 1,
+        targetKind: this.targetKind,
+        targetStableId: input.targetStableId,
+        targetVersion: input.targetVersion,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: hashProviderStructuralTarget(target),
+        targetJson: target as unknown as Prisma.InputJsonValue,
+      };
+    }
     // The audited historical baseline remains unreconciled. A v1 edit could
     // otherwise falsify its control totals instead of adding missing lines.
     if (
@@ -653,6 +715,73 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       input.targetVersion,
       db,
     );
+    if (jsonRecord(input.targetJson).version === 2) {
+      if (
+        input.reasonCode !==
+        AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
+      ) {
+        throw new BadRequestException(
+          'historical Fantuan structural additions require reasonCode MISSING_COMPONENT',
+        );
+      }
+      if (
+        current.baseAuthorityHash !==
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
+        !tryRebuildHistoricalFantuanPostingProof({
+          source: current.context.sourceTarget,
+          occurredAt: current.context.originalProviderJournal.occurredAt,
+        })
+      ) {
+        throw new ConflictException(
+          'structural v2 corrections require an audited, uncorrected historical Fantuan baseline',
+        );
+      }
+      let target: ProviderSettlementStructuralTargetV2;
+      try {
+        target = normalizeProviderStructuralTarget(
+          input.targetJson as ProviderSettlementStructuralTargetV2,
+        );
+        assertHistoricalFantuanStructuralTarget(
+          current.context.sourceTarget,
+          target,
+        );
+      } catch (error) {
+        if (
+          error instanceof AccountingProviderStructuralAdapterPolicyError ||
+          error instanceof AccountingProviderSettlementStructuralTargetError
+        ) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
+      const targetJournal = this.buildTargetProviderJournal(
+        structuralTargetAsSettlementView(target),
+        current.context,
+      );
+      await this.assertTargetDimensions(targetJournal, db);
+      return {
+        version: 1,
+        targetKind: this.targetKind,
+        targetStableId: input.targetStableId,
+        targetVersion: input.targetVersion,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: hashProviderStructuralTarget(target),
+        targetJson: target as unknown as Prisma.InputJsonValue,
+        strategy: AccountingPostedCorrectionStrategy.DELTA,
+        baseAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+        baseAuthorityHash: current.baseAuthorityHash,
+        currency: target.document.currency,
+        originalJournals: current.context.originalJournals,
+        targetJournals: [
+          targetJournal,
+          ...current.context.targetFrozenReversalJournals,
+        ],
+      };
+    }
     // The audited historical baseline remains unreconciled. A v1 edit could
     // otherwise falsify its control totals instead of adding missing lines.
     if (
@@ -719,21 +848,28 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     input: AccountingPostedCorrectionOwnerActivationInputV1,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    if (
-      input.targetAuthoritySchema !==
-      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
-    ) {
+    const target =
+      input.targetAuthoritySchema ===
+      ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA
+        ? normalizeProviderStructuralTarget(
+            input.targetJson as ProviderSettlementStructuralTargetV2,
+          )
+        : input.targetAuthoritySchema ===
+            ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
+          ? normalizeProviderSettlementCorrectionTarget(
+              input.targetJson as ProviderSettlementCorrectionTargetV1,
+            )
+          : null;
+    if (!target) {
       throw new ConflictException(
         'Provider correction activation received an unexpected target schema',
       );
     }
-    const target = normalizeProviderSettlementCorrectionTarget(
-      input.targetJson as ProviderSettlementCorrectionTargetV1,
-    );
-    if (
-      hashProviderSettlementCorrectionTarget(target) !==
-      input.targetAuthorityHash
-    ) {
+    const actualHash =
+      target.version === 2
+        ? hashProviderStructuralTarget(target)
+        : hashProviderSettlementCorrectionTarget(target);
+    if (actualHash !== input.targetAuthorityHash) {
       throw new ConflictException(
         'Provider correction activation target hash changed before POSTED',
       );
@@ -744,6 +880,14 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     ) {
       throw new ConflictException(
         'Provider correction activation target identity changed before POSTED',
+      );
+    }
+    // Until the current-effective/facade/Analytics v2 reader cutover (SC-C),
+    // a POSTED v2 authority would become unreadable through the v1 owner
+    // facade. Fail closed even if an internal caller reaches this lifecycle.
+    if (target.version === 2) {
+      throw new ConflictException(
+        'Provider structural v2 POST is gated until SC-C current-effective readers are deployed',
       );
     }
     const sourceDocument =
