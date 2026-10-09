@@ -48,6 +48,20 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     );
   });
 
+  it('keeps structural v2 validation in Provider owner while reusing current settlement READY', () => {
+    expect(adapterSource).toContain('buildHistoricalFantuanStructuralTarget');
+    expect(adapterSource).toContain('assertHistoricalFantuanStructuralTarget');
+    expect(adapterSource).toContain('structuralTargetAsSettlementView');
+    expect(adapterSource).toContain('buildTargetProviderJournal');
+    expect(adapterSource).toContain('AccountingPostedCorrectionStrategy.DELTA');
+    expect(adapterSource).toContain(
+      'ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA',
+    );
+    expect(adapterSource).toContain(
+      'Provider structural v2 POST is gated until SC-C current-effective readers are deployed',
+    );
+  });
+
   it('shares Fantuan adjustment-detail resolution between normal settlement preview and posted correction', () => {
     expect(previewSource).toContain('resolveFantuanAdjustmentDetailLines');
     expect(adapterSource).toContain('resolveFantuanAdjustmentDetailLines');

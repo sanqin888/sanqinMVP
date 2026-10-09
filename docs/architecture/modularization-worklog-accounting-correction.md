@@ -6,6 +6,35 @@ for the Posted Financial Correction work package until the main-worklog append l
 The authoritative work-package design/status remains
 `docs/architecture/accounting-document-recognition-human-review-plan.md` §16.
 
+## 2026-10-09 — Accounting Provider Structural Correction SC-A / SC-B1 / SC-B2
+
+**Delivery:** SC-A PR #2763 / dev merge `1fc8003c` / CI #7093 green;
+SC-B1 PR #2764 / dev merge `49fe8ef5` / CI #7097 green.
+SC-B2 current branch `feat/accounting-provider-structural-sc-b2`,
+baseline `origin/dev@49fe8ef5`; **LOCAL IMPLEMENTED / USER REVIEW PENDING**.
+
+**Boundary/behavior:** SC-A added a pure Provider-owned v2 structural target
+with separate effective/source identities and explicit provenance. SC-B1
+permits read-only audited reconstruction of the original posted Fantuan
+10-line Journal under the narrowly allowed historical controls mismatch;
+original source and Human Review stay immutable, and v1 control-total
+edits remain forbidden. SC-B2 adds a limited v2 Provider owner Adapter:
+server-generated stable identities, exactly two missing Marketing Fee/tax
+lines whose amounts reconcile to original Statement controls, frozen 10
+source lines, Provider policy READY, common A3 DELTA and typed v1/v2
+activation hash checks. No Common A3 modification, schema/migration,
+dependency, context edge, direct-import allowance, scanner ceiling or
+SCC changes. Current architecture graph/baseline stays unchanged.
+
+**Remaining gates:** SC-C v1/v2 latest-effective/facade/Analytics readers
+and SC-D Web structural editor, followed by controlled production
+verification. Local lint/build/test are intentionally deferred to
+GitHub Actions after review; no SC-B2 PR, merge, deployment or
+production mutation is claimed.
+
+**Details:** `docs/architecture/accounting-document-recognition-human-review-plan.md`
+§16.13A/B1/B2 and `docs/architecture/current-dependency-graph.md`.
+
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 
 **PR / SHA:** local branch `feat/accounting-correction-e1-clover-bridge`; baseline
