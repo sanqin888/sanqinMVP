@@ -1,15 +1,14 @@
-# C3-B / C4 备份路径切换准备清单（尚未获生产授权）
+# C3-B / C4 Runtime 与备份路径切换：历史门禁及 P2-C 验收记录
 
-状态：**仅供源码审阅及后续 C4 审批使用，禁止直接在生产 VM 执行切换。**
-C3-B 仅准备方案 B 的新源码模板，不改变已验证的生产备份/恢复合同。
-C4-P2-A 已选择 **可信 Runtime Archive + 独立暂存 + 人工 root-owned 安装**，
-并保留 `build_bundle.py::SOURCE_FILES` 的 17 文件严格白名单；首次安装、
-错误中止和回滚门禁详见 `docs/runbooks/runtime-trusted-manual-install-c4p2a.zh-CN.md`。
-本文仍是 **C4-P2 全站成组切换的生产审批门禁**，不是执行授权。
+**状态（2026-10-09 UTC / 2026-10-08 Toronto）：C4-P2-C `PRODUCTION CUTOVER COMPLETED`；C4-P2-D `PENDING`；整个 C4 尚非 `PRODUCTION VERIFIED / CLOSED`。**
 
-## 新旧配置必须成组切换
+本文第 1–4 节保留的是已执行切换的**原始审批与回退合同**，不可作为重新执行生产切换的授权或命令手册。C3-B 源码与 C4-P2-A 可信 Runtime Archive 预安装均已按独立授权完成；`build_bundle.py::SOURCE_FILES` 的 17 文件严格白名单不变。P2-A 原始准备与失败恢复规则见 `docs/runbooks/runtime-trusted-manual-install-c4p2a.zh-CN.md`。
 
-| 资源 | 当前生产 | C4 目标 |
+**当前生产权威路径**：`/opt/sanq/runtime`、`/srv/sanq/uploads`、`/srv/sanq/backups`。完整的 P2-C 生产证据及 P2-D 下一步见本文末尾和 `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`。
+
+## 旧布局与新布局对照（P2-C 已执行）
+
+| 资源 | 切换前（历史） | 切换后（当前） |
 | --- | --- | --- |
 | 运行配置 | /home/ubuntu/sanq-app | /opt/sanq/runtime |
 | uploads | /home/ubuntu/sanq-app/uploads | /srv/sanq/uploads |
@@ -27,7 +26,7 @@ C4-P2-A 已选择 **可信 Runtime Archive + 独立暂存 + 人工 root-owned �
 不能仅安装新版主脚本或 helper，更不能在旧 Compose / 旧 uploads
 挂载仍然运行时启用新版备份任务。
 
-## C4 审批前证据（缺一项 BLOCKED）
+## C4-P2-C 审批前证据（历史门禁，缺一项 BLOCKED）
 
 1. 核实生产 systemd unit/timer、sudoers/helper、rclone、最后备份成功时间；确认计划不与 03:30 定时任务冲突。
 2. 独立异机验证数据库、配置、TLS 和 uploads 恢复；不仅仅做 gzip 完整性检测。
@@ -37,7 +36,7 @@ C4-P2-A 已选择 **可信 Runtime Archive + 独立暂存 + 人工 root-owned �
 6. 保留旧 .env、Compose、旧 uploads、备份脚本、service、helper 和 sudoers 原件，明确失败的恢复顺序及数据一致性时间点。
 7. 使用与镜像 source SHA 一致、拥有独立 GitHub Archive SHA256 发布证明的 Runtime 包，核对固定 17 文件白名单及其中匹配版本的四份 ops/backup 文件，并获得实际生产切换授权。最新 C5-B1/B2 控制器已不依赖 VM 本地 Git checkout 做文件对照：首次安装必须验证独立的 Archive 证明和配对镜像 Digest；安装后 `runtime_manifest()` 必须对 root-owned Manifest 和 `SOURCE_FILES` 的文件大小/SHA256 逐项核对，`verify_runtime_release()` 还会在普通镜像升级时阻断 Runtime 清单文件变更。详细安装/恢复门禁参见 C4-P2-A 人工安装手册。必须保证备份主脚本继续以 ubuntu 执行。执行 deploy/rollback --execute 的管理员需 root 权限（新 Runtime 目录由 root 持有；操作本身仍需要单独审批，且控制器不调用 sudo）。
 
-## 受控 C4 顺序（非执行命令）
+## 受控 C4 顺序（历史执行合同，非可重跑命令）
 
 1. 获得**独立的生产切换授权**，核实备份任务未在运行，然后暂停备份 timer 并保存其原始状态。
 2. 按 C4-P2-A 人工安装手册独立验证可信 Runtime Archive、暂存并准备 root-owned 真实目录；保留固定 17 文件白名单和原生产目录。首次安装暂不创建 C4 激活标记、不启动新 Compose。独立校验复制后的运行配置。绝不从空 uploads 路径运行 rclone sync 到远端 uploads-current。
@@ -58,3 +57,26 @@ C4-P2-A 已选择 **可信 Runtime Archive + 独立暂存 + 人工 root-owned �
 ## 源码级验证
 
 既有 GitHub API CI 运行 bash -n 检查和 ops/backup/tests、ops/runtime/tests 中的 Python 离线用例。本地审阅阶段按 AGENTS.md 不执行这些测试，远端后以 GitHub CI 为准。
+
+## 2026-10-09 C4-P2-C 生产切换验收（已完成）
+
+以下是操作者逐门禁执行后提供的生产输出及 VM MCP 只读复核证据，属于**实际已完成**的变更，而不是待执行命令：
+
+| 门禁 | 已观察到的证据 | 结论 |
+| --- | --- | --- |
+| P2-A / P2-B 准备 | 可信 Runtime 17/17 Manifest、root-owned 安装；旧 Uploads 首轮复制与 DB 引用、homepage、Uber artifact 对照通过；历史 off-VM restore 有证据 | PREPARED / verified pre-cutover evidence |
+| Gate 0 / 1 | 旧 `.env` 一致、运行 SHA 一致、DB volume 一致；回退快照已创建并通过逐文件 `cmp`；timer 暂停；web/worker 正常停止；API 停止超时 Exit 137（OOMKilled=false），需保留审计记录 | PASS，API 非正常停机为 follow-up 观察项 |
+| Gate 2A | Final rsync 未转移文件；新旧 87 regular files / 8 directories / 136,154,899 bytes；missing=extra=SHA256 mismatch=0；目标 symlink/宽松写权限=0 | PASS |
+| Gate 2B | `sanqin_db_20261008_073026.sql.gz` 复制到 `/srv/sanq/backups`；3,311,347 bytes，gzip 双向验证及 SHA256 MATCH，ubuntu:ubuntu 0600 | PASS |
+| Gate 3 | 仅 force-recreate api、ubereats-worker、web；三应用沿用 SHA `a84b72007e6b4e82c981101e56c897355757c0ff`；db container ID 未改变；实际挂载 api/worker 为 `/srv/sanq/uploads`；DB volume `sanq-app_pgdata` | PASS |
+| Gate 4 | 新备份主脚本、privileged helper、systemd service 与已安装 Runtime 对应源码 `cmp` 一致；sudoers 原样保留且解析通过；`User=ubuntu`、journal logging | PASS |
+| Gate 5A | root:root 0644 激活标记内容 `SANQ_BACKUP_LAYOUT_C4_V1`；readiness 完成，Prisma 204 migrations up to date；本地 API/Worker/Web、公网 Web/BFF/menu smoke 通过 | PASS |
+| Gate 5B | 手动备份 2026-10-09 03:37:55–03:39:55 UTC，`Result=success` / `ExecMainStatus=0`；数据库日备、月备、config、Nginx/TLS、uploads sync 及 retention 成功 | PASS |
+| Gate 5C | `20261009_033755` 同批次每日 DB、月度 DB、secure config、secure Nginx/TLS 远端解密流与本地 SHA256 MATCH；归档成员齐备；rclone `--download` 87 matching、0 differences | PASS |
+| Gate 6 | `sanq-backup.timer` `active/enabled`，next `2026-10-09 07:30 UTC`（03:30 Toronto）；Backup Service success，4/4 containers healthy；`GATE 6 FINAL VERIFICATION: PASS` | PASS / P2-C COMPLETED |
+
+- **权威生产路径**：`/opt/sanq/runtime`、`/srv/sanq/uploads`、`/srv/sanq/backups`；备份 main script 路径仍为 `/home/ubuntu/backup-db.sh`，日志改为 `journalctl -u sanq-backup.service`。
+- **身份保持**：Compose `sanq-app`、PostgreSQL volume `sanq-app_pgdata`、原 40 位镜像 SHA 未变；无 Prisma schema/migration、业务 API、provider 配置改动。
+- **回退资产不可删除**：旧 `/home/ubuntu/sanq-app` 源码/Uploads/Backups，及 root 私有快照 `/opt/sanq/.c4-p2c-rollback.EnD7i3No`（含旧 Compose、env、主脚本、helper、unit、sudoers）。旧 Uploads 在 Gate 3 重新开启写入后不再保证与新目录一致；任何回退必须先停止新写入，核对并保全差量，禁止直接用旧数据覆盖。
+- **验证边界**：首次备份的远端下载式 SHA256 对照**不等于**基于 `20261009_033755` 的独立 clean restore；历史 2026-10-01/02 异机恢复验证属于**切换前版本/布局**；新布局恢复、下一次定时任务及业务流程实测均留给 P2-D。
+- **状态**：`C4-P2-C PRODUCTION CUTOVER COMPLETED`；`C4-P2-D PENDING`。未经 P2-D 实测与证据验收不得关闭整个 C4。详见 `runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`。

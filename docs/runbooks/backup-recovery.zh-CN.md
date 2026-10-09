@@ -1,10 +1,13 @@
 # SanQ 备份恢复手册
 
-> **C3-B 兼容性提醒：**dev 的备份源码模板现已转为方案 B 的目标路径
-> /opt/sanq/runtime 与 /srv/sanq，**当前生产 VM 仍使用旧路径**。
-> 在另行授权并完成 C4 成组切换前，禁止照下方历史安装指令
-> 直接覆盖生产主脚本、helper 或 service。详见
-> docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md。
+> **C4-P2-C 生产状态（2026-10-09 UTC）：**已按独立授权完成方案 B 路径切换：
+> Runtime = `/opt/sanq/runtime`，Uploads = `/srv/sanq/uploads`，
+> Backups = `/srv/sanq/backups`。备份 service 仍以 ubuntu 用户运行，
+> main script 仍位于 `/home/ubuntu/backup-db.sh`，**当前日志以 systemd journal 为准**。
+> 本文旧布局安装、旧日志或普通 `docker compose` 的片段属于历史示例，
+> **不可直接在生产重跑**。P2-C 验收见
+> `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`；独立恢复及业务实测仍在
+> `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`（P2-D PENDING）。
 
 > 对应英文运维合同：`docs/runbooks/backup-recovery.md`  
 > 当前状态：Post-Modularization §3.2 Backup / Recovery Drill 已于 2026-10-02 **PRODUCTION VERIFIED / CLOSED**。  
@@ -75,8 +78,9 @@ nginx/certs/cf-origin.key
 
 ## 4. 备份程序升级 / 覆盖
 
-**停止门禁：本节为旧目录部署记录。C3-B 新版源码不可直接覆盖生产旧路径；
-必须先得到 C4 独立生产授权，并成组处理数据/Compose/备份权限。**
+**历史操作记录，禁止直接执行：**本节保留的是 C4-P2-C 之前的安装/回滚示例。
+生产已完成 C4-P2-C；后续变更必须使用可信 Runtime、当前配置和独立审核的
+变更/回滚计划，不能从旧 checkout 直接重装或移除当前 helper/sudoers。
 
 仓库中的 reviewed source of truth：
 
@@ -189,22 +193,16 @@ ExecMainStatus=0
 
 不要仅根据日志中某一条“成功”文字判断整批备份是否成功。
 
-### 5.3 查看备份日志
+### 5.3 查看备份日志（C4 切换后的当前生产合同）
 
 ```bash
-tail -n 200 /home/ubuntu/sanq-app/backup.log
+sudo journalctl -u sanq-backup.service -n 150 --no-pager -o cat
 ```
 
-检查失败标记：
-
-```bash
-if tail -n 300 /home/ubuntu/sanq-app/backup.log | grep -F '❌'; then
-  echo "BACKUP FAILURE MARKER: FOUND"
-else
-  echo "BACKUP FAILURE MARKER: NONE"
-fi
-```
-
+检查最近批次必须**同时**依据 `systemctl show` 的 `Result=success`、
+`ExecMainStatus=0` 和同一次 journal 的最终成功行；不把旧批次成功误认作新批次。
+旧 `/home/ubuntu/sanq-app/backup.log` 仅为 C4 之前的历史审计文件，
+不能用来判断 2026-10-09 以后的新布局计划备份是否成功。
 新版脚本只有所有要求任务都没有失败时才以 0 退出。
 
 ### 5.4 查看最近远端对象
