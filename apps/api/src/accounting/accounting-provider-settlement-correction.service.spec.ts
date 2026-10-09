@@ -260,7 +260,8 @@ describe('AccountingProviderSettlementCorrectionService', () => {
       periodEnd: new Date('2026-09-30T00:00:00.000Z'),
     });
     adapter.readCurrentEffectiveTarget.mockResolvedValue({
-      targetAuthoritySchema: 'accounting.provider-settlement-correction-target.v2',
+      targetAuthoritySchema:
+        'accounting.provider-settlement-correction-target.v2',
       targetAuthorityHash: sha('c'),
       structuralBaseAuthorityHash: null,
       draftInput: null,

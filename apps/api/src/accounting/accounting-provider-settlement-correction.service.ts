@@ -129,7 +129,9 @@ const parseDraftInput = (raw: unknown): ProviderDraftInput => {
 };
 
 const toDraftInput = (
-  target: ProviderSettlementCorrectionTargetV1 | ProviderSettlementStructuralTargetV2,
+  target:
+    | ProviderSettlementCorrectionTargetV1
+    | ProviderSettlementStructuralTargetV2,
 ): ProviderDraftInput => {
   if (target.version === 2) {
     return {

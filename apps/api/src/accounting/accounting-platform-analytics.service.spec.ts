@@ -590,32 +590,84 @@ describe('AccountingPlatformAnalyticsService', () => {
         number,
       ]
     > = [
-      ['Sales', AccountingFinancialComponent.SALES, AccountingFinancialPostingTreatment.POSTABLE, 686782],
-      ['Item Subtotal', AccountingFinancialComponent.CONTROL_TOTAL, AccountingFinancialPostingTreatment.CONTROL_TOTAL, 686782],
-      ['Marketing and Fantuan Event Charges', AccountingFinancialComponent.CONTROL_TOTAL, AccountingFinancialPostingTreatment.CONTROL_TOTAL, -274545],
-      ['Discounts from Promotion events', AccountingFinancialComponent.PROMOTION, AccountingFinancialPostingTreatment.POSTABLE, -170973],
-      ['Fantuan Subsidy for Promotion events', AccountingFinancialComponent.SUBSIDY, AccountingFinancialPostingTreatment.POSTABLE, 170973],
-      ['Commission', AccountingFinancialComponent.COMMISSION, AccountingFinancialPostingTreatment.POSTABLE, -246345],
-      ['Net Taxes', AccountingFinancialComponent.CONTROL_TOTAL, AccountingFinancialPostingTreatment.CONTROL_TOTAL, 53599],
-      ['Net Sales GST/HST', AccountingFinancialComponent.SALES_TAX, AccountingFinancialPostingTreatment.POSTABLE, 89287],
-      ['Commission GST/HST', AccountingFinancialComponent.COMMISSION_TAX, AccountingFinancialPostingTreatment.POSTABLE, -32022],
-      ['Total transfer amount', AccountingFinancialComponent.PAYOUT, AccountingFinancialPostingTreatment.CONTROL_TOTAL, 465836],
+      [
+        'Sales',
+        AccountingFinancialComponent.SALES,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        686782,
+      ],
+      [
+        'Item Subtotal',
+        AccountingFinancialComponent.CONTROL_TOTAL,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        686782,
+      ],
+      [
+        'Marketing and Fantuan Event Charges',
+        AccountingFinancialComponent.CONTROL_TOTAL,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        -274545,
+      ],
+      [
+        'Discounts from Promotion events',
+        AccountingFinancialComponent.PROMOTION,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        -170973,
+      ],
+      [
+        'Fantuan Subsidy for Promotion events',
+        AccountingFinancialComponent.SUBSIDY,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        170973,
+      ],
+      [
+        'Commission',
+        AccountingFinancialComponent.COMMISSION,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        -246345,
+      ],
+      [
+        'Net Taxes',
+        AccountingFinancialComponent.CONTROL_TOTAL,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        53599,
+      ],
+      [
+        'Net Sales GST/HST',
+        AccountingFinancialComponent.SALES_TAX,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        89287,
+      ],
+      [
+        'Commission GST/HST',
+        AccountingFinancialComponent.COMMISSION_TAX,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        -32022,
+      ],
+      [
+        'Total transfer amount',
+        AccountingFinancialComponent.PAYOUT,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        465836,
+      ],
     ];
     const sourceDocument = statement({
       provider: AccountingFinancialProvider.FANTUAN,
       month: '2026-09',
-      lines: rows.map(([rawName, component, postingTreatment, amountCents], index) => ({
-        ...line(
-          `fantuan_source_${index + 1}`,
-          rawName,
-          component,
-          amountCents,
-          rawName.endsWith('GST/HST')
-            ? AccountingFinancialTaxRole.INPUT_TAX
-            : AccountingFinancialTaxRole.NONE,
-        ),
-        postingTreatment,
-      })),
+      lines: rows.map(
+        ([rawName, component, postingTreatment, amountCents], index) => ({
+          ...line(
+            `fantuan_source_${index + 1}`,
+            rawName,
+            component,
+            amountCents,
+            rawName.endsWith('GST/HST')
+              ? AccountingFinancialTaxRole.INPUT_TAX
+              : AccountingFinancialTaxRole.NONE,
+          ),
+          postingTreatment,
+        }),
+      ),
     });
     const original: ProviderSettlementCorrectionTargetV1 = {
       version: 1,
@@ -697,13 +749,15 @@ describe('AccountingPlatformAnalyticsService', () => {
         reasonCode: 'MISSING_COMPONENT',
         note: 'restore marketing rows',
         strategy: 'DELTA',
-        targetAuthoritySchema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
         targetAuthorityHash: authorityHash,
         postedByActorRef: 'user_admin_1',
         postedAt: new Date('2026-10-09T12:00:00.000Z'),
         createdAt: new Date('2026-10-09T11:00:00.000Z'),
         readyRevision: {
-          targetAuthoritySchema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+          targetAuthoritySchema:
+            ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
           targetAuthorityHash: authorityHash,
           targetJson: target,
         },
@@ -715,12 +769,15 @@ describe('AccountingPlatformAnalyticsService', () => {
     );
     const period = fantuan?.periods[0];
     expect(period?.status).toBe('AVAILABLE');
-    if (period?.status !== 'AVAILABLE') throw new Error('expected reconciled v2');
+    if (period?.status !== 'AVAILABLE')
+      throw new Error('expected reconciled v2');
     expect(period.totalPlatformCostExTaxCents).toBe(274545);
     expect(period.fees.find((fee) => fee.rawName === 'Marketing Fee')).toEqual(
       expect.objectContaining({ costImpactCents: 28200 }),
     );
-    expect(period.fees.map((fee) => fee.rawName)).not.toContain('Marketing Fee GST/HST');
+    expect(period.fees.map((fee) => fee.rawName)).not.toContain(
+      'Marketing Fee GST/HST',
+    );
   });
 
   it('marks Uber months incomplete while non-zero Other Earnings still lacks semantic review', async () => {

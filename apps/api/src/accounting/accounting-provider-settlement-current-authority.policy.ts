@@ -36,7 +36,9 @@ export const readProviderCurrentAuthority = (params: {
   targetJson: unknown;
   expectedHash: string;
 }): ProviderCurrentAuthority => {
-  if (params.schema === ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA) {
+  if (
+    params.schema === ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
+  ) {
     const target = normalizeProviderSettlementCorrectionTarget(
       params.targetJson as ProviderSettlementCorrectionTargetV1,
     );
@@ -46,9 +48,15 @@ export const readProviderCurrentAuthority = (params: {
         'posted Provider v1 target authority hash mismatch',
       );
     }
-    return { schema: ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA, hash, target };
+    return {
+      schema: ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+      hash,
+      target,
+    };
   }
-  if (params.schema === ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA) {
+  if (
+    params.schema === ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA
+  ) {
     const target = normalizeProviderStructuralTarget(
       params.targetJson as ProviderSettlementStructuralTargetV2,
     );
@@ -58,7 +66,11 @@ export const readProviderCurrentAuthority = (params: {
         'posted Provider v2 target authority hash mismatch',
       );
     }
-    return { schema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA, hash, target };
+    return {
+      schema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+      hash,
+      target,
+    };
   }
   throw new AccountingProviderCurrentAuthorityPolicyError(
     'unsupported posted Provider correction authority schema',
@@ -106,8 +118,12 @@ export const currentProviderEffectiveLines = (
 
 /** Frozen Provider identity is not included in free-form effective lines. */
 export const sameProviderEnvelope = (
-  left: ProviderSettlementCorrectionTargetV1 | ProviderSettlementStructuralTargetV2,
-  right: ProviderSettlementCorrectionTargetV1 | ProviderSettlementStructuralTargetV2,
+  left:
+    | ProviderSettlementCorrectionTargetV1
+    | ProviderSettlementStructuralTargetV2,
+  right:
+    | ProviderSettlementCorrectionTargetV1
+    | ProviderSettlementStructuralTargetV2,
 ): boolean =>
   hashAccountingJson(left.document) === hashAccountingJson(right.document) &&
   left.salesAuthority === right.salesAuthority &&
