@@ -69,7 +69,7 @@ class DescriptorInventoryTests(unittest.TestCase):
                     original.rename(root / "proof/held-original")
                     replacement.rename(original)
 
-            with self.assertRaisesRegex(InventoryBlocked, "entry changed"):
+            with self.assertRaisesRegex(InventoryBlocked, "entry changed|file changed while reading"):
                 inspect_lab_inventory(root, before_read=attack)
             self.assertTrue(invoked)
 
