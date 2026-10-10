@@ -196,6 +196,47 @@ class DeploymentSafetyTests(unittest.TestCase):
         old_readiness.assert_not_called()
         backup.assert_called_once()
 
+    def test_startup_waits_for_all_app_containers_before_http(self):
+        observations = iter(["starting", "healthy", "healthy", "healthy", "healthy", "healthy"])
+
+        def inspect(_args, **_kwargs):
+            return json.dumps({"Status": "running", "Health": {"Status": next(observations)}})
+
+        with patch.object(deploy, "compose", side_effect=lambda _sha, _cmd, _q, svc, capture: svc), \
+             patch.object(deploy, "run", side_effect=inspect), \
+             patch.object(deploy.time, "monotonic", side_effect=[0, 0, 1]), \
+             patch.object(deploy.time, "sleep") as sleep:
+            deploy.wait_for_app_health(TARGET)
+        sleep.assert_called_once_with(2)
+
+    def test_startup_timeout_does_not_accept_unhealthy_containers(self):
+        with patch.object(deploy, "compose", side_effect=lambda _sha, _cmd, _q, svc, capture: svc), \
+             patch.object(deploy, "run", return_value=json.dumps({
+                 "Status": "running", "Health": {"Status": "unhealthy"},
+             })), \
+             patch.object(deploy.time, "monotonic", side_effect=[0, 91]), \
+             patch.object(deploy.time, "sleep") as sleep:
+            with self.assertRaisesRegex(deploy.DeploymentBlocked, "startup timeout"):
+                deploy.wait_for_app_health(TARGET)
+        sleep.assert_not_called()
+
+    def test_startup_exited_container_blocks_immediately(self):
+        with patch.object(deploy, "compose", return_value="container-id"), \
+             patch.object(deploy, "run", return_value=json.dumps({"Status": "exited"})), \
+             patch.object(deploy.time, "sleep") as sleep:
+            with self.assertRaisesRegex(deploy.DeploymentBlocked, "not running"):
+                deploy.wait_for_app_health(TARGET)
+        sleep.assert_not_called()
+
+    def test_post_switch_waits_before_http_readiness(self):
+        order = []
+        with patch.object(deploy, "check_running_images", side_effect=lambda _: order.append("images")), \
+             patch.object(deploy, "check_live_storage", side_effect=lambda _: order.append("mounts")), \
+             patch.object(deploy, "wait_for_app_health", side_effect=lambda _: order.append("health")), \
+             patch.object(deploy, "run", side_effect=lambda *_args, **_kw: order.append("http")):
+            deploy.verify_after_switch(TARGET)
+        self.assertEqual(order, ["images", "mounts", "health", "http"])
+
     def test_docker_up_never_includes_db_or_build(self):
         with patch.object(deploy, "compose") as compose:
             deploy.promote_images(TARGET)

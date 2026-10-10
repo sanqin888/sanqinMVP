@@ -20,6 +20,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -481,9 +482,38 @@ def promote_images(target_sha: str) -> None:
     compose(target_sha, "up", "-d", "--no-build", "--no-deps", *APP_SERVICES)
 
 
+def wait_for_app_health(target_sha: str, *, timeout_seconds: int = 90) -> None:
+    """Bounded startup gate before probing HTTP; never treats 'starting' as failure."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        pending = []
+        for service in APP_SERVICES:
+            container_id = compose(target_sha, "ps", "-q", service, capture=True)
+            if not container_id or len(container_id.splitlines()) != 1:
+                raise DeploymentBlocked(f"missing or ambiguous {service} container during startup")
+            state = json.loads(run([
+                "docker", "inspect", "--format", "{{json .State}}", container_id,
+            ], capture=True))
+            if not isinstance(state, dict) or state.get("Status") != "running":
+                raise DeploymentBlocked(f"{service} is not running after image promotion")
+            health = state.get("Health")
+            health_status = health.get("Status") if isinstance(health, dict) else None
+            if health_status not in ("healthy", "starting", "unhealthy"):
+                raise DeploymentBlocked(f"{service} health status is unavailable")
+            if health_status != "healthy":
+                pending.append(service)
+        if not pending:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise DeploymentBlocked("application health startup timeout: " + ", ".join(pending))
+        time.sleep(min(2, remaining))
+
+
 def verify_after_switch(target_sha: str) -> None:
     check_running_images(target_sha)
     check_live_storage(target_sha)
+    wait_for_app_health(target_sha)
     run(["bash", str(ROOT / "ops/verify-runtime-readiness.sh"), str(ENV), "https://sanq.ca"], target_sha=target_sha)
 
 
