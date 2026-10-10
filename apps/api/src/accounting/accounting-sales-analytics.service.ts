@@ -242,8 +242,8 @@ export class AccountingSalesAnalyticsService {
       journal.correctionDocumentStableId
         ? [journal.correctionDocumentStableId]
         : journal.sourceFactType ===
-            'accounting.provider_financial_document.v1' &&
-          journal.sourceFactStableId
+              'accounting.provider_financial_document.v1' &&
+            journal.sourceFactStableId
           ? [journal.sourceFactStableId]
           : [],
     );
