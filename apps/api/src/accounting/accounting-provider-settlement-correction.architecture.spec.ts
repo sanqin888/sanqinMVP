@@ -103,6 +103,16 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     );
   });
 
+  it('keeps structural dry-run read-only, reuses the owner/Common proof, and excludes formal planHash', () => {
+    expect(adapterSource).toContain('async previewStructuralDryRun(');
+    expect(adapterSource).toContain('this.normalizeRevisionTarget(input, this.prisma)');
+    expect(adapterSource).toContain('this.resolveReadyTarget(');
+    expect(adapterSource).toContain('buildPostedFinancialCorrectionPreviewPlan({');
+    expect(adapterSource).toContain('usableForReadyOrPost: false as const');
+    expect(adapterSource).not.toContain('planHash: preview.planHash');
+    expect(providerFacadeSource).toContain('async previewStructuralDryRun(');
+  });
+
   it('uses one Accounting-only v1/v2 authority reader without a parallel Journal writer', () => {
     expect(currentAuthoritySource).toContain('readProviderCurrentAuthority');
     expect(currentAuthoritySource).toContain('hashProviderStructuralTarget');

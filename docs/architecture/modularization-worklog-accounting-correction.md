@@ -128,6 +128,14 @@ Provider Statement bucket and owner/store verification. Sales orders and
 Provider coverage rules remain unchanged. Provider v2 POST stays blocked.
 No migration, new dependency, or Journal writer change. Tests await CI.
 
+## 2026-10-09 — SC-E2D-2 Provider structural dry-run
+
+**State:** LOCAL REVIEW / NO PR. Provider Correction adds a GET-only,
+non-persisting structural dry-run using existing Provider owner validation and
+Common A3 delta calculation. Returns delta/evidence but no actionable Case
+planHash. Unsupported/active authority fails closed; v2 POST remains gated.
+No migration or new dependency, and no production writes.
+
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 
 **PR / SHA:** local branch `feat/accounting-correction-e1-clover-bridge`; baseline

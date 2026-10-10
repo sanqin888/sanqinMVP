@@ -18,6 +18,10 @@ import {
   AccountingProviderFinancialReviewStatus,
 } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
+import {
+  buildPostedFinancialCorrectionPreviewPlan,
+  AccountingPostedFinancialCorrectionPolicyError,
+} from './accounting-posted-financial-correction.policy';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
   AccountingJournalPolicyError,
@@ -748,6 +752,87 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
       targetAuthorityHash: hashProviderSettlementCorrectionTarget(target),
       targetJson: target as unknown as Prisma.InputJsonValue,
+    };
+  }
+
+  /**
+   * Read-only structural Preview. The synthetic correction identity is local
+   * to this calculation and MUST NOT be used for READY/POST.
+   */
+  async previewStructuralDryRun(
+    targetStableIdRaw: string,
+    targetVersionRaw: number,
+  ) {
+    const targetStableId = requireTargetStableId(targetStableIdRaw);
+    const targetVersion = requireTargetVersion(targetVersionRaw);
+    const current = await this.readCurrentEffectiveTarget(
+      targetStableId,
+      targetVersion,
+    );
+    if (!current.structuralProposal) {
+      throw new ConflictException(
+        'Provider structural dry-run is unavailable for this authority',
+      );
+    }
+    const input = {
+      targetStableId,
+      targetVersion,
+      reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+      targetJson: current.structuralProposal,
+    };
+    const normalized = await this.normalizeRevisionTarget(input, this.prisma);
+    const ready = await this.resolveReadyTarget(
+      { ...input, targetJson: normalized.targetJson },
+      this.prisma,
+    );
+    let preview: ReturnType<typeof buildPostedFinancialCorrectionPreviewPlan>;
+    try {
+      preview = buildPostedFinancialCorrectionPreviewPlan({
+        correctionStableId: `dry-run:${targetStableId}:r${targetVersion}`,
+        targetKind: this.targetKind,
+        targetStableId,
+        targetVersion,
+        reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+        strategy: ready.strategy,
+        baseAuthoritySchema: ready.baseAuthoritySchema,
+        baseAuthorityHash: ready.baseAuthorityHash,
+        targetAuthoritySchema: ready.targetAuthoritySchema,
+        targetAuthorityHash: ready.targetAuthorityHash,
+        ...(ready.schemaTransition
+          ? { schemaTransition: ready.schemaTransition }
+          : {}),
+        currency: ready.currency,
+        originalJournals: ready.originalJournals,
+        priorCorrectionJournals: [],
+        targetJournals: ready.targetJournals,
+      });
+    } catch (error) {
+      if (error instanceof AccountingPostedFinancialCorrectionPolicyError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+    if (preview.status !== 'READY') {
+      throw new ConflictException(
+        'Provider structural dry-run has no financially effective correction',
+      );
+    }
+    return {
+      version: 1 as const,
+      status: preview.status,
+      dryRunOnly: true as const,
+      usableForReadyOrPost: false as const,
+      documentStableId: targetStableId,
+      documentRevision: targetVersion,
+      baseAuthoritySchema: ready.baseAuthoritySchema,
+      baseAuthorityHash: ready.baseAuthorityHash,
+      targetAuthoritySchema: ready.targetAuthoritySchema,
+      targetAuthorityHash: ready.targetAuthorityHash,
+      schemaTransition: ready.schemaTransition ?? null,
+      deltaPosting: preview.deltaPosting,
+      originalJournalSetHash: preview.originalJournalSet.journalSetHash,
+      targetJournalSetHash: preview.targetJournalSet.journalSetHash,
+      // Synthetic Case identity means its planHash is intentionally omitted.
     };
   }
 

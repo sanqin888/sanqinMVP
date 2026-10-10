@@ -54,6 +54,7 @@ const makeService = () => {
   const adapter = {
     targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
     readCurrentEffectiveTarget: jest.fn(),
+    previewStructuralDryRun: jest.fn(),
   };
   const service = new AccountingProviderSettlementCorrectionService(
     prisma as never,
@@ -64,6 +65,73 @@ const makeService = () => {
 };
 
 describe('AccountingProviderSettlementCorrectionService', () => {
+  it('returns read-only structural dry-run without creating a correction Case', async () => {
+    const { service, prisma, adapter, correction } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      documentStableId: 'provider_doc_1',
+      revision: 1,
+      provider: 'FANTUAN',
+      documentType: 'STATEMENT',
+      storeStableId: '4750_Yonge_Street',
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+      currency: 'CAD',
+    });
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthorityHash: sha('a'),
+      targetAuthoritySchema: 'provider.v1',
+      draftInput: null,
+      structuralBaseAuthorityHash: sha('b'),
+      structuralProposal: { version: 2, changes: [] },
+    });
+    const preview = {
+      version: 1,
+      dryRunOnly: true,
+      usableForReadyOrPost: false,
+    };
+    adapter.previewStructuralDryRun.mockResolvedValue(preview);
+    await expect(service.previewStructuralDryRun('provider_doc_1')).resolves.toBe(
+      preview,
+    );
+    expect(adapter.previewStructuralDryRun).toHaveBeenCalledWith(
+      'provider_doc_1',
+      1,
+    );
+    expect(correction.createDraft).not.toHaveBeenCalled();
+    expect(correction.markReady).not.toHaveBeenCalled();
+    expect(correction.executeCase).not.toHaveBeenCalled();
+  });
+
+  it('rejects dry-run on active Provider Correction Cases', async () => {
+    const { service, prisma, adapter } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      documentStableId: 'provider_doc_1',
+      revision: 1,
+      provider: 'FANTUAN',
+      documentType: 'STATEMENT',
+      storeStableId: '4750_Yonge_Street',
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+      currency: 'CAD',
+    });
+    prisma.accountingCorrectionCase.findMany.mockResolvedValue([
+      {
+        correctionStableId: 'case_active',
+        status: 'DRAFT',
+        revisions: [],
+        journalOutputs: [],
+      },
+    ]);
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthorityHash: sha('a'),
+      draftInput: null,
+    });
+    await expect(
+      service.previewStructuralDryRun('provider_doc_1'),
+    ).rejects.toThrow('active correction Case');
+    expect(adapter.previewStructuralDryRun).not.toHaveBeenCalled();
+  });
+
   it('returns current-effective Provider authority beside correction history', async () => {
     const { service, prisma, adapter } = makeService();
     prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
