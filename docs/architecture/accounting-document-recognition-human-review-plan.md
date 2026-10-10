@@ -1913,6 +1913,270 @@ schema is changed. The temporary compatibility is registered as
 and controlled verification show that no supported correction workflow still needs the legacy
 baseline reader.
 
+### 16.13A Structural Provider correction — SC-A owner policy foundation (2026-10-09)
+
+State: **SC-A PURE POLICY SOURCE IMPLEMENTED / RUNTIME INTEGRATION PENDING**.
+Delivery branch: `feat/accounting-provider-structural-sc-a`; source baseline:
+`origin/dev@20e25a55`. CI/PR/merge results are tracked separately.
+
+SC-A introduces the pure Accounting Provider-owner schema
+`accounting.provider-settlement-correction-target.v2` without changing the
+existing v1 adapter, common A3 correction engine, Prisma schema or UI. The
+v2 target distinguishes `SOURCE_LINE` (immutable original document/line/lineNo
+provenance) from `CORRECTION_ADDED` (no source-line claim, stable
+`correction-line:` identity, frozen evidence-document reference). Display
+`effectiveLineNo` is independent of historical `sourceLine.lineNo`.
+A read-only v1-to-v2 upgrade preserves the original evidence identities.
+The v2 pure policy applies owner-reviewed UPDATE/REMOVE/ADD changes with
+stale-base hashing, duplicate/identity checks and a server-supplied new-line
+identity factory plus required added-line semantic validator. It does not
+write Journals or alter source/Human Review records. Control/evidence lines
+cannot be removed in this first structural policy.
+
+**Integration gates remain open:** SC-B must supply the trusted server identity
+generator, authoritative provider template/semantic validation, historical
+base admissibility and corrected-target READY checks before v2 is accepted by
+a runtime adapter. SC-C must wire v1/v2 read codecs and Analytics; SC-D must
+add safe structural UI; controlled production verification remains pending.
+Until those gates are completed, B1/B2 continue to use the unchanged v1
+DELTA-only path. Do not claim that the Fantuan September 10-to-12-line
+production correction is supported by SC-A alone.
+
+### 16.13B1 Structural Provider correction — SC-B historical base (2026-10-09)
+
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO REMOTE DELIVERY**.
+Source baseline: `origin/dev@1fc8003c`; branch:
+`feat/accounting-provider-structural-sc-b`.
+
+The original posted Provider Journal remains the immutable baseline. For
+historical Fantuan Statements that are currently control-total BLOCKED
+*only* because of the omitted `Marketing Fee` and
+`Marketing Fee GST/HST`, the adapter may reconstruct the historical
+Journal posting vector under a narrowly constrained **read-only proof**.
+The proof checks that the other two Fantuan controls match, both allowed
+controls have positive discrepancy deltas, both missing rows are truly
+absent, and the original Statement is CAD/statement-authoritative without
+supplementary evidence. The proof temporarily uses computed control totals
+in memory to reuse the unmodified Provider settlement policy and discards
+that temporary snapshot immediately afterward. The original document and
+Human Review controls are never overwritten or presented as reconciled.
+
+Admission additionally requires existing immutable evidence gates: original
+typed CREATE audit, Provider group and review authority, original persisted
+Journal authority hash, reconstructed Journal payload hash equality, frozen
+Store/period/Provider and reversal prerequisites. A malformed or unrelated
+historic posting still fails closed. Existing v1 normal UPDATE/DELTA correction
+submissions for this unreconciled source are explicitly rejected: otherwise an
+operator could rewrite the original control totals to hide the missing lines.
+Read-only listing remains possible, but posting waits for the v2 adapter.
+**Only original-baseline admission is relaxed for this verified historical
+mismatch pattern; corrected-target READY, posting account prerequisites,
+and common A3 are unchanged.**
+
+SC-B2 (structural v2 Adapter revision/READY/activation), SC-C
+(facade/latest-effective v1/v2 codec/analytics) and SC-D (safe UI) remain
+pending. This local SC-B1 does **not** permit posting the September 10→12
+correction until those gates land. No Prisma/schema/migration or source
+persistence edits are included.
+
+### 16.13B2 Structural Provider correction — SC-B2 v2 Adapter (2026-10-09)
+
+State: **MERGED / PR #2765 / DEV `0503e15f` / CI #7100 GREEN**.
+Source baseline: `origin/dev@49fe8ef5`; branch:
+`feat/accounting-provider-structural-sc-b2`.
+
+Provider-owner Adapter now recognizes a `version: 2` structural
+correction draft independently of the existing v1 normal DELTA path.
+For the verified historical Fantuan 10-line Statement, SC-B2 admits
+exactly two `CORRECTION_ADDED` lines: `Marketing Fee` and
+`Marketing Fee GST/HST`. Amounts are proved from the original
+`FANTUAN_MARKETING_CHARGES` and `FANTUAN_NET_TAXES` deltas, and
+component/taxRole/posting-treatment/evidence/name/rawCode must match
+server-owned templates. Only `reasonCode=MISSING_COMPONENT` is accepted.
+The server creates deterministic correction-line IDs, preserves all
+ten `SOURCE_LINE` facts without any business mutation, freezes
+Provider/Store/period/source authority, and verifies provenance.
+This deliberately scoped first structural route does not permit
+arbitrary UPDATE, REMOVE, or direct Journal construction.
+
+After v2 normalization and immutable target verification, the existing
+Provider settlement policy must return READY with matching complete
+control totals, a balanced target Journal and valid Accounting dimensions.
+Common A3 then uses its existing DELTA strategy to compute compensation
+against the **unchanged original posted Journal**. The corrected target
+Journal retains original Provider journal identity/header. Activation
+can validate typed v1/v2 authority hashes; however **v2 POST remains
+fail-closed until SC-C makes current-effective/facade/Analytics readers
+v2-aware**. No Provider source or Human Review row is modified.
+
+**Deployment gate remains CLOSED:** SC-C has delivered v1/v2 typed
+readers across Provider facade/current-effective and Platform Analytics;
+SC-D still requires operator-safe workflow acceptance and separately
+authorized controlled verification before v2 POST can be enabled. SC-B2 is merged and CI green; no
+Prisma, migration, dependency, Common A3 or cross-context ownership
+change was required.
+
+### 16.13C Provider v1/v2 current-effective reader expansion (2026-10-09)
+
+State: **SC-C MERGED / PR #2766 / DEV `c7ebdd69` / CI #7104 GREEN**.
+Source baseline: `origin/dev@0503e15f`; branch:
+`feat/accounting-provider-structural-sc-c`.
+
+One Accounting-owned typed decoder verifies both
+`accounting.provider-settlement-correction-target.v1` and `v2`
+persisted schemas, versioned normalization and exact persisted hash.
+It provides a shared current-effective view of source/effective IDs,
+preserves the `SOURCE_LINE` immutable source provenance, and labels
+`CORRECTION_ADDED` with evidenceDocumentStableId and sourceLine=null.
+Unsupported schemas, invalid provenance and hash mismatch fail closed,
+with no silent fallback to raw parser rows.
+
+Provider Adapter latest-POSTED projection now permits typed v2
+current-effective targets only after comparing the frozen envelope and
+re-verifying the strictly audited Fantuan source + two additions. v1
+read/update contracts remain usable, but never convert a POSTED v2
+authority into a v1 editable row set. Provider Correction facade can
+accept additive v2 `changes` drafts against a separate structural
+base hash, serializes both v1/v2 stored Revision histories, and returns
+the authoritative v2 effective lines read-only after posting.
+Platform Analytics uses the same verified v1/v2 decoder for
+Provider totals, including previously omitted Marketing Fee/tax in
+the corrected latest-effective projection. Canonical Journal-native
+analytics stay unchanged; no second posting or revenue overlay exists.
+
+The current Web legacy fixed-line correction panel retains its v1
+behavior for ordinary records but switches to read-only display when
+v2 is current or the historical record requires structural correction;
+it does not fake new source-line IDs or allow obsolete v1 edits.
+SC-D is still responsible for the safe structural editor, POST
+operator acknowledgement and controlled production verification.
+**SC-C intentionally retains the v2 activation POST guard**
+until those gates are implemented/reviewed, despite now being
+able to decode future v2 authorities.
+
+Registered compatibility:
+`accounting.provider-correction-structural-v2.v1`
+(in both active-compatibility-register sources), with no Prisma,
+migration, Common A3, dependency, context-import or scanner-baseline
+change. SC-C was validated by full GitHub Actions CI #7104.
+
+### 16.13D Provider structural v2 operator workflow — SC-D (2026-10-09)
+
+State: **SC-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PR**.
+Source baseline: `origin/dev@c7ebdd69`; branch:
+`feat/accounting-provider-structural-sc-d`.
+
+The Accounting Provider owner now exposes a single read-only
+`structuralProposal` only when the audited historical Fantuan
+10-row posted baseline is admissible and source authority is
+unchanged. Its exact two added rows (Marketing Fee, Marketing Fee
+GST/HST), tax roles, evidenceDocumentStableId, sign, CAD amounts
+and structural base hash come from the same Provider-owned pure
+policy used by READY validation; Web calculates none of those
+fields, does not create fabricated source identities and does not
+permit editing any of them. The proposal is only present when
+the existing original Journal hash, source CREATE authority and
+two control-total differences validate through SC-B1/B2.
+
+The posted-record panel keeps the existing v1 fixed-row editor
+for ordinary Provider records and provides a separate v2-specific
+display for eligible statements. It shows the two proposed fee/tax
+additions and frozen source reference, requires a fresh explicit
+operator acknowledgement before creating a `MISSING_COMPONENT`
+v2 Correction DRAFT, reuses the common typed Revision / Preview
+and displays its compensating DELTA, and requires *another*
+acknowledgement **plus the entire matching planHash typed by the
+operator** before marking READY. The workflow never uses the
+legacy v1 editor to edit the 10-source-row controls. READY v2
+can be cancelled through the existing common Correction case
+lifecycle. Existing v1 correction and history remain available.
+
+**Important independent production gate:** the v2 POST button is
+not exposed. Provider Adapter activation **continues to reject
+v2 POST**, even when the new UI has reached READY, until the
+user separately accepts a controlled production verification
+procedure and authorizes removal of the fail-closed guard. The
+safe plan is to review SC-D, pass GitHub CI and merge to dev,
+then separately deploy/read/preview/verify exact Journal DELTA
+and Analytics parity before opening the irreversible POST gate.
+No action here changes the original posted Journal or human
+review source and this slice introduces no Prisma/migration,
+dependency/lockfile, Common A3, new context edge, scanner
+baseline or accounting ownership movement.
+
+### 16.13E SC-E1 — owner-attested cross-schema correction readiness (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / REVIEW REQUIRED / NO POST UNLOCK**.
+
+Common A3 now treats cross-schema authority as an explicit owner-attested
+schema transition, rather than silently assuming base and target schemas are
+interchangeable. The generic immutable transition records source schema/hash,
+target schema and an owner-calculated equivalent-base hash; Common requires
+the transition to match the actual base and target, hashes it into the frozen
+Preview planHash, and refuses missing/mismatched/spurious declarations.
+Existing same-schema owners require no transition and remain fail-closed.
+
+The Provider owner is the first consumer: it creates the equivalent v2 base
+from the immutable original v1 source, validates all retained source rows and
+the allowed two additions before emitting the transition. This specific
+Fantuan policy is **not** implemented in Common A3; other owners may only use
+the generic bridge after independently implementing and testing their own
+source-to-target equivalence proof.
+
+The v2 Provider POST gate stays deliberately closed. This slice changes no
+Journal writer, persisted schema, database migration, production data or
+runtime deployment. Before authorizing activation, separately verify full
+end-to-end DRAFT → Preview → READY, stale-source and concurrent replay behavior,
+and controlled production Journal / Analytics parity. Local lint/test/build
+were not executed under AGENTS.md; GitHub Actions remains the remote gate.
+
+### 16.13F SC-E2A — cross-schema lifecycle hardening (2026-10-09)
+
+State: **LOCAL TEST HARDENING / REVIEW PENDING / NO POST ENABLEMENT**.
+The existing Common A3 lifecycle is now covered at the service boundary for
+owner-attested cross-schema DRAFT Preview → READY, immutable bridge inclusion
+in the frozen planHash, and refusal of a modified owner bridge both when
+marking READY and when attempting to execute a formerly READY case. Policy
+negative cases also cover malformed evidence and mismatched target schemas.
+All existing owner-specific equivalence checks remain in their owning adapter;
+the generic service is not permitted to manufacture a bridge.
+
+The Provider v2 activation POST conflict remains unconditional. This phase
+neither authorizes production posting nor demonstrates production ledger parity.
+Full GitHub Actions validation and controlled production tests are separate
+subsequent gates. No local test/lint/build was run under AGENTS.md.
+
+### 16.13G SC-E2C — Provider correction Sales attribution (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO POST ENABLEMENT**.
+
+Accounting Sales continues to use canonical Journal money and its existing
+source-fact whitelist for original statement, order, and external-sale facts.
+Only separately selected, POSTED Provider Settlement correction Journal outputs
+are eligible as additional canonical Sales facts; generic Expense/Payroll
+corrections cannot enter via their account IDs. The new Accounting-owned reader
+validates the Correction Case, output Journal source and revision, immutable
+Provider document identity/store, and presence of the original canonical
+Provider Journal. A correction output is attributed to its statement's
+provider/channel and existing PROVIDER_STATEMENT source bucket; DELTA components
+are aggregated without replaying full original statement sales.
+
+This does not change the Uber/Fantuan Order Sales or coverage cutover model.
+The Platform Analytics effective-line correction projection remains unchanged.
+Provider v2 POST is still blocked separately. No schema/migration, Journal
+writer, production data, new dependency, or cross-context edge is added.
+Regression fixtures cover an advertising/tax/pending DELTA without duplicating
+gross sales, and failure on mismatched correction anchors. Tests are pending
+CI after user review under AGENTS.md.
+
+### 16.13H SC-E2D-2 — Provider structural correction read-only dry-run (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / REVIEW PENDING / POST STILL BLOCKED**.
+
+Provider Correction now exposes a GET-only `.../:documentStableId/correction/dry-run` endpoint. It checks the existing read-only Provider authority/history, rejects active DRAFT/READY cases, derives the audited structural v2 proposal entirely from the Provider owner, runs its existing revision normalization and ready-target verification, and delegates the actual delta computation to Common A3 Preview policy. It returns component-level delta, schema-transition evidence and journal-set hashes, with `dryRunOnly=true` and `usableForReadyOrPost=false`. Synthetic calculation identity is internal only; no formal Case `planHash` is returned. Creating a real Case still requires fresh Preview and READY verification. Unsupported providers or unchanged authorities fail closed.
+
+No new Journal writer, Case persistence, migration, dependency, production data edit, or v2 POST enablement. Service/architecture tests added; GitHub CI pending user review. This does **not** substitute for controlled production POST authorization.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:

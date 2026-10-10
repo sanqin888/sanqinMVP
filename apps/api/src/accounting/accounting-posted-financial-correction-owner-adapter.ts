@@ -29,6 +29,14 @@ export type AccountingPostedCorrectionOwnerReadyTargetV1 =
     strategy: AccountingPostedCorrectionStrategy;
     baseAuthoritySchema: string;
     baseAuthorityHash: string;
+    /** The owner validates equivalence of the source authority in the target schema. */
+    schemaTransition?: {
+      version: 1;
+      fromSchema: string;
+      fromHash: string;
+      toSchema: string;
+      equivalentBaseHash: string;
+    };
     currency: string;
     originalJournals: AccountingPostedCorrectionPostedJournalAnchorV1[];
     targetJournals: AccountingJournalCreateInput[];

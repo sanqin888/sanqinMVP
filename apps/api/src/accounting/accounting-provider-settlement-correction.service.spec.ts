@@ -54,6 +54,7 @@ const makeService = () => {
   const adapter = {
     targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
     readCurrentEffectiveTarget: jest.fn(),
+    previewStructuralDryRun: jest.fn(),
   };
   const service = new AccountingProviderSettlementCorrectionService(
     prisma as never,
@@ -64,6 +65,55 @@ const makeService = () => {
 };
 
 describe('AccountingProviderSettlementCorrectionService', () => {
+  it('returns read-only structural dry-run without creating a correction Case', async () => {
+    const { service, prisma, adapter, correction } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      documentStableId: 'provider_doc_1',
+      revision: 1,
+      provider: 'FANTUAN',
+      documentType: 'STATEMENT',
+      storeStableId: '4750_Yonge_Street',
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+      currency: 'CAD',
+    });
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthorityHash: sha('a'),
+      targetAuthoritySchema: 'provider.v1',
+      draftInput: null,
+      structuralBaseAuthorityHash: sha('b'),
+      structuralProposal: { version: 2, changes: [] },
+    });
+    const preview = {
+      version: 1,
+      dryRunOnly: true,
+      usableForReadyOrPost: false,
+    };
+    adapter.previewStructuralDryRun.mockResolvedValue(preview);
+    await expect(
+      service.previewStructuralDryRun('provider_doc_1'),
+    ).resolves.toBe(preview);
+    expect(adapter.previewStructuralDryRun).toHaveBeenCalledWith(
+      'provider_doc_1',
+      1,
+    );
+    expect(correction.createDraft).not.toHaveBeenCalled();
+    expect(correction.markReady).not.toHaveBeenCalled();
+    expect(correction.executeCase).not.toHaveBeenCalled();
+  });
+
+  it('rejects dry-run on active Provider Correction Cases', async () => {
+    const { service, adapter } = makeService();
+    jest.spyOn(service, 'readRecord').mockResolvedValue({
+      ...currentRecord,
+      corrections: [{ status: 'DRAFT' }],
+    } as never);
+    await expect(
+      service.previewStructuralDryRun('provider_doc_1'),
+    ).rejects.toThrow('active correction Case');
+    expect(adapter.previewStructuralDryRun).not.toHaveBeenCalled();
+  });
+
   it('returns current-effective Provider authority beside correction history', async () => {
     const { service, prisma, adapter } = makeService();
     prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
@@ -102,6 +152,43 @@ describe('AccountingProviderSettlementCorrectionService', () => {
         },
       }),
     );
+  });
+
+  it('exposes only Provider-owner server-derived structural proposals to the UI', async () => {
+    const { service, prisma, adapter } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      ...currentRecord.document,
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+    });
+    const proposal = {
+      version: 2,
+      expectedBaseAuthorityHash: sha('c'),
+      changes: [
+        {
+          action: 'ADD',
+          values: {
+            evidenceDocumentStableId: 'provider_doc_1',
+            rawCode: null,
+            rawName: 'Marketing Fee',
+            component: 'ADVERTISING',
+            postingTreatment: 'POSTABLE',
+            taxRole: 'NONE',
+            amountCents: -28200,
+          },
+        },
+      ],
+    };
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthorityHash: sha('a'),
+      draftInput: currentRecord.currentEffective.draftInput,
+      structuralBaseAuthorityHash: sha('c'),
+      structuralProposal: proposal,
+    });
+    const record = await service.readRecord('provider_doc_1');
+    expect(record.currentEffective?.structuralProposal).toEqual(proposal);
+    expect(record.currentEffective?.structuralBaseAuthorityHash).toBe(sha('c'));
+    expect(record.currentEffective?.draftInput?.version).toBe(1);
   });
 
   it('turns owner conflicts into an explicit blocked posted-record state', async () => {
@@ -210,6 +297,87 @@ describe('AccountingProviderSettlementCorrectionService', () => {
       service.previewCase('provider_doc_1', 'correction_other'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(correction.previewCase).not.toHaveBeenCalled();
+  });
+
+  it('binds structural v2 draft creation to the separate immutable structural hash', async () => {
+    const { service, correction, adapter } = makeService();
+    const structuralHash = sha('c');
+    jest.spyOn(service, 'readRecord').mockResolvedValue({
+      ...currentRecord,
+      currentEffective: {
+        ...currentRecord.currentEffective,
+        structuralBaseAuthorityHash: structuralHash,
+      },
+    } as never);
+    const target = {
+      version: 2,
+      expectedBaseAuthorityHash: structuralHash,
+      changes: [],
+    };
+    await service.createDraft(
+      'provider_doc_1',
+      {
+        reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+        target,
+      },
+      'user_1',
+    );
+    expect(correction.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ targetJson: target }),
+      'user_1',
+      adapter,
+    );
+    await expect(
+      service.createDraft(
+        'provider_doc_1',
+        {
+          reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+          target: { ...target, expectedBaseAuthorityHash: sha('a') },
+        },
+        'user_1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('preserves v2 current-effective read-only lines without fabricating a v1 draft', async () => {
+    const { service, prisma, adapter } = makeService();
+    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
+      ...currentRecord.document,
+      periodStart: new Date('2026-09-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
+    });
+    adapter.readCurrentEffectiveTarget.mockResolvedValue({
+      targetAuthoritySchema:
+        'accounting.provider-settlement-correction-target.v2',
+      targetAuthorityHash: sha('c'),
+      structuralBaseAuthorityHash: null,
+      draftInput: null,
+      effectiveLines: [
+        {
+          effectiveLineStableId: 'correction-line:fee',
+          effectiveLineNo: 2,
+          origin: 'CORRECTION_ADDED',
+          sourceLine: null,
+          evidenceDocumentStableId: 'provider_doc_1',
+          rawCode: null,
+          rawName: 'Marketing Fee',
+          component: 'ADVERTISING',
+          postingTreatment: 'POSTABLE',
+          taxRole: 'NONE',
+          amountCents: -28200,
+          occurredAt: null,
+        },
+      ],
+    });
+    const record = await service.readRecord('provider_doc_1');
+    expect(record.currentEffective?.draftInput).toBeNull();
+    expect(record.currentEffective?.effectiveLines).toEqual([
+      expect.objectContaining({
+        origin: 'CORRECTION_ADDED',
+        sourceLine: null,
+        amountCents: -28200,
+      }),
+    ]);
   });
 
   it('delegates READY and POST to A3 with the Provider adapter and returns fresh state', async () => {

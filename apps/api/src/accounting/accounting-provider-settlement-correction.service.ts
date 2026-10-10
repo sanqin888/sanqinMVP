@@ -21,11 +21,18 @@ import {
 } from './accounting-posted-correction-read-model';
 import { AccountingProviderSettlementCorrectionAdapter } from './accounting-provider-settlement-correction.adapter';
 import {
-  AccountingProviderSettlementCorrectionTargetPolicyError,
-  normalizeProviderSettlementCorrectionTarget,
   type ProviderSettlementCorrectionTargetInputV1,
   type ProviderSettlementCorrectionTargetV1,
 } from './accounting-provider-settlement-correction-target.policy';
+import {
+  ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+  type ProviderStructuralTargetChangeV2,
+  type ProviderSettlementStructuralTargetV2,
+} from './accounting-provider-settlement-structural-target.policy';
+import {
+  readProviderCurrentAuthority,
+  currentProviderEffectiveLines,
+} from './accounting-provider-settlement-current-authority.policy';
 
 const PROVIDER_TARGET_KIND =
   AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT;
@@ -87,16 +94,28 @@ const noteValue = (raw: unknown): string | null => {
   return note || null;
 };
 
-const parseDraftInput = (
-  raw: unknown,
-): ProviderSettlementCorrectionTargetInputV1 => {
+type ProviderDraftInput =
+  | ProviderSettlementCorrectionTargetInputV1
+  | ProviderStructuralTargetChangeV2;
+
+const parseDraftInput = (raw: unknown): ProviderDraftInput => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new BadRequestException('target must be an object');
   }
   const target = raw as Record<string, unknown>;
+  if (target.version === 2 && Array.isArray(target.changes)) {
+    return {
+      version: 2,
+      expectedBaseAuthorityHash: requireSha256(
+        target.expectedBaseAuthorityHash,
+        'target.expectedBaseAuthorityHash',
+      ),
+      changes: target.changes as ProviderStructuralTargetChangeV2['changes'],
+    };
+  }
   if (target.version !== 1 || !Array.isArray(target.lines)) {
     throw new BadRequestException(
-      'target must use version 1 and include a lines array',
+      'target must use version 1 lines or version 2 changes',
     );
   }
   return {
@@ -110,37 +129,61 @@ const parseDraftInput = (
 };
 
 const toDraftInput = (
-  target: ProviderSettlementCorrectionTargetV1,
-): ProviderSettlementCorrectionTargetInputV1 => ({
-  version: 1,
-  expectedBaseAuthorityHash: target.basedOnAuthorityHash,
-  lines: target.lines.map((line) => ({
-    lineStableId: line.lineStableId,
-    rawCode: line.rawCode,
-    rawName: line.rawName,
-    component: line.component,
-    postingTreatment: line.postingTreatment,
-    taxRole: line.taxRole,
-    amountCents: line.amountCents,
-  })),
-});
+  target:
+    | ProviderSettlementCorrectionTargetV1
+    | ProviderSettlementStructuralTargetV2,
+): ProviderDraftInput => {
+  if (target.version === 2) {
+    return {
+      version: 2,
+      expectedBaseAuthorityHash: target.basedOnAuthorityHash,
+      changes: target.lines
+        .filter((line) => line.origin === 'CORRECTION_ADDED')
+        .map((line) => ({
+          action: 'ADD' as const,
+          values: {
+            evidenceDocumentStableId: line.evidenceDocumentStableId,
+            rawCode: line.rawCode,
+            rawName: line.rawName,
+            component: line.component,
+            postingTreatment: line.postingTreatment,
+            taxRole: line.taxRole,
+            amountCents: line.amountCents,
+          },
+        })),
+    };
+  }
+  return {
+    version: 1,
+    expectedBaseAuthorityHash: target.basedOnAuthorityHash,
+    lines: target.lines.map((line) => ({
+      lineStableId: line.lineStableId,
+      rawCode: line.rawCode,
+      rawName: line.rawName,
+      component: line.component,
+      postingTreatment: line.postingTreatment,
+      taxRole: line.taxRole,
+      amountCents: line.amountCents,
+    })),
+  };
+};
 
-const normalizePersistedTarget = (
-  value: Prisma.JsonValue,
-): ProviderSettlementCorrectionTargetV1 => {
+const normalizePersistedTarget = (params: {
+  value: Prisma.JsonValue;
+  schema: string;
+  hash: string;
+}) => {
   try {
-    return normalizeProviderSettlementCorrectionTarget(
-      value as unknown as ProviderSettlementCorrectionTargetV1,
-    );
+    return readProviderCurrentAuthority({
+      targetJson: params.value,
+      schema: params.schema,
+      expectedHash: params.hash,
+    });
   } catch (error) {
-    if (
-      error instanceof AccountingProviderSettlementCorrectionTargetPolicyError
-    ) {
-      throw new ConflictException(
-        'persisted Provider correction target is invalid: ' + error.message,
-      );
-    }
-    throw error;
+    throw new ConflictException(
+      'persisted Provider correction target is invalid: ' +
+        (error instanceof Error ? error.message : String(error)),
+    );
   }
 };
 
@@ -164,13 +207,20 @@ const serializeCase = (row: AccountingPostedCorrectionHistoryCaseV1) => ({
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   revisions: row.revisions.map((revision) => {
-    const target = normalizePersistedTarget(revision.targetJson);
+    const authority = normalizePersistedTarget({
+      value: revision.targetJson,
+      schema: revision.targetAuthoritySchema,
+      hash: revision.targetAuthorityHash,
+    });
     return {
       correctionRevisionStableId: revision.correctionRevisionStableId,
       revision: revision.revision,
       targetAuthoritySchema: revision.targetAuthoritySchema,
       targetAuthorityHash: revision.targetAuthorityHash,
-      draftInput: toDraftInput(target),
+      draftInput: toDraftInput(authority.target),
+      ...(authority.target.version === 2
+        ? { effectiveLines: currentProviderEffectiveLines(authority) }
+        : {}),
       createdByActorRef: revision.createdByActorRef,
       createdAt: revision.createdAt,
     };
@@ -248,6 +298,22 @@ export class AccountingProviderSettlementCorrectionService {
         currentEffective: {
           targetAuthorityHash: current.targetAuthorityHash,
           draftInput: current.draftInput,
+          ...(current.targetAuthoritySchema ===
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA
+            ? {
+                targetAuthoritySchema: current.targetAuthoritySchema,
+                effectiveLines: current.effectiveLines,
+              }
+            : {}),
+          ...(current.structuralBaseAuthorityHash
+            ? {
+                structuralBaseAuthorityHash:
+                  current.structuralBaseAuthorityHash,
+              }
+            : {}),
+          ...(current.structuralProposal
+            ? { structuralProposal: current.structuralProposal }
+            : {}),
         },
         corrections: corrections.map(serializeCase),
       };
@@ -298,12 +364,16 @@ export class AccountingProviderSettlementCorrectionService {
     }
     const reasonCode = parseReasonCode(body.reasonCode);
     const target = parseDraftInput(body.target);
+    const expectedAuthorityHash =
+      target.version === 2
+        ? record.currentEffective.structuralBaseAuthorityHash
+        : record.currentEffective.targetAuthorityHash;
     if (
-      target.expectedBaseAuthorityHash !==
-      record.currentEffective.targetAuthorityHash
+      !expectedAuthorityHash ||
+      target.expectedBaseAuthorityHash !== expectedAuthorityHash
     ) {
       throw new ConflictException(
-        'Provider correction editor is stale; reload current effective values',
+        'Provider correction editor is stale or structural target is not available; reload current effective values',
       );
     }
     await this.correction.createDraft(
@@ -348,6 +418,30 @@ export class AccountingProviderSettlementCorrectionService {
       this.adapter,
     );
     return this.readRecord(documentStableId);
+  }
+
+  async previewStructuralDryRun(documentStableIdRaw: string) {
+    const record = await this.readRecord(documentStableIdRaw);
+    if (record.status !== 'READY') {
+      throw new ConflictException(
+        'Provider structural dry-run requires verified current authority',
+      );
+    }
+    if (
+      record.corrections.some(
+        (item) =>
+          item.status === AccountingPostedCorrectionStatus.DRAFT ||
+          item.status === AccountingPostedCorrectionStatus.READY,
+      )
+    ) {
+      throw new ConflictException(
+        'Provider structural dry-run cannot bypass an active correction Case',
+      );
+    }
+    return this.adapter.previewStructuralDryRun(
+      record.document.documentStableId,
+      record.document.revision,
+    );
   }
 
   async previewCase(

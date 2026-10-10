@@ -23,6 +23,11 @@ import {
   ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
 } from './accounting-external-sales.contract';
+import {
+  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+  AccountingPostedCorrectionStatus,
+  AccountingPostedCorrectionTargetKind,
+} from './accounting-posted-financial-correction.contract';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import type {
@@ -60,6 +65,7 @@ type JournalRow = {
   sourceFactStableId: string | null;
   storeStableId: string | null;
   occurredAt: Date;
+  correctionDocumentStableId?: string;
   lines: Array<{
     debitCents: number;
     creditCents: number;
@@ -124,6 +130,11 @@ const sourceBucket = (
   }
   if (sourceFactType === ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE) {
     return 'EXTERNAL_SALE_REVERSAL';
+  }
+  if (
+    sourceFactType === ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+  ) {
+    return 'PROVIDER_STATEMENT';
   }
   return 'HISTORICAL_REPLACEMENT_REVERSAL';
 };
@@ -206,19 +217,35 @@ export class AccountingSalesAnalyticsService {
       : await this.storeConfig.getConfiguredStoreSnapshot();
     const timezone = store.timezone.trim() || 'America/Toronto';
     const range = await this.resolveRange(query, timezone);
-    const journals = await this.readSalesJournals({
+    const baseJournals = await this.readSalesJournals({
       storeStableId: store.storeStableId,
       fromInclusive: range.fromInclusive,
       toExclusive: range.toExclusive,
     });
 
+    const correctionJournals = await this.readPostedProviderCorrectionJournals({
+      storeStableId: store.storeStableId,
+      fromInclusive: range.fromInclusive,
+      toExclusive: range.toExclusive,
+    });
+    const journals: JournalRow[] = [
+      ...baseJournals,
+      ...correctionJournals,
+    ].sort(
+      (a, b) =>
+        a.occurredAt.getTime() - b.occurredAt.getTime() ||
+        a.entryStableId.localeCompare(b.entryStableId),
+    );
     this.assertJournalAuthority(journals);
 
     const providerDocumentIds = journals.flatMap((journal) =>
-      journal.sourceFactType === 'accounting.provider_financial_document.v1' &&
-      journal.sourceFactStableId
-        ? [journal.sourceFactStableId]
-        : [],
+      journal.correctionDocumentStableId
+        ? [journal.correctionDocumentStableId]
+        : journal.sourceFactType ===
+              'accounting.provider_financial_document.v1' &&
+            journal.sourceFactStableId
+          ? [journal.sourceFactStableId]
+          : [],
     );
     const providerDocuments =
       providerDocumentIds.length === 0
@@ -395,7 +422,15 @@ export class AccountingSalesAnalyticsService {
 
     for (const journal of journals) {
       const sourceFactType = journal.sourceFactType;
-      if (!sourceFactType || !isAccountingSalesSourceFactType(sourceFactType)) {
+      if (
+        !sourceFactType ||
+        (!isAccountingSalesSourceFactType(sourceFactType) &&
+          !(
+            sourceFactType ===
+              ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE &&
+            journal.correctionDocumentStableId
+          ))
+      ) {
         throw new ConflictException(
           `Unexpected Sales Journal source fact type: ${String(sourceFactType)}`,
         );
@@ -525,6 +560,124 @@ export class AccountingSalesAnalyticsService {
     };
   }
 
+  /**
+   * Only POSTED Provider Settlement outputs are Sales facts. Never include
+   * generic Expense corrections merely because their accounts resemble Sales.
+   */
+  private async readPostedProviderCorrectionJournals(params: {
+    storeStableId: string;
+    fromInclusive: Date;
+    toExclusive: Date;
+  }): Promise<JournalRow[]> {
+    const outputs =
+      await this.prisma.accountingCorrectionJournalOutput.findMany({
+        where: {
+          correctionCase: {
+            status: AccountingPostedCorrectionStatus.POSTED,
+            targetKind:
+              AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+          },
+          journalEntry: {
+            deletedAt: null,
+            storeStableId: params.storeStableId,
+            occurredAt: { gte: params.fromInclusive, lt: params.toExclusive },
+          },
+        },
+        select: {
+          correctionCase: {
+            select: {
+              correctionStableId: true,
+              targetStableId: true,
+              targetVersion: true,
+              readyRevision: { select: { revision: true } },
+            },
+          },
+          journalEntry: {
+            select: {
+              entryStableId: true,
+              source: true,
+              sourceFactType: true,
+              sourceFactStableId: true,
+              sourceFactVersion: true,
+              storeStableId: true,
+              occurredAt: true,
+              lines: {
+                select: {
+                  debitCents: true,
+                  creditCents: true,
+                  account: { select: { accountStableId: true } },
+                },
+                orderBy: { lineNo: 'asc' },
+              },
+            },
+          },
+        },
+      });
+    if (outputs.length === 0) return [];
+
+    const documentIds = Array.from(
+      new Set(outputs.map((output) => output.correctionCase.targetStableId)),
+    );
+    const documents =
+      await this.prisma.accountingProviderFinancialDocument.findMany({
+        where: { documentStableId: { in: documentIds } },
+        select: { documentStableId: true, revision: true, storeStableId: true },
+      });
+    const documentById = new Map(
+      documents.map((document) => [document.documentStableId, document]),
+    );
+    const originalJournals = await this.prisma.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        sourceFactType: 'accounting.provider_financial_document.v1',
+        sourceFactStableId: { in: documentIds },
+      },
+      select: {
+        sourceFactStableId: true,
+        sourceFactVersion: true,
+        storeStableId: true,
+      },
+    });
+    const originalCounts = new Map<string, number>();
+    for (const original of originalJournals) {
+      const key = `${original.sourceFactStableId}:${original.sourceFactVersion}:${original.storeStableId}`;
+      originalCounts.set(key, (originalCounts.get(key) ?? 0) + 1);
+    }
+    return outputs.map((output) => {
+      const correction = output.correctionCase;
+      const journal = output.journalEntry;
+      const document = documentById.get(correction.targetStableId);
+      if (
+        !document ||
+        document.revision !== correction.targetVersion ||
+        document.storeStableId !== params.storeStableId ||
+        journal.source !== AccountingJournalSource.PLATFORM_STATEMENT ||
+        journal.sourceFactType !==
+          ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE ||
+        journal.sourceFactStableId !== correction.correctionStableId ||
+        journal.sourceFactVersion !== correction.readyRevision?.revision ||
+        journal.storeStableId !== document.storeStableId ||
+        originalCounts.get(
+          `${correction.targetStableId}:${correction.targetVersion}:${params.storeStableId}`,
+        ) !== 1
+      ) {
+        throw new ConflictException(
+          `POSTED Provider correction Sales authority mismatch: ${journal.entryStableId}`,
+        );
+      }
+      return {
+        entryStableId: journal.entryStableId,
+        source: journal.source,
+        sourceFactType: journal.sourceFactType,
+        sourceFactStableId: journal.sourceFactStableId,
+        storeStableId: journal.storeStableId,
+        occurredAt: journal.occurredAt,
+        correctionDocumentStableId: correction.targetStableId,
+        lines: journal.lines,
+      };
+    });
+  }
+
   private async readSalesJournals(params: {
     storeStableId: string;
     fromInclusive: Date;
@@ -567,7 +720,9 @@ export class AccountingSalesAnalyticsService {
           `Sales Journal is missing canonical source identity: ${journal.entryStableId}`,
         );
       }
-      const expected = expectedJournalSource(journal.sourceFactType);
+      const expected = journal.correctionDocumentStableId
+        ? AccountingJournalSource.PLATFORM_STATEMENT
+        : expectedJournalSource(journal.sourceFactType);
       if (!expected || journal.source !== expected) {
         throw new ConflictException(
           `Sales Journal source authority mismatch: ${journal.entryStableId}`,
@@ -636,8 +791,15 @@ export class AccountingSalesAnalyticsService {
       };
     }
 
-    if (sourceFactType === 'accounting.provider_financial_document.v1') {
-      const provider = params.providerByDocument.get(sourceFactStableId);
+    if (
+      sourceFactType === 'accounting.provider_financial_document.v1' ||
+      (sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE &&
+        params.journal.correctionDocumentStableId)
+    ) {
+      const provider = params.providerByDocument.get(
+        params.journal.correctionDocumentStableId ?? sourceFactStableId,
+      );
       if (!provider) {
         throw new ConflictException(
           `Canonical Sales provider Journal is missing provider attribution: ${params.journal.entryStableId}`,

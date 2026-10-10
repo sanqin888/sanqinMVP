@@ -155,6 +155,115 @@ const makeService = () => {
 };
 
 describe('AccountingPostedFinancialCorrectionService', () => {
+  it('freezes an owner-attested cross-schema Preview on READY and rejects a stale bridge', async () => {
+    const { service, tx } = makeService();
+    const sourceSchema = 'accounting.expense.correction-target.v1';
+    const targetSchema = 'accounting.expense.correction-target.v2';
+    const nextRevision = {
+      ...revision,
+      targetAuthoritySchema: targetSchema,
+      targetAuthorityHash: sha('e'),
+    };
+    const draftCase = { ...baseCase, revisions: [nextRevision] };
+    const bridge = {
+      version: 1 as const,
+      fromSchema: sourceSchema,
+      fromHash: sha('a'),
+      toSchema: targetSchema,
+      equivalentBaseHash: sha('f'),
+    };
+    const ownerTarget = {
+      version: 1 as const,
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId: 'expense_1',
+      targetVersion: 1,
+      targetAuthoritySchema: targetSchema,
+      targetAuthorityHash: nextRevision.targetAuthorityHash,
+      targetJson,
+      strategy: AccountingPostedCorrectionStrategy.DELTA,
+      baseAuthoritySchema: sourceSchema,
+      baseAuthorityHash: sha('a'),
+      schemaTransition: bridge,
+      currency: 'CAD',
+      originalJournals: [originalJournal],
+      targetJournals: [targetJournal],
+    };
+    const adapter = {
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      normalizeRevisionTarget: jest.fn(),
+      resolveReadyTarget: jest.fn().mockResolvedValue(ownerTarget),
+      activateTargetInTx: jest.fn(),
+    };
+    tx.accountingCorrectionCase.findUnique.mockResolvedValue(draftCase);
+    const preview = await service.previewCase('correction_1', adapter as never);
+    expect(preview.status).toBe('READY');
+    expect(preview.authority.schemaTransition).toEqual(bridge);
+
+    const readyCase = {
+      ...draftCase,
+      version: 2,
+      status: AccountingPostedCorrectionStatus.READY,
+      readyRevision: nextRevision,
+      strategy: preview.authority.strategy,
+      baseAuthoritySchema: preview.authority.baseAuthoritySchema,
+      baseAuthorityHash: preview.authority.baseAuthorityHash,
+      baseJournalSetHash: preview.authority.baseJournalSetHash,
+      targetAuthoritySchema: preview.authority.targetAuthoritySchema,
+      targetAuthorityHash: preview.authority.targetAuthorityHash,
+      readyPreviewSchema: 'accounting.posted_financial_correction_preview.v1',
+      planHash: preview.planHash,
+      readyPreviewJson: preview,
+    };
+    tx.accountingCorrectionCase.findUnique
+      .mockReset()
+      .mockResolvedValueOnce(draftCase)
+      .mockResolvedValueOnce(readyCase);
+    const saved = await service.markReady(
+      'correction_1',
+      { expectedVersion: 1, expectedPlanHash: preview.planHash },
+      'user_1',
+      adapter as never,
+    );
+    expect(saved.status).toBe(AccountingPostedCorrectionStatus.READY);
+    expect(tx.accountingCorrectionCase.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          planHash: preview.planHash,
+          readyPreviewJson: preview,
+        }) as unknown,
+      }),
+    );
+
+    adapter.resolveReadyTarget.mockResolvedValue({
+      ...ownerTarget,
+      schemaTransition: { ...bridge, equivalentBaseHash: sha('9') },
+    });
+    tx.accountingCorrectionCase.findUnique
+      .mockReset()
+      .mockResolvedValue(draftCase);
+    await expect(
+      service.markReady(
+        'correction_1',
+        { expectedVersion: 1, expectedPlanHash: preview.planHash },
+        'user_1',
+        adapter as never,
+      ),
+    ).rejects.toThrow('plan changed after Preview');
+
+    tx.accountingCorrectionCase.findUnique
+      .mockReset()
+      .mockResolvedValue(readyCase);
+    await expect(
+      service.executeCase(
+        'correction_1',
+        { expectedPlanHash: preview.planHash },
+        'user_1',
+        adapter as never,
+      ),
+    ).rejects.toThrow('authority changed after READY');
+    expect(adapter.activateTargetInTx).not.toHaveBeenCalled();
+  });
+
   it('invalidates READY through an appended Revision before returning to DRAFT', async () => {
     const { service, tx } = makeService();
     const readyCase = {

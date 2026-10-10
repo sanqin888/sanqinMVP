@@ -10,6 +10,12 @@ import {
 } from './accounting-contracts';
 import { AccountingPlatformAnalyticsService } from './accounting-platform-analytics.service';
 import {
+  ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+  hashProviderStructuralTarget,
+  upgradeProviderCorrectionTargetToV2,
+  type ProviderSettlementStructuralTargetV2,
+} from './accounting-provider-settlement-structural-target.policy';
+import {
   ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
   hashProviderSettlementCorrectionTarget,
   type ProviderSettlementCorrectionTargetV1,
@@ -573,6 +579,205 @@ describe('AccountingPlatformAnalyticsService', () => {
     expect(period.salesCents).toBe(120_000);
     expect(period.commission.costImpactCents).toBe(36_000);
     expect(period.commission.shareOfSalesBps).toBe(3_000);
+  });
+
+  it('reads corrected Fantuan v2 effective lines and recovers previously omitted marketing fee', async () => {
+    const rows: Array<
+      [
+        string,
+        AccountingFinancialComponent,
+        AccountingFinancialPostingTreatment,
+        number,
+      ]
+    > = [
+      [
+        'Sales',
+        AccountingFinancialComponent.SALES,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        686782,
+      ],
+      [
+        'Item Subtotal',
+        AccountingFinancialComponent.CONTROL_TOTAL,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        686782,
+      ],
+      [
+        'Marketing and Fantuan Event Charges',
+        AccountingFinancialComponent.CONTROL_TOTAL,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        -274545,
+      ],
+      [
+        'Discounts from Promotion events',
+        AccountingFinancialComponent.PROMOTION,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        -170973,
+      ],
+      [
+        'Fantuan Subsidy for Promotion events',
+        AccountingFinancialComponent.SUBSIDY,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        170973,
+      ],
+      [
+        'Commission',
+        AccountingFinancialComponent.COMMISSION,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        -246345,
+      ],
+      [
+        'Net Taxes',
+        AccountingFinancialComponent.CONTROL_TOTAL,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        53599,
+      ],
+      [
+        'Net Sales GST/HST',
+        AccountingFinancialComponent.SALES_TAX,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        89287,
+      ],
+      [
+        'Commission GST/HST',
+        AccountingFinancialComponent.COMMISSION_TAX,
+        AccountingFinancialPostingTreatment.POSTABLE,
+        -32022,
+      ],
+      [
+        'Total transfer amount',
+        AccountingFinancialComponent.PAYOUT,
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        465836,
+      ],
+    ];
+    const sourceDocument = statement({
+      provider: AccountingFinancialProvider.FANTUAN,
+      month: '2026-09',
+      lines: rows.map(
+        ([rawName, component, postingTreatment, amountCents], index) => ({
+          ...line(
+            `fantuan_source_${index + 1}`,
+            rawName,
+            component,
+            amountCents,
+            rawName.endsWith('GST/HST')
+              ? AccountingFinancialTaxRole.INPUT_TAX
+              : AccountingFinancialTaxRole.NONE,
+          ),
+          postingTreatment,
+        }),
+      ),
+    });
+    const original: ProviderSettlementCorrectionTargetV1 = {
+      version: 1,
+      document: {
+        documentStableId: sourceDocument.documentStableId,
+        documentRevision: sourceDocument.revision,
+        provider: sourceDocument.provider,
+        documentType: sourceDocument.documentType,
+        businessIdentityKey: sourceDocument.businessIdentityKey,
+        providerDocumentRef: sourceDocument.providerDocumentRef,
+        storeStableId: sourceDocument.storeStableId,
+        periodStart: sourceDocument.periodStart.toISOString().slice(0, 10),
+        periodEnd: sourceDocument.periodEnd.toISOString().slice(0, 10),
+        currency: sourceDocument.currency,
+        sourcePostingAuthorityHash: 'a'.repeat(64),
+      },
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      basedOnAuthorityHash: 'b'.repeat(64),
+      supplementaryEvidenceDocumentStableIds: [],
+      historicalReversalOriginalJournalEntryStableIds: [],
+      lines: sourceDocument.lines.map((row) => ({
+        sourceDocumentStableId: sourceDocument.documentStableId,
+        lineStableId: row.lineStableId,
+        lineNo: row.lineNo,
+        rawCode: row.rawCode,
+        rawName: row.rawName,
+        component: row.component,
+        postingTreatment: row.postingTreatment,
+        taxRole: row.taxRole,
+        amountCents: row.amountCents,
+        occurredAt: null,
+      })),
+    };
+    const base = upgradeProviderCorrectionTargetToV2(original);
+    const target: ProviderSettlementStructuralTargetV2 = {
+      ...base,
+      basedOnAuthorityHash: hashProviderStructuralTarget(base),
+      lines: [
+        ...base.lines,
+        {
+          origin: 'CORRECTION_ADDED',
+          effectiveLineStableId: 'correction-line:marketing',
+          effectiveLineNo: 11,
+          evidenceDocumentStableId: sourceDocument.documentStableId,
+          sourceLine: null,
+          rawCode: null,
+          rawName: 'Marketing Fee',
+          component: AccountingFinancialComponent.ADVERTISING,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          taxRole: AccountingFinancialTaxRole.NONE,
+          amountCents: -28200,
+          occurredAt: null,
+        },
+        {
+          origin: 'CORRECTION_ADDED',
+          effectiveLineStableId: 'correction-line:marketing-tax',
+          effectiveLineNo: 12,
+          evidenceDocumentStableId: sourceDocument.documentStableId,
+          sourceLine: null,
+          rawCode: null,
+          rawName: 'Marketing Fee GST/HST',
+          component: AccountingFinancialComponent.ADVERTISING_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+          amountCents: -3666,
+          occurredAt: null,
+        },
+      ],
+    };
+    const authorityHash = hashProviderStructuralTarget(target);
+    const { service, prisma } = makeService([sourceDocument]);
+    prisma.accountingCorrectionCase.findMany.mockResolvedValue([
+      {
+        correctionStableId: 'correction_fantuan_september',
+        targetKind: 'PROVIDER_SETTLEMENT',
+        targetStableId: sourceDocument.documentStableId,
+        targetVersion: sourceDocument.revision,
+        status: 'POSTED',
+        reasonCode: 'MISSING_COMPONENT',
+        note: 'restore marketing rows',
+        strategy: 'DELTA',
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: authorityHash,
+        postedByActorRef: 'user_admin_1',
+        postedAt: new Date('2026-10-09T12:00:00.000Z'),
+        createdAt: new Date('2026-10-09T11:00:00.000Z'),
+        readyRevision: {
+          targetAuthoritySchema:
+            ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+          targetAuthorityHash: authorityHash,
+          targetJson: target,
+        },
+      },
+    ]);
+    const report = await service.report({ storeStableId: STORE.storeStableId });
+    const fantuan = report.providers.find(
+      (provider) => provider.provider === AccountingFinancialProvider.FANTUAN,
+    );
+    const period = fantuan?.periods[0];
+    expect(period?.status).toBe('AVAILABLE');
+    if (period?.status !== 'AVAILABLE')
+      throw new Error('expected reconciled v2');
+    expect(period.totalPlatformCostExTaxCents).toBe(274545);
+    expect(period.fees.find((fee) => fee.rawName === 'Marketing Fee')).toEqual(
+      expect.objectContaining({ costImpactCents: 28200 }),
+    );
+    expect(period.fees.map((fee) => fee.rawName)).not.toContain(
+      'Marketing Fee GST/HST',
+    );
   });
 
   it('marks Uber months incomplete while non-zero Other Earnings still lacks semantic review', async () => {

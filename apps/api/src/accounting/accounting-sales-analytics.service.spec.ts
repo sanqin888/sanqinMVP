@@ -241,6 +241,7 @@ function makeService(options?: {
   externalSales?: unknown[];
   attributionRows?: unknown[];
   coverageRows?: unknown[];
+  correctionOutputs?: unknown[];
 }) {
   const journalResponses: unknown[][] = [
     options?.journals ?? [
@@ -279,6 +280,9 @@ function makeService(options?: {
     .mockResolvedValue(options?.externalSales ?? []);
   const prisma = {
     accountingJournalEntry: { findMany: journalFindMany },
+    accountingCorrectionJournalOutput: {
+      findMany: jest.fn().mockResolvedValue(options?.correctionOutputs ?? []),
+    },
     accountingProviderFinancialDocument: { findMany: providerFindMany },
     accountingExternalSale: { findMany: externalSaleFindMany },
   };
@@ -362,6 +366,7 @@ function makeService(options?: {
       storeConfig as never,
     ),
     journalFindMany,
+    correctionOutputFindMany: prisma.accountingCorrectionJournalOutput.findMany,
     journalQueries,
     providerFindMany,
     externalSaleFindMany,
@@ -372,6 +377,132 @@ function makeService(options?: {
 }
 
 describe('AccountingSalesAnalyticsService', () => {
+  it('attributes only POSTED Provider correction DELTA to the statement without reselling gross', async () => {
+    const correctionJournal = {
+      entryStableId: 'journal_provider_correction',
+      source: 'PLATFORM_STATEMENT',
+      sourceFactType: 'accounting.posted_financial_correction.v1',
+      sourceFactStableId: 'acctcorr_provider',
+      sourceFactVersion: 1,
+      storeStableId: STORE.storeStableId,
+      occurredAt: uberProviderStatement.occurredAt,
+      lines: [
+        {
+          debitCents: 28200,
+          creditCents: 0,
+          account: { accountStableId: 'account_advertising_expense' },
+        },
+        {
+          debitCents: 3666,
+          creditCents: 0,
+          account: { accountStableId: 'account_hst_recoverable' },
+        },
+        {
+          debitCents: 0,
+          creditCents: 31866,
+          account: { accountStableId: 'account_uber_pending' },
+        },
+      ],
+    };
+    const correctionOutputs = [
+      {
+        correctionCase: {
+          correctionStableId: 'acctcorr_provider',
+          targetStableId: 'provider_doc_uber_june',
+          targetVersion: 1,
+          readyRevision: { revision: 1 },
+        },
+        journalEntry: correctionJournal,
+      },
+    ];
+    const fixture = makeService({
+      journals: [uberProviderStatement],
+      originalJournals: [],
+      correctionOutputs,
+      providerDocuments: [
+        {
+          documentStableId: 'provider_doc_uber_june',
+          provider: AccountingFinancialProvider.UBER_EATS,
+          revision: 1,
+          storeStableId: STORE.storeStableId,
+        },
+      ],
+      attributionRows: [],
+    });
+    fixture.journalFindMany.mockImplementation(
+      (query: JournalFindManyQueryCapture) => {
+        if (!query.where?.sourceFactType?.in) {
+          return Promise.resolve([
+            {
+              sourceFactStableId: 'provider_doc_uber_june',
+              sourceFactVersion: 1,
+              storeStableId: STORE.storeStableId,
+            },
+          ]);
+        }
+        return Promise.resolve([uberProviderStatement]);
+      },
+    );
+
+    const report = await fixture.service.report({
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+    expect(report.summary.grossSalesCents).toBe(1000);
+    expect(report.summary.advertisingCents).toBe(28200);
+    expect(report.journalEntryCount).toBe(2);
+    expect(
+      report.byChannel.find((row) => row.key === 'ubereats')?.summary
+        .advertisingCents,
+    ).toBe(28200);
+    expect(fixture.correctionOutputFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          correctionCase: {
+            status: 'POSTED',
+            targetKind: 'PROVIDER_SETTLEMENT',
+          },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('rejects a POSTED Provider correction output with an invalid source anchor', async () => {
+    const fixture = makeService({
+      journals: [],
+      originalJournals: [],
+      providerDocuments: [
+        {
+          documentStableId: 'provider_doc_uber_june',
+          provider: AccountingFinancialProvider.UBER_EATS,
+          revision: 1,
+          storeStableId: STORE.storeStableId,
+        },
+      ],
+      correctionOutputs: [
+        {
+          correctionCase: {
+            correctionStableId: 'acctcorr_provider',
+            targetStableId: 'provider_doc_uber_june',
+            targetVersion: 1,
+            readyRevision: { revision: 1 },
+          },
+          journalEntry: {
+            ...uberProviderStatement,
+            sourceFactType: 'accounting.posted_financial_correction.v1',
+            sourceFactStableId: 'a_wrong_correction',
+            sourceFactVersion: 1,
+          },
+        },
+      ],
+      attributionRows: [],
+    });
+    fixture.journalFindMany.mockResolvedValue([]);
+    await expect(
+      fixture.service.report({ from: '2026-06-01', to: '2026-06-30' }),
+    ).rejects.toThrow('POSTED Provider correction Sales authority mismatch');
+  });
+
   it('uses an explicit storeStableId when supplied and preserves configured-store fallback', async () => {
     const explicit = makeService({
       journals: [],

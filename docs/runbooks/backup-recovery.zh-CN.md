@@ -1,10 +1,13 @@
 # SanQ 备份恢复手册
 
-> **C3-B 兼容性提醒：**dev 的备份源码模板现已转为方案 B 的目标路径
-> /opt/sanq/runtime 与 /srv/sanq，**当前生产 VM 仍使用旧路径**。
-> 在另行授权并完成 C4 成组切换前，禁止照下方历史安装指令
-> 直接覆盖生产主脚本、helper 或 service。详见
-> docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md。
+> **C4-P2-C 生产状态（2026-10-09 UTC）：**已按独立授权完成方案 B 路径切换：
+> Runtime = `/opt/sanq/runtime`，Uploads = `/srv/sanq/uploads`，
+> Backups = `/srv/sanq/backups`。备份 service 仍以 ubuntu 用户运行，
+> main script 仍位于 `/home/ubuntu/backup-db.sh`，**当前日志以 systemd journal 为准**。
+> 本文旧布局安装、旧日志或普通 `docker compose` 的片段属于历史示例，
+> **不可直接在生产重跑**。P2-C 验收见
+> `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`；独立恢复及业务实测仍在
+> `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`（P2-D 有限范围证据验收完成；离机 roles 已捕获在加密 DMG，正式关闭待文档审阅、dev PR/CI 合并）。
 
 > 对应英文运维合同：`docs/runbooks/backup-recovery.md`  
 > 当前状态：Post-Modularization §3.2 Backup / Recovery Drill 已于 2026-10-02 **PRODUCTION VERIFIED / CLOSED**。  
@@ -75,8 +78,9 @@ nginx/certs/cf-origin.key
 
 ## 4. 备份程序升级 / 覆盖
 
-**停止门禁：本节为旧目录部署记录。C3-B 新版源码不可直接覆盖生产旧路径；
-必须先得到 C4 独立生产授权，并成组处理数据/Compose/备份权限。**
+**历史操作记录，禁止直接执行：**本节保留的是 C4-P2-C 之前的安装/回滚示例。
+生产已完成 C4-P2-C；后续变更必须使用可信 Runtime、当前配置和独立审核的
+变更/回滚计划，不能从旧 checkout 直接重装或移除当前 helper/sudoers。
 
 仓库中的 reviewed source of truth：
 
@@ -189,22 +193,16 @@ ExecMainStatus=0
 
 不要仅根据日志中某一条“成功”文字判断整批备份是否成功。
 
-### 5.3 查看备份日志
+### 5.3 查看备份日志（C4 切换后的当前生产合同）
 
 ```bash
-tail -n 200 /home/ubuntu/sanq-app/backup.log
+sudo journalctl -u sanq-backup.service -n 150 --no-pager -o cat
 ```
 
-检查失败标记：
-
-```bash
-if tail -n 300 /home/ubuntu/sanq-app/backup.log | grep -F '❌'; then
-  echo "BACKUP FAILURE MARKER: FOUND"
-else
-  echo "BACKUP FAILURE MARKER: NONE"
-fi
-```
-
+检查最近批次必须**同时**依据 `systemctl show` 的 `Result=success`、
+`ExecMainStatus=0` 和同一次 journal 的最终成功行；不把旧批次成功误认作新批次。
+旧 `/home/ubuntu/sanq-app/backup.log` 仅为 C4 之前的历史审计文件，
+不能用来判断 2026-10-09 以后的新布局计划备份是否成功。
 新版脚本只有所有要求任务都没有失败时才以 0 退出。
 
 ### 5.4 查看最近远端对象
@@ -374,17 +372,40 @@ nginx/certs/cf-origin.key
 
 ### 8.1 先解压到 quarantine，不要直接覆盖系统
 
+**跨平台注意（2026-10-09 实测）：** SanQ 的 Nginx 归档可能包含 Linux `/etc/nginx/sites-enabled`、`modules-enabled` 和 `ssl/certs` 等目录下的绝对目标 symlink。先用 `tar -tzf` / `tar -tvzf` 核查成员类型、路径穿越和链接目标，不能仅凭 gzip 完整性就对陌生设备执行全量解包。
+
+在同版本 Ubuntu 隔离主机且确认目标安全时，可将备份解包到新建的私有 quarantine，再按受控流程恢复系统链接。**MacBook 等非 Linux 环境**应优先从归档中只提取必须的普通文件到私有隔离目录；例如：
+
 ```bash
-mkdir -p "$RECOVERY_ROOT/config/extracted" "$RECOVERY_ROOT/nginx/extracted"
+umask 077
+mkdir -p "$RECOVERY_ROOT/config/extracted" \
+  "$RECOVERY_ROOT/nginx/essential/nginx/certs"
 
-tar -xzf "$RECOVERY_ROOT/config/$CONFIG_ARCHIVE" \
-  -C "$RECOVERY_ROOT/config/extracted"
+tar -xOzf "$RECOVERY_ROOT/config/$CONFIG_ARCHIVE" .env \
+  > "$RECOVERY_ROOT/config/extracted/.env"
 
-tar -xzf "$RECOVERY_ROOT/nginx/$NGINX_ARCHIVE" \
-  -C "$RECOVERY_ROOT/nginx/extracted"
+tar -xOzf "$RECOVERY_ROOT/nginx/$NGINX_ARCHIVE" \
+  nginx/certs/cf-origin.key \
+  > "$RECOVERY_ROOT/nginx/essential/nginx/certs/cf-origin.key"
+
+chmod 600 "$RECOVERY_ROOT/config/extracted/.env" \
+  "$RECOVERY_ROOT/nginx/essential/nginx/certs/cf-origin.key"
 ```
 
-检查路径、文件大小、权限和结构。不要 `cat .env`，不要 `cat cf-origin.key`。
+其他必需的 Compose、Nginx 配置和证书也应逐件确认是普通文件，再以相同方式定向提取。上述示例不是完整解包命令；任何现存目标目录或文件都须先隔离、人工检查，**不要覆盖既有恢复数据**。不要 `cat .env`，不要 `cat cf-origin.key`，也不要让远端配置和私钥进入 Git/共享日志。安全提取不等于已完成 Ubuntu `nginx -t` 或运行时验证。
+
+### 8.2 Linux Nginx symlink 重建合同（恢复端，不修改生产）
+
+**问题定位：** `sanqin_nginx_<timestamp>.tar.gz` 由受保护 helper 用 `tar -czf ... -C /etc nginx ssl` 创建，保留原 Linux symlink 是预期行为；在 macOS 或隔离目录中，`sites-enabled` 等**绝对链接目标**可能指向不存在的 Linux 路径，不能因此认为备份文件坏了，也不能把链接指向恢复操作者的宿主机 `/etc`。
+
+受控流程：
+
+1. 首先在恢复设备上用 `tar -tvzf "$RECOVERY_ROOT/nginx/$NGINX_ARCHIVE"` 审阅**文件类型及所有 symlink 目标**；对路径穿越、hardlink、特殊设备、意外的绝对成员路径或不可信链接，**立即停机审阅**。只读列表验证不授予全量解包权限。
+2. MacBook 恢复时仍沿用 §8.1 的 `tar -xOzf` **逐项普通文件**提取，隔离目录中不恢复绝对 symlink。保留原归档以便未来在 Linux 恢复；不应重写/重新压缩原始备份来掩盖跨平台差异。
+3. 在**新的、完全隔离的 Ubuntu 恢复 VM/容器**上先安装兼容的 Nginx/OpenSSL 及实际使用的模块/证书链，再将归档中经审核的普通文件按相应布局放入其**专属** `/etc/nginx` 和 `/etc/ssl`。必须逐个比对原链接名和目标，只有目标属于恢复 VM 内预期站点配置（例如 `/etc/nginx/sites-available/...`）时，才在该**隔离 VM**内受控创建或恢复 `sites-enabled` 链接；`modules-enabled` 应按该 VM 的已安装模块重建，不照搬旧系统模块绝对目标。
+4. **只在隔离 Ubuntu VM** 上对重建后的服务执行 `sudo nginx -t`，核对必需站点配置、监听、Origin cert/key 配对、证书权限、目标链接不悬空；测试输出必须 `successful` 后才能把 Linux 运行时恢复标记为 PASS。必要时还需单独启用隔离的 Nginx 做只读 HTTP readiness。
+5. 当前尚无上述独立 Ubuntu `nginx -t` 实测结果，因此这里只能标记 **RECOVERY PROCEDURE DOCUMENTED / LINUX REBUILD NOT VERIFIED**。不得触碰线上 `/etc/nginx`、`/etc/ssl`、执行线上 Nginx reload，亦不可将 macOS 上的选择性提取宣称为整套 Linux 恢复验证。
+
 
 ## 9. PostgreSQL 恢复：先做隔离恢复
 
@@ -402,18 +423,66 @@ gzip -t "$RECOVERY_ROOT/database/$DB_ARCHIVE"
 
 ### 9.1 已验证的恢复方式
 
-2026-10-01 演练使用的是 PostgreSQL plain-SQL logical dump。安全恢复目标必须是**新建的非生产数据库**。
+2026-10-01 和 2026-10-09 演练使用 PostgreSQL plain-SQL logical dump。安全恢复目标必须是**新建的非生产数据库**，建议使用与源端相同大版本的 PostgreSQL；先核实目标没有遗留类型/表，严禁对生产 DB 或已部分导入的 DB 盲目重放。
 
-通用形式：
+通用形式（备份 SQL **不包含** `CREATE DATABASE` 时）：
 
 ```bash
-createdb sanqin_recovery_drill
-
-gunzip -c "$RECOVERY_ROOT/database/$DB_ARCHIVE" \
-  | psql -v ON_ERROR_STOP=1 -d sanqin_recovery_drill
+set -o pipefail
+if ! createdb -T template0 sanqin_recovery_drill; then
+  echo "STOP: fresh recovery database could not be created; do not reuse an existing DB" >&2
+  exit 1
+fi
+gzip -dc "$RECOVERY_ROOT/database/$DB_ARCHIVE" \
+  | psql -X --single-transaction -v ON_ERROR_STOP=1 \
+      -d sanqin_recovery_drill
+restore_rc=$?
+echo "restore_exit_code=$restore_rc"
+if [ "$restore_rc" -ne 0 ]; then
+  exit "$restore_rc"
+fi
 ```
 
-如果 dump 引用了目标环境不存在的 role，先确认 role 名称。隔离演练可以建立 recovery-only `NOLOGIN` 占位 role；不要在生产恢复时盲目创建权限角色。
+`--single-transaction` 保证失败时不会留下半次 SQL 导入；须保留完整非零退出码和首个错误，不可跳过错误继续执行。已失败且**未**采用事务保护的目标库应按隔离规则重新选择新库，不能把 `already exists` 当成备份中的重复对象。运行前应显式确定 PG socket/host/port/user，保证操作对象确为隔离 PG 实例。
+
+**2026-10-09 D1 异机经验：** 新 PostgreSQL 15.19 实例因缺少备份引用的 `sanqin-app`、`sanq_mcp_ro` 全局角色而报错；`pg_dump` 本身不导出 PostgreSQL global roles。操作员只在离机实例建立 `NOLOGIN` 占位 role，重新导入 exit 0；这仅是数据完整性演练的**兼容措施**，不是可供正式登录的恢复角色配置。
+
+### 9.1.1 PostgreSQL roles 独立保存与可恢复性（安全修复方案）
+
+**已核实的生产基线（2026-10-09，数据库只读查询）：** `sanqin-app` 为 `LOGIN SUPERUSER INHERIT CREATEDB CREATEROLE REPLICATION BYPASSRLS`；`sanq_mcp_ro` 为 `LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 3`；查询没有返回两者相关的角色成员授权。**不要**将 `sanqin-app` 的高权限直接复制到共享或生产目标，也不要把 `sanq_mcp_ro` 擅自升级成可写账户。
+
+当前定时任务只执行 `pg_dump -U "$DB_USER" sanqin_db`，**并没有自动备份 global roles**。不改变已经上线的备份程序、命名、retention 或远端镜像合同，采用**独立离机 escrow** 补足正式恢复所需的角色 DDL：
+
+1. 由操作者从**独立可信 Mac/Linux 管理设备**获取生产 PostgreSQL 15 的角色定义，不包含 password hashes。下例通过 SSH 执行容器中的只读 `pg_dumpall --roles-only --no-role-passwords`，输出直接留在管理设备的私有目录；`RECOVERY_ROOT` 需指向**已存在且受保护**的离机恢复工作区，不能在生产 VM 存放新的明文角色备份。不得在聊天/CI 展示 SQL 全文：
+
+   ```bash
+   umask 077
+   : "${RECOVERY_ROOT:?set the trusted off-VM recovery root first}"
+   roles_dir="$RECOVERY_ROOT/database/roles"
+   mkdir -p "$roles_dir" && chmod 700 "$roles_dir" || exit 1
+   roles_file="$roles_dir/sanqin_roles_no_passwords_20261009.sql"
+   if [ -e "$roles_file" ] || [ -L "$roles_file" ]; then
+     echo "STOP: role snapshot already exists; do not overwrite" >&2
+     exit 1
+   fi
+   tmp="$(mktemp "$roles_dir/.capture.XXXXXXXX")" || exit 1
+   if ssh ubuntu@sanq-web \
+     'docker exec sanq-app-db-1 pg_dumpall -U sanqin-app --roles-only --no-role-passwords' \
+     > "$tmp" && [ -s "$tmp" ] && chmod 600 "$tmp" && mv "$tmp" "$roles_file"; then
+     echo "role_snapshot=CAPTURED_OFF_VM"
+   else
+     rm -f "$tmp"
+     echo "role_snapshot=FAILED" >&2
+     exit 1
+   fi
+   ```
+
+   捕获动作只读取线上角色，**未请求生产数据库写入**。此命令需要操作者拥有相应 SSH/Docker 访问权限；如果 `pg_dumpall` 权限不足就停止，绝不为了导出擅自修改生产角色。快照仅包含角色定义，`--no-role-passwords` 意味着**不会恢复密码**；必须由恢复管理员通过独立密钥保管与轮换流程恢复认证信息。确认成功后，将私有 SQL 副本**加密并独立保存到 VM 外的 escrow**，记录 SHA256 和访问方式（仅在私有证据里），不得放进 Git、普通备份日志或共享目录。
+2. 先在**全新隔离 PostgreSQL 15 cluster** 上审阅角色 SQL，尤其 `SUPERUSER`、`LOGIN`、`CREATE ROLE`、`GRANT` 等语句及目标 cluster 自带的角色。经受权恢复管理员批准后，才在该**隔离 cluster** 内按安全顺序恢复适用的角色定义，再创建空数据库并导入对应 `sanqin_db` SQL；不能把已有占位角色的演练库当成干净目标继续导入。必要的应用/只读登录凭据只能通过专门的离机 secret escrow 配置；密码散列及明文不得出现在此文档或聊天中。
+3. 验收分开记录：`role_snapshot=CAPTURED_OFF_VM`、离机文件 SHA256、`roles_replay=PASS`（只有真正在隔离 PG15 中完成时才写），再核对 `sanqin-app`/`sanq_mcp_ro` 的 role 属性、membership、数据库对象 ownership/GRANT，并执行原 §9.1 完整 clean restore。**2026-10-09 操作员实测：**使用原有 AES-256 加密 DMG `sanq-rclone-crypt-escrow-20261001.dmg` 直接接收生产角色定义；终端输出 `role_snapshot=CAPTURED_IN_ENCRYPTED_DMG`；SQL 文件 SHA256 为 `d2624c69d0887a861d5e7b5223f7cacf44b486f6b32c121a2bebaa0d7204f2bc`，随后 `hdiutil detach` 成功（`disk2 ejected`）。**CAPTURED IN OFF-VM ENCRYPTED ESCROW / OPERATOR-REPORTED PASS**，未由 MCP 独立读取 DMG 内容；**ROLES REPLAY / AUTHENTICATION RESTORE NOT VERIFIED**。不要将该一次性快照冒充定时角色备份。
+4. **持久自动化是另一项更改**：如需每日备份自动包含 globals，需单独审计 `ops/backup/backup-db.sh`、权限隔离、加密归档、retention、恢复测试和 CI，再获取明确授权；本次有限范围 C4 收口不私自更改已稳定运行的生产备份合同。
+
+原有 `NOLOGIN` 占位方法仍只允许用于**隔离的纯数据验证**，不可把它当作正式业务服务恢复成功；切勿在生产上直接创建占位角色、提升权限或修改既有权限。
 
 不要用：
 
@@ -512,6 +581,8 @@ history 中的文件只作为历史版本/调查/定向补回来源。
 - `COMPRESSED_ONLY` 是否正确指向保留 derivative
 
 不要因为原始文件不存在就自动判失败；如果 retention policy 已明确转为 `COMPRESSED_ONLY`，应验证 retained derivative。
+
+**2026-10-09 实测补充：** `AccountingExpenseDocument.attachmentUrls` 可能含 `/api/v1/accounting/inbox/artifacts/:artifactStableId/content`，这是 Artifact delivery API 而不是磁盘绝对路径；应按 `artifactStableId → AccountingSourceArtifact → AccountingArtifactBinaryRetention` 解析有效物理文件，优先核验 `COMPRESSED_ONLY` 的 `retainedStoredUrl`、size 和 hash。其物理文件可位于 `uploads/accounting/image-retention/`。切勿把合法 API URL 直接按 `uploads/` 拼接后报告文件缺失。
 
 ### 11.3 Homepage / Menu 图片
 

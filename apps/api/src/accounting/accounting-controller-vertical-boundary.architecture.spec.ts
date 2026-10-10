@@ -192,6 +192,7 @@ const EXPECTED_ROUTES = [
   'GET journal/provider-settlement/shadow-preview',
   'GET journal/provider-settlement/posting-states',
   'GET journal/provider-settlement/:documentStableId/correction',
+  'GET journal/provider-settlement/:documentStableId/correction/dry-run',
   'GET journal/provider-settlement/:documentStableId/corrections/:correctionStableId/preview',
   'POST journal/provider-settlement/:documentStableId/corrections',
   'POST journal/provider-settlement/:documentStableId/corrections/:correctionStableId/revise',

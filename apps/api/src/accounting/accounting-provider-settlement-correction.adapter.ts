@@ -18,6 +18,10 @@ import {
   AccountingProviderFinancialReviewStatus,
 } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
+import {
+  buildPostedFinancialCorrectionPreviewPlan,
+  AccountingPostedFinancialCorrectionPolicyError,
+} from './accounting-posted-financial-correction.policy';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
   AccountingJournalPolicyError,
@@ -76,6 +80,27 @@ import {
 } from './accounting-clover-fee-reclassification-bridge.policy';
 import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provider-fee-clearing.contract';
 import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
+import { tryRebuildHistoricalFantuanPostingProof } from './accounting-provider-settlement-historical-base.policy';
+import {
+  currentProviderEffectiveLines,
+  readProviderCurrentAuthority,
+  sameProviderEnvelope,
+} from './accounting-provider-settlement-current-authority.policy';
+import {
+  AccountingProviderStructuralAdapterPolicyError,
+  assertHistoricalFantuanStructuralTarget,
+  buildHistoricalFantuanStructuralProposal,
+  buildHistoricalFantuanStructuralTarget,
+  structuralTargetAsSettlementView,
+} from './accounting-provider-settlement-structural-adapter.policy';
+import {
+  ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+  AccountingProviderSettlementStructuralTargetError,
+  hashProviderStructuralTarget,
+  normalizeProviderStructuralTarget,
+  upgradeProviderCorrectionTargetToV2,
+  type ProviderSettlementStructuralTargetV2,
+} from './accounting-provider-settlement-structural-target.policy';
 import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
 
 const PROVIDER_DOCUMENT_SELECT = {
@@ -220,7 +245,10 @@ type OriginalPostingContext = {
 
 type CurrentBusinessAuthority = {
   context: OriginalPostingContext;
-  baseTarget: ProviderSettlementCorrectionTargetV1;
+  baseTarget:
+    | ProviderSettlementCorrectionTargetV1
+    | ProviderSettlementStructuralTargetV2;
+  baseAuthoritySchema: string;
   baseAuthorityHash: string;
 };
 
@@ -553,6 +581,35 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       targetVersion,
       this.prisma,
     );
+    if (current.baseTarget.version === 2) {
+      return {
+        version: 1 as const,
+        targetKind: this.targetKind,
+        targetStableId,
+        targetVersion,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: current.baseAuthorityHash,
+        targetJson: current.baseTarget,
+        draftInput: null,
+        effectiveLines: currentProviderEffectiveLines({
+          schema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+          hash: current.baseAuthorityHash,
+          target: current.baseTarget,
+        }),
+        structuralBaseAuthorityHash: null,
+        structuralProposal: null,
+      };
+    }
+    const structuralEligible =
+      current.baseAuthoritySchema ===
+        ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA &&
+      current.baseAuthorityHash ===
+        hashProviderSettlementCorrectionTarget(current.context.sourceTarget) &&
+      !!tryRebuildHistoricalFantuanPostingProof({
+        source: current.context.sourceTarget,
+        occurredAt: current.context.originalProviderJournal.occurredAt,
+      });
     return {
       version: 1 as const,
       targetKind: this.targetKind,
@@ -562,6 +619,15 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
       targetAuthorityHash: current.baseAuthorityHash,
       targetJson: current.baseTarget,
+      structuralBaseAuthorityHash: structuralEligible
+        ? hashProviderStructuralTarget(
+            upgradeProviderCorrectionTargetToV2(current.context.sourceTarget),
+          )
+        : null,
+      structuralProposal: structuralEligible
+        ? buildHistoricalFantuanStructuralProposal(current.context.sourceTarget)
+        : null,
+      effectiveLines: null,
       draftInput: {
         version: 1 as const,
         expectedBaseAuthorityHash: current.baseAuthorityHash,
@@ -595,6 +661,72 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       input.targetVersion,
       db,
     );
+    if (jsonRecord(input.targetJson).version === 2) {
+      if (
+        input.reasonCode !==
+        AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
+      ) {
+        throw new BadRequestException(
+          'historical Fantuan structural additions require reasonCode MISSING_COMPONENT',
+        );
+      }
+      if (
+        current.baseAuthorityHash !==
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
+        !tryRebuildHistoricalFantuanPostingProof({
+          source: current.context.sourceTarget,
+          occurredAt: current.context.originalProviderJournal.occurredAt,
+        })
+      ) {
+        throw new BadRequestException(
+          'structural v2 corrections require an audited, uncorrected historical Fantuan baseline',
+        );
+      }
+      let target: ProviderSettlementStructuralTargetV2;
+      try {
+        target = buildHistoricalFantuanStructuralTarget({
+          source: current.context.sourceTarget,
+          rawInput: input.targetJson,
+        });
+      } catch (error) {
+        if (
+          error instanceof AccountingProviderStructuralAdapterPolicyError ||
+          error instanceof AccountingProviderSettlementStructuralTargetError
+        ) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      return {
+        version: 1,
+        targetKind: this.targetKind,
+        targetStableId: input.targetStableId,
+        targetVersion: input.targetVersion,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: hashProviderStructuralTarget(target),
+        targetJson: target as unknown as Prisma.InputJsonValue,
+      };
+    }
+    // The audited historical baseline remains unreconciled. A v1 edit could
+    // otherwise falsify its control totals instead of adding missing lines.
+    if (
+      tryRebuildHistoricalFantuanPostingProof({
+        source: current.context.sourceTarget,
+        occurredAt: current.context.originalProviderJournal.occurredAt,
+      })
+    ) {
+      throw new BadRequestException(
+        'Historical Fantuan missing components require structural v2; v1 control-total edits are forbidden',
+      );
+    }
+    if (current.baseTarget.version !== 1) {
+      throw new ConflictException(
+        'POSTED structural v2 Provider authority cannot be edited through v1',
+      );
+    }
     let target: ProviderSettlementCorrectionTargetV1;
     try {
       target = applyProviderSettlementCorrectionTargetInput({
@@ -623,6 +755,87 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     };
   }
 
+  /**
+   * Read-only structural Preview. The synthetic correction identity is local
+   * to this calculation and MUST NOT be used for READY/POST.
+   */
+  async previewStructuralDryRun(
+    targetStableIdRaw: string,
+    targetVersionRaw: number,
+  ) {
+    const targetStableId = requireTargetStableId(targetStableIdRaw);
+    const targetVersion = requireTargetVersion(targetVersionRaw);
+    const current = await this.readCurrentEffectiveTarget(
+      targetStableId,
+      targetVersion,
+    );
+    if (!current.structuralProposal) {
+      throw new ConflictException(
+        'Provider structural dry-run is unavailable for this authority',
+      );
+    }
+    const input = {
+      targetStableId,
+      targetVersion,
+      reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+      targetJson: current.structuralProposal,
+    };
+    const normalized = await this.normalizeRevisionTarget(input, this.prisma);
+    const ready = await this.resolveReadyTarget(
+      { ...input, targetJson: normalized.targetJson },
+      this.prisma,
+    );
+    let preview: ReturnType<typeof buildPostedFinancialCorrectionPreviewPlan>;
+    try {
+      preview = buildPostedFinancialCorrectionPreviewPlan({
+        correctionStableId: `dry-run:${targetStableId}:r${targetVersion}`,
+        targetKind: this.targetKind,
+        targetStableId,
+        targetVersion,
+        reasonCode: AccountingPostedCorrectionReasonCode.MISSING_COMPONENT,
+        strategy: ready.strategy,
+        baseAuthoritySchema: ready.baseAuthoritySchema,
+        baseAuthorityHash: ready.baseAuthorityHash,
+        targetAuthoritySchema: ready.targetAuthoritySchema,
+        targetAuthorityHash: ready.targetAuthorityHash,
+        ...(ready.schemaTransition
+          ? { schemaTransition: ready.schemaTransition }
+          : {}),
+        currency: ready.currency,
+        originalJournals: ready.originalJournals,
+        priorCorrectionJournals: [],
+        targetJournals: ready.targetJournals,
+      });
+    } catch (error) {
+      if (error instanceof AccountingPostedFinancialCorrectionPolicyError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+    if (preview.status !== 'READY') {
+      throw new ConflictException(
+        'Provider structural dry-run has no financially effective correction',
+      );
+    }
+    return {
+      version: 1 as const,
+      status: preview.status,
+      dryRunOnly: true as const,
+      usableForReadyOrPost: false as const,
+      documentStableId: targetStableId,
+      documentRevision: targetVersion,
+      baseAuthoritySchema: ready.baseAuthoritySchema,
+      baseAuthorityHash: ready.baseAuthorityHash,
+      targetAuthoritySchema: ready.targetAuthoritySchema,
+      targetAuthorityHash: ready.targetAuthorityHash,
+      schemaTransition: ready.schemaTransition ?? null,
+      deltaPosting: preview.deltaPosting,
+      originalJournalSetHash: preview.originalJournalSet.journalSetHash,
+      targetJournalSetHash: preview.targetJournalSet.journalSetHash,
+      // Synthetic Case identity means its planHash is intentionally omitted.
+    };
+  }
+
   async resolveReadyTarget(
     input: AccountingPostedCorrectionOwnerTargetInputV1,
     db: AccountingPostedCorrectionOwnerDbClient,
@@ -640,6 +853,99 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       input.targetVersion,
       db,
     );
+    if (jsonRecord(input.targetJson).version === 2) {
+      if (
+        input.reasonCode !==
+        AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
+      ) {
+        throw new BadRequestException(
+          'historical Fantuan structural additions require reasonCode MISSING_COMPONENT',
+        );
+      }
+      if (
+        current.baseAuthorityHash !==
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
+        !tryRebuildHistoricalFantuanPostingProof({
+          source: current.context.sourceTarget,
+          occurredAt: current.context.originalProviderJournal.occurredAt,
+        })
+      ) {
+        throw new ConflictException(
+          'structural v2 corrections require an audited, uncorrected historical Fantuan baseline',
+        );
+      }
+      let target: ProviderSettlementStructuralTargetV2;
+      try {
+        target = normalizeProviderStructuralTarget(
+          input.targetJson as ProviderSettlementStructuralTargetV2,
+        );
+        assertHistoricalFantuanStructuralTarget(
+          current.context.sourceTarget,
+          target,
+        );
+      } catch (error) {
+        if (
+          error instanceof AccountingProviderStructuralAdapterPolicyError ||
+          error instanceof AccountingProviderSettlementStructuralTargetError
+        ) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
+      const targetJournal = this.buildTargetProviderJournal(
+        structuralTargetAsSettlementView(target),
+        current.context,
+      );
+      await this.assertTargetDimensions(targetJournal, db);
+      return {
+        version: 1,
+        targetKind: this.targetKind,
+        targetStableId: input.targetStableId,
+        targetVersion: input.targetVersion,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthorityHash: hashProviderStructuralTarget(target),
+        targetJson: target as unknown as Prisma.InputJsonValue,
+        strategy: AccountingPostedCorrectionStrategy.DELTA,
+        baseAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+        baseAuthorityHash: current.baseAuthorityHash,
+        schemaTransition: {
+          version: 1 as const,
+          fromSchema: current.baseAuthoritySchema,
+          fromHash: current.baseAuthorityHash,
+          toSchema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+          equivalentBaseHash: hashProviderStructuralTarget(
+            upgradeProviderCorrectionTargetToV2(current.context.sourceTarget),
+          ),
+        },
+        currency: target.document.currency,
+        originalJournals: current.context.originalJournals,
+        targetJournals: [
+          targetJournal,
+          ...current.context.targetFrozenReversalJournals,
+        ],
+      };
+    }
+    // The audited historical baseline remains unreconciled. A v1 edit could
+    // otherwise falsify its control totals instead of adding missing lines.
+    if (
+      tryRebuildHistoricalFantuanPostingProof({
+        source: current.context.sourceTarget,
+        occurredAt: current.context.originalProviderJournal.occurredAt,
+      })
+    ) {
+      throw new ConflictException(
+        'Historical Fantuan missing components require structural v2; v1 control-total edits are forbidden',
+      );
+    }
+    if (current.baseTarget.version !== 1) {
+      throw new ConflictException(
+        'POSTED structural v2 Provider authority cannot be edited through v1',
+      );
+    }
     let target: ProviderSettlementCorrectionTargetV1;
     try {
       target = normalizeProviderSettlementCorrectionTarget(
@@ -694,21 +1000,28 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     input: AccountingPostedCorrectionOwnerActivationInputV1,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    if (
-      input.targetAuthoritySchema !==
-      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
-    ) {
+    const target =
+      input.targetAuthoritySchema ===
+      ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA
+        ? normalizeProviderStructuralTarget(
+            input.targetJson as ProviderSettlementStructuralTargetV2,
+          )
+        : input.targetAuthoritySchema ===
+            ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
+          ? normalizeProviderSettlementCorrectionTarget(
+              input.targetJson as ProviderSettlementCorrectionTargetV1,
+            )
+          : null;
+    if (!target) {
       throw new ConflictException(
         'Provider correction activation received an unexpected target schema',
       );
     }
-    const target = normalizeProviderSettlementCorrectionTarget(
-      input.targetJson as ProviderSettlementCorrectionTargetV1,
-    );
-    if (
-      hashProviderSettlementCorrectionTarget(target) !==
-      input.targetAuthorityHash
-    ) {
+    const actualHash =
+      target.version === 2
+        ? hashProviderStructuralTarget(target)
+        : hashProviderSettlementCorrectionTarget(target);
+    if (actualHash !== input.targetAuthorityHash) {
       throw new ConflictException(
         'Provider correction activation target hash changed before POSTED',
       );
@@ -719,6 +1032,14 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     ) {
       throw new ConflictException(
         'Provider correction activation target identity changed before POSTED',
+      );
+    }
+    // SC-C now reads v1/v2 persisted authorities, but SC-D must deliver the
+    // operator-safe v2 editor and controlled production verification before
+    // this irreversible POST gate is deliberately enabled.
+    if (target.version === 2) {
+      throw new ConflictException(
+        'Provider structural v2 POST remains gated until controlled production verification is authorized',
       );
     }
     const sourceDocument =
@@ -760,36 +1081,51 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       return {
         context,
         baseTarget: context.sourceTarget,
+        baseAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
         baseAuthorityHash: hashProviderSettlementCorrectionTarget(
           context.sourceTarget,
         ),
       };
     }
-    if (
-      latest.targetAuthoritySchema !==
-      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
-    ) {
+    let authority: ReturnType<typeof readProviderCurrentAuthority>;
+    try {
+      authority = readProviderCurrentAuthority({
+        schema: latest.targetAuthoritySchema,
+        targetJson: latest.targetJson,
+        expectedHash: latest.targetAuthorityHash,
+      });
+    } catch (error) {
       throw new ConflictException(
-        'latest POSTED Provider correction is missing typed target authority',
+        'latest POSTED Provider correction typed authority is invalid: ' +
+          (error instanceof Error ? error.message : String(error)),
       );
     }
-
-    const baseTarget = normalizeProviderSettlementCorrectionTarget(
-      latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
-    );
-    assertSameTargetStructure(context.sourceTarget, baseTarget);
-    if (
-      hashProviderSettlementCorrectionTarget(baseTarget) !==
-      latest.targetAuthorityHash
-    ) {
+    if (!sameProviderEnvelope(context.sourceTarget, authority.target)) {
       throw new ConflictException(
-        'latest POSTED Provider correction target hash is inconsistent',
+        'latest POSTED Provider correction changed frozen Provider authority',
       );
+    }
+    if (authority.target.version === 1) {
+      assertSameTargetStructure(context.sourceTarget, authority.target);
+    } else {
+      try {
+        assertHistoricalFantuanStructuralTarget(
+          context.sourceTarget,
+          authority.target,
+        );
+      } catch (error) {
+        throw new ConflictException(
+          'latest POSTED structural Provider authority is invalid: ' +
+            (error instanceof Error ? error.message : String(error)),
+        );
+      }
     }
     return {
       context,
-      baseTarget,
-      baseAuthorityHash: latest.targetAuthorityHash,
+      baseTarget: authority.target,
+      baseAuthoritySchema: authority.schema,
+      baseAuthorityHash: authority.hash,
     };
   }
 
@@ -887,10 +1223,22 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       groupAuthority,
       sourcePostingAuthorityHash,
     });
-    const rebuiltOriginalJournal = this.buildProviderJournalForTarget(
-      sourceTarget,
-      originalProviderJournal.occurredAt,
-    );
+    // Some historical Fantuan Statements were posted before the missing-fee
+    // control reconciliation guard was tightened. Typed CREATE authority and
+    // the persisted original Journal hash are verified above; reconstruct
+    // their immutable posting vector using simulated controls only when the
+    // narrowly allowed two-control mismatch pattern is proven. This never
+    // makes a corrected target READY or alters source/Human Review authority.
+    const historicalProof = tryRebuildHistoricalFantuanPostingProof({
+      source: sourceTarget,
+      occurredAt: originalProviderJournal.occurredAt,
+    });
+    const rebuiltOriginalJournal =
+      historicalProof ??
+      this.buildProviderJournalForTarget(
+        sourceTarget,
+        originalProviderJournal.occurredAt,
+      );
 
     const reversalJournals: JournalRow[] = [];
     for (const anchor of groupAuthority.historicalReversalAnchors) {
