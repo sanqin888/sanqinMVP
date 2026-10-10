@@ -103,29 +103,11 @@ describe('AccountingProviderSettlementCorrectionService', () => {
   });
 
   it('rejects dry-run on active Provider Correction Cases', async () => {
-    const { service, prisma, adapter } = makeService();
-    prisma.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
-      documentStableId: 'provider_doc_1',
-      revision: 1,
-      provider: 'FANTUAN',
-      documentType: 'STATEMENT',
-      storeStableId: '4750_Yonge_Street',
-      periodStart: new Date('2026-09-01T00:00:00.000Z'),
-      periodEnd: new Date('2026-09-30T00:00:00.000Z'),
-      currency: 'CAD',
-    });
-    prisma.accountingCorrectionCase.findMany.mockResolvedValue([
-      {
-        correctionStableId: 'case_active',
-        status: 'DRAFT',
-        revisions: [],
-        journalOutputs: [],
-      },
-    ]);
-    adapter.readCurrentEffectiveTarget.mockResolvedValue({
-      targetAuthorityHash: sha('a'),
-      draftInput: null,
-    });
+    const { service, adapter } = makeService();
+    jest.spyOn(service, 'readRecord').mockResolvedValue({
+      ...currentRecord,
+      corrections: [{ status: 'DRAFT' }],
+    } as never);
     await expect(
       service.previewStructuralDryRun('provider_doc_1'),
     ).rejects.toThrow('active correction Case');
