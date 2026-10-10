@@ -300,6 +300,18 @@ class OfflineOperatorTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 operator.inspect_offline_operator_incident(root, OLD, NEW)
 
+    def test_corrupt_active_manifest_cannot_masquerade_as_exchanged(self):
+        with fixture() as folder:
+            root = Path(folder)
+            with self.assertRaises(operator.InjectedStop):
+                activate(root, stop_at="after_journal")
+            active = root / "live" / "runtime" / operator.MANIFEST
+            manifest_data = json.loads(active.read_text())
+            manifest_data["sourceSha"] = "f" * 40
+            active.write_text(json.dumps(manifest_data))
+            with self.assertRaises(ValueError):
+                operator.inspect_offline_operator_incident(root, OLD, NEW)
+
     def test_no_production_root_or_service_interface(self):
         for forbidden in ("deploy", "rollback", "production_install", "main"):
             self.assertFalse(hasattr(operator, forbidden))

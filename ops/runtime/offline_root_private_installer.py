@@ -471,20 +471,27 @@ def inspect_offline_operator_incident(root: Path, old_sha: str,
     _require(previous.exists() != candidate.exists(), "ambiguous recovery slots")
     name = "previous" if previous.exists() else "candidate"
     other = previous if previous.exists() else candidate
-    active_sha = new_sha if name == "previous" else None
-    if name == "candidate":
-        try:
-            _source_tree(root / "live" / "runtime", with_dynamic=True, sha=old_sha)
-            _source_tree(other, with_dynamic=True, sha=new_sha)
-            location, active_sha = "before_exchange", old_sha
-        except OperatorHandoffBlocked:
-            _source_tree(root / "live" / "runtime", with_dynamic=True, sha=new_sha)
-            _source_tree(other, with_dynamic=True, sha=old_sha)
-            location, active_sha = "after_exchange", new_sha
-    else:
+    # Determine the claimed version from the installed Manifest first, then
+    # verify the entire tree against that exact identity. Never infer an
+    # exchange by catching a validation error (which may mean corruption).
+    active_manifest = json.loads(_read(
+        root / "live" / "runtime" / MANIFEST, max_bytes=MAX_MANIFEST))
+    _require(isinstance(active_manifest, dict), "active manifest invalid")
+    active_sha = active_manifest.get("sourceSha")
+    if name == "candidate" and active_sha == old_sha:
+        _source_tree(root / "live" / "runtime", with_dynamic=True, sha=old_sha)
+        _source_tree(other, with_dynamic=True, sha=new_sha)
+        location = "before_exchange"
+    elif name == "candidate" and active_sha == new_sha:
+        _source_tree(root / "live" / "runtime", with_dynamic=True, sha=new_sha)
+        _source_tree(other, with_dynamic=True, sha=old_sha)
+        location = "after_exchange"
+    elif name == "previous" and active_sha == new_sha:
         _source_tree(root / "live" / "runtime", with_dynamic=True, sha=new_sha)
         _source_tree(other, with_dynamic=True, sha=old_sha)
         location = "previous_retained"
+    else:
+        raise OperatorHandoffBlocked("unrecognized active version or recovery slot")
     _, observed = _source_tree(root / "live" / "runtime", with_dynamic=True, sha=active_sha)
     _, observed_other = _source_tree(other, with_dynamic=True,
                                      sha=old_sha if active_sha == new_sha else new_sha)
