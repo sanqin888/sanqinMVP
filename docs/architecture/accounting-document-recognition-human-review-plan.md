@@ -2146,6 +2146,29 @@ neither authorizes production posting nor demonstrates production ledger parity.
 Full GitHub Actions validation and controlled production tests are separate
 subsequent gates. No local test/lint/build was run under AGENTS.md.
 
+### 16.13G SC-E2C — Provider correction Sales attribution (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO POST ENABLEMENT**.
+
+Accounting Sales continues to use canonical Journal money and its existing
+source-fact whitelist for original statement, order, and external-sale facts.
+Only separately selected, POSTED Provider Settlement correction Journal outputs
+are eligible as additional canonical Sales facts; generic Expense/Payroll
+corrections cannot enter via their account IDs. The new Accounting-owned reader
+validates the Correction Case, output Journal source and revision, immutable
+Provider document identity/store, and presence of the original canonical
+Provider Journal. A correction output is attributed to its statement's
+provider/channel and existing PROVIDER_STATEMENT source bucket; DELTA components
+are aggregated without replaying full original statement sales.
+
+This does not change the Uber/Fantuan Order Sales or coverage cutover model.
+The Platform Analytics effective-line correction projection remains unchanged.
+Provider v2 POST is still blocked separately. No schema/migration, Journal
+writer, production data, new dependency, or cross-context edge is added.
+Regression fixtures cover an advertising/tax/pending DELTA without duplicating
+gross sales, and failure on mismatched correction anchors. Tests are pending
+CI after user review under AGENTS.md.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:
