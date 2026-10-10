@@ -430,6 +430,20 @@ describe('posted financial correction policy', () => {
         schemaTransition: transition,
       }),
     ).toThrow('same-schema corrections must not declare');
+    expect(() =>
+      buildPostedFinancialCorrectionPreviewPlan({
+        ...base,
+        targetAuthoritySchema: transition.toSchema,
+        schemaTransition: { ...transition, toSchema: 'unrelated.schema.v2' },
+      }),
+    ).toThrow('verified owner schema transition');
+    expect(() =>
+      buildPostedFinancialCorrectionPreviewPlan({
+        ...base,
+        targetAuthoritySchema: transition.toSchema,
+        schemaTransition: { ...transition, equivalentBaseHash: 'not-a-hash' },
+      }),
+    ).toThrow('verified owner schema transition');
   });
 
   it('fails closed on unbalanced or duplicate posted Journal authority', () => {
