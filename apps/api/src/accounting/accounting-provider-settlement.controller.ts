@@ -82,6 +82,15 @@ export class AccountingProviderSettlementController {
     return this.providerSettlementCorrection.readRecord(documentStableId);
   }
 
+  @Get('journal/provider-settlement/:documentStableId/correction/dry-run')
+  dryRunProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+  ) {
+    return this.providerSettlementCorrection.previewStructuralDryRun(
+      documentStableId,
+    );
+  }
+
   @Post('journal/provider-settlement/:documentStableId/corrections')
   createPostedProviderCorrection(
     @Param('documentStableId') documentStableId: string,

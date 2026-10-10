@@ -2169,6 +2169,14 @@ Regression fixtures cover an advertising/tax/pending DELTA without duplicating
 gross sales, and failure on mismatched correction anchors. Tests are pending
 CI after user review under AGENTS.md.
 
+### 16.13H SC-E2D-2 — Provider structural correction read-only dry-run (2026-10-09)
+
+State: **LOCAL IMPLEMENTED / REVIEW PENDING / POST STILL BLOCKED**.
+
+Provider Correction now exposes a GET-only `.../:documentStableId/correction/dry-run` endpoint. It checks the existing read-only Provider authority/history, rejects active DRAFT/READY cases, derives the audited structural v2 proposal entirely from the Provider owner, runs its existing revision normalization and ready-target verification, and delegates the actual delta computation to Common A3 Preview policy. It returns component-level delta, schema-transition evidence and journal-set hashes, with `dryRunOnly=true` and `usableForReadyOrPost=false`. Synthetic calculation identity is internal only; no formal Case `planHash` is returned. Creating a real Case still requires fresh Preview and READY verification. Unsupported providers or unchanged authorities fail closed.
+
+No new Journal writer, Case persistence, migration, dependency, production data edit, or v2 POST enablement. Service/architecture tests added; GitHub CI pending user review. This does **not** substitute for controlled production POST authorization.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:

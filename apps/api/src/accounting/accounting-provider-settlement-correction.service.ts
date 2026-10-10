@@ -420,6 +420,30 @@ export class AccountingProviderSettlementCorrectionService {
     return this.readRecord(documentStableId);
   }
 
+  async previewStructuralDryRun(documentStableIdRaw: string) {
+    const record = await this.readRecord(documentStableIdRaw);
+    if (record.status !== 'READY') {
+      throw new ConflictException(
+        'Provider structural dry-run requires verified current authority',
+      );
+    }
+    if (
+      record.corrections.some(
+        (item) =>
+          item.status === AccountingPostedCorrectionStatus.DRAFT ||
+          item.status === AccountingPostedCorrectionStatus.READY,
+      )
+    ) {
+      throw new ConflictException(
+        'Provider structural dry-run cannot bypass an active correction Case',
+      );
+    }
+    return this.adapter.previewStructuralDryRun(
+      record.document.documentStableId,
+      record.document.revision,
+    );
+  }
+
   async previewCase(
     documentStableIdRaw: string,
     correctionStableIdRaw: string,
