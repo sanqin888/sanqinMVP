@@ -228,7 +228,10 @@ export class AccountingSalesAnalyticsService {
       fromInclusive: range.fromInclusive,
       toExclusive: range.toExclusive,
     });
-    const journals: JournalRow[] = [...baseJournals, ...correctionJournals].sort(
+    const journals: JournalRow[] = [
+      ...baseJournals,
+      ...correctionJournals,
+    ].sort(
       (a, b) =>
         a.occurredAt.getTime() - b.occurredAt.getTime() ||
         a.entryStableId.localeCompare(b.entryStableId),
@@ -238,8 +241,9 @@ export class AccountingSalesAnalyticsService {
     const providerDocumentIds = journals.flatMap((journal) =>
       journal.correctionDocumentStableId
         ? [journal.correctionDocumentStableId]
-        : journal.sourceFactType === 'accounting.provider_financial_document.v1' &&
-            journal.sourceFactStableId
+        : journal.sourceFactType ===
+            'accounting.provider_financial_document.v1' &&
+          journal.sourceFactStableId
           ? [journal.sourceFactStableId]
           : [],
     );
@@ -565,48 +569,50 @@ export class AccountingSalesAnalyticsService {
     fromInclusive: Date;
     toExclusive: Date;
   }): Promise<JournalRow[]> {
-    const outputs = await this.prisma.accountingCorrectionJournalOutput.findMany({
-      where: {
-        correctionCase: {
-          status: AccountingPostedCorrectionStatus.POSTED,
-          targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
-        },
-        journalEntry: {
-          deletedAt: null,
-          storeStableId: params.storeStableId,
-          occurredAt: { gte: params.fromInclusive, lt: params.toExclusive },
-        },
-      },
-      select: {
-        correctionCase: {
-          select: {
-            correctionStableId: true,
-            targetStableId: true,
-            targetVersion: true,
-            readyRevision: { select: { revision: true } },
+    const outputs =
+      await this.prisma.accountingCorrectionJournalOutput.findMany({
+        where: {
+          correctionCase: {
+            status: AccountingPostedCorrectionStatus.POSTED,
+            targetKind:
+              AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+          },
+          journalEntry: {
+            deletedAt: null,
+            storeStableId: params.storeStableId,
+            occurredAt: { gte: params.fromInclusive, lt: params.toExclusive },
           },
         },
-        journalEntry: {
-          select: {
-            entryStableId: true,
-            source: true,
-            sourceFactType: true,
-            sourceFactStableId: true,
-            sourceFactVersion: true,
-            storeStableId: true,
-            occurredAt: true,
-            lines: {
-              select: {
-                debitCents: true,
-                creditCents: true,
-                account: { select: { accountStableId: true } },
+        select: {
+          correctionCase: {
+            select: {
+              correctionStableId: true,
+              targetStableId: true,
+              targetVersion: true,
+              readyRevision: { select: { revision: true } },
+            },
+          },
+          journalEntry: {
+            select: {
+              entryStableId: true,
+              source: true,
+              sourceFactType: true,
+              sourceFactStableId: true,
+              sourceFactVersion: true,
+              storeStableId: true,
+              occurredAt: true,
+              lines: {
+                select: {
+                  debitCents: true,
+                  creditCents: true,
+                  account: { select: { accountStableId: true } },
+                },
+                orderBy: { lineNo: 'asc' },
               },
-              orderBy: { lineNo: 'asc' },
             },
           },
         },
-      },
-    });
+      });
     if (outputs.length === 0) return [];
 
     const documentIds = Array.from(
@@ -634,8 +640,7 @@ export class AccountingSalesAnalyticsService {
     });
     const originalCounts = new Map<string, number>();
     for (const original of originalJournals) {
-      const key =
-        `${original.sourceFactStableId}:${original.sourceFactVersion}:${original.storeStableId}`;
+      const key = `${original.sourceFactStableId}:${original.sourceFactVersion}:${original.storeStableId}`;
       originalCounts.set(key, (originalCounts.get(key) ?? 0) + 1);
     }
     return outputs.map((output) => {
