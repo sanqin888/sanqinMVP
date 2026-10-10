@@ -101,7 +101,7 @@ class U2PreparationTests(unittest.TestCase):
                 u2.ensure_private_parent(shared)
             alias = base / "alias"
             alias.symlink_to(shared, target_is_directory=True)
-            with self.assertRaisesRegex(u2.PreparationBlocked, "symlinked"):
+            with self.assertRaisesRegex(u2.PreparationBlocked, "unsafe preparation directory ancestor"):
                 u2.ensure_private_parent(alias)
 
     def test_no_install_or_command_authority(self):
