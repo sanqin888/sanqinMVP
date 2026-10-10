@@ -119,6 +119,15 @@ and further policy negative cases. No schema/migration, dependency, Journal
 writer, production data or POST gate changes. CI and controlled verification
 remain pending, per §16.13F of the Accounting correction plan.
 
+## 2026-10-09 — SC-E2C Provider correction Analytics attribution
+
+**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PR. Accounting
+Sales includes only verified POSTED Provider Settlement correction Journal
+outputs via their Case → Journal anchor; attribution retains existing
+Provider Statement bucket and owner/store verification. Sales orders and
+Provider coverage rules remain unchanged. Provider v2 POST stays blocked.
+No migration, new dependency, or Journal writer change. Tests await CI.
+
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 
 **PR / SHA:** local branch `feat/accounting-correction-e1-clover-bridge`; baseline
