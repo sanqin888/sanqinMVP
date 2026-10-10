@@ -111,6 +111,14 @@ production write. GitHub Actions validation and controlled verification remain
 pending separately. Other owners need their own validated equivalence proof
 before electing into the generic transition contract.
 
+## 2026-10-09 — SC-E2A cross-schema lifecycle regression
+
+**State:** LOCAL REVIEW / NO REMOTE PR. Adds service-level Preview → READY,
+frozen cross-schema planHash, stale bridge rejection before READY or activation,
+and further policy negative cases. No schema/migration, dependency, Journal
+writer, production data or POST gate changes. CI and controlled verification
+remain pending, per §16.13F of the Accounting correction plan.
+
 ## 2026-10-07 — Accounting Posted Financial Correction E1 Clover ordered compatibility bridge
 
 **PR / SHA:** local branch `feat/accounting-correction-e1-clover-bridge`; baseline

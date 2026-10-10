@@ -2130,6 +2130,22 @@ end-to-end DRAFT → Preview → READY, stale-source and concurrent replay behav
 and controlled production Journal / Analytics parity. Local lint/test/build
 were not executed under AGENTS.md; GitHub Actions remains the remote gate.
 
+### 16.13F SC-E2A — cross-schema lifecycle hardening (2026-10-09)
+
+State: **LOCAL TEST HARDENING / REVIEW PENDING / NO POST ENABLEMENT**.
+The existing Common A3 lifecycle is now covered at the service boundary for
+owner-attested cross-schema DRAFT Preview → READY, immutable bridge inclusion
+in the frozen planHash, and refusal of a modified owner bridge both when
+marking READY and when attempting to execute a formerly READY case. Policy
+negative cases also cover malformed evidence and mismatched target schemas.
+All existing owner-specific equivalence checks remain in their owning adapter;
+the generic service is not permitted to manufacture a bridge.
+
+The Provider v2 activation POST conflict remains unconditional. This phase
+neither authorizes production posting nor demonstrates production ledger parity.
+Full GitHub Actions validation and controlled production tests are separate
+subsequent gates. No local test/lint/build was run under AGENTS.md.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:
