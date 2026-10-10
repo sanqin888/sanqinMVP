@@ -90,9 +90,9 @@ describe('AccountingProviderSettlementCorrectionService', () => {
       usableForReadyOrPost: false,
     };
     adapter.previewStructuralDryRun.mockResolvedValue(preview);
-    await expect(service.previewStructuralDryRun('provider_doc_1')).resolves.toBe(
-      preview,
-    );
+    await expect(
+      service.previewStructuralDryRun('provider_doc_1'),
+    ).resolves.toBe(preview);
     expect(adapter.previewStructuralDryRun).toHaveBeenCalledWith(
       'provider_doc_1',
       1,
