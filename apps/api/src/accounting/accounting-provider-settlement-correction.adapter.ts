@@ -1058,7 +1058,9 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       );
       if (
         current.baseAuthorityHash !==
-          hashProviderSettlementCorrectionTarget(current.context.sourceTarget) ||
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
         !tryRebuildHistoricalFantuanPostingProof({
           source: current.context.sourceTarget,
           occurredAt: current.context.originalProviderJournal.occurredAt,

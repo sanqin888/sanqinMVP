@@ -41,9 +41,7 @@ import {
   hashProviderStructuralTarget,
   upgradeProviderCorrectionTargetToV2,
 } from './accounting-provider-settlement-structural-target.policy';
-import {
-  normalizeProviderSettlementCorrectionTarget,
-} from './accounting-provider-settlement-correction-target.policy';
+import { normalizeProviderSettlementCorrectionTarget } from './accounting-provider-settlement-correction-target.policy';
 
 type ProviderLine = {
   lineStableId: string;
@@ -1234,7 +1232,9 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
       fixture.db as never,
     );
     const target = upgradeProviderCorrectionTargetToV2(
-      normalizeProviderSettlementCorrectionTarget(normalized.targetJson as never),
+      normalizeProviderSettlementCorrectionTarget(
+        normalized.targetJson as never,
+      ),
     );
     await expect(
       adapter.activateTargetInTx(
