@@ -84,7 +84,7 @@ describe('Provider Settlement posted correction adapter architecture', () => {
       'ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA',
     );
     expect(adapterSource).toContain(
-      'Provider structural v2 POST remains gated until controlled production verification is authorized',
+      'Provider structural v2 POST requires audited MISSING_COMPONENT DELTA authority',
     );
   });
 
@@ -99,7 +99,7 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     expect(adapterSource).toContain('tryRebuildHistoricalFantuanPostingProof');
     expect(providerFacadeSource).toContain('structuralProposal');
     expect(adapterSource).toContain(
-      'Provider structural v2 POST remains gated until controlled production verification is authorized',
+      'Provider structural v2 POST requires audited MISSING_COMPONENT DELTA authority',
     );
   });
 
@@ -129,7 +129,7 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     expect(providerFacadeSource).toContain('readProviderCurrentAuthority');
     expect(analyticsSource).toContain('readProviderCurrentAuthority');
     expect(adapterSource).toContain(
-      'Provider structural v2 POST remains gated until controlled production verification is authorized',
+      'Provider structural v2 POST requires audited MISSING_COMPONENT DELTA authority',
     );
   });
 
