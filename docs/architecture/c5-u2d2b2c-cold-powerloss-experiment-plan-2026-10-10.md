@@ -2,6 +2,8 @@
 
 **Status: REVIEW-ONLY LOCAL IMPLEMENTATION / NOT EXECUTED / FORCED POWER-OFF NOT AUTHORIZED / PRODUCTION NO-GO.**
 
+> **Prospective change only (2026-10-11):** [Abort & Clean Reinstall / Recovery Kit amendment](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) proposes replacing this three-checkpoint forensic experiment as the *default* acceptance path with a fail-closed, externally sourced clean-reinstall drill. Until the amended acceptance criteria are explicitly approved, this plan remains the existing unexecuted evidence gate. Nothing in the amendment makes virtual power-loss `VERIFIED` or authorizes VM disk/snapshot deletion.
+
 This plan continues the 2B2-B root-isolated work and the C1 archived evidence gate. It does **not** approve execution of a root worker, stopping a guest or altering production. User review is required before any remote PR; further explicit per-experiment authorization is required before host-side power loss.
 
 ## Source and architecture boundary

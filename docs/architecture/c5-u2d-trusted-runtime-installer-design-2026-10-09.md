@@ -4,6 +4,10 @@
 **日期：2026-10-09 America/Toronto（生产证据为 2026-10-10 UTC）**  
 **分支：`audit/c5-u2c-runtime-live-consumers`（沿用尚未提交的 U2C 证据文档，不混入生产写入）。**
 
+> **2026-10-11 proposed architecture amendment (not yet approved or implemented):**
+> [C5-U2D Abort & Clean Reinstall / Recovery Kit](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)
+> proposes abandoning an interrupted Runtime installation and starting a new independently trusted reinstall; mandatory pre-install encrypted off-VM Recovery Kit with remote readback is primary, enriched daily config backup is supplementary. This dated document retains its original design/evidence state. Do **not** interpret the proposal as production authorization or a passed cold-power-loss test.
+
 ## 0. 目标、已确认事实与设计授权边界
 
 为**已存在的**真实目录 `/opt/sanq/runtime` 设计一次由操作员独立批准、可核验、无双重 rename 空窗、可停机调查与人工恢复的 Runtime **源文件版本更新**。不是首次安装、App 镜像部署、数据库迁移或无人工监督的自动恢复。
