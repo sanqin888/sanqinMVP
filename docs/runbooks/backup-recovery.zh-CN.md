@@ -1,5 +1,7 @@
 # SanQ 备份恢复手册
 
+> **2026-10-11 未来方案（尚未实施）：** [C5-U2D Abort & Clean Reinstall / Recovery Kit](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 提议在每次 Runtime 安装/更新前强制上传并远端读回一份加密 Recovery Kit，同时扩充每日定时配置备份至 root-only Release State 与 C4 marker。**当前生产每日配置包仍只有 `.env` + `docker-compose.yml`；不可按新方案已上线来操作。** 修改 root 辅助程序、sudoers、备份服务或生产备份目标均需单独审阅和授权。
+
 > **C4-P2-C 生产状态（2026-10-09 UTC）：**已按独立授权完成方案 B 路径切换：
 > Runtime = `/opt/sanq/runtime`，Uploads = `/srv/sanq/uploads`，
 > Backups = `/srv/sanq/backups`。备份 service 仍以 ubuntu 用户运行，
