@@ -37,6 +37,13 @@ import {
   CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
 } from './accounting-provider-fee-clearing.contract';
 import { ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS } from './accounting-provider-accounts';
+import {
+  hashProviderStructuralTarget,
+  upgradeProviderCorrectionTargetToV2,
+} from './accounting-provider-settlement-structural-target.policy';
+import {
+  normalizeProviderSettlementCorrectionTarget,
+} from './accounting-provider-settlement-correction-target.policy';
 
 type ProviderLine = {
   lineStableId: string;
@@ -1202,6 +1209,58 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
         (line) => line.lineStableId === 'line-sales',
       )?.amountCents,
     ).toBe(10_100);
+  });
+
+  it('fails closed for structural v2 without approved reason and DELTA strategy', async () => {
+    const fixture = makeFixture();
+    const adapter = new AccountingProviderSettlementCorrectionAdapter(
+      fixture.db as never,
+    );
+    const current = await adapter.readCurrentEffectiveTarget(DOCUMENT, 1);
+    const normalized = await adapter.normalizeRevisionTarget(
+      {
+        targetStableId: DOCUMENT,
+        targetVersion: 1,
+        reasonCode: AccountingPostedCorrectionReasonCode.EXTRACTION_ERROR,
+        targetJson: {
+          ...current.draftInput,
+          lines: current.draftInput.lines.map((line) =>
+            line.lineStableId === 'line-sales'
+              ? { ...line, rawName: 'Corrected Sales' }
+              : line,
+          ),
+        },
+      },
+      fixture.db as never,
+    );
+    const target = upgradeProviderCorrectionTargetToV2(
+      normalizeProviderSettlementCorrectionTarget(normalized.targetJson as never),
+    );
+    await expect(
+      adapter.activateTargetInTx(
+        {
+          correctionStableId: 'correction_provider_unapproved',
+          correctionRevisionStableId: 'correction_revision_unapproved',
+          correctionRevision: 1,
+          targetStableId: DOCUMENT,
+          targetVersion: 1,
+          targetAuthoritySchema:
+            'accounting.provider-settlement-correction-target.v2',
+          targetAuthorityHash: hashProviderStructuralTarget(target),
+          targetJson: target as never,
+          plan: {
+            authority: {
+              strategy: 'DELTA',
+              reasonCode: AccountingPostedCorrectionReasonCode.EXTRACTION_ERROR,
+              targetAuthoritySchema:
+                'accounting.provider-settlement-correction-target.v2',
+              targetAuthorityHash: hashProviderStructuralTarget(target),
+            },
+          } as never,
+        },
+        fixture.db as never,
+      ),
+    ).rejects.toThrow('requires audited MISSING_COMPONENT DELTA authority');
   });
 
   it('treats the POSTED Correction Case as activation authority without mutating Provider source rows', async () => {
