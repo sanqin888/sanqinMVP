@@ -1,5 +1,7 @@
 # SanQ backup and recovery runbook
 
+> **2026-10-11 PROPOSAL ONLY / NOT DEPLOYED:** [C5-U2D Abort & Clean Reinstall / Recovery Kit](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) proposes a mandatory encrypted, remotely read-back pre-install Runtime Recovery Kit plus supplementary daily snapshots of root-only release state and the C4 marker. **Current production daily config archives still contain only `.env` and `docker-compose.yml`.** No new root helper, sudoers scope, backup service or production cloud change is authorized by this design note.
+
 > **Production C4-P2-C status (2026-10-09 UTC):** The separately authorized
 > runtime/data cutover is complete. Active layout: `/opt/sanq/runtime`,
 > `/srv/sanq/uploads`, `/srv/sanq/backups`; the backup service still runs as

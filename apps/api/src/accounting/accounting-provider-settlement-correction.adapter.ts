@@ -1034,13 +1034,56 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         'Provider correction activation target identity changed before POSTED',
       );
     }
-    // SC-C now reads v1/v2 persisted authorities, but SC-D must deliver the
-    // operator-safe v2 editor and controlled production verification before
-    // this irreversible POST gate is deliberately enabled.
+    // Narrow SC-E2E-B activation: only the audited, uncorrected historical
+    // Fantuan Statement with exactly two reconciled ADDs may reach POSTED.
+    // Common A3 has already rebuilt the frozen plan in this transaction.
     if (target.version === 2) {
-      throw new ConflictException(
-        'Provider structural v2 POST remains gated until controlled production verification is authorized',
+      if (
+        input.plan.authority.strategy !==
+          AccountingPostedCorrectionStrategy.DELTA ||
+        input.plan.authority.reasonCode !==
+          AccountingPostedCorrectionReasonCode.MISSING_COMPONENT ||
+        input.plan.authority.targetAuthoritySchema !==
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA ||
+        input.plan.authority.targetAuthorityHash !== input.targetAuthorityHash
+      ) {
+        throw new ConflictException(
+          'Provider structural v2 POST requires audited MISSING_COMPONENT DELTA authority',
+        );
+      }
+      const current = await this.readCurrentBusinessAuthority(
+        input.targetStableId,
+        input.targetVersion,
+        tx,
       );
+      if (
+        current.baseAuthorityHash !==
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
+        !tryRebuildHistoricalFantuanPostingProof({
+          source: current.context.sourceTarget,
+          occurredAt: current.context.originalProviderJournal.occurredAt,
+        })
+      ) {
+        throw new ConflictException(
+          'Provider structural v2 POST requires an unchanged historical Fantuan baseline',
+        );
+      }
+      try {
+        assertHistoricalFantuanStructuralTarget(
+          current.context.sourceTarget,
+          target,
+        );
+      } catch (error) {
+        if (
+          error instanceof AccountingProviderStructuralAdapterPolicyError ||
+          error instanceof AccountingProviderSettlementStructuralTargetError
+        ) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
     }
     const sourceDocument =
       await tx.accountingProviderFinancialDocument.findUnique({
