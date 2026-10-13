@@ -223,7 +223,8 @@ export const mapTerminalPaymentResponse = (
       surchargeCents,
       resultCode: resultCode || 'CANCELLED',
       failureCode: 'CLOVER_TERMINAL_CANCEL_TEXT_UNVERIFIED',
-      failureMessage: 'Non-definitive cancellation text requires reconciliation',
+      failureMessage:
+        'Non-definitive cancellation text requires reconciliation',
     };
   }
 

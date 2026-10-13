@@ -688,7 +688,7 @@ describe('TerminalPaymentService', () => {
       const finalPayment = await sale;
       expect(finalPayment.status).toBe('CANCELLED');
       expect(transactions.rows[0].status).toBe('CANCELLED');
-      expect(provider.startPayment).toHaveBeenCalledTimes(1);
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
     },
   );
 

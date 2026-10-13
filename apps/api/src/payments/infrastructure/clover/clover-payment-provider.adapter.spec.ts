@@ -525,9 +525,11 @@ describe('CloverTerminalTransport', () => {
   });
 
   it('tags only the original Sale HTTP 209 with definitive terminal cancellation evidence', async () => {
-    jest.spyOn(global, 'fetch').mockImplementation(() =>
-      Promise.resolve(new Response('{}', { status: 209 })),
-    );
+    jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 209 })),
+      );
     const transport = createTerminalTransport();
     await expect(
       transport.startPayment({

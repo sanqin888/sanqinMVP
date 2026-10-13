@@ -234,7 +234,8 @@ export class PaymentCheckoutAttemptService {
     ) {
       throw new ConflictException({
         code: 'PAYMENT_CHECKOUT_FINAL_STATUS_CONFLICT',
-        message: 'A definitive checkout result conflicts with the payment result.',
+        message:
+          'A definitive checkout result conflicts with the payment result.',
       });
     }
     if (
@@ -355,9 +356,9 @@ export class PaymentCheckoutAttemptService {
     return this.findByAttemptId(attemptId);
   }
 
-  async findPendingBenefitsReleases(afterId: string | null): Promise<
-    Array<{ id: string; attemptId: string }>
-  > {
+  async findPendingBenefitsReleases(
+    afterId: string | null,
+  ): Promise<Array<{ id: string; attemptId: string }>> {
     return this.prisma.paymentCheckoutAttempt.findMany({
       where: {
         source: 'POS_TERMINAL',

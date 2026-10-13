@@ -136,7 +136,12 @@ const createHarness = () => {
       const releaseCheckpointMatches =
         where.benefitsReleasedAt === undefined ||
         where.benefitsReleasedAt === row.benefitsReleasedAt;
-      if (!statusMatches || !idMatches || !attemptMatches || !releaseCheckpointMatches) {
+      if (
+        !statusMatches ||
+        !idMatches ||
+        !attemptMatches ||
+        !releaseCheckpointMatches
+      ) {
         return { count: 0 };
       }
       row = {
@@ -448,7 +453,10 @@ describe('PaymentCheckoutAttemptService', () => {
       currency: 'CAD',
     })
       .transitionTo('PROCESSING')
-      .applyProviderOutcome({ status: 'SUCCEEDED', providerPaymentId: 'clover-1' });
+      .applyProviderOutcome({
+        status: 'SUCCEEDED',
+        providerPaymentId: 'clover-1',
+      });
 
     await harness.service.markExternallyReversedAndRelease('attempt-1');
     await expect(
@@ -472,11 +480,18 @@ describe('PaymentCheckoutAttemptService', () => {
     const row = harness.getRow();
     if (!row) throw new Error('missing checkout row');
     row.status = 'UNKNOWN';
-    await harness.service.markDefinitiveFailureAndRelease('attempt-1', 'FAILED');
+    await harness.service.markDefinitiveFailureAndRelease(
+      'attempt-1',
+      'FAILED',
+    );
     expect(harness.getRow()?.status).toBe('UNKNOWN');
     expect(harness.getRow()?.benefitsReleasedAt).toBeNull();
-    expect(harness.paymentTenderReservations.releasePaymentTender).not.toHaveBeenCalled();
-    expect(harness.paymentCouponReservations.releasePaymentCoupons).not.toHaveBeenCalled();
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).not.toHaveBeenCalled();
   });
 
   it('reuses the persisted immutable snapshot without requoting on duplicate start', async () => {
