@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-13 America/Toronto  
 **Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
-**State:** G2-A LOCAL SOURCE FOR USER REVIEW / NO CI YET / NO ROOT PRODUCTION INSTALL / S2 DAILY BACKUP PAUSED.
+**State (2026-10-13):** G2-A MERGED AS PR #2791 (CI #7169 GREEN, dev squash SHA `154993898862a81123b8cde29506dace924c89e2`); G2-B1 LOCAL REVIEW / NO ROOT PRODUCTION INSTALL / S2 DAILY BACKUP PAUSED.
 
 ## 1. Frozen design and ownership
 
@@ -117,9 +117,9 @@ sole permission.** A standalone flock is not quiescence: existing backup,
 
 ## 5. Small, independently reviewed G2 slices
 
-**G2-A (this local change):** add a standalone historical-main immutable
-Archive verifier and focused synthetic failure tests; freeze this contract.
-**NOT** a production installer.
+**G2-A (merged):** standalone historical-main immutable Archive verifier and synthetic failure tests, PR #2791 / CI #7169 green. **NOT** a production installer.
+
+**G2-B1 (local review):** bounded, negative-only normalized maintenance evidence contract and offline regression coverage, see [G2-B1 maintenance evidence gate](./c5-g2b1-maintenance-evidence-gate-2026-10-13.md). It does not read the host, grant authority or create a true quiescence barrier.
 
 **G2-B:** trusted operator delivery, mandatory maintenance gate/read-only
 Live State detector, direct production path execution contract still disabled,
@@ -153,6 +153,4 @@ paired-image mismatch, repacked original Archive, no production capabilities.
 The previous newest-release verifier, `stage_bundle.py` consumer, 17-file
 source allowlist, app deploy and legacy lab installer are unchanged.
 
-Per `AGENTS.md` no local tests/build/lint executed; user review is required
-before remote `dev` PR. Production remains `C5-G2 NO-GO` pending G2-B..E
-and distinct operator authority.
+Per `AGENTS.md`, G2-B1 local tests/build/lint have not been executed; user review is required before its remote `dev` PR. G2-A CI has passed independently. Production remains `C5-G2 NO-GO` pending live G2-B gates, G2-C..E and distinct operator authority.
