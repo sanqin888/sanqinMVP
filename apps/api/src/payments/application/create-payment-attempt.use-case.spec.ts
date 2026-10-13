@@ -652,6 +652,71 @@ describe('TerminalPaymentService', () => {
     expect(provider.startPayment.mock.calls).toHaveLength(0);
   });
 
+  it.each(['UNKNOWN', 'RECONCILING'] as const)(
+    'accepts the original Sale HTTP 209 after POS Cancel entered %s',
+    async (uncertainStatus) => {
+      const { service, provider, transactions } = createTerminalHarness();
+      const pendingSale = deferred<PaymentProviderOutcome>();
+      const saleStarted = deferred<StartPaymentRequest>();
+      provider.startPayment.mockImplementation((request) => {
+        saleStarted.resolve(request);
+        return pendingSale.promise;
+      });
+      provider.cancelPayment.mockResolvedValue({
+        status: 'UNKNOWN',
+        failureCode: 'CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED',
+      });
+
+      const sale = service.startSale(terminalInput);
+      await saleStarted.promise;
+      const cancelled = await service.cancel(transactions.rows[0].id);
+      expect(cancelled.status).toBe('UNKNOWN');
+      if (uncertainStatus === 'RECONCILING') {
+        provider.getPaymentStatus.mockResolvedValue({
+          status: 'UNKNOWN',
+          failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+        });
+        const recovering = await service.reconcile(cancelled.id);
+        expect(recovering.status).toBe('RECONCILING');
+      }
+
+      pendingSale.resolve({
+        status: 'CANCELLED',
+        evidence: 'TERMINAL_SALE_CANCELLED',
+        resultCode: 'CLOVER_CANCELLED',
+      });
+      const finalPayment = await sale;
+      expect(finalPayment.status).toBe('CANCELLED');
+      expect(transactions.rows[0].status).toBe('CANCELLED');
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
+    },
+  );
+
+  it('keeps HOLD-protecting uncertainty for an unverified cancellation response', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const pendingSale = deferred<PaymentProviderOutcome>();
+    const saleStarted = deferred<StartPaymentRequest>();
+    provider.startPayment.mockImplementation((request) => {
+      saleStarted.resolve(request);
+      return pendingSale.promise;
+    });
+    provider.cancelPayment.mockResolvedValue({ status: 'UNKNOWN' });
+
+    const sale = service.startSale(terminalInput);
+    await saleStarted.promise;
+    await service.cancel(transactions.rows[0].id);
+    pendingSale.resolve({
+      status: 'CANCELLED',
+      evidence: 'EXECUTION',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    const observed = await sale;
+    expect(observed.status).toBe('UNKNOWN');
+    expect(observed.toSnapshot().failureCode).toBe(
+      'PAYMENT_PROVIDER_CORRELATION_MISMATCH',
+    );
+  });
+
   it('forces a PROCESSING cancel through UNKNOWN and reconciliation', async () => {
     const { service, provider, transactions } = createTerminalHarness();
     const processing = PaymentTransaction.create({

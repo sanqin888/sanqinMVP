@@ -50,7 +50,12 @@ export type PaymentProviderIdentifiers = {
   providerOrderId?: string | null;
 };
 
-export type PaymentProviderEvidence = 'EXECUTION' | 'CANONICAL';
+// A definitive HTTP 209 from the original Terminal Sale response is distinct
+// from a /device/cancel acknowledgement and from a canonical Platform read.
+export type PaymentProviderEvidence =
+  | 'EXECUTION'
+  | 'CANONICAL'
+  | 'TERMINAL_SALE_CANCELLED';
 
 export type PaymentProviderOutcome = PaymentProviderIdentifiers &
   PaymentProviderTerminalFacts & {

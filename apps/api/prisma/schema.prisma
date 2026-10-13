@@ -1369,11 +1369,14 @@ model PaymentCheckoutAttempt {
   orderStableId          String                       @unique
   expiresAt              DateTime
   finalizedAt            DateTime?
+  /// Durable checkpoint: all owner-owned benefit releases have completed.
+  benefitsReleasedAt     DateTime?
   createdAt              DateTime                     @default(now())
   updatedAt              DateTime                     @updatedAt
 
   @@index([storeId, status])
   @@index([status, expiresAt])
+  @@index([source, status, benefitsReleasedAt])
 }
 
 enum PaymentCheckoutAttemptStatus {
