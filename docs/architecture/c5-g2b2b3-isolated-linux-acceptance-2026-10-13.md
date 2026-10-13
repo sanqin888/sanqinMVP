@@ -132,4 +132,8 @@ The final three flags **never become true in B2B6**, even if individual disposab
 
 Neither grants a Runtime write. Original old+target Archives, off-VM create-only encrypted Recovery Kit with decrypt/readback, and fresh clean-reinstall after ABORT remain separate **G2-B3/C** gates; S2 stays paused.
 
-**Next handoff:** review Gate 0 and obtain Gate 1 **read-only** guest results before requesting exact synthetic root/systemd commands and separate authorization.
+**Next handoff at the time of B2B6 publication:** review Gate 0 and obtain Gate 1 **read-only** guest results before requesting exact synthetic root/systemd commands and separate authorization.
+
+### 2026-10-13 — B2B8 bounded execution update (later operator evidence)
+
+After separate guest/source/root-command approvals, the operator reported a successful real-systemd disposable VirtualBox rehearsal of **S1, S2, S11 only** (3/3), plus independent checks that the two synthetic units returned `LoadState=not-found` and no corresponding unit files remained. The standalone v2 script's pinned SHA-256 and exact result are documented in [G2-B2B8 operator acceptance evidence](./c5-g2b2b8-real-systemd-operator-acceptance-2026-10-13.md). All remaining S3–S10/S12 rows above remain **NOT EXECUTED in B2B8**; no whole-host quiescence, namespace coverage, new-consumer prevention, production privileges or S2 backup authorization follow from the bounded result.
