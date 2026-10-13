@@ -174,7 +174,9 @@ describe('PrismaPaymentTransactionRepository', () => {
   });
 
   it('version-checks payment observations so a concurrent 504 resume claim is never overwritten', async () => {
-    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const updateMany = jest.fn((_input: unknown) =>
+      Promise.resolve({ count: 0 }),
+    );
     const findUnique = jest.fn().mockResolvedValue({
       ...persistedRow,
       status: 'RECONCILING',
@@ -209,7 +211,7 @@ describe('PrismaPaymentTransactionRepository', () => {
     expect(saved.transaction.toSnapshot().resultCode).toBe(
       'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
     );
-    expect(updateMany.mock.calls[0]?.[0] as unknown).toMatchObject({
+    expect(updateMany.mock.calls[0]?.[0]).toMatchObject({
       where: { id: persistedRow.id, status: 'RECONCILING', ...expected },
     });
   });

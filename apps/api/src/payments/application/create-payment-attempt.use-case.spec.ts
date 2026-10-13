@@ -350,7 +350,9 @@ describe('TerminalPaymentService', () => {
     );
     const resumed = await service.resumeOriginal504Sale(initial.id);
     expect(resumed.status).toBe('SUCCEEDED');
-    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      1,
+    );
     expect(provider.startPayment.mock.calls).toHaveLength(2);
     expect(provider.startPayment.mock.calls[1]?.[0]).toMatchObject({
       paymentId: initial.id,
