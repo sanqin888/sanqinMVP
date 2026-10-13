@@ -337,6 +337,92 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
+  it('builds a bounded store-scoped long-wait/release-pending review without live ledger claims', async () => {
+    const harness = createHarness();
+    const now = new Date('2026-10-13T18:00:00.000Z');
+    harness.paymentCheckoutAttempt.findMany.mockResolvedValueOnce([
+      {
+        attemptId: 'long-wait',
+        status: 'UNKNOWN',
+        expiresAt: new Date('2026-10-13T17:50:00.000Z'),
+        updatedAt: new Date('2026-10-13T17:55:00.000Z'),
+        tenderAllocationJson: {
+          pointsCents: 200,
+          balanceCents: 300,
+          couponDiscountCents: 100,
+        },
+      },
+      {
+        attemptId: 'release-pending',
+        status: 'CANCELLED',
+        expiresAt: new Date('2026-10-13T17:59:00.000Z'),
+        updatedAt: new Date('2026-10-13T17:59:30.000Z'),
+        tenderAllocationJson: {},
+      },
+    ]);
+
+    const items = await harness.service.findPosCardPaymentReviewItems(
+      storeStableId,
+      now,
+    );
+
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        OR: [
+          {
+            status: {
+              in: [
+                'PROCESSING',
+                'UNKNOWN',
+                'RECONCILING',
+                'SUCCEEDED',
+                'FINALIZING',
+              ],
+            },
+            expiresAt: { lte: now },
+          },
+          {
+            status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+            benefitsReleasedAt: null,
+          },
+        ],
+      },
+      orderBy: [{ expiresAt: 'asc' }, { attemptId: 'asc' }],
+      take: 25,
+      select: {
+        attemptId: true,
+        status: true,
+        expiresAt: true,
+        updatedAt: true,
+        tenderAllocationJson: true,
+      },
+    });
+    expect(items).toEqual([
+      {
+        attemptId: 'long-wait',
+        checkoutStatus: 'UNKNOWN',
+        reviewReason: 'LONG_WAIT',
+        preparedExpiresAt: '2026-10-13T17:50:00.000Z',
+        updatedAt: '2026-10-13T17:55:00.000Z',
+        pointsCents: 200,
+        balanceCents: 300,
+        couponDiscountCents: 100,
+      },
+      {
+        attemptId: 'release-pending',
+        checkoutStatus: 'CANCELLED',
+        reviewReason: 'RELEASE_PENDING',
+        preparedExpiresAt: '2026-10-13T17:59:00.000Z',
+        updatedAt: '2026-10-13T17:59:30.000Z',
+        pointsCents: null,
+        balanceCents: null,
+        couponDiscountCents: null,
+      },
+    ]);
+  });
+
   it('queries only confirmed POS terminal checkouts with incomplete Benefits release', async () => {
     const harness = createHarness();
     await expect(

@@ -56,6 +56,11 @@ export class PosCardPaymentController {
     return this.cardPayments.getAvailability(this.requireStoreStableId(req));
   }
 
+  @Get('benefits-review')
+  getBenefitsReview(@Req() req: PosDeviceRequest) {
+    return this.cardPayments.getBenefitsReview(this.requireStoreStableId(req));
+  }
+
   @Post('start')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
   start(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {

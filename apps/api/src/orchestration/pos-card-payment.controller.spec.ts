@@ -33,6 +33,7 @@ const createHarness = () => {
     getAvailability: jest
       .fn()
       .mockResolvedValue({ enabled: true, storeId: storeStableId }),
+    getBenefitsReview: jest.fn().mockResolvedValue({ items: [] }),
     start: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     recover: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     cancel: jest.fn().mockResolvedValue({ status: 'CANCELLED' }),
@@ -50,12 +51,14 @@ describe('PosCardPaymentController store identity', () => {
 
     controller.getConfig(req);
     await controller.getAvailability(req);
+    await controller.getBenefitsReview(req);
     await controller.start(req, body);
     await controller.recover(req, body);
     await controller.cancel(req, body.attemptId, body);
 
     expect(cardPayments.getConfig).toHaveBeenCalledWith(storeStableId);
     expect(cardPayments.getAvailability).toHaveBeenCalledWith(storeStableId);
+    expect(cardPayments.getBenefitsReview).toHaveBeenCalledWith(storeStableId);
     expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.cancel).toHaveBeenCalledWith(storeStableId, body);

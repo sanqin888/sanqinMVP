@@ -145,6 +145,7 @@ const createHarness = () => {
   } as unknown as PosCardPaymentFeatureConfig;
   const checkouts = {
     prepare: jest.fn().mockImplementation(async () => checkout),
+    findPosCardPaymentReviewItems: jest.fn().mockResolvedValue([]),
     requireForInput: jest.fn().mockImplementation(async () => checkout),
     findByAttemptId: jest.fn().mockImplementation(async () => checkout),
     claimProviderStart: jest.fn().mockImplementation(async () => {
@@ -263,6 +264,18 @@ describe('PosCardPaymentOrchestrationService', () => {
       response: { code: 'POS_CLOVER_TERMINAL_PAYMENT_DISABLED' },
     });
     expect(harness.checkouts.prepare).not.toHaveBeenCalled();
+  });
+
+  it('keeps store-scoped read-only review visible when new Terminal payments are disabled', async () => {
+    const harness = createHarness();
+    jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
+    await expect(
+      harness.service.getBenefitsReview(storeStableId),
+    ).resolves.toEqual({ items: [] });
+    expect(
+      harness.checkouts.findPosCardPaymentReviewItems,
+    ).toHaveBeenCalledWith(storeStableId);
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
   });
 
   it('acknowledges an async Sale immediately and publishes the canonical result later', async () => {

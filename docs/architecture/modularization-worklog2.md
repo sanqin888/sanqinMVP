@@ -121,4 +121,16 @@
 
 **Schema / rollout:** One additive nullable `benefitsReleasedAt DateTime?` field plus index `[source,status,benefitsReleasedAt]`; no migration SQL generated or edited by MCP. User will pull `dev`, generate and upload `20261013_add_checkout_benefits_release_checkpoint` via their verified disposable local development DB, and return it for separate review. Promotion to `main` and production deployment are blocked until that migration is reviewed/merged; Sandbox Compact active acceptance remains pending.
 
+**C-2C1/C-2C2 final state (2026-10-13):** PR #2803 merged to dev as `9f1e5843`, PR CI #7198 passed all seven jobs (Browser E2E retried after registry `Data limit exceeded`). User-generated migration `20261013172827_add_checkout_benefits_release_checkpoint` landed at dev `abc321ab`; SQL reviewed additive-only; push CI #7200 all green. Production DB migration, deployment and real Compact 25+ minute testing are still unverified.
+
 **Docs:** `docs/payments/clover-pos-phase-plan.md`, `docs/architecture/current-dependency-graph.md`, and this second-volume worklog. The first-volume worklog is intentionally not changed.
+
+## 2026-10-13 — Clover POS C-2C3 Store-scoped operator review
+
+**State:** LOCAL / USER REVIEW PENDING / NO REMOTE PR / NO SCHEMA OR MIGRATION / NO GRAPH BASELINE CHANGE. **Branch:** `feat/clover-c2c3-long-wait-ops-visibility`, based on dev `abc321ab`.
+
+**Owner/query:** The existing Checkout persistence owner selects at most 25 POS Terminal checkout records for the requesting POS device's authenticated Store stable ID: late in-flight/finalizing sessions (expired *original preparation* deadline only) and definitive failures/cancels still lacking `benefitsReleasedAt`. Frozen points/balance/coupon allocations are exposed as snapshots, not a live Benefits ledger or release assertion. No cross-owner database read or mutation is added.
+
+**Operator surface:** Existing ADMIN/STAFF + POS-device guard protects additive read-only `GET /pos/payments/card/benefits-review`. A dedicated POS payment page panel loads only on operator expansion/refresh; it explains that no record proves provider cancellation or permits recharging/releasing benefits. Request errors are not mistaken for an empty queue. Original POST flows, customer permissions, canonical reconciliation, OAuth and Web Ecommerce are unchanged.
+
+**Gate:** Static review and focused regression coverage are source-only. Local lint/build/tests not run per `AGENTS.md`; no CI, migration execution, real Compact testing or production deployment claimed. Next C-2C4 gate is the controlled Sandbox evidence matrix after review/authorization. See `docs/payments/clover-pos-phase-plan.md` Gate C-2C3.
