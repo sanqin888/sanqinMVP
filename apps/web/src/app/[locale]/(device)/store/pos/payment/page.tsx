@@ -22,6 +22,11 @@ import {
   type PosOrderPricingQuote,
 } from "@/lib/api/pos";
 import {
+  mergePosCardPaymentSnapshot,
+  parsePosCardPaymentSnapshot,
+  type PosCardPaymentRealtimeEvent,
+} from "@/lib/pos-card-payment-realtime";
+import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
   type PosDisplaySnapshot,
@@ -73,26 +78,9 @@ type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
 type DiscountOption = "5" | "10" | "15" | "other";
 type CardFlowState = "IDLE" | "WAITING" | PosCardPaymentResult["status"];
 
-type PosCardPaymentSocketEvent = {
-  attemptId: string;
-  paymentId: string | null;
-  status: PosCardPaymentResult["status"];
-  failureCode?: string | null;
-  failureMessage?: string | null;
-  externalAmountCents?: number;
-  surchargeCents?: number | null;
-  chargedTotalCents?: number | null;
-  pointsCents?: number;
-  balanceCents?: number;
-  couponDiscountCents?: number;
-  orderStableId?: string | null;
-  orderNumber?: string | null;
-  pickupCode?: string | null;
-};
-
 type PosPaymentSocketClient = {
-  on: (event: string, handler: (payload: PosCardPaymentSocketEvent) => void) => void;
-  off: (event: string, handler: (payload: PosCardPaymentSocketEvent) => void) => void;
+  on: (event: string, handler: (payload: PosCardPaymentRealtimeEvent) => void) => void;
+  off: (event: string, handler: (payload: PosCardPaymentRealtimeEvent) => void) => void;
   emit: (event: string, payload: unknown) => void;
   disconnect: () => void;
 };
@@ -488,6 +476,8 @@ export default function StorePosPaymentPage() {
   const [cardFlowError, setCardFlowError] = useState<string | null>(null);
   const [pendingCardRequest, setPendingCardRequest] =
     useState<PosCardPaymentRequest | null>(null);
+  const activeCardAttemptRef = useRef<string | null>(null);
+  const latestCardResultRef = useRef<PosCardPaymentResult | null>(null);
   const cardRecoveryAttemptedRef = useRef(false);
   const cardConfirmInFlightRef = useRef(false);
 
@@ -1098,6 +1088,8 @@ export default function StorePosPaymentPage() {
   };
 
   const clearPendingCardPayment = useCallback(() => {
+    activeCardAttemptRef.current = null;
+    latestCardResultRef.current = null;
     setPendingCardRequest(null);
     if (typeof window !== "undefined") {
       try {
@@ -1110,11 +1102,16 @@ export default function StorePosPaymentPage() {
 
   const applyCardPaymentResult = useCallback(
     (result: PosCardPaymentResult) => {
-      setCardPaymentResult(result);
-      setCardFlowState(result.status);
-      setCardFlowError(result.failureMessage ?? null);
+      if (activeCardAttemptRef.current !== result.attemptId) return;
+      const merged = mergePosCardPaymentSnapshot(latestCardResultRef.current, result);
+      if (!merged) return;
+      if (merged === latestCardResultRef.current) return;
+      latestCardResultRef.current = merged;
+      setCardPaymentResult(merged);
+      setCardFlowState(merged.status);
+      setCardFlowError(merged.failureMessage ?? null);
 
-      if (result.status === "SUCCEEDED" && result.orderStableId) {
+      if (merged.status === "SUCCEEDED" && merged.orderStableId) {
         clearPendingCardPayment();
         if (typeof window !== "undefined") {
           try {
@@ -1125,8 +1122,8 @@ export default function StorePosPaymentPage() {
         }
         setCardPaymentOpen(false);
         setSuccessInfo({
-          orderNumber: result.orderNumber ?? result.orderStableId,
-          pickupCode: result.pickupCode,
+          orderNumber: merged.orderNumber ?? merged.orderStableId,
+          pickupCode: merged.pickupCode,
           cashChangeCents: 0,
         });
       }
@@ -1149,6 +1146,8 @@ export default function StorePosPaymentPage() {
           idempotencyKey: globalThis.crypto.randomUUID(),
           order,
         };
+        activeCardAttemptRef.current = request.attemptId;
+        latestCardResultRef.current = null;
         if (typeof window !== "undefined") {
           try {
             window.localStorage.setItem(
@@ -1183,6 +1182,7 @@ export default function StorePosPaymentPage() {
 
   const recoverTerminalCardPayment = useCallback(
     async (request: PosCardPaymentRequest) => {
+      activeCardAttemptRef.current = request.attemptId;
       setCardPaymentOpen(true);
       setCardFlowState("RECONCILING");
       setCardFlowError(null);
@@ -1300,24 +1300,33 @@ export default function StorePosPaymentPage() {
     let cancelled = false;
     let socket: PosPaymentSocketClient | null = null;
     const attemptId = pendingCardRequest.attemptId;
-    const handlePaymentStatus = (payload: PosCardPaymentSocketEvent) => {
-      if (payload.attemptId !== attemptId) return;
-      applyCardPaymentResult({
-        attemptId: payload.attemptId,
-        paymentId: payload.paymentId,
-        status: payload.status,
-        failureCode: payload.failureCode ?? null,
-        failureMessage: payload.failureMessage ?? null,
-        externalAmountCents: payload.externalAmountCents ?? 0,
-        surchargeCents: payload.surchargeCents ?? null,
-        chargedTotalCents: payload.chargedTotalCents ?? null,
-        pointsCents: payload.pointsCents ?? 0,
-        balanceCents: payload.balanceCents ?? 0,
-        couponDiscountCents: payload.couponDiscountCents ?? 0,
-        orderStableId: payload.orderStableId ?? null,
-        orderNumber: payload.orderNumber ?? null,
-        pickupCode: payload.pickupCode ?? null,
-      });
+    const handlePaymentStatus = (payload: PosCardPaymentRealtimeEvent) => {
+      if (payload.attemptId !== attemptId || activeCardAttemptRef.current !== attemptId) return;
+      const snapshot = parsePosCardPaymentSnapshot(payload);
+      if (snapshot) {
+        applyCardPaymentResult(snapshot);
+        return;
+      }
+      // Partial/reverse-sync notices are advisory, never definitive CANCELLED.
+      // Make the current attempt uncertain rather than enabling a second charge.
+      if (payload.status === "PROCESSING" || payload.status === "CREATED") return;
+      const previous = latestCardResultRef.current;
+      if (previous && ["SUCCEEDED", "DECLINED", "CANCELLED", "FAILED"].includes(previous.status)) {
+        return;
+      }
+      const failureMessage = payload.failureMessage ?? t.cardTerminalUnknown;
+      if (previous) {
+        const uncertain = {
+          ...previous,
+          status: "UNKNOWN" as const,
+          failureCode: payload.failureCode ?? "POS_CARD_REALTIME_NOTICE",
+          failureMessage,
+        };
+        latestCardResultRef.current = uncertain;
+        setCardPaymentResult(uncertain);
+      }
+      setCardFlowState("UNKNOWN");
+      setCardFlowError(failureMessage);
     };
 
     void loadSocketIoFromCdn()
@@ -1347,6 +1356,7 @@ export default function StorePosPaymentPage() {
     cardTerminalConfig?.enabled,
     cardTerminalConfig?.storeId,
     pendingCardRequest?.attemptId,
+    t.cardTerminalUnknown,
   ]);
 
   const handleConfirm = async () => {

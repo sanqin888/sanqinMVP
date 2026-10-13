@@ -1,0 +1,88 @@
+import type { PosCardPaymentResult } from "./api/pos";
+import {
+  mergePosCardPaymentSnapshot,
+  parsePosCardPaymentSnapshot,
+} from "./pos-card-payment-realtime";
+
+const complete: PosCardPaymentResult = {
+  attemptId: "attempt-a",
+  paymentId: "payment-a",
+  status: "SUCCEEDED",
+  failureCode: null,
+  failureMessage: null,
+  externalAmountCents: 700,
+  surchargeCents: 20,
+  chargedTotalCents: 720,
+  pointsCents: 200,
+  balanceCents: 300,
+  couponDiscountCents: 100,
+  orderStableId: "order-a",
+  orderNumber: "1001",
+  pickupCode: "102",
+};
+
+describe("POS card payment realtime facts", () => {
+  it("retains all cents from a complete Socket.IO event", () => {
+    expect(parsePosCardPaymentSnapshot({ ...complete, messageKind: "SNAPSHOT" })).toEqual(complete);
+  });
+
+  it("does not invent zero-valued amounts from a legacy status-only event", () => {
+    expect(parsePosCardPaymentSnapshot({
+      attemptId: "attempt-a", paymentId: "payment-a", status: "SUCCEEDED",
+      orderStableId: "order-a",
+    })).toBeNull();
+  });
+
+  it("never treats an external reversal notice as a retryable cancelled payment", () => {
+    expect(parsePosCardPaymentSnapshot({
+      attemptId: "attempt-a", paymentId: "payment-a", status: "CANCELLED",
+      failureCode: "PAYMENT_EXTERNALLY_PARTIALLY_REFUNDED",
+      messageKind: "NOTICE",
+    })).toBeNull();
+  });
+
+  it("rejects malformed amount snapshots", () => {
+    expect(parsePosCardPaymentSnapshot({ ...complete, chargedTotalCents: -1 })).toBeNull();
+    expect(parsePosCardPaymentSnapshot({ ...complete, surchargeCents: undefined })).toBeNull();
+  });
+
+  it("rejects a delayed HTTP PROCESSING after socket SUCCEEDED", () => {
+    expect(mergePosCardPaymentSnapshot(complete, {
+      ...complete, status: "PROCESSING", chargedTotalCents: null,
+      surchargeCents: null, orderStableId: null,
+    })).toEqual(complete);
+  });
+
+  it("does not regress RECONCILING to PROCESSING or UNKNOWN", () => {
+    const reconciling = { ...complete, status: "RECONCILING" as const, orderStableId: null };
+    expect(mergePosCardPaymentSnapshot(reconciling, {
+      ...reconciling, status: "PROCESSING",
+    })).toEqual(reconciling);
+    expect(mergePosCardPaymentSnapshot(reconciling, {
+      ...reconciling, status: "UNKNOWN",
+    })).toEqual(reconciling);
+  });
+
+  it("does not let an older success overwrite a final cancellation", () => {
+    const cancelled = { ...complete, status: "CANCELLED" as const, orderStableId: null };
+    expect(mergePosCardPaymentSnapshot(cancelled, complete)).toEqual(cancelled);
+  });
+
+  it("preserves known surcharge and charged total when a later snapshot has nulls", () => {
+    const recovered = mergePosCardPaymentSnapshot({
+      ...complete, status: "PROCESSING", orderStableId: null,
+    }, {
+      ...complete, status: "UNKNOWN", surchargeCents: null,
+      chargedTotalCents: null, orderStableId: null,
+    });
+    expect(recovered?.surchargeCents).toBe(20);
+    expect(recovered?.chargedTotalCents).toBe(720);
+  });
+
+  it("ignores a result from a different attempt and preserves completed order details", () => {
+    expect(mergePosCardPaymentSnapshot(complete, { ...complete, attemptId: "old-attempt" })).toEqual(complete);
+    expect(mergePosCardPaymentSnapshot(complete, {
+      ...complete, orderStableId: null, pickupCode: null,
+    })).toEqual(complete);
+  });
+});

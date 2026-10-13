@@ -360,7 +360,7 @@ describe('PosGateway device authorization', () => {
     expect(posPrintJob.update).not.toHaveBeenCalled();
   });
 
-  it('publishes payment status only to the requested authenticated store room', () => {
+  it('preserves a complete payment amount snapshot in the authenticated store room', () => {
     const { gateway } = setup();
     const emit = jest.fn();
     const to = jest.fn().mockReturnValue({ emit });
@@ -370,13 +370,60 @@ describe('PosGateway device authorization', () => {
       attemptId: 'attempt-1',
       paymentId: 'payment-1',
       status: 'SUCCEEDED',
+      externalAmountCents: 700,
+      surchargeCents: 20,
+      chargedTotalCents: 720,
+      pointsCents: 200,
+      balanceCents: 300,
+      couponDiscountCents: 100,
+      orderStableId: 'order-1',
     });
 
     expect(to).toHaveBeenCalledWith('store:store-a');
     expect(emit).toHaveBeenCalledWith(
       'POS_CARD_PAYMENT_STATUS_UPDATED',
-      expect.objectContaining({ attemptId: 'attempt-1', status: 'SUCCEEDED' }),
+      expect.objectContaining({
+        messageKind: 'SNAPSHOT',
+        attemptId: 'attempt-1',
+        status: 'SUCCEEDED',
+        externalAmountCents: 700,
+        surchargeCents: 20,
+        chargedTotalCents: 720,
+        pointsCents: 200,
+        balanceCents: 300,
+        couponDiscountCents: 100,
+        orderStableId: 'order-1',
+      }),
     );
+  });
+
+  it('labels reverse-sync state-only messages as notices without fabricating amounts', () => {
+    const { gateway } = setup();
+    const emit = jest.fn();
+    gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+
+    gateway.publishCardPaymentStatus('store-a', {
+      attemptId: 'attempt-1',
+      paymentId: 'payment-1',
+      status: 'CANCELLED',
+      failureCode: 'PAYMENT_EXTERNALLY_REVERSED',
+    });
+
+    expect(emit).toHaveBeenCalledWith(
+      'POS_CARD_PAYMENT_STATUS_UPDATED',
+      expect.objectContaining({
+        messageKind: 'NOTICE',
+        status: 'CANCELLED',
+      }),
+    );
+    const emitted = emit.mock.calls as unknown as [
+      string,
+      Record<string, unknown>,
+    ][];
+    const payload = emitted[0]?.[1];
+    expect(payload).not.toHaveProperty('externalAmountCents');
+    expect(payload).not.toHaveProperty('chargedTotalCents');
+    expect(payload).not.toHaveProperty('pointsCents');
   });
 
   it('preserves the payment reverse-sync realtime event contract', () => {
