@@ -1,0 +1,37 @@
+{
+  "authorizedToMutateProduction": false,
+  "case": "H-01/S3",
+  "crossProcessQuiescenceVerified": false,
+  "failures": [],
+  "kind": "c5-g2b2b9-h3-s3-disposable-review-v0",
+  "lab": "/tmp/sanq-g2b2b-lab-h3-fanuioiq",
+  "mountNamespaceCoverageVerified": false,
+  "newConsumerAdmissionPrevented": false,
+  "observations": {
+    "hypotheticalRuntimeHandoff": "BLOCKED",
+    "parentUnitState": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead"
+    },
+    "reason": "inactive oneshot has surviving cwd/fd holder",
+    "syntheticChild": {
+      "cgroup": "0::/system.slice/sanq-g2b2b-lab-h3-c49fb21a7f.service\n",
+      "cwdHeld": true,
+      "fdHeld": true,
+      "ownerUid": 0,
+      "pid": 974,
+      "startTicks": 18565
+    }
+  },
+  "postCleanupUnitState": {
+    "ActiveState": "inactive",
+    "LoadState": "not-found",
+    "SubState": "dead"
+  },
+  "readyToInstall": false,
+  "reportedPass": true,
+  "rootLevelWholeHostExclusionVerified": false,
+  "sourceSha256": "881b0577fc9e3d96c0f86de7ce3b43addc5668875b4c2ff55bb568916848e63e",
+  "unit": "sanq-g2b2b-lab-h3-c49fb21a7f.service"
+}
