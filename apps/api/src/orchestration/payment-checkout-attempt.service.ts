@@ -42,6 +42,18 @@ export type PreparePaymentCheckoutInput = {
   order: CreateOrderInput;
 };
 
+/** Read-only operator diagnostics, not proof of live Benefits ledger state. */
+export type PosCardPaymentReviewItem = {
+  attemptId: string;
+  checkoutStatus: PaymentCheckoutAttemptStatus;
+  reviewReason: 'LONG_WAIT' | 'RELEASE_PENDING';
+  preparedExpiresAt: string;
+  updatedAt: string;
+  pointsCents: number | null;
+  balanceCents: number | null;
+  couponDiscountCents: number | null;
+};
+
 export type PreparedPaymentCheckout = {
   id: string;
   attemptId: string;
@@ -354,6 +366,81 @@ export class PaymentCheckoutAttemptService {
       await this.releaseReservations(attemptId);
     }
     return this.findByAttemptId(attemptId);
+  }
+
+  /**
+   * Store-scoped and bounded operational queue: a long wait is an observation,
+   * never evidence that Clover failed or that owner Benefits HOLDs expired.
+   * The frozen checkout tender is an allocation snapshot, not a live ledger read.
+   */
+  async findPosCardPaymentReviewItems(
+    storeStableId: string,
+    now: Date = new Date(),
+  ): Promise<PosCardPaymentReviewItem[]> {
+    const longWaitStatuses: PaymentCheckoutAttemptStatus[] = [
+      'PROCESSING',
+      'UNKNOWN',
+      'RECONCILING',
+      'SUCCEEDED',
+      'FINALIZING',
+    ];
+    const releaseStatuses: PaymentCheckoutAttemptStatus[] = [
+      'DECLINED',
+      'CANCELLED',
+      'FAILED',
+    ];
+    const rows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        OR: [
+          {
+            status: { in: longWaitStatuses },
+            expiresAt: { lte: now },
+          },
+          {
+            status: { in: releaseStatuses },
+            benefitsReleasedAt: null,
+          },
+        ],
+      },
+      orderBy: [{ expiresAt: 'asc' }, { attemptId: 'asc' }],
+      take: 25,
+      select: {
+        attemptId: true,
+        status: true,
+        expiresAt: true,
+        updatedAt: true,
+        tenderAllocationJson: true,
+      },
+    });
+    const cents = (value: unknown): number | null => {
+      if (typeof value !== 'number') return null;
+      if (!Number.isSafeInteger(value)) return null;
+      if (value < 0) return null;
+      return value;
+    };
+    return rows.map((row) => {
+      const allocation = row.tenderAllocationJson;
+      const tender: Record<string, unknown> | null =
+        allocation !== null &&
+        typeof allocation === 'object' &&
+        !Array.isArray(allocation)
+          ? (allocation as Record<string, unknown>)
+          : null;
+      return {
+        attemptId: row.attemptId,
+        checkoutStatus: row.status,
+        reviewReason: releaseStatuses.includes(row.status)
+          ? 'RELEASE_PENDING'
+          : 'LONG_WAIT',
+        preparedExpiresAt: row.expiresAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        pointsCents: cents(tender?.pointsCents),
+        balanceCents: cents(tender?.balanceCents),
+        couponDiscountCents: cents(tender?.couponDiscountCents),
+      };
+    });
   }
 
   async findPendingBenefitsReleases(

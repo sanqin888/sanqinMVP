@@ -208,6 +208,27 @@ export type PosCardPaymentResult = {
   pickupCode: string | null;
 };
 
+export type PosCardPaymentReviewItem = {
+  attemptId: string;
+  checkoutStatus: PosCardPaymentResult["status"] | "FINALIZING";
+  reviewReason: "LONG_WAIT" | "RELEASE_PENDING";
+  preparedExpiresAt: string;
+  updatedAt: string;
+  pointsCents: number | null;
+  balanceCents: number | null;
+  couponDiscountCents: number | null;
+};
+
+export type PosCardPaymentBenefitsReview = {
+  items: PosCardPaymentReviewItem[];
+};
+
+export async function fetchPosCardPaymentBenefitsReview() {
+  return apiFetch<PosCardPaymentBenefitsReview>(
+    "/pos/payments/card/benefits-review",
+  );
+}
+
 export type PosCardPaymentRequest = {
   attemptId: string;
   idempotencyKey: string;

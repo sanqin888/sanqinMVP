@@ -32,6 +32,7 @@ import {
   type PosDisplaySnapshot,
 } from "@/lib/pos-display";
 import type { PaymentMethod } from "@/lib/api/pos";
+import { PosCardPaymentBenefitsReview } from "./PosCardPaymentBenefitsReview";
 
 type FulfillmentType = "pickup" | "dine_in";
 
@@ -1521,6 +1522,8 @@ export default function StorePosPaymentPage() {
           <p className="text-sm text-slate-300">{t.subtitle}</p>
         </div>
       </header>
+
+      <PosCardPaymentBenefitsReview locale={locale} />
 
       <section className="p-4 max-w-5xl mx-auto flex flex-col gap-4 lg:flex-row">
         {/* 左侧：订单详情 */}

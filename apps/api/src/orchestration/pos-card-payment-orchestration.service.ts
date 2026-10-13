@@ -115,6 +115,13 @@ export class PosCardPaymentOrchestrationService {
     };
   }
 
+  /** Read-only queue; intentionally available even if the Terminal flag is off. */
+  async getBenefitsReview(storeStableId: string) {
+    return {
+      items: await this.checkouts.findPosCardPaymentReviewItems(storeStableId),
+    };
+  }
+
   async start(
     storeStableId: string,
     input: PosCardPaymentStartInput,
