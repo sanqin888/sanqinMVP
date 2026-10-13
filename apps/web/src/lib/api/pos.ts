@@ -193,6 +193,8 @@ export type PosCardPaymentResult = {
     | "UNKNOWN"
     | "RECONCILING"
     | "FAILED";
+  customerRetryRequested?: boolean;
+  customerPromptPending?: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;
@@ -209,6 +211,8 @@ export type PosCardPaymentResult = {
 export type PosCardPaymentRequest = {
   attemptId: string;
   idempotencyKey: string;
+  retryPromptEnabled?: boolean;
+  asyncTerminalFlow?: boolean;
   order: CreateOrderInput;
 };
 

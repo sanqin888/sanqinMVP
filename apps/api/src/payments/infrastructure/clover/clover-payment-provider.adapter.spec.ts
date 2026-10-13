@@ -569,7 +569,7 @@ describe('CloverTerminalTransport', () => {
       Authorization: `Bearer ${terminalToken}`,
       'X-Clover-Device-Id': 'device-1',
       'X-POS-Id': 'raid-1',
-      'X-Clover-Timeout': '10',
+      'X-Clover-Timeout': '0',
       'Idempotency-Key': 'attempt-1-sale',
     });
     expect(getAccessToken).toHaveBeenCalledWith(unifiedMerchantId, {});
@@ -583,6 +583,128 @@ describe('CloverTerminalTransport', () => {
       final: true,
       externalPaymentId: 'external-1',
     });
+    expect(init?.headers).toMatchObject({ 'X-Clover-Timeout': '0' });
+  });
+
+  it('returns the Compact to Welcome after completed payment without another Sale', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('SUCCEEDED'),
+    ).resolves.toBe(false);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('shows a decline reason with Retry and returns the customer confirmation', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ response: true }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED', 'INSUFFICIENT_FUNDS'),
+    ).resolves.toBe(true);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/read-confirmation',
+    );
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.headers).toMatchObject({ 'X-Clover-Timeout': '0' });
+    expect(init?.method).toBe('POST');
+    if (typeof init?.body !== 'string') {
+      throw new Error(
+        'Expected Clover confirmation request body to be JSON text',
+      );
+    }
+    expect(JSON.parse(init.body)).toEqual({
+      text: 'Insufficient funds. Try another card?',
+      acceptText: 'Retry',
+      rejectText: 'Cancel',
+      beep: true,
+    });
+  });
+
+  it('returns to Welcome when the customer rejects Retry', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ response: false }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED'),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+  });
+
+  it('shows staff guidance for a nonretryable provider error without charging again', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('FAILED', 'invalid_request'),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/display',
+    );
+    const init = fetchSpy.mock.calls[0]?.[1];
+    if (typeof init?.body !== 'string') {
+      throw new Error('Expected Clover display request body to be JSON text');
+    }
+    expect(JSON.parse(init.body)).toEqual({
+      text: 'Payment unavailable. Please ask the cashier.',
+      beep: true,
+    });
+  });
+
+  it('does not offer a device Retry for callers that disable confirmation', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED', null, false),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/display',
+    );
+  });
+
+  it('does not force Welcome or re-charge if customer confirmation has an uncertain response', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValue(new Error('connection interrupted'));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED'),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('force-refreshes the Unified OAuth credential once after Terminal HTTP 401', async () => {

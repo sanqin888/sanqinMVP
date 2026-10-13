@@ -268,6 +268,8 @@ const createTerminalHarness = () => {
   };
   const terminalProvider: jest.Mocked<PaymentTerminalProvider> = {
     getAvailability: jest.fn(),
+    completeCustomerInteraction: jest.fn().mockResolvedValue(false),
+    cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
   };
   const service = new TerminalPaymentService(
     createAttempt,
@@ -279,6 +281,22 @@ const createTerminalHarness = () => {
 };
 
 describe('TerminalPaymentService', () => {
+  it('keeps UI cleanup best-effort and never propagates device errors', async () => {
+    const { service, terminalProvider } = createTerminalHarness();
+    terminalProvider.completeCustomerInteraction.mockRejectedValue(
+      new Error('terminal is offline'),
+    );
+
+    await expect(
+      service.completeCustomerInteraction('SUCCEEDED'),
+    ).resolves.toBe(false);
+    expect(terminalProvider.completeCustomerInteraction.mock.calls[0]).toEqual([
+      'SUCCEEDED',
+      undefined,
+      true,
+    ]);
+  });
+
   it('persists a stable external id before Clover and saves final success', async () => {
     const { service, provider } = createTerminalHarness();
     provider.startPayment.mockImplementation((request) => {
@@ -617,6 +635,8 @@ describe('TerminalPaymentService', () => {
     };
     const terminalProvider: jest.Mocked<PaymentTerminalProvider> = {
       getAvailability: jest.fn(),
+      completeCustomerInteraction: jest.fn().mockResolvedValue(false),
+      cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
     };
     const restartedService = new TerminalPaymentService(
       new CreatePaymentAttemptUseCase(transactions),

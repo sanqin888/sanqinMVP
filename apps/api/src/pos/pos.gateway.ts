@@ -776,6 +776,12 @@ export class PosGateway
         status: data.status,
         failureCode: data.failureCode ?? null,
         failureMessage: data.failureMessage ?? null,
+        ...(data.customerPromptPending !== undefined && {
+          customerPromptPending: data.customerPromptPending,
+        }),
+        ...(data.customerRetryRequested !== undefined && {
+          customerRetryRequested: data.customerRetryRequested,
+        }),
         messageKind: hasAmountSnapshot ? 'SNAPSHOT' : 'NOTICE',
         ...(data.externalAmountCents !== undefined && {
           externalAmountCents: data.externalAmountCents,

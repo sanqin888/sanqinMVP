@@ -377,6 +377,8 @@ describe('PosGateway device authorization', () => {
       balanceCents: 300,
       couponDiscountCents: 100,
       orderStableId: 'order-1',
+      customerPromptPending: false,
+      customerRetryRequested: false,
     });
 
     expect(to).toHaveBeenCalledWith('store:store-a');
@@ -393,6 +395,8 @@ describe('PosGateway device authorization', () => {
         balanceCents: 300,
         couponDiscountCents: 100,
         orderStableId: 'order-1',
+        customerPromptPending: false,
+        customerRetryRequested: false,
       }),
     );
   });

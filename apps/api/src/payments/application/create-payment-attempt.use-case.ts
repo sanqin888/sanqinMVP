@@ -12,6 +12,7 @@ import type {
   PaymentProvider,
   PaymentTerminalAvailability,
   PaymentTerminalProvider,
+  TerminalCustomerInteractionStatus,
 } from './payment-provider.port';
 import {
   PaymentTransactionUniquenessError,
@@ -180,6 +181,31 @@ export class TerminalPaymentService {
           'Terminal availability query failed',
         ),
       };
+    }
+  }
+
+  async cancelCustomerConfirmation(): Promise<void> {
+    try {
+      await this.terminalProvider.cancelCustomerConfirmation();
+    } catch {
+      // Device acknowledgement is not financial cancellation evidence.
+    }
+  }
+
+  // UI cleanup/confirmation is best-effort; it must never change money facts.
+  async completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry = true,
+  ): Promise<boolean> {
+    try {
+      return await this.terminalProvider.completeCustomerInteraction(
+        status,
+        failureCode,
+        allowRetry,
+      );
+    } catch {
+      return false;
     }
   }
 

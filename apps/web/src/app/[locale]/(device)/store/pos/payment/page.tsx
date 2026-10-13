@@ -479,6 +479,7 @@ export default function StorePosPaymentPage() {
   const activeCardAttemptRef = useRef<string | null>(null);
   const latestCardResultRef = useRef<PosCardPaymentResult | null>(null);
   const cardRecoveryAttemptedRef = useRef(false);
+  const deviceRetryHandledAttemptRef = useRef<string | null>(null);
   const cardConfirmInFlightRef = useRef(false);
 
   // 从 localStorage 读取 POS 界面保存的订单快照
@@ -1132,7 +1133,7 @@ export default function StorePosPaymentPage() {
   );
 
   const startTerminalCardPayment = useCallback(
-    async (order: CreateOrderInput) => {
+    async (order: CreateOrderInput, allowDeviceRetry = true) => {
       setError(null);
       setCardFlowError(null);
       setCardPaymentResult(null);
@@ -1141,9 +1142,13 @@ export default function StorePosPaymentPage() {
       setSubmitting(true);
 
       try {
+        // Every explicit customer retry has a fresh durable identity. The
+        // original failed attempt remains available for audit/recovery.
         const request: PosCardPaymentRequest = {
           attemptId: globalThis.crypto.randomUUID(),
           idempotencyKey: globalThis.crypto.randomUUID(),
+          retryPromptEnabled: allowDeviceRetry,
+          asyncTerminalFlow: true,
           order,
         };
         activeCardAttemptRef.current = request.attemptId;
@@ -1155,17 +1160,13 @@ export default function StorePosPaymentPage() {
               JSON.stringify(request),
             );
           } catch (storageError) {
-            console.error(
-              "Failed to persist pending POS card payment:",
-              storageError,
-            );
+            console.error("Failed to persist pending POS card payment:", storageError);
             setCardFlowState("FAILED");
             setCardFlowError(t.cardTerminalRecoveryStorageFailed);
             return;
           }
         }
         setPendingCardRequest(request);
-
         setCardFlowState("PROCESSING");
         const result = await startPosCardPayment(request);
         applyCardPaymentResult(result);
@@ -1229,16 +1230,36 @@ export default function StorePosPaymentPage() {
   }, [applyCardPaymentResult, pendingCardRequest, t.errorGeneric]);
 
   const handleCardPaymentRetry = useCallback(async () => {
+    if (cardPaymentResult?.customerPromptPending || cardPaymentResult?.customerRetryRequested) return;
     const order = pendingCardRequest?.order ?? buildOrderPayload();
     if (!order) return;
     clearPendingCardPayment();
     await startTerminalCardPayment({ ...order, paymentMethod: "CARD" });
   }, [
     buildOrderPayload,
+    cardPaymentResult?.customerPromptPending,
+    cardPaymentResult?.customerRetryRequested,
     clearPendingCardPayment,
     pendingCardRequest,
     startTerminalCardPayment,
   ]);
+
+  // The device's Retry button is delivered asynchronously over WebSocket.
+  // Consume the confirmation once, and never reuse the declined payment ID.
+  useEffect(() => {
+    if (
+      cardPaymentResult?.customerRetryRequested !== true ||
+      cardPaymentResult.customerPromptPending === true ||
+      !["DECLINED", "FAILED"].includes(cardPaymentResult.status) ||
+      pendingCardRequest?.attemptId !== cardPaymentResult.attemptId ||
+      deviceRetryHandledAttemptRef.current === cardPaymentResult.attemptId
+    ) return;
+    deviceRetryHandledAttemptRef.current = cardPaymentResult.attemptId;
+    const originalOrder = pendingCardRequest.order;
+    clearPendingCardPayment();
+    // Another Sale only follows an explicit customer Retry, never a timer.
+    void startTerminalCardPayment(originalOrder);
+  }, [cardPaymentResult, pendingCardRequest, clearPendingCardPayment, startTerminalCardPayment]);
 
   const handleCardPaymentChangeMethod = useCallback(() => {
     clearPendingCardPayment();
@@ -1481,13 +1502,16 @@ export default function StorePosPaymentPage() {
         return t.cardTerminalWaiting;
     }
   })();
-  const canRetryCardPayment = ["DECLINED", "CANCELLED", "FAILED"].includes(
-    cardFlowState,
-  );
+  const canRetryCardPayment =
+    ["DECLINED", "CANCELLED", "FAILED"].includes(cardFlowState) &&
+    cardPaymentResult?.customerPromptPending !== true &&
+    cardPaymentResult?.customerRetryRequested !== true;
   const canRecheckCardPayment = ["UNKNOWN", "RECONCILING"].includes(
     cardFlowState,
   );
-  const canCancelCardPayment = cardFlowState === "PROCESSING";
+  const canCancelCardPayment =
+    cardFlowState === "PROCESSING" ||
+    cardPaymentResult?.customerPromptPending === true;
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
@@ -1797,7 +1821,13 @@ export default function StorePosPaymentPage() {
                 cardFlowState === "SUCCEEDED") && (
                 <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-400" />
               )}
-              <p className="text-base font-medium text-slate-100">{cardFlowMessage}</p>
+              <p className="text-base font-medium text-slate-100">
+                {cardPaymentResult?.customerPromptPending
+                  ? (locale === "zh"
+                    ? "请在 Clover 终端选择重试或取消，POS 将持续等待。"
+                    : "Choose Retry or Cancel on Clover. POS will keep waiting.")
+                  : cardFlowMessage}
+              </p>
               {cardPaymentResult?.chargedTotalCents != null && (
                 <p className="mt-3 text-2xl font-bold text-white">
                   {formatMoney(cardPaymentResult.chargedTotalCents)}

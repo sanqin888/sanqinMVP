@@ -27,6 +27,8 @@ import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestra
 const PosCardPaymentStartSchema = z.object({
   attemptId: z.string().min(1).max(128),
   idempotencyKey: z.string().min(1).max(128),
+  retryPromptEnabled: z.boolean().optional(),
+  asyncTerminalFlow: z.boolean().optional(),
   order: CreateOrderSchema,
 });
 

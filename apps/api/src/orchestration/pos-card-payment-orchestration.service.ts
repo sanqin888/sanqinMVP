@@ -46,6 +46,8 @@ export type PosCardPaymentView = {
   attemptId: string;
   paymentId: string | null;
   status: PosCardPaymentStatus;
+  customerRetryRequested?: boolean;
+  customerPromptPending?: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;
@@ -62,11 +64,16 @@ export type PosCardPaymentView = {
 export type PosCardPaymentStartInput = {
   attemptId: string;
   idempotencyKey: string;
+  retryPromptEnabled?: boolean;
+  asyncTerminalFlow?: boolean;
   order: CreateOrderInput;
 };
 
 @Injectable()
 export class PosCardPaymentOrchestrationService {
+  private readonly activeCustomerPrompts = new Set<string>();
+  private readonly activeSaleAttempts = new Set<string>();
+
   constructor(
     private readonly featureConfig: PosCardPaymentFeatureConfig,
     private readonly checkouts: PaymentCheckoutAttemptService,
@@ -118,7 +125,14 @@ export class PosCardPaymentOrchestrationService {
     const checkout = await this.checkouts.prepare(
       this.toCheckoutInput(storeStableId, input),
     );
-    return this.continueCheckout(storeStableId, checkout, 'START');
+    return this.continueCheckout(
+      storeStableId,
+      checkout,
+      'START',
+      // Legacy POS clients must not see a Retry button they cannot handle.
+      input.retryPromptEnabled === true,
+      input.asyncTerminalFlow === true,
+    );
   }
 
   async recover(
@@ -219,6 +233,18 @@ export class PosCardPaymentOrchestrationService {
       return view;
     }
 
+    if (
+      ['DECLINED', 'FAILED', 'CANCELLED'].includes(payment.status) &&
+      this.activeCustomerPrompts.has(checkout.attemptId)
+    ) {
+      await this.terminalPayments.cancelCustomerConfirmation();
+      return {
+        ...this.toView(checkout, payment),
+        customerPromptPending: this.activeCustomerPrompts.has(
+          checkout.attemptId,
+        ),
+      };
+    }
     const cancelled = await this.terminalPayments.cancel(payment.id);
     return this.handlePayment(storeStableId, checkout, cancelled);
   }
@@ -227,6 +253,8 @@ export class PosCardPaymentOrchestrationService {
     storeId: string,
     initialCheckout: PreparedPaymentCheckout,
     mode: 'START' | 'RECOVER',
+    allowRetry = false,
+    asyncTerminalFlow = false,
   ): Promise<PosCardPaymentView> {
     let checkout = initialCheckout;
 
@@ -246,7 +274,12 @@ export class PosCardPaymentOrchestrationService {
         checkout.status,
       );
       const payment = await this.findPaymentForCheckout(checkout);
-      const view = this.toView(checkout, payment ?? undefined);
+      const view = {
+        ...this.toView(checkout, payment ?? undefined),
+        ...(this.activeCustomerPrompts.has(checkout.attemptId)
+          ? { customerPromptPending: true }
+          : {}),
+      };
       this.publish(storeId, view);
       return view;
     }
@@ -260,6 +293,14 @@ export class PosCardPaymentOrchestrationService {
 
     const existingPayment = await this.findPaymentForCheckout(checkout);
     if (existingPayment) {
+      if (
+        mode === 'RECOVER' &&
+        this.activeSaleAttempts.has(checkout.attemptId)
+      ) {
+        const view = this.toView(checkout, existingPayment);
+        this.publish(storeId, view);
+        return view;
+      }
       if (
         mode === 'RECOVER' &&
         ['UNKNOWN', 'RECONCILING'].includes(existingPayment.status)
@@ -280,7 +321,7 @@ export class PosCardPaymentOrchestrationService {
         return this.handlePayment(storeId, checkout, reconciled);
       }
       if (mode === 'RECOVER' && existingPayment.status === 'CREATED') {
-        return this.startExternalSale(storeId, checkout);
+        return this.startExternalSale(storeId, checkout, allowRetry);
       }
       return this.handlePayment(storeId, checkout, existingPayment);
     }
@@ -322,13 +363,23 @@ export class PosCardPaymentOrchestrationService {
           status: 'PROCESSING',
         });
         this.publish(storeId, processingView);
-        return this.startExternalSale(storeId, checkout);
+        if (mode === 'START' && asyncTerminalFlow) {
+          void this.runBackgroundSale(storeId, checkout, allowRetry);
+          return processingView;
+        }
+        return this.startExternalSale(storeId, checkout, allowRetry);
       }
     }
 
     if (checkout.status === 'PROCESSING') {
+      // Checkout claimed but PaymentTransaction not visible: do not issue a
+      // second provider Sale. Recovery must wait for persisted evidence.
       if (mode === 'RECOVER') {
-        return this.startExternalSale(storeId, checkout);
+        const view = this.toView(checkout, undefined, undefined, {
+          status: 'PROCESSING',
+        });
+        this.publish(storeId, view);
+        return view;
       }
       const view = this.toView(checkout, undefined, undefined, {
         status: 'PROCESSING',
@@ -342,9 +393,42 @@ export class PosCardPaymentOrchestrationService {
     return view;
   }
 
+  private async runBackgroundSale(
+    storeId: string,
+    checkout: PreparedPaymentCheckout,
+    allowRetry: boolean,
+  ): Promise<void> {
+    this.activeSaleAttempts.add(checkout.attemptId);
+    try {
+      await this.startExternalSale(storeId, checkout, allowRetry);
+    } catch {
+      // A transport exception cannot establish payment failure. The checkout
+      // remains recoverable; no new Sale is permitted without reconciliation.
+      try {
+        const current = await this.checkouts.findByAttemptId(
+          checkout.attemptId,
+        );
+        const payment = await this.findPaymentForCheckout(current);
+        if (current.status === 'COMPLETED') return;
+        const view = this.toView(current, payment ?? undefined, undefined, {
+          status: 'UNKNOWN',
+          failureCode: 'POS_CARD_BACKGROUND_START_UNCERTAIN',
+          failureMessage:
+            'Payment execution needs reconciliation before retry.',
+        });
+        this.publish(storeId, view);
+      } catch {
+        // Preserve persistent source of truth; do not invent a final state.
+      }
+    } finally {
+      this.activeSaleAttempts.delete(checkout.attemptId);
+    }
+  }
+
   private async startExternalSale(
     storeId: string,
     checkout: PreparedPaymentCheckout,
+    allowRetry: boolean,
   ): Promise<PosCardPaymentView> {
     const payment = await this.terminalPayments.startSale({
       attemptId: checkout.attemptId,
@@ -353,13 +437,15 @@ export class PosCardPaymentOrchestrationService {
       currency: 'CAD',
       description: 'SanQ POS card sale',
     });
-    return this.handlePayment(storeId, checkout, payment);
+    return this.handlePayment(storeId, checkout, payment, true, allowRetry);
   }
 
   private async handlePayment(
     storeId: string,
     checkout: PreparedPaymentCheckout,
     payment: PaymentTransaction,
+    interactive = false,
+    allowRetry = false,
   ): Promise<PosCardPaymentView> {
     checkout = await this.checkouts.markFromPayment(
       checkout.attemptId,
@@ -381,9 +467,57 @@ export class PosCardPaymentOrchestrationService {
       return this.finalizeCheckout(storeId, checkout, payment);
     }
 
-    const view = this.toView(checkout, payment);
+    const promptPending =
+      interactive &&
+      allowRetry &&
+      checkout.externalAmountCents > 0 &&
+      ['DECLINED', 'FAILED'].includes(payment.status) &&
+      !this.activeCustomerPrompts.has(checkout.attemptId);
+    if (promptPending) this.activeCustomerPrompts.add(checkout.attemptId);
+    const view = {
+      ...this.toView(checkout, payment),
+      ...(promptPending ? { customerPromptPending: true } : {}),
+    };
     this.publish(storeId, view);
+    if (promptPending) {
+      // Never await customer input inside the HTTP request. No second Sale is
+      // initiated here; Retry is an explicit new POS attempt after confirmation.
+      void this.waitForCustomerDecision(storeId, checkout, payment, view);
+    } else if (
+      interactive &&
+      ['FAILED', 'DECLINED', 'CANCELLED'].includes(payment.status)
+    ) {
+      void this.terminalPayments.completeCustomerInteraction(
+        payment.status as 'DECLINED' | 'CANCELLED' | 'FAILED',
+        payment.toSnapshot().failureCode,
+        false,
+      );
+    }
     return view;
+  }
+
+  private async waitForCustomerDecision(
+    storeId: string,
+    checkout: PreparedPaymentCheckout,
+    payment: PaymentTransaction,
+    waiting: PosCardPaymentView,
+  ): Promise<void> {
+    let customerRetryRequested = false;
+    try {
+      customerRetryRequested =
+        await this.terminalPayments.completeCustomerInteraction(
+          payment.status as 'DECLINED' | 'FAILED',
+          payment.toSnapshot().failureCode,
+          true,
+        );
+    } finally {
+      this.activeCustomerPrompts.delete(checkout.attemptId);
+      this.publish(storeId, {
+        ...waiting,
+        customerPromptPending: false,
+        customerRetryRequested,
+      });
+    }
   }
 
   private async finalizeCheckout(
@@ -498,6 +632,10 @@ export class PosCardPaymentOrchestrationService {
       created.order.orderStableId,
       storeId,
     );
+    if (checkout.externalAmountCents > 0) {
+      // Financial finality and the order are already persisted; Welcome cannot undo them.
+      await this.terminalPayments.completeCustomerInteraction('SUCCEEDED');
+    }
 
     const view = this.toView(checkout, payment, created.order, {
       status: 'SUCCEEDED',
