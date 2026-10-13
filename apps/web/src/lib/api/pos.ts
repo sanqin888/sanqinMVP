@@ -195,6 +195,7 @@ export type PosCardPaymentResult = {
     | "FAILED";
   customerRetryRequested?: boolean;
   customerPromptPending?: boolean;
+  canResumeOriginalSale?: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;
@@ -257,6 +258,15 @@ export async function startPosCardPayment(input: PosCardPaymentRequest) {
 
 export async function recoverPosCardPayment(input: PosCardPaymentRequest) {
   return apiFetch<PosCardPaymentResult>("/pos/payments/card/recover", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+/** Manual same-identity recovery, never creates a fresh Sale identity. */
+export async function resumeOriginalPosCardPayment(input: PosCardPaymentRequest) {
+  return apiFetch<PosCardPaymentResult>("/pos/payments/card/resume-original", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

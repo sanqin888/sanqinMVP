@@ -677,11 +677,19 @@ export class PrismaPaymentTransactionRepository
   async saveIfCurrentStatus(
     transaction: PaymentTransaction,
     expectedStatus: PaymentStatus,
+    expectedObservation?: Pick<
+      ReturnType<PaymentTransaction['toSnapshot']>,
+      'updatedAt' | 'resultCode' | 'failureCode'
+    >,
   ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
     const snapshot = transaction.toSnapshot();
     try {
       const result = await this.prisma.paymentTransaction.updateMany({
-        where: { id: snapshot.id, status: expectedStatus },
+        where: {
+          id: snapshot.id,
+          status: expectedStatus,
+          ...(expectedObservation ?? {}),
+        },
         data: this.mutableData(transaction),
       });
       const current = await this.findById(snapshot.id);
@@ -696,6 +704,33 @@ export class PrismaPaymentTransactionRepository
       if (field) throw new PaymentTransactionUniquenessError(field);
       throw error;
     }
+  }
+
+  async claimUncertainResultCode(
+    paymentId: string,
+    expectedResultCode: string,
+    claimedResultCode: string,
+    expectedFailureCode: string,
+  ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
+    const claimed = await this.prisma.paymentTransaction.updateMany({
+      where: {
+        id: paymentId,
+        source: 'POS_TERMINAL',
+        operation: 'SALE',
+        status: { in: ['UNKNOWN', 'RECONCILING'] },
+        resultCode: expectedResultCode,
+        failureCode: expectedFailureCode,
+        providerPaymentId: null,
+      },
+      data: { resultCode: claimedResultCode },
+    });
+    const transaction = await this.findById(paymentId);
+    if (!transaction) {
+      throw new Error(
+        `Payment transaction ${paymentId} disappeared during resume claim`,
+      );
+    }
+    return { updated: claimed.count === 1, transaction };
   }
 
   async saveSuccessfulSaleObservation(

@@ -159,6 +159,25 @@ const providerCallUnknown = (
   failureMessage: message,
 });
 
+const ORIGINAL_504_RESULT_CODE = 'CLOVER_TERMINAL_SALE_HTTP_504';
+const ORIGINAL_504_RESUME_CLAIM = 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED';
+
+/** One confirmed provider HTTP 504 + canonical NOT_FOUND, never a new payment. */
+const isResumableOriginal504Sale = (
+  transaction: PaymentTransaction,
+): boolean => {
+  const payment = transaction.toSnapshot();
+  return (
+    payment.source === 'POS_TERMINAL' &&
+    payment.operation === 'SALE' &&
+    (payment.status === 'UNKNOWN' || payment.status === 'RECONCILING') &&
+    payment.resultCode === ORIGINAL_504_RESULT_CODE &&
+    payment.failureCode === 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND' &&
+    Boolean(payment.externalPaymentId) &&
+    payment.providerPaymentId === null
+  );
+};
+
 export class TerminalPaymentService {
   constructor(
     private readonly createAttempt: CreatePaymentAttemptUseCase,
@@ -166,6 +185,10 @@ export class TerminalPaymentService {
     private readonly provider: PaymentProvider,
     private readonly terminalProvider: PaymentTerminalProvider,
   ) {}
+
+  canResumeOriginal504Sale(transaction: PaymentTransaction): boolean {
+    return isResumableOriginal504Sale(transaction);
+  }
 
   async getAvailability(): Promise<PaymentTerminalAvailability> {
     try {
@@ -258,6 +281,66 @@ export class TerminalPaymentService {
     return this.mergeProviderOutcome(claimed.transaction.id, outcome);
   }
 
+  /**
+   * Explicit operator action after the *original* Sale returned HTTP 504.
+   * Canonical truth is queried first. Then a one-time DB claim ensures that
+   * multi-click / multiple API workers cannot send parallel Sale requests.
+   * The provider request keeps the original payment, idempotency and amount.
+   */
+  async resumeOriginal504Sale(paymentId: string): Promise<PaymentTransaction> {
+    const previous = await this.requireTerminalSale(paymentId);
+    if (!isResumableOriginal504Sale(previous)) return previous;
+
+    const reconciled = await this.reconcile(paymentId);
+    if (!isResumableOriginal504Sale(reconciled)) return reconciled;
+
+    const availability = await this.getAvailability();
+    if (availability.state !== 'AVAILABLE' || !availability.available) {
+      throw new InvalidTerminalPaymentError(
+        'Clover device is not idle; original payment must be reconciled before resuming',
+      );
+    }
+
+    const claim = await this.transactions.claimUncertainResultCode(
+      paymentId,
+      ORIGINAL_504_RESULT_CODE,
+      ORIGINAL_504_RESUME_CLAIM,
+      'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    );
+    if (!claim.updated) return claim.transaction;
+
+    // Display cleanup is not financial cancellation; never release HOLD here.
+    if (!(await this.terminalProvider.prepareOriginalSaleResume())) {
+      return claim.transaction;
+    }
+    const original = claim.transaction.toSnapshot();
+    let outcome: PaymentProviderOutcome;
+    try {
+      outcome = await this.provider.startPayment({
+        paymentId: original.id,
+        attemptId: original.attemptId,
+        amountCents: original.amountCents,
+        currency: original.currency,
+        paymentMethod: original.paymentMethod,
+        source: original.source,
+        idempotencyKey: original.idempotencyKey,
+        externalPaymentId: original.externalPaymentId,
+        description: 'SanQ POS card sale',
+      });
+    } catch (error) {
+      outcome = providerCallUnknown(
+        'TERMINAL_ORIGINAL_504_RESUME_UNCERTAIN',
+        this.errorMessage(error, 'Original Clover Sale resume is uncertain'),
+      );
+    }
+    // A second 504 never re-arms the one-time replay. Success / definitive
+    // outcomes still go through canonical reconciliation and finalization.
+    if (outcome.status === 'UNKNOWN' || outcome.status === 'PROCESSING') {
+      outcome = { ...outcome, resultCode: ORIGINAL_504_RESUME_CLAIM };
+    }
+    return this.mergeProviderOutcome(paymentId, outcome);
+  }
+
   async findById(paymentId: string): Promise<PaymentTransaction> {
     return this.requireTransaction(paymentId);
   }
@@ -333,9 +416,15 @@ export class TerminalPaymentService {
 
     if (transaction.status === 'UNKNOWN') {
       const reconciling = transaction.transitionTo('RECONCILING');
+      const observation = transaction.toSnapshot();
       const moved = await this.transactions.saveIfCurrentStatus(
         reconciling,
         'UNKNOWN',
+        {
+          updatedAt: observation.updatedAt,
+          resultCode: observation.resultCode,
+          failureCode: observation.failureCode,
+        },
       );
       transaction = moved.transaction;
       if (this.isFinal(transaction)) return transaction;
@@ -440,9 +529,17 @@ export class TerminalPaymentService {
         next = current.applyProviderOutcome(outcome);
       }
 
+      // Compare the observation as well as status. An in-flight canonical
+      // read must not overwrite a concurrent one-time 504 replay claim.
+      const observation = current.toSnapshot();
       const saved = await this.transactions.saveIfCurrentStatus(
         next,
         currentStatus,
+        {
+          updatedAt: observation.updatedAt,
+          resultCode: observation.resultCode,
+          failureCode: observation.failureCode,
+        },
       );
       if (saved.updated) return saved.transaction;
     }

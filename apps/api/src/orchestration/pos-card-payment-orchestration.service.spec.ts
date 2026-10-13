@@ -199,6 +199,8 @@ const createHarness = () => {
     startSale: jest.fn().mockResolvedValue(paymentFixture('SUCCEEDED')),
     findById: jest.fn(),
     reconcile: jest.fn(),
+    resumeOriginal504Sale: jest.fn(),
+    canResumeOriginal504Sale: jest.fn().mockReturnValue(false),
     cancel: jest.fn(),
     completeCustomerInteraction: jest.fn().mockResolvedValue(false),
     cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
@@ -634,6 +636,66 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(
       harness.terminalPayments.completeCustomerInteraction,
     ).not.toHaveBeenCalled();
+  });
+
+  it('offers only a one-time original-504 resume and finalizes its later confirmed success', async () => {
+    const harness = createHarness();
+    const unknown = paymentFixture('UNKNOWN').recordProviderObservation({
+      status: 'UNKNOWN',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    harness.setCheckout(checkoutFixture({
+      status: 'UNKNOWN',
+      paymentTransactionId: unknown.id,
+    }));
+    jest.mocked(harness.terminalPayments.findById).mockResolvedValue(unknown);
+    jest.mocked(harness.terminalPayments.canResumeOriginal504Sale).mockReturnValue(true);
+    let finishResume!: (payment: PaymentTransaction) => void;
+    jest.mocked(harness.terminalPayments.resumeOriginal504Sale).mockReturnValue(
+      new Promise<PaymentTransaction>((resolve) => { finishResume = resolve; }),
+    );
+    const input = {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      order: orderInput,
+    };
+    const accepted = await harness.service.resumeOriginalSale(storeStableId, input);
+    expect(accepted).toMatchObject({
+      status: 'RECONCILING',
+      canResumeOriginalSale: false,
+      orderStableId: null,
+    });
+    await harness.service.resumeOriginalSale(storeStableId, input);
+    expect(harness.terminalPayments.resumeOriginal504Sale).toHaveBeenCalledTimes(1);
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
+
+    await Promise.resolve();
+    finishResume(paymentFixture('SUCCEEDED'));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(harness.orderFinalization.finalizeConfirmedPayment).toHaveBeenCalledTimes(1);
+    expect(harness.paymentRealtime.publishCardPaymentStatus).toHaveBeenCalledWith(
+      storeStableId,
+      expect.objectContaining({ status: 'SUCCEEDED', orderStableId: 'cpaymentorder1' }),
+    );
+  });
+
+  it('never resumes a generic UNKNOWN without the original 504 evidence', async () => {
+    const harness = createHarness();
+    const unknown = paymentFixture('UNKNOWN');
+    harness.setCheckout(checkoutFixture({
+      status: 'UNKNOWN',
+      paymentTransactionId: unknown.id,
+    }));
+    jest.mocked(harness.terminalPayments.findById).mockResolvedValue(unknown);
+    const view = await harness.service.resumeOriginalSale(storeStableId, {
+      attemptId: 'attempt-1', idempotencyKey: 'client-idem-1', order: orderInput,
+    });
+    expect(view).toMatchObject({ status: 'UNKNOWN', canResumeOriginalSale: false });
+    expect(harness.terminalPayments.resumeOriginal504Sale).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
   });
 
   it('recovers UNKNOWN by reconciliation without a second sale', async () => {
