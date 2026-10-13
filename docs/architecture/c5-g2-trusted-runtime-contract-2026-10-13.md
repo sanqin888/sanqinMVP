@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-13 America/Toronto  
 **Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
-**State (2026-10-13, updated):** G2-A merged PR #2791; G2-B1 merged PR #2792; G2-B2A/B2B/B2B2/B2B3/B2B4/B2B5 merged PRs #2793-#2798, their PR CI all seven green (latest #7184). G2-B2B6 disposable guest acceptance contract merged PR #2799, CI #7186 7/7 green; G2-B2B7 Gate 0/1 claim review LOCAL REVIEW. All lab receipts non-authorizing; NO ROOT PRODUCTION INSTALL; S2 DAILY BACKUP PAUSED.
+**State (2026-10-13, post-merge operator-evidence update):** G2-A PR #2791, G2-B1 PR #2792, G2-B2A–B2B5 PRs #2793–#2798, G2-B2B6 PR #2799, and G2-B2B7 PR #2801 **MERGED** (B2B7 CI #7190 7/7 green). G2-B2B8 separate disposable VirtualBox guest real-systemd **S1/S2/S11 3/3 operator-reported PASS** with independently queried synthetic unit cleanup. This does **not** prove host-wide quiescence, namespace coverage or new-consumer prevention; preceding VirtualBox freeze root cause remains unknown. All lab receipts non-authorizing; **NO ROOT PRODUCTION INSTALL; C5-G2 NO-GO; S2 DAILY BACKUP PAUSED.**
 
 ## 1. Frozen design and ownership
 
@@ -125,9 +125,11 @@ sole permission.** A standalone flock is not quiescence: existing backup,
 
 **G2-B2B through G2-B2B5 (merged, PRs #2794–#2798):** synthetic operator rehearsal, double idle-report negative check, second-process flock, same-user real Linux cwd/fd fixture, and isolated inode/hardlink/mmap fixture observation. All require explicit negative-only receipts; **none** prove cross-process quiescence, forbid new consumers, cover all namespaces, or grant root install authority.
 
-**G2-B2B6 (merged, PR #2799):** independent disposable Linux VM root/systemd barrier [B2B3/B2B6 guest acceptance protocol](./c5-g2b2b3-isolated-linux-acceptance-2026-10-13.md). This is a reviewable proposed evidence/command plan, **not executed**. Step 1 guest identity, snapshot and read-only evidence remains pending; privileged guest command approval is separate.
+**G2-B2B6 (merged, PR #2799):** independent disposable Linux VM root/systemd [B2B3/B2B6 guest acceptance protocol](./c5-g2b2b3-isolated-linux-acceptance-2026-10-13.md), originally published as a **not-yet-executed plan**; B2B8 below records only the later S1/S2/S11 execution, not the full matrix or production gate.
 
-**G2-B2B7 (local review):** purely offline [claimed disposable guest Gate 0/1 review](./c5-g2b2b7-guest-gate01-review-2026-10-13.md), with no host access and all root/install authority flags false. Even coherent claims need separately supplied raw guest and VirtualBox snapshot observations.
+**G2-B2B7 (merged, PR #2801, CI #7190 7/7):** inert [claimed disposable guest Gate 0/1 review](./c5-g2b2b7-guest-gate01-review-2026-10-13.md), with no host access and all root/install authority flags false. The operator separately reported host/guest raw observations; the contract alone does not authenticate them.
+
+**G2-B2B8 (operator-reported disposable guest real-systemd VERIFIED in bounded scope, no repository source/CI change):** [2026-10-13 S1/S2/S11 evidence and residual gates](./c5-g2b2b8-real-systemd-operator-acceptance-2026-10-13.md). Source v2 SHA-256 `ec8674bdbea237d8b780e03ba7e298bdc7d9429467a5ce48b3c2e4c31f6f4569`; synthetic enabled+active and disabled+inactive timer restoration, injected-exception restore, and separate unit-unloaded observation passed. Whole-host exclusion, mount namespace coverage and new-consumer prevention remain explicitly false. S3–S10/S12 and the earlier unexplained guest freeze remain open. **Next proposed B2B9 is readiness audit only, requiring separate scope approval for any new privileged test or architecture change.**
 
 **G2-B:** trusted operator delivery, mandatory maintenance gate/read-only
 Live State detector, direct production path execution contract still disabled,
@@ -161,4 +163,4 @@ paired-image mismatch, repacked original Archive, no production capabilities.
 The previous newest-release verifier, `stage_bundle.py` consumer, 17-file
 source allowlist, app deploy and legacy lab installer are unchanged.
 
-G2-A through G2-B2B6 PR CI have passed independently (latest G2-B2B6 CI #7186, 7/7). B2B7 contains only an untrusted, negative-only Gate 0/1 claim reviewer and local tests not yet run under `AGENTS.md`. Historical CI success does not satisfy separate disposable VM identity/snapshot evidence or root/systemd tests. Production remains `C5-G2 NO-GO` pending real G2-B maintenance/Kit gates, G2-C..E and distinct operator authority.
+G2-A through G2-B2B7 PR CI have passed independently (G2-B2B7 PR #2801 / CI #7190, 7/7). B2B8 real-systemd evidence came from a separately pinned, out-of-repository guest script and operator-provided terminal/JSON output, **not** GitHub CI or independently sealed off-VM evidence. It verifies only synthetic S1/S2/S11 behavior and observed cleanup; it does not satisfy process-wide barrier, new admission prevention, Recovery Kit, install/clean reinstall, or full disposable acceptance. Production remains `C5-G2 NO-GO` pending real G2-B maintenance/Kit gates, G2-C..E and distinct operator authority. S2 remains paused.

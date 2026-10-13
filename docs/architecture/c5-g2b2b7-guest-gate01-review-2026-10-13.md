@@ -51,4 +51,8 @@ The v1 input fields are synthetic **normalization placeholders**. Never fabricat
 
 No changes to `AGENTS.md`, CI workflows, Prisma, dependency manifest, the fixed 17-member Runtime Archive, S2 daily backup, production VM, root privileges, MCP, systemd or sudoers.
 
-**Next handoff:** user-supplied Gate 0/1 raw read-only evidence from a verified disposable VM. Then review the **exact** source pinning and guest-specific root/systemd command list, request separate root-command approval, and only then perform a controlled synthetic systemd acceptance test. G2-B3 external historical Archive/Recovery Kit, Runtime installer and real production changes remain **NO-GO**.
+**Next handoff at the time of B2B7 publication:** user-supplied Gate 0/1 raw read-only evidence from a verified disposable VM. Then review the **exact** source pinning and guest-specific root/systemd command list, request separate root-command approval, and only then perform a controlled synthetic systemd acceptance test. G2-B3 external historical Archive/Recovery Kit, Runtime installer and real production changes remain **NO-GO**.
+
+### 2026-10-13 — Post-merge operator-evidence update
+
+B2B7 subsequently **merged to `dev`** via PR #2801 (`668ddfbe476f58479bdead44b83656f1539f765f`; CI #7190 7/7). Later human-operated Gate 0/1 observations and a separately pinned disposable-guest v2 script supported **only** the B2B8 real-systemd S1/S2/S11 rehearsal; see [G2-B2B8 acceptance evidence](./c5-g2b2b8-real-systemd-operator-acceptance-2026-10-13.md). The B2B7 inert review contract is still not an independent guest authenticator and confers no production authority.
