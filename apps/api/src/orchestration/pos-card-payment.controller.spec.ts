@@ -36,6 +36,7 @@ const createHarness = () => {
     getBenefitsReview: jest.fn().mockResolvedValue({ items: [] }),
     start: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     recover: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
+    resumeOriginalSale: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
     cancel: jest.fn().mockResolvedValue({ status: 'CANCELLED' }),
   };
   const controller = new PosCardPaymentController(
@@ -54,6 +55,7 @@ describe('PosCardPaymentController store identity', () => {
     await controller.getBenefitsReview(req);
     await controller.start(req, body);
     await controller.recover(req, body);
+    await controller.resumeOriginal(req, body);
     await controller.cancel(req, body.attemptId, body);
 
     expect(cardPayments.getConfig).toHaveBeenCalledWith(storeStableId);
@@ -61,6 +63,10 @@ describe('PosCardPaymentController store identity', () => {
     expect(cardPayments.getBenefitsReview).toHaveBeenCalledWith(storeStableId);
     expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
+    expect(cardPayments.resumeOriginalSale).toHaveBeenCalledWith(
+      storeStableId,
+      body,
+    );
     expect(cardPayments.cancel).toHaveBeenCalledWith(storeStableId, body);
   });
 

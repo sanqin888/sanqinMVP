@@ -8,6 +8,7 @@ export type PosCardPaymentRealtimeEvent = {
   failureMessage?: string | null;
   customerPromptPending?: boolean;
   customerRetryRequested?: boolean;
+  canResumeOriginalSale?: boolean;
   messageKind?: "SNAPSHOT" | "NOTICE";
   externalAmountCents?: number;
   surchargeCents?: number | null;
@@ -59,6 +60,9 @@ export function parsePosCardPaymentSnapshot(
     ...(event.customerRetryRequested !== undefined && {
       customerRetryRequested: event.customerRetryRequested,
     }),
+    ...(event.canResumeOriginalSale !== undefined && {
+      canResumeOriginalSale: event.canResumeOriginalSale,
+    }),
     externalAmountCents,
     surchargeCents,
     chargedTotalCents,
@@ -106,6 +110,9 @@ export function mergePosCardPaymentSnapshot(
     paymentId: incoming.paymentId ?? previous.paymentId,
     customerPromptPending: incoming.customerPromptPending ?? previous.customerPromptPending,
     customerRetryRequested: incoming.customerRetryRequested ?? previous.customerRetryRequested,
+    canResumeOriginalSale:
+      incoming.canResumeOriginalSale ??
+      (incoming.status === previous.status ? previous.canResumeOriginalSale : false),
     surchargeCents: incoming.surchargeCents ?? previous.surchargeCents,
     chargedTotalCents: incoming.chargedTotalCents ?? previous.chargedTotalCents,
     orderStableId: incoming.orderStableId ?? previous.orderStableId,

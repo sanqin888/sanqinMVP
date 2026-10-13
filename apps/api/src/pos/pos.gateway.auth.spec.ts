@@ -379,6 +379,7 @@ describe('PosGateway device authorization', () => {
       orderStableId: 'order-1',
       customerPromptPending: false,
       customerRetryRequested: false,
+      canResumeOriginalSale: false,
     });
 
     expect(to).toHaveBeenCalledWith('store:store-a');
@@ -397,6 +398,7 @@ describe('PosGateway device authorization', () => {
         orderStableId: 'order-1',
         customerPromptPending: false,
         customerRetryRequested: false,
+        canResumeOriginalSale: false,
       }),
     );
   });

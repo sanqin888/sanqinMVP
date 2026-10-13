@@ -86,6 +86,30 @@ describe("POS card payment realtime facts", () => {
     })).toEqual(complete);
   });
 
+  it("passes an original-504 resume capability through full snapshots and revokes it after claim", () => {
+    const unknown: PosCardPaymentResult = {
+      ...complete,
+      status: "UNKNOWN",
+      orderStableId: null,
+      canResumeOriginalSale: true,
+    };
+    expect(parsePosCardPaymentSnapshot({
+      ...unknown,
+      messageKind: "SNAPSHOT",
+    })).toMatchObject({ canResumeOriginalSale: true });
+    const claimed = mergePosCardPaymentSnapshot(unknown, {
+      ...unknown,
+      status: "RECONCILING",
+      canResumeOriginalSale: false,
+    });
+    expect(claimed?.canResumeOriginalSale).toBe(false);
+    expect(mergePosCardPaymentSnapshot(unknown, {
+      ...unknown,
+      status: "RECONCILING",
+      canResumeOriginalSale: undefined,
+    })?.canResumeOriginalSale).toBe(false);
+  });
+
   it("does not regress RECONCILING to PROCESSING or UNKNOWN", () => {
     const reconciling = { ...complete, status: "RECONCILING" as const, orderStableId: null };
     expect(mergePosCardPaymentSnapshot(reconciling, {

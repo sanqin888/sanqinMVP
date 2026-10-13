@@ -15,6 +15,20 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-13 — Clover Compact C-2C4: 504 original Sale idempotent manual resume
+
+**Branch/base:** `feat/clover-c2c4-504-same-identity-resume` from latest `origin/dev`. **State:** LOCAL SOURCE IMPLEMENTED / USER REVIEW PENDING / CI & COMPACT SANDBOX ACCEPTANCE PENDING / NO SCHEMA, MIGRATION, DEPENDENCY OR GRAPH CHANGE.
+
+**Observed trigger:** MacBook Sandbox Compact T1 Sale successful; unattended T2 encountered original Terminal Sale HTTP 504 and Platform v3 payment NOT_FOUND at approximately three minutes. That does not prove financial cancellation and cannot authorize automatic Benefits RELEASE. Replaced the previous 25-minute unattended-device acceptance target with provider-boundary timeout/recovery tests.
+
+**Ownership:** Payments/Clover transport records sanitized original Sale 504 result evidence; Payments application rechecks Platform canonical truth, checks device idle, and performs a one-time original-identity Sale replay protected by atomic Payments repository claim. The claim gates by POS Terminal SALE, UNKNOWN/RECONCILING, original 504 marker, Platform NOT_FOUND and absent provider payment ID; consuming it means a second 504, double-click or multi-worker race cannot trigger another Sale. Device Welcome is permitted only after idle status and is display cleanup, never financial cancellation evidence. Original attempt/idempotency/externalPaymentId/frozen cents are unchanged.
+
+**POS/Web:** additive protected `POST /pos/payments/card/resume-original` uses existing POS device/Store guard, preserved original checkout request, asynchronous orchestration and existing realtime/payment-order finalization. An optional `canResumeOriginalSale` property enables the distinct bilingual **恢复原付款** control after eligible 504. Generic UNKNOWN remains reconciliation-only; the old post-definitive-failure new-attempt Retry remains separate.
+
+**Safety:** canonical SUCCEEDED finalizes original Order and Benefits COMMIT; definitive cancellation/failure uses existing Benefits owner RELEASE. If unavailable/ambiguous or an operation fails after one-time claim, retain UNKNOWN/RECONCILING and HOLD for operator investigation; never infer finality from Platform NOT_FOUND or restart. No change to production Web Ecommerce execution or historical facts.
+
+**Validation/gate:** focused transport/adapter, owner Payments CAS/state, POS controller/orchestration and Web realtime tests added/updated. No local lint/build/tests run by AGENTS default; CI and new Compact Sandbox 504 real-device recovery remain pending explicit remote authorization. Existing pre-change UNKNOWN does not have the new original-504 result marker and is not automatically eligible. Owner detail: `docs/payments/clover-pos-phase-plan.md`; graph review: `docs/architecture/current-dependency-graph.md`.
+
 ## 2026-10-05 — External Sales Slice F Post-start historical reconstruction
 
 **PR/SHA:** local branch `feat/accounting-external-sales-slice-f-reconstruction` from `origin/dev@9c9a66cd`; no remote PR yet  
@@ -127,10 +141,10 @@
 
 ## 2026-10-13 — Clover POS C-2C3 Store-scoped operator review
 
-**State:** LOCAL / USER REVIEW PENDING / NO REMOTE PR / NO SCHEMA OR MIGRATION / NO GRAPH BASELINE CHANGE. **Branch:** `feat/clover-c2c3-long-wait-ops-visibility`, based on dev `abc321ab`.
+**State:** PR #2804 MERGED TO DEV / CI #7201 ALL SEVEN JOBS GREEN / NO SCHEMA OR MIGRATION / NO GRAPH BASELINE CHANGE. **Branch:** `feat/clover-c2c3-long-wait-ops-visibility`, based on dev `abc321ab`; squash merge `9877dd82`.
 
 **Owner/query:** The existing Checkout persistence owner selects at most 25 POS Terminal checkout records for the requesting POS device's authenticated Store stable ID: late in-flight/finalizing sessions (expired *original preparation* deadline only) and definitive failures/cancels still lacking `benefitsReleasedAt`. Frozen points/balance/coupon allocations are exposed as snapshots, not a live Benefits ledger or release assertion. No cross-owner database read or mutation is added.
 
 **Operator surface:** Existing ADMIN/STAFF + POS-device guard protects additive read-only `GET /pos/payments/card/benefits-review`. A dedicated POS payment page panel loads only on operator expansion/refresh; it explains that no record proves provider cancellation or permits recharging/releasing benefits. Request errors are not mistaken for an empty queue. Original POST flows, customer permissions, canonical reconciliation, OAuth and Web Ecommerce are unchanged.
 
-**Gate:** Static review and focused regression coverage are source-only. Local lint/build/tests not run per `AGENTS.md`; no CI, migration execution, real Compact testing or production deployment claimed. Next C-2C4 gate is the controlled Sandbox evidence matrix after review/authorization. See `docs/payments/clover-pos-phase-plan.md` Gate C-2C3.
+**Gate:** PR CI #7201 passed source lint/build/type/tests plus Browser E2E; production migration, real Compact C-2C4 Sandbox acceptance and production deployment are still pending. User-observed T2 HTTP 504 superseded the earlier 25+ minute unattended-device scenario; see `docs/payments/clover-pos-phase-plan.md` Gate C-2C4.

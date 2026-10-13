@@ -48,6 +48,7 @@ export type PosCardPaymentView = {
   status: PosCardPaymentStatus;
   customerRetryRequested?: boolean;
   customerPromptPending?: boolean;
+  canResumeOriginalSale: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;
@@ -153,6 +154,81 @@ export class PosCardPaymentOrchestrationService {
       this.toCheckoutInput(storeStableId, input),
     );
     return this.continueCheckout(storeStableId, checkout, 'RECOVER');
+  }
+
+  async resumeOriginalSale(
+    storeStableId: string,
+    input: PosCardPaymentStartInput,
+  ): Promise<PosCardPaymentView> {
+    this.requireEnabled();
+    this.requireTerminalCardOrder(input.order);
+    const checkout = await this.checkouts.requireForInput(
+      this.toCheckoutInput(storeStableId, input),
+    );
+    const payment = await this.findPaymentForCheckout(checkout);
+    if (!payment) {
+      throw new ConflictException({
+        code: 'POS_CARD_ORIGINAL_SALE_MISSING',
+        message:
+          'Original Clover Sale is missing; do not issue another payment.',
+      });
+    }
+    if (!this.terminalPayments.canResumeOriginal504Sale(payment)) {
+      return this.handlePayment(storeStableId, checkout, payment);
+    }
+    if (this.activeSaleAttempts.has(checkout.attemptId)) {
+      return this.toView(checkout, payment, undefined, {
+        status: 'RECONCILING',
+        canResumeOriginalSale: false,
+      });
+    }
+    this.activeSaleAttempts.add(checkout.attemptId);
+    // Publish the acknowledgement before the background coroutine can emit
+    // its (potentially terminal) result.
+    const view = this.toView(checkout, payment, undefined, {
+      status: 'RECONCILING',
+      canResumeOriginalSale: false,
+    });
+    this.publish(storeStableId, view);
+    void this.runBackgroundOriginalResume(storeStableId, checkout);
+    return view;
+  }
+
+  private async runBackgroundOriginalResume(
+    storeStableId: string,
+    checkout: PreparedPaymentCheckout,
+  ): Promise<void> {
+    try {
+      const payment = await this.findPaymentForCheckout(checkout);
+      if (!payment) return;
+      const result = await this.terminalPayments.resumeOriginal504Sale(
+        payment.id,
+      );
+      await this.handlePayment(storeStableId, checkout, result);
+    } catch {
+      // A failed read/device reset/provider interaction is not a failed Sale.
+      // Keep the persisted state and do not release any reservation.
+      try {
+        const current = await this.checkouts.findByAttemptId(
+          checkout.attemptId,
+        );
+        const payment = await this.findPaymentForCheckout(current);
+        this.publish(
+          storeStableId,
+          this.toView(current, payment ?? undefined, undefined, {
+            status: 'RECONCILING',
+            canResumeOriginalSale: false,
+            failureCode: 'POS_CARD_ORIGINAL_RESUME_UNCERTAIN',
+            failureMessage:
+              'Original Clover payment requires reconciliation; do not start a new Sale.',
+          }),
+        );
+      } catch {
+        // Durable Payments truth wins if even this read fails.
+      }
+    } finally {
+      this.activeSaleAttempts.delete(checkout.attemptId);
+    }
   }
 
   async applyReverseSyncedPayment(
@@ -707,7 +783,10 @@ export class PosCardPaymentOrchestrationService {
     payment?: PaymentTransaction,
     order?: ConfirmedPaymentOrderView,
     override?: Partial<
-      Pick<PosCardPaymentView, 'status' | 'failureCode' | 'failureMessage'>
+      Pick<
+        PosCardPaymentView,
+        'status' | 'failureCode' | 'failureMessage' | 'canResumeOriginalSale'
+      >
     >,
   ): PosCardPaymentView {
     const paymentSnapshot = payment?.toSnapshot();
@@ -716,6 +795,11 @@ export class PosCardPaymentOrchestrationService {
       attemptId: checkout.attemptId,
       paymentId: payment?.id ?? checkout.paymentTransactionId,
       status: override?.status ?? this.publicStatus(checkout.status),
+      canResumeOriginalSale:
+        override?.canResumeOriginalSale ??
+        (payment
+          ? this.terminalPayments.canResumeOriginal504Sale(payment)
+          : false),
       failureCode:
         override?.failureCode ??
         paymentSnapshot?.failureCode ??

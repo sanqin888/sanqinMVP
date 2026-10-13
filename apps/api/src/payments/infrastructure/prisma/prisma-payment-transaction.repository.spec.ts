@@ -173,6 +173,51 @@ describe('PrismaPaymentTransactionRepository', () => {
     });
   });
 
+  it('version-checks payment observations so a concurrent 504 resume claim is never overwritten', async () => {
+    let updateManyInput: unknown;
+    const updateMany = jest.fn((input: unknown) => {
+      updateManyInput = input;
+      return Promise.resolve({ count: 0 });
+    });
+    const findUnique = jest.fn().mockResolvedValue({
+      ...persistedRow,
+      status: 'RECONCILING',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const repository = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { updateMany, findUnique },
+    } as unknown as PrismaService);
+    const record = PaymentTransaction.create({
+      id: persistedRow.id,
+      attemptId: persistedRow.attemptId,
+      idempotencyKey: persistedRow.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: persistedRow.amountCents,
+      currency: 'CAD',
+    }).transitionTo('PROCESSING');
+    const expected = {
+      updatedAt: new Date('2026-10-13T18:49:31.000Z'),
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    };
+    const saved = await repository.saveIfCurrentStatus(
+      record,
+      'RECONCILING',
+      expected,
+    );
+    expect(saved.updated).toBe(false);
+    expect(saved.transaction.toSnapshot().resultCode).toBe(
+      'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+    );
+    expect(updateManyInput).toMatchObject({
+      where: { id: persistedRow.id, status: 'RECONCILING', ...expected },
+    });
+  });
+
   it('returns the current winner when a concurrent state transition already happened', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 0 });
     const findUnique = jest.fn().mockResolvedValue({
@@ -205,6 +250,37 @@ describe('PrismaPaymentTransactionRepository', () => {
     expect(result.transaction.toSnapshot().providerPaymentId).toBe(
       'clover-winner',
     );
+  });
+
+  it('claims one POS Terminal 504 replay by result code and uncertain status atomically', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const findUnique = jest.fn().mockResolvedValue({
+      ...persistedRow,
+      status: 'RECONCILING',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+    });
+    const repo = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { updateMany, findUnique },
+    } as unknown as PrismaService);
+    const result = await repo.claimUncertainResultCode(
+      persistedRow.id,
+      'CLOVER_TERMINAL_SALE_HTTP_504',
+      'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+      'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    );
+    expect(result.updated).toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: persistedRow.id,
+        source: 'POS_TERMINAL',
+        operation: 'SALE',
+        status: { in: ['UNKNOWN', 'RECONCILING'] },
+        resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+        failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+        providerPaymentId: null,
+      },
+      data: { resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED' },
+    });
   });
 
   it('rejects unknown persisted classifications instead of leaking raw strings into domain', async () => {

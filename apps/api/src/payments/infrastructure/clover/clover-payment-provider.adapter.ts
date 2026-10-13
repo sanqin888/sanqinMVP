@@ -50,6 +50,10 @@ export class CloverPaymentProviderAdapter
     return this.terminal.getAvailability();
   }
 
+  prepareOriginalSaleResume(): Promise<boolean> {
+    return this.terminal.prepareOriginalSaleResume();
+  }
+
   cancelCustomerConfirmation(): Promise<void> {
     return this.terminal.cancelCustomerConfirmation();
   }

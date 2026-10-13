@@ -121,6 +121,16 @@ const failureOutcome = (
   if (operation === 'STATUS') {
     return { status: 'UNKNOWN', failureCode: code, failureMessage: message };
   }
+  if (result.httpStatus === 504) {
+    return {
+      status: 'UNKNOWN',
+      // Keep the original Sale HTTP status distinguishable from a later
+      // canonical NOT_FOUND observation, without storing provider payloads.
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: code,
+      failureMessage: message,
+    };
+  }
   if (result.httpStatus === 209) {
     return {
       status: 'CANCELLED',
@@ -488,6 +498,23 @@ export class CloverTerminalTransport {
     return mapTerminalAvailabilityResponse(attempt.result, terminalId);
   }
 
+  /** Require an explicit idle state; HTTP 200 without a state is not proof. */
+  async prepareOriginalSaleResume(): Promise<boolean> {
+    const attempt = await this.request('/connect/v1/device/status', {
+      method: 'GET',
+    });
+    if (attempt.kind !== 'response' || !attempt.result.ok) return false;
+    const body = attempt.result.body;
+    const state =
+      stringValue(body, 'state') ??
+      stringValue(body, 'status') ??
+      stringValue(asRecord(body?.device), 'status');
+    if (!state || !/^(AVAILABLE|IDLE|READY)$/.test(normalized(state))) {
+      return false;
+    }
+    return this.showWelcomeScreen();
+  }
+
   // A device interaction is not a payment operation. Never re-issue a Sale here.
   async completeCustomerInteraction(
     status: TerminalCustomerInteractionStatus,
@@ -577,7 +604,7 @@ export class CloverTerminalTransport {
     }
   }
 
-  private async showWelcomeScreen(): Promise<void> {
+  private async showWelcomeScreen(): Promise<boolean> {
     const attempt = await this.request('/connect/v1/device/welcome', {
       method: 'POST',
       timeoutSeconds: 5,
@@ -586,7 +613,9 @@ export class CloverTerminalTransport {
       this.logger.warn(
         '[CloverTerminalTransport] welcome screen was not confirmed',
       );
+      return false;
     }
+    return true;
   }
 
   async startPayment(

@@ -782,6 +782,9 @@ export class PosGateway
         ...(data.customerRetryRequested !== undefined && {
           customerRetryRequested: data.customerRetryRequested,
         }),
+        ...(data.canResumeOriginalSale !== undefined && {
+          canResumeOriginalSale: data.canResumeOriginalSale,
+        }),
         messageKind: hasAmountSnapshot ? 'SNAPSHOT' : 'NOTICE',
         ...(data.externalAmountCents !== undefined && {
           externalAmountCents: data.externalAmountCents,

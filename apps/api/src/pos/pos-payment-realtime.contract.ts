@@ -8,6 +8,7 @@ export type PosCardPaymentStatusRealtimeMessage = {
   failureMessage?: string | null;
   customerPromptPending?: boolean;
   customerRetryRequested?: boolean;
+  canResumeOriginalSale?: boolean;
   // A notice (e.g. reverse sync) has no amount facts. Do not invent zeros.
   externalAmountCents?: number;
   surchargeCents?: number | null;

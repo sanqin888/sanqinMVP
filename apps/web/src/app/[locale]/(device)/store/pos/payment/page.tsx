@@ -14,6 +14,7 @@ import {
   quotePosCadToCny,
   quotePosOrderPricing,
   recoverPosCardPayment,
+  resumeOriginalPosCardPayment,
   startPosCardPayment,
   type PosCardPaymentRequest,
   type PosCardPaymentResult,
@@ -1276,6 +1277,23 @@ export default function StorePosPaymentPage() {
     await recoverTerminalCardPayment(pendingCardRequest);
   }, [pendingCardRequest, recoverTerminalCardPayment]);
 
+  // Only the API can authorize the one-time replay of the original HTTP 504
+  // identity. This is NOT the new-attempt "Retry" used after final declines.
+  const handleOriginalCardResume = useCallback(async () => {
+    if (!pendingCardRequest || cardPaymentResult?.canResumeOriginalSale !== true) return;
+    setSubmitting(true);
+    setCardFlowError(null);
+    try {
+      const result = await resumeOriginalPosCardPayment(pendingCardRequest);
+      applyCardPaymentResult(result);
+    } catch (err) {
+      setCardFlowState("RECONCILING");
+      setCardFlowError(err instanceof Error ? err.message : t.errorGeneric);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [applyCardPaymentResult, cardPaymentResult?.canResumeOriginalSale, pendingCardRequest, t.errorGeneric]);
+
   useEffect(() => {
     if (
       cardTerminalConfig?.enabled !== true ||
@@ -1510,6 +1528,8 @@ export default function StorePosPaymentPage() {
   const canRecheckCardPayment = ["UNKNOWN", "RECONCILING"].includes(
     cardFlowState,
   );
+  const canResumeOriginalCardPayment =
+    canRecheckCardPayment && cardPaymentResult?.canResumeOriginalSale === true;
   const canCancelCardPayment =
     cardFlowState === "PROCESSING" ||
     cardPaymentResult?.customerPromptPending === true;
@@ -1868,6 +1888,16 @@ export default function StorePosPaymentPage() {
                   className="h-11 flex-1 rounded-xl bg-amber-400 text-sm font-bold text-slate-950 disabled:opacity-50"
                 >
                   {t.cardTerminalRecheck}
+                </button>
+              )}
+              {canResumeOriginalCardPayment && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void handleOriginalCardResume()}
+                  className="h-11 flex-1 rounded-xl bg-emerald-500 text-sm font-bold text-slate-950 disabled:opacity-50"
+                >
+                  {locale === "zh" ? "恢复原付款" : "Resume original payment"}
                 </button>
               )}
               {canRetryCardPayment && (

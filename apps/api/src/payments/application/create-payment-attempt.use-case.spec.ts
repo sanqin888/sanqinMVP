@@ -74,9 +74,41 @@ class InMemoryPaymentTransactionRepository implements PaymentTransactionReposito
     return Promise.resolve(transaction);
   }
 
+  claimUncertainResultCode(
+    paymentId: string,
+    expectedResultCode: string,
+    claimedResultCode: string,
+    expectedFailureCode: string,
+  ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
+    const index = this.rows.findIndex((row) => row.id === paymentId);
+    if (index < 0) return Promise.reject(new Error('Payment not found'));
+    const current = this.rows[index];
+    const snapshot = current.toSnapshot();
+    if (
+      !['UNKNOWN', 'RECONCILING'].includes(snapshot.status) ||
+      snapshot.source !== 'POS_TERMINAL' ||
+      snapshot.operation !== 'SALE' ||
+      snapshot.resultCode !== expectedResultCode ||
+      snapshot.failureCode !== expectedFailureCode ||
+      snapshot.providerPaymentId !== null
+    ) {
+      return Promise.resolve({ updated: false, transaction: current });
+    }
+    const claimed = current.recordProviderObservation({
+      status: snapshot.status,
+      resultCode: claimedResultCode,
+    });
+    this.rows[index] = claimed;
+    return Promise.resolve({ updated: true, transaction: claimed });
+  }
+
   saveIfCurrentStatus(
     transaction: PaymentTransaction,
     expectedStatus: PaymentStatus,
+    expectedObservation?: Pick<
+      ReturnType<PaymentTransaction['toSnapshot']>,
+      'updatedAt' | 'resultCode' | 'failureCode'
+    >,
   ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
     const index = this.rows.findIndex((row) => row.id === transaction.id);
     if (index < 0) {
@@ -84,7 +116,15 @@ class InMemoryPaymentTransactionRepository implements PaymentTransactionReposito
         new Error(`Payment transaction not found: ${transaction.id}`),
       );
     }
-    if (this.rows[index].status !== expectedStatus) {
+    const current = this.rows[index].toSnapshot();
+    if (
+      current.status !== expectedStatus ||
+      (expectedObservation !== undefined &&
+        (current.updatedAt.getTime() !==
+          expectedObservation.updatedAt.getTime() ||
+          current.resultCode !== expectedObservation.resultCode ||
+          current.failureCode !== expectedObservation.failureCode))
+    ) {
       return Promise.resolve({ updated: false, transaction: this.rows[index] });
     }
     this.rows[index] = transaction;
@@ -267,7 +307,12 @@ const createTerminalHarness = () => {
     refundPayment: jest.fn(),
   };
   const terminalProvider: jest.Mocked<PaymentTerminalProvider> = {
-    getAvailability: jest.fn(),
+    getAvailability: jest.fn().mockResolvedValue({
+      state: 'AVAILABLE',
+      configured: true,
+      available: true,
+    }),
+    prepareOriginalSaleResume: jest.fn().mockResolvedValue(true),
     completeCustomerInteraction: jest.fn().mockResolvedValue(false),
     cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
   };
@@ -281,6 +326,151 @@ const createTerminalHarness = () => {
 };
 
 describe('TerminalPaymentService', () => {
+  const terminal504Unknown = (): PaymentProviderOutcome => ({
+    status: 'UNKNOWN',
+    evidence: 'CANONICAL',
+    resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+    failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    failureMessage: 'Clover Platform has not exposed the payment yet',
+  });
+
+  it('rechecks the original 504 and replays at most once using identical payment identity', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const initial = await service.startSale(terminalInput);
+    expect(initial.status).toBe('UNKNOWN');
+
+    provider.startPayment.mockImplementation((request) =>
+      Promise.resolve(canonicalOutcome(request)),
+    );
+    const resumed = await service.resumeOriginal504Sale(initial.id);
+    expect(resumed.status).toBe('SUCCEEDED');
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      1,
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
+    expect(provider.startPayment.mock.calls[1]?.[0]).toMatchObject({
+      paymentId: initial.id,
+      attemptId: terminalInput.attemptId,
+      idempotencyKey: terminalInput.idempotencyKey,
+      externalPaymentId: initial.toSnapshot().externalPaymentId,
+      amountCents: terminalInput.amountCents,
+      currency: 'CAD',
+    });
+
+    expect((await service.resumeOriginal504Sale(initial.id)).status).toBe(
+      'SUCCEEDED',
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
+  });
+
+  it('canonical success found after 504 finalizes without replay or device reset', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    const initial = await service.startSale(terminalInput);
+    provider.getPaymentStatus.mockImplementation((request) =>
+      Promise.resolve(
+        canonicalOutcome({
+          ...request,
+          amountCents: terminalInput.amountCents,
+          currency: terminalInput.currency,
+        }),
+      ),
+    );
+    const result = await service.resumeOriginal504Sale(initial.id);
+    expect(result.status).toBe('SUCCEEDED');
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
+  });
+
+  it('preserves UNKNOWN/HOLD with no new Sale if device is busy', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const initial = await service.startSale(terminalInput);
+    terminalProvider.getAvailability.mockResolvedValue({
+      state: 'BUSY',
+      configured: true,
+      available: false,
+    });
+    await expect(service.resumeOriginal504Sale(initial.id)).rejects.toThrow(
+      'device is not idle',
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
+    expect((await service.findById(initial.id)).status).toBe('RECONCILING');
+  });
+
+  it('holds the original payment if Welcome is not confirmed after the claim', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const original = await service.startSale(terminalInput);
+    terminalProvider.prepareOriginalSaleResume.mockResolvedValue(false);
+
+    const held = await service.resumeOriginal504Sale(original.id);
+    expect(held.status).toBe('RECONCILING');
+    expect(service.canResumeOriginal504Sale(held)).toBe(false);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    await service.resumeOriginal504Sale(original.id);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+  });
+
+  it('one-time claim prevents duplicate provider calls across simultaneous operator clicks', async () => {
+    const { service, provider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const original = await service.startSale(terminalInput);
+    const held = deferred<PaymentProviderOutcome>();
+    provider.startPayment.mockReturnValue(held.promise);
+    const first = service.resumeOriginal504Sale(original.id);
+    const second = service.resumeOriginal504Sale(original.id);
+    // Both may read the original state, but only one CAS claim may win.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    held.resolve({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    await Promise.all([first, second]);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
+  });
+
+  it('does not re-arm retry after another 504 from the identical Sale', async () => {
+    const { service, provider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValue(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const initial = await service.startSale(terminalInput);
+    const next = await service.resumeOriginal504Sale(initial.id);
+    expect(next.status).toBe('RECONCILING');
+    expect(next.toSnapshot().resultCode).toBe(
+      'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+    );
+    await service.resumeOriginal504Sale(initial.id);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
+  });
+
   it('keeps UI cleanup best-effort and never propagates device errors', async () => {
     const { service, terminalProvider } = createTerminalHarness();
     terminalProvider.completeCustomerInteraction.mockRejectedValue(
@@ -635,6 +825,7 @@ describe('TerminalPaymentService', () => {
     };
     const terminalProvider: jest.Mocked<PaymentTerminalProvider> = {
       getAvailability: jest.fn(),
+      prepareOriginalSaleResume: jest.fn().mockResolvedValue(true),
       completeCustomerInteraction: jest.fn().mockResolvedValue(false),
       cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
     };
