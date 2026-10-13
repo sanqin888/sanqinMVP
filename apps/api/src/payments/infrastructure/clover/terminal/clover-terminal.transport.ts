@@ -121,7 +121,7 @@ const failureOutcome = (
   if (operation === 'STATUS') {
     return { status: 'UNKNOWN', failureCode: code, failureMessage: message };
   }
-  if (result.httpStatus === 209 || isCancelled(message)) {
+  if (result.httpStatus === 209) {
     return {
       status: 'CANCELLED',
       resultCode: code,
@@ -129,7 +129,11 @@ const failureOutcome = (
       failureMessage: null,
     };
   }
-  if (result.httpStatus === 500 || result.httpStatus === 504) {
+  if (
+    isCancelled(message) ||
+    result.httpStatus === 500 ||
+    result.httpStatus === 504
+  ) {
     return { status: 'UNKNOWN', failureCode: code, failureMessage: message };
   }
   if (isDeclined(message)) {
@@ -204,8 +208,11 @@ export const mapTerminalPaymentResponse = (
   }
 
   if (isCancelled(details)) {
+    // A cancellation word in a 200 response is not definitive Sale evidence.
+    // Only the original Sale's HTTP 209 (above) or canonical Platform truth
+    // may unlock member benefits.
     return {
-      status: 'CANCELLED',
+      status: 'UNKNOWN',
       externalPaymentId: resolvedExternalPaymentId,
       providerPaymentId,
       providerOrderId,
@@ -215,8 +222,8 @@ export const mapTerminalPaymentResponse = (
       chargedTotalCents,
       surchargeCents,
       resultCode: resultCode || 'CANCELLED',
-      failureCode: null,
-      failureMessage: null,
+      failureCode: 'CLOVER_TERMINAL_CANCEL_TEXT_UNVERIFIED',
+      failureMessage: 'Non-definitive cancellation text requires reconciliation',
     };
   }
 
@@ -641,7 +648,10 @@ export class CloverTerminalTransport {
         externalPaymentId,
         terminalId,
       ),
-      evidence: 'EXECUTION',
+      evidence:
+        attempt.result.httpStatus === 209
+          ? 'TERMINAL_SALE_CANCELLED'
+          : 'EXECUTION',
     };
   }
 

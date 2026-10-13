@@ -6,6 +6,7 @@ import { OrdersModule } from '../orders/public-api';
 import { PaymentsModule } from '../payments/payments.module';
 import { PosDeviceModule } from '../pos/public-api';
 import { PosModule } from '../pos/pos.module';
+import { PaymentBenefitsReleaseRecoveryProcessor } from './payment-benefits-release-recovery.processor';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 import { PaymentProviderWebhookController } from './payment-provider-webhook.controller';
 import { PaymentReverseSyncOrchestrationService } from './payment-reverse-sync-orchestration.service';
@@ -42,6 +43,7 @@ import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestrati
   ],
   providers: [
     PaymentCheckoutAttemptService,
+    PaymentBenefitsReleaseRecoveryProcessor,
     PaymentReverseSyncOrchestrationService,
     PosCardPaymentOrchestrationService,
     PosCardRefundOrchestrationService,

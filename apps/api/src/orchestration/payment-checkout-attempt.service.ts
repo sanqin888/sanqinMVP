@@ -228,16 +228,41 @@ export class PaymentCheckoutAttemptService {
     if (checkout.status === 'FINALIZING' && payment.status === 'SUCCEEDED') {
       return checkout;
     }
+    if (
+      ['DECLINED', 'CANCELLED', 'FAILED'].includes(checkout.status) &&
+      checkout.status !== payment.status
+    ) {
+      throw new ConflictException({
+        code: 'PAYMENT_CHECKOUT_FINAL_STATUS_CONFLICT',
+        message: 'A definitive checkout result conflicts with the payment result.',
+      });
+    }
+    if (
+      ['SUCCEEDED', 'FINALIZING'].includes(checkout.status) &&
+      payment.status !== 'SUCCEEDED'
+    ) {
+      return checkout;
+    }
 
     const status = this.checkoutStatusForPayment(payment.status);
-    const updated = await this.prisma.paymentCheckoutAttempt.update({
-      where: { attemptId },
-      data: {
-        status,
-        paymentTransactionId: payment.id,
-      },
+    const updated = await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: { attemptId, status: checkout.status },
+      data: { status, paymentTransactionId: payment.id },
     });
-    return this.mapRecord(updated);
+    const latest = await this.findByAttemptId(attemptId);
+    if (
+      updated.count === 0 &&
+      payment.status === 'SUCCEEDED' &&
+      ['DECLINED', 'CANCELLED', 'FAILED'].includes(latest.status)
+    ) {
+      // A concurrent reversal won the checkout CAS. Do not finalize an order
+      // against that terminal state; the payment conflict needs review.
+      throw new ConflictException({
+        code: 'PAYMENT_CHECKOUT_FINAL_STATUS_CONFLICT',
+        message: 'The checkout was closed while payment success was reported.',
+      });
+    }
+    return latest;
   }
 
   async cancelBeforeProvider(attemptId: string): Promise<{
@@ -267,7 +292,8 @@ export class PaymentCheckoutAttemptService {
       },
       data: { status: 'CANCELLED' },
     });
-    if (reversed.count === 1) {
+    const checkout = await this.findByAttemptId(attemptId);
+    if (reversed.count === 1 || checkout.status === 'CANCELLED') {
       await this.releaseReservations(attemptId);
     }
     return this.findByAttemptId(attemptId);
@@ -322,17 +348,28 @@ export class PaymentCheckoutAttemptService {
       },
       data: { status },
     });
-    if (failed.count === 1) {
+    const checkout = await this.findByAttemptId(attemptId);
+    if (failed.count === 1 || checkout.status === status) {
       await this.releaseReservations(attemptId);
     }
     return this.findByAttemptId(attemptId);
   }
 
   async releaseReservations(attemptId: string): Promise<void> {
+    // Both owner operations are idempotent. A partial failure leaves the
+    // terminal checkout as durable pending work for the release recovery poller.
     await Promise.all([
       this.paymentTenderReservations.releasePaymentTender(attemptId),
       this.paymentCouponReservations.releasePaymentCoupons(attemptId),
     ]);
+    await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: {
+        attemptId,
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+      },
+      data: { benefitsReleasedAt: new Date() },
+    });
   }
 
   private async releaseExpiredPreProviderAttempts(

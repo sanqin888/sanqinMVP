@@ -524,6 +524,40 @@ describe('CloverTerminalTransport', () => {
     restore('CLOVER_TERMINAL_TIMEOUT_SECONDS', original.timeout);
   });
 
+  it('tags only the original Sale HTTP 209 with definitive terminal cancellation evidence', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('{}', { status: 209 }),
+    );
+    const transport = createTerminalTransport();
+    await expect(
+      transport.startPayment({
+        paymentId: 'payment-1',
+        attemptId: 'attempt-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt-1-sale',
+        externalPaymentId: 'external-1',
+      }),
+    ).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    await expect(
+      transport.cancelPayment({
+        paymentId: 'payment-1',
+        attemptId: 'attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt-1-sale',
+        externalPaymentId: 'external-1',
+      }),
+    ).resolves.not.toMatchObject({
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+  });
+
   it('sends Cloud REST Pay Display sale with the Unified database OAuth token and Terminal headers', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -1037,6 +1071,49 @@ describe('CloverTerminalTransport', () => {
 });
 
 describe('Clover Terminal response mapping', () => {
+  it('distinguishes original Sale HTTP 209 from non-definitive cancellation text', () => {
+    expect(
+      mapTerminalPaymentResponse(
+        { httpStatus: 209, ok: false, rawText: '', body: null },
+        2000,
+        'external-1',
+        'device-1',
+      ),
+    ).toMatchObject({
+      status: 'CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    expect(
+      mapTerminalPaymentResponse(
+        {
+          httpStatus: 200,
+          ok: true,
+          rawText: '',
+          body: { result: 'CANCELLED' },
+        },
+        2000,
+        'external-1',
+        'device-1',
+      ),
+    ).toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_TERMINAL_CANCEL_TEXT_UNVERIFIED',
+    });
+    expect(
+      mapTerminalPaymentResponse(
+        {
+          httpStatus: 400,
+          ok: false,
+          rawText: '',
+          body: { message: 'cancel not acknowledged' },
+        },
+        2000,
+        'external-1',
+        'device-1',
+      ),
+    ).toMatchObject({ status: 'UNKNOWN' });
+  });
+
   it('records Clover surcharge and total charged amount from provider facts', () => {
     expect(
       mapTerminalPaymentResponse(

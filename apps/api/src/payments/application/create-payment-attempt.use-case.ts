@@ -405,8 +405,18 @@ export class TerminalPaymentService {
         );
       }
 
+      // The original Sale HTTP 209 is definitive cancellation evidence even
+      // when a concurrent POS /device/cancel already moved us to UNKNOWN.
+      // Never apply this exception to a cancel-command ACK or message text.
+      const originalSaleCancelled =
+        outcome.status === 'CANCELLED' &&
+        outcome.evidence === 'TERMINAL_SALE_CANCELLED' &&
+        outcome.resultCode === 'CLOVER_CANCELLED' &&
+        current.toSnapshot().source === 'POS_TERMINAL' &&
+        current.toSnapshot().operation === 'SALE';
       const requiresCanonicalFinal =
         this.isFinalStatus(outcome.status) &&
+        !originalSaleCancelled &&
         (outcome.status === 'SUCCEEDED' ||
           currentStatus === 'UNKNOWN' ||
           currentStatus === 'RECONCILING');
