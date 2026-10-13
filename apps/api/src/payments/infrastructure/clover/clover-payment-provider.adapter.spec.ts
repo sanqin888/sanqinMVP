@@ -579,6 +579,8 @@ describe('CloverTerminalTransport', () => {
     }
     expect(JSON.parse(requestBody)).toEqual({
       amount: 2000,
+      capture: true,
+      final: true,
       externalPaymentId: 'external-1',
     });
   });
