@@ -31,6 +31,8 @@ type CloverTerminalRequestAttempt =
 
 type CloverTerminalPaymentRequest = {
   amount: number;
+  capture: true;
+  final: true;
   externalPaymentId: string;
 };
 
@@ -500,8 +502,11 @@ export class CloverTerminalTransport {
       };
     }
 
+    // Always run a final Sale; Canadian merchants do not support Auth/PreAuth.
     const body: CloverTerminalPaymentRequest = {
       amount: request.amountCents,
+      capture: true,
+      final: true,
       externalPaymentId,
     };
     const attempt = await this.request('/connect/v1/payments', {
