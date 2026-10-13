@@ -1,8 +1,10 @@
 """G2-B2B isolated barrier tests; all host actions are synthetic."""
 import hashlib
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
+import textwrap
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -139,6 +141,47 @@ class OperatorBarrierTests(unittest.TestCase):
             host.observe = nested_observe
             receipt = op.execute_isolated_barrier(root, digest, host)
             self.assertFalse(receipt["readyToInstall"])
+
+    @unittest.skipUnless(sys.platform == "linux", "Linux flock isolation")
+    def test_separate_process_lock_rejects_and_releases(self):
+        # Use only the exact temporary lab lock; no production processes.
+        context, root, digest = self.lab()
+        with context:
+            code = textwrap.dedent("""
+                import fcntl
+                import os
+                import sys
+                fd = os.open(sys.argv[1],
+                             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                print("HELD", flush=True)
+                sys.stdin.readline()
+                os.close(fd)
+            """)
+            child = subprocess.Popen(
+                [sys.executable, "-c", code, str(root / op.LOCK)],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+            )
+            try:
+                self.assertEqual(child.stdout.readline().strip(), "HELD")
+                host = FakeHost()
+                with self.assertRaisesRegex(op.BarrierBlocked, "concurrent"):
+                    op.execute_isolated_barrier(root, digest, host)
+                self.assertEqual(host.calls, [])
+            finally:
+                if child.stdin is not None:
+                    child.stdin.write("\n")
+                    child.stdin.flush()
+                    child.stdin.close()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            self.assertEqual(child.returncode, 0)
+            result = op.execute_isolated_barrier(root, digest, FakeHost())
+            self.assertFalse(result["authorizedToMutateProduction"])
 
     def test_no_production_action_or_implicit_privilege(self):
         for name in ("main", "install", "deploy", "apply", "run_production"):
