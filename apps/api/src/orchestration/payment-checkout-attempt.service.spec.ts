@@ -332,6 +332,37 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
+  it('queries only confirmed POS terminal checkouts with incomplete Benefits release', async () => {
+    const harness = createHarness();
+    await expect(
+      harness.service.findPendingBenefitsReleases(null),
+    ).resolves.toEqual([]);
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+      },
+      orderBy: { id: 'asc' },
+      take: 25,
+      select: { id: true, attemptId: true },
+    });
+
+    const afterId = '00000000-0000-0000-8000-000000000001';
+    await harness.service.findPendingBenefitsReleases(afterId);
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenLastCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+        id: { gt: afterId },
+      },
+      orderBy: { id: 'asc' },
+      take: 25,
+      select: { id: true, attemptId: true },
+    });
+  });
+
   it('replays idempotent payment releases on a repeated external reversal', async () => {
     const harness = createHarness();
     await harness.service.prepare({

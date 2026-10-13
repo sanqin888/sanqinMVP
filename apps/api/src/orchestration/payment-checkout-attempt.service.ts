@@ -355,6 +355,22 @@ export class PaymentCheckoutAttemptService {
     return this.findByAttemptId(attemptId);
   }
 
+  async findPendingBenefitsReleases(afterId: string | null): Promise<
+    Array<{ id: string; attemptId: string }>
+  > {
+    return this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        source: 'POS_TERMINAL',
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+        ...(afterId ? { id: { gt: afterId } } : {}),
+      },
+      orderBy: { id: 'asc' },
+      take: 25,
+      select: { id: true, attemptId: true },
+    });
+  }
+
   async releaseReservations(attemptId: string): Promise<void> {
     // Both owner operations are idempotent. A partial failure leaves the
     // terminal checkout as durable pending work for the release recovery poller.

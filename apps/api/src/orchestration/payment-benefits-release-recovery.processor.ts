@@ -5,7 +5,6 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 
-import { PrismaService } from '../prisma/prisma.service';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 
 const BENEFIT_RELEASE_POLL_MS = 60_000;
@@ -29,10 +28,7 @@ export class PaymentBenefitsReleaseRecoveryProcessor
   private polling = false;
   private lastScannedId: string | null = null;
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly checkouts: PaymentCheckoutAttemptService,
-  ) {}
+  constructor(private readonly checkouts: PaymentCheckoutAttemptService) {}
 
   onApplicationBootstrap(): void {
     this.timer = setInterval(
@@ -50,17 +46,9 @@ export class PaymentBenefitsReleaseRecoveryProcessor
 
   /** One bounded replay pass; safe to call again after a failed owner release. */
   async processOnce(): Promise<number> {
-    const pending = await this.prisma.paymentCheckoutAttempt.findMany({
-      where: {
-        source: 'POS_TERMINAL',
-        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
-        benefitsReleasedAt: null,
-        ...(this.lastScannedId ? { id: { gt: this.lastScannedId } } : {}),
-      },
-      orderBy: { id: 'asc' },
-      take: 25,
-      select: { id: true, attemptId: true },
-    });
+    const pending = await this.checkouts.findPendingBenefitsReleases(
+      this.lastScannedId,
+    );
     // Move the cursor even past failed rows so one persistently unavailable
     // Benefits owner cannot starve all later checkouts. Wrap on the next poll.
     if (pending.length === 0) {

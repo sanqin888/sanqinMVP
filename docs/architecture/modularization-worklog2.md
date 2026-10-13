@@ -108,3 +108,17 @@
 **Safe deferrals:** production has zero closed months, so do not manufacture a close/reopen solely to test closed-month correction. Closed-period ADJUSTMENT behavior remains source/CI evidence until a natural closed month or separately authorized controlled test exists. Inventory/COGS remains outside this program.
 
 **Next gate:** user review of this readiness record, then explicit authorization is required before any dev-to-main promotion or production migration/deployment.
+
+## 2026-10-13 — Clover POS C-2C1 / C-2C2 cancel evidence and Benefits RELEASE recovery
+
+**PR:** #2803 targeting `dev`; branch `feat/clover-c2c-cancel-benefits-release`; original source commit `2f335628`. **State:** PR FIXUP / CI #7196 architecture baseline failed on an added Payments→Runtime/Prisma import; corrected source and documentation awaiting follow-up CI. No merge/production verification claimed. **MIGRATION REQUIRED**.
+
+**Payments owner:** Original Clover Terminal Sale HTTP 209 is distinguished from a `/device/cancel` acknowledgement and unverified result text. An original Sale 209 can resolve a concurrent POS Cancel `UNKNOWN/RECONCILING` to `CANCELLED`; ambiguous provider state stays held and canonical Platform success remains authoritative.
+
+**Checkout / Benefits orchestration:** The original Payments Checkout owner retains Prisma query authority and exposes a narrow pending-release read to a separate API-process recovery coordinator. The coordinator uses only existing idempotent Benefits owner public RELEASE ports, and adds `PaymentCheckoutAttempt.benefitsReleasedAt` as a durable completion checkpoint once both owners finish. It replays only confirmed POS Terminal `CANCELLED/DECLINED/FAILED` sessions, without releasing `PROCESSING/UNKNOWN/RECONCILING` because of TTL, and keeps existing Web Ecommerce behavior unchanged. It is eventually consistent, not a multi-context database transaction.
+
+**Architecture:** The initial PR version had an extra `payments-clover → runtime-data-ci-ops` edge because its new recovery processor directly imported `PrismaService`. Fixup removes that import, moving its narrow query to the already-existing checkout persistence owner without increasing architecture baseline or changing ownership; GitHub revalidation still required. CI #7196 also caught a response-body reuse bug in a new mocked HTTP 209 test; the fixture now returns a fresh response for each mocked request. No dependency/package changes or compatibility path introduced.
+
+**Schema / rollout:** One additive nullable `benefitsReleasedAt DateTime?` field plus index `[source,status,benefitsReleasedAt]`; no migration SQL generated or edited by MCP. User will pull `dev`, generate and upload `20261013_add_checkout_benefits_release_checkpoint` via their verified disposable local development DB, and return it for separate review. Promotion to `main` and production deployment are blocked until that migration is reviewed/merged; Sandbox Compact active acceptance remains pending.
+
+**Docs:** `docs/payments/clover-pos-phase-plan.md`, `docs/architecture/current-dependency-graph.md`, and this second-volume worklog. The first-volume worklog is intentionally not changed.
