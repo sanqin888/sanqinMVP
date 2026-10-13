@@ -786,8 +786,12 @@ export class PosGateway
         ...(data.chargedTotalCents !== undefined && {
           chargedTotalCents: data.chargedTotalCents,
         }),
-        ...(data.pointsCents !== undefined && { pointsCents: data.pointsCents }),
-        ...(data.balanceCents !== undefined && { balanceCents: data.balanceCents }),
+        ...(data.pointsCents !== undefined && {
+          pointsCents: data.pointsCents,
+        }),
+        ...(data.balanceCents !== undefined && {
+          balanceCents: data.balanceCents,
+        }),
         ...(data.couponDiscountCents !== undefined && {
           couponDiscountCents: data.couponDiscountCents,
         }),

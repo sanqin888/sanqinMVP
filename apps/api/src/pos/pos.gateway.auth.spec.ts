@@ -416,7 +416,11 @@ describe('PosGateway device authorization', () => {
         status: 'CANCELLED',
       }),
     );
-    const payload = emit.mock.calls[0]?.[1] as Record<string, unknown>;
+    const emitted = emit.mock.calls as unknown as [
+      string,
+      Record<string, unknown>,
+    ][];
+    const payload = emitted[0]?.[1];
     expect(payload).not.toHaveProperty('externalAmountCents');
     expect(payload).not.toHaveProperty('chargedTotalCents');
     expect(payload).not.toHaveProperty('pointsCents');
