@@ -209,9 +209,8 @@ describe('PrismaPaymentTransactionRepository', () => {
     expect(saved.transaction.toSnapshot().resultCode).toBe(
       'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
     );
-    expect(updateMany).toHaveBeenCalledWith({
+    expect(updateMany.mock.calls[0]?.[0] as unknown).toMatchObject({
       where: { id: persistedRow.id, status: 'RECONCILING', ...expected },
-      data: expect.any(Object),
     });
   });
 

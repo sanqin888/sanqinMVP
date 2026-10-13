@@ -203,16 +203,18 @@ describe('CloverPaymentProviderAdapter', () => {
       evidence: 'CANONICAL',
       failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
     });
-    await expect(adapter.startPayment({
-      paymentId: 'payment_terminal',
-      attemptId: 'attempt_terminal',
-      amountCents: 1000,
-      currency: 'CAD',
-      paymentMethod: 'CARD',
-      source: 'POS_TERMINAL',
-      idempotencyKey: 'attempt_terminal',
-      externalPaymentId: 'external-terminal-1',
-    })).resolves.toMatchObject({
+    await expect(
+      adapter.startPayment({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        amountCents: 1000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+      }),
+    ).resolves.toMatchObject({
       status: 'UNKNOWN',
       resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
       failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
@@ -554,27 +556,40 @@ describe('CloverTerminalTransport', () => {
   });
 
   it('does not send Welcome when a device is still busy', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ state: 'BUSY' }), { status: 200 }),
-    );
-    await expect(createTerminalTransport().prepareOriginalSaleResume()).resolves.toBe(false);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ state: 'BUSY' }), { status: 200 }),
+      );
+    await expect(
+      createTerminalTransport().prepareOriginalSaleResume(),
+    ).resolves.toBe(false);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://clover.example.test/connect/v1/device/status');
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/status',
+    );
   });
 
   it('does not infer idle from a successful but state-less status response', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response('{}', { status: 200 }),
-    );
-    await expect(createTerminalTransport().prepareOriginalSaleResume()).resolves.toBe(false);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    await expect(
+      createTerminalTransport().prepareOriginalSaleResume(),
+    ).resolves.toBe(false);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('resets a confirmed-idle Compact to Welcome before original payment resume', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch')
-      .mockResolvedValueOnce(new Response(JSON.stringify({ state: 'AVAILABLE' }), { status: 200 }))
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ state: 'AVAILABLE' }), { status: 200 }),
+      )
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    await expect(createTerminalTransport().prepareOriginalSaleResume()).resolves.toBe(true);
+    await expect(
+      createTerminalTransport().prepareOriginalSaleResume(),
+    ).resolves.toBe(true);
     expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
       'https://clover.example.test/connect/v1/device/status',
       'https://clover.example.test/connect/v1/device/welcome',

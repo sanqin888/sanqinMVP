@@ -63,7 +63,10 @@ describe('PosCardPaymentController store identity', () => {
     expect(cardPayments.getBenefitsReview).toHaveBeenCalledWith(storeStableId);
     expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
-    expect(cardPayments.resumeOriginalSale).toHaveBeenCalledWith(storeStableId, body);
+    expect(cardPayments.resumeOriginalSale).toHaveBeenCalledWith(
+      storeStableId,
+      body,
+    );
     expect(cardPayments.cancel).toHaveBeenCalledWith(storeStableId, body);
   });
 

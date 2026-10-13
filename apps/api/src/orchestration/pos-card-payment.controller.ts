@@ -75,7 +75,10 @@ export class PosCardPaymentController {
 
   @Post('resume-original')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
-  resumeOriginal(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {
+  resumeOriginal(
+    @Req() req: PosDeviceRequest,
+    @Body() body: PosCardPaymentStartDto,
+  ) {
     return this.cardPayments.resumeOriginalSale(
       this.requireStoreStableId(req),
       body,

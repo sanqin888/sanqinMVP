@@ -169,7 +169,8 @@ export class PosCardPaymentOrchestrationService {
     if (!payment) {
       throw new ConflictException({
         code: 'POS_CARD_ORIGINAL_SALE_MISSING',
-        message: 'Original Clover Sale is missing; do not issue another payment.',
+        message:
+          'Original Clover Sale is missing; do not issue another payment.',
       });
     }
     if (!this.terminalPayments.canResumeOriginal504Sale(payment)) {
@@ -208,7 +209,9 @@ export class PosCardPaymentOrchestrationService {
       // A failed read/device reset/provider interaction is not a failed Sale.
       // Keep the persisted state and do not release any reservation.
       try {
-        const current = await this.checkouts.findByAttemptId(checkout.attemptId);
+        const current = await this.checkouts.findByAttemptId(
+          checkout.attemptId,
+        );
         const payment = await this.findPaymentForCheckout(current);
         this.publish(
           storeStableId,
@@ -794,7 +797,9 @@ export class PosCardPaymentOrchestrationService {
       status: override?.status ?? this.publicStatus(checkout.status),
       canResumeOriginalSale:
         override?.canResumeOriginalSale ??
-        (payment ? this.terminalPayments.canResumeOriginal504Sale(payment) : false),
+        (payment
+          ? this.terminalPayments.canResumeOriginal504Sale(payment)
+          : false),
       failureCode:
         override?.failureCode ??
         paymentSnapshot?.failureCode ??

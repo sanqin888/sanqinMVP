@@ -160,7 +160,8 @@ const providerCallUnknown = (
 });
 
 const ORIGINAL_504_RESULT_CODE = 'CLOVER_TERMINAL_SALE_HTTP_504';
-const ORIGINAL_504_RESUME_CLAIM = 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED';
+const ORIGINAL_504_RESUME_CLAIM =
+  'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED';
 
 /** One confirmed provider HTTP 504 + canonical NOT_FOUND, never a new payment. */
 const isResumableOriginal504Sale = (

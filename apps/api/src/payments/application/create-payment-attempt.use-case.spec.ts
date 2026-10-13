@@ -120,7 +120,8 @@ class InMemoryPaymentTransactionRepository implements PaymentTransactionReposito
     if (
       current.status !== expectedStatus ||
       (expectedObservation !== undefined &&
-        (current.updatedAt.getTime() !== expectedObservation.updatedAt.getTime() ||
+        (current.updatedAt.getTime() !==
+          expectedObservation.updatedAt.getTime() ||
           current.resultCode !== expectedObservation.resultCode ||
           current.failureCode !== expectedObservation.failureCode))
     ) {
@@ -349,8 +350,8 @@ describe('TerminalPaymentService', () => {
     );
     const resumed = await service.resumeOriginal504Sale(initial.id);
     expect(resumed.status).toBe('SUCCEEDED');
-    expect(terminalProvider.prepareOriginalSaleResume).toHaveBeenCalledTimes(1);
-    expect(provider.startPayment).toHaveBeenCalledTimes(2);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
     expect(provider.startPayment.mock.calls[1]?.[0]).toMatchObject({
       paymentId: initial.id,
       attemptId: terminalInput.attemptId,
@@ -360,8 +361,10 @@ describe('TerminalPaymentService', () => {
       currency: 'CAD',
     });
 
-    expect((await service.resumeOriginal504Sale(initial.id)).status).toBe('SUCCEEDED');
-    expect(provider.startPayment).toHaveBeenCalledTimes(2);
+    expect((await service.resumeOriginal504Sale(initial.id)).status).toBe(
+      'SUCCEEDED',
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
   });
 
   it('canonical success found after 504 finalizes without replay or device reset', async () => {
@@ -369,16 +372,20 @@ describe('TerminalPaymentService', () => {
     provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
     const initial = await service.startSale(terminalInput);
     provider.getPaymentStatus.mockImplementation((request) =>
-      Promise.resolve(canonicalOutcome({
-        ...request,
-        amountCents: terminalInput.amountCents,
-        currency: terminalInput.currency,
-      })),
+      Promise.resolve(
+        canonicalOutcome({
+          ...request,
+          amountCents: terminalInput.amountCents,
+          currency: terminalInput.currency,
+        }),
+      ),
     );
     const result = await service.resumeOriginal504Sale(initial.id);
     expect(result.status).toBe('SUCCEEDED');
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
-    expect(terminalProvider.prepareOriginalSaleResume).not.toHaveBeenCalled();
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
   });
 
   it('preserves UNKNOWN/HOLD with no new Sale if device is busy', async () => {
@@ -390,13 +397,17 @@ describe('TerminalPaymentService', () => {
     });
     const initial = await service.startSale(terminalInput);
     terminalProvider.getAvailability.mockResolvedValue({
-      state: 'BUSY', configured: true, available: false,
+      state: 'BUSY',
+      configured: true,
+      available: false,
     });
     await expect(service.resumeOriginal504Sale(initial.id)).rejects.toThrow(
       'device is not idle',
     );
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
-    expect(terminalProvider.prepareOriginalSaleResume).not.toHaveBeenCalled();
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
     expect((await service.findById(initial.id)).status).toBe('RECONCILING');
   });
 
@@ -413,9 +424,9 @@ describe('TerminalPaymentService', () => {
     const held = await service.resumeOriginal504Sale(original.id);
     expect(held.status).toBe('RECONCILING');
     expect(service.canResumeOriginal504Sale(held)).toBe(false);
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
     await service.resumeOriginal504Sale(original.id);
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
   });
 
   it('one-time claim prevents duplicate provider calls across simultaneous operator clicks', async () => {
@@ -438,7 +449,7 @@ describe('TerminalPaymentService', () => {
       failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
     });
     await Promise.all([first, second]);
-    expect(provider.startPayment).toHaveBeenCalledTimes(2);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
   });
 
   it('does not re-arm retry after another 504 from the identical Sale', async () => {
@@ -455,7 +466,7 @@ describe('TerminalPaymentService', () => {
       'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
     );
     await service.resumeOriginal504Sale(initial.id);
-    expect(provider.startPayment).toHaveBeenCalledTimes(2);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
   });
 
   it('keeps UI cleanup best-effort and never propagates device errors', async () => {
