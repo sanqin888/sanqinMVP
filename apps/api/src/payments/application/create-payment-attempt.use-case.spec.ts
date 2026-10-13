@@ -290,11 +290,11 @@ describe('TerminalPaymentService', () => {
     await expect(
       service.completeCustomerInteraction('SUCCEEDED'),
     ).resolves.toBe(false);
-    expect(terminalProvider.completeCustomerInteraction).toHaveBeenCalledWith(
+    expect(terminalProvider.completeCustomerInteraction.mock.calls[0]).toEqual([
       'SUCCEEDED',
       undefined,
       true,
-    );
+    ]);
   });
 
   it('persists a stable external id before Clover and saves final success', async () => {
@@ -636,7 +636,7 @@ describe('TerminalPaymentService', () => {
     const terminalProvider: jest.Mocked<PaymentTerminalProvider> = {
       getAvailability: jest.fn(),
       completeCustomerInteraction: jest.fn().mockResolvedValue(false),
-    cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
+      cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
     };
     const restartedService = new TerminalPaymentService(
       new CreatePaymentAttemptUseCase(transactions),

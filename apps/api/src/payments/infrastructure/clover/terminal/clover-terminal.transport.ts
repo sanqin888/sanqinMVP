@@ -530,7 +530,9 @@ export class CloverTerminalTransport {
       timeoutSeconds: 0,
     });
     if (attempt.kind !== 'response') {
-      this.logger.warn('[CloverTerminalTransport] customer retry prompt outcome uncertain');
+      this.logger.warn(
+        '[CloverTerminalTransport] customer retry prompt outcome uncertain',
+      );
       return false;
     }
     if (attempt.result.httpStatus === 200) {
@@ -561,7 +563,9 @@ export class CloverTerminalTransport {
       timeoutSeconds: 5,
     });
     if (attempt.kind !== 'response' || !attempt.result.ok) {
-      this.logger.warn('[CloverTerminalTransport] customer confirmation cancel not acknowledged');
+      this.logger.warn(
+        '[CloverTerminalTransport] customer confirmation cancel not acknowledged',
+      );
     }
   }
 
@@ -571,7 +575,9 @@ export class CloverTerminalTransport {
       timeoutSeconds: 5,
     });
     if (attempt.kind !== 'response' || attempt.result.httpStatus !== 200) {
-      this.logger.warn('[CloverTerminalTransport] welcome screen was not confirmed');
+      this.logger.warn(
+        '[CloverTerminalTransport] welcome screen was not confirmed',
+      );
     }
   }
 

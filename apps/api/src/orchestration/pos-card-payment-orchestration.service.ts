@@ -240,7 +240,9 @@ export class PosCardPaymentOrchestrationService {
       await this.terminalPayments.cancelCustomerConfirmation();
       return {
         ...this.toView(checkout, payment),
-        customerPromptPending: this.activeCustomerPrompts.has(checkout.attemptId),
+        customerPromptPending: this.activeCustomerPrompts.has(
+          checkout.attemptId,
+        ),
       };
     }
     const cancelled = await this.terminalPayments.cancel(payment.id);
@@ -291,7 +293,10 @@ export class PosCardPaymentOrchestrationService {
 
     const existingPayment = await this.findPaymentForCheckout(checkout);
     if (existingPayment) {
-      if (mode === 'RECOVER' && this.activeSaleAttempts.has(checkout.attemptId)) {
+      if (
+        mode === 'RECOVER' &&
+        this.activeSaleAttempts.has(checkout.attemptId)
+      ) {
         const view = this.toView(checkout, existingPayment);
         this.publish(storeId, view);
         return view;
@@ -400,13 +405,16 @@ export class PosCardPaymentOrchestrationService {
       // A transport exception cannot establish payment failure. The checkout
       // remains recoverable; no new Sale is permitted without reconciliation.
       try {
-        const current = await this.checkouts.findByAttemptId(checkout.attemptId);
+        const current = await this.checkouts.findByAttemptId(
+          checkout.attemptId,
+        );
         const payment = await this.findPaymentForCheckout(current);
         if (current.status === 'COMPLETED') return;
         const view = this.toView(current, payment ?? undefined, undefined, {
           status: 'UNKNOWN',
           failureCode: 'POS_CARD_BACKGROUND_START_UNCERTAIN',
-          failureMessage: 'Payment execution needs reconciliation before retry.',
+          failureMessage:
+            'Payment execution needs reconciliation before retry.',
         });
         this.publish(storeId, view);
       } catch {
@@ -475,7 +483,10 @@ export class PosCardPaymentOrchestrationService {
       // Never await customer input inside the HTTP request. No second Sale is
       // initiated here; Retry is an explicit new POS attempt after confirmation.
       void this.waitForCustomerDecision(storeId, checkout, payment, view);
-    } else if (interactive && ['FAILED', 'DECLINED', 'CANCELLED'].includes(payment.status)) {
+    } else if (
+      interactive &&
+      ['FAILED', 'DECLINED', 'CANCELLED'].includes(payment.status)
+    ) {
       void this.terminalPayments.completeCustomerInteraction(
         payment.status as 'DECLINED' | 'CANCELLED' | 'FAILED',
         payment.toSnapshot().failureCode,
@@ -493,11 +504,12 @@ export class PosCardPaymentOrchestrationService {
   ): Promise<void> {
     let customerRetryRequested = false;
     try {
-      customerRetryRequested = await this.terminalPayments.completeCustomerInteraction(
-        payment.status as 'DECLINED' | 'FAILED',
-        payment.toSnapshot().failureCode,
-        true,
-      );
+      customerRetryRequested =
+        await this.terminalPayments.completeCustomerInteraction(
+          payment.status as 'DECLINED' | 'FAILED',
+          payment.toSnapshot().failureCode,
+          true,
+        );
     } finally {
       this.activeCustomerPrompts.delete(checkout.attemptId);
       this.publish(storeId, {

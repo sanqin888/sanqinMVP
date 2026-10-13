@@ -59,7 +59,11 @@ export class CloverPaymentProviderAdapter
     failureCode?: string | null,
     allowRetry = true,
   ): Promise<boolean> {
-    return this.terminal.completeCustomerInteraction(status, failureCode, allowRetry);
+    return this.terminal.completeCustomerInteraction(
+      status,
+      failureCode,
+      allowRetry,
+    );
   }
 
   async startPayment(

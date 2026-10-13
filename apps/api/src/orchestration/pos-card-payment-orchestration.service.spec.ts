@@ -271,7 +271,9 @@ describe('PosCardPaymentOrchestrationService', () => {
     const waitingForCard = new Promise<PaymentTransaction>((resolve) => {
       completeSale = resolve;
     });
-    jest.mocked(harness.terminalPayments.startSale).mockReturnValue(waitingForCard);
+    jest
+      .mocked(harness.terminalPayments.startSale)
+      .mockReturnValue(waitingForCard);
 
     const accepted = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
@@ -281,15 +283,29 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     });
 
-    expect(accepted).toMatchObject({ status: 'PROCESSING', orderStableId: null });
-    expect(harness.orderFinalization.finalizeConfirmedPayment).not.toHaveBeenCalled();
+    expect(accepted).toMatchObject({
+      status: 'PROCESSING',
+      orderStableId: null,
+    });
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
     completeSale(paymentFixture('SUCCEEDED'));
     await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(harness.orderFinalization.finalizeConfirmedPayment).toHaveBeenCalledTimes(1);
-    expect(harness.terminalPayments.completeCustomerInteraction).toHaveBeenCalledWith('SUCCEEDED');
-    expect(harness.paymentRealtime.publishCardPaymentStatus).toHaveBeenCalledWith(
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.terminalPayments.completeCustomerInteraction,
+    ).toHaveBeenCalledWith('SUCCEEDED');
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).toHaveBeenCalledWith(
       storeStableId,
-      expect.objectContaining({ status: 'SUCCEEDED', orderStableId: 'cpaymentorder1' }),
+      expect.objectContaining({
+        status: 'SUCCEEDED',
+        orderStableId: 'cpaymentorder1',
+      }),
     );
   });
 
@@ -336,7 +352,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orderFinalization.finalizeConfirmedPayment.mock.calls[0]?.[1];
     expect(finalizationInput).not.toHaveProperty('internalOrderId');
     expect(harness.checkouts.markCompleted).toHaveBeenCalledWith('attempt-1');
-    expect(harness.terminalPayments.completeCustomerInteraction).toHaveBeenCalledWith('SUCCEEDED');
+    expect(
+      harness.terminalPayments.completeCustomerInteraction,
+    ).toHaveBeenCalledWith('SUCCEEDED');
     expect(
       harness.orderOperations.activateImmediatePreparation,
     ).toHaveBeenCalledWith('cpaymentorder1', storeStableId);
@@ -421,7 +439,9 @@ describe('PosCardPaymentOrchestrationService', () => {
 
     expect(harness.terminalPayments.getAvailability).not.toHaveBeenCalled();
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
-    expect(harness.terminalPayments.completeCustomerInteraction).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.completeCustomerInteraction,
+    ).not.toHaveBeenCalled();
     expect(
       harness.orderFinalization.finalizeConfirmedPayment,
     ).toHaveBeenCalledWith(
@@ -459,19 +479,19 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orderOperations.activateImmediatePreparation,
     ).not.toHaveBeenCalled();
     expect(result.status).toBe('DECLINED');
-    expect(harness.terminalPayments.completeCustomerInteraction).toHaveBeenCalledWith(
-      'DECLINED',
-      null,
-      false,
-    );
+    expect(
+      harness.terminalPayments.completeCustomerInteraction,
+    ).toHaveBeenCalledWith('DECLINED', null, false);
   });
 
   it('relays a device-confirmed Retry only after a definitive failed payment', async () => {
     const harness = createHarness();
-    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(
-      paymentFixture('DECLINED'),
-    );
-    jest.mocked(harness.terminalPayments.completeCustomerInteraction).mockResolvedValue(true);
+    jest
+      .mocked(harness.terminalPayments.startSale)
+      .mockResolvedValue(paymentFixture('DECLINED'));
+    jest
+      .mocked(harness.terminalPayments.completeCustomerInteraction)
+      .mockResolvedValue(true);
 
     const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
@@ -486,7 +506,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       orderStableId: null,
     });
     await Promise.resolve();
-    expect(harness.paymentRealtime.publishCardPaymentStatus).toHaveBeenCalledWith(
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).toHaveBeenCalledWith(
       storeStableId,
       expect.objectContaining({
         status: 'DECLINED',
@@ -494,20 +516,25 @@ describe('PosCardPaymentOrchestrationService', () => {
         customerRetryRequested: true,
       }),
     );
-    expect(harness.orderFinalization.finalizeConfirmedPayment).not.toHaveBeenCalled();
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
     expect(harness.terminalPayments.startSale).toHaveBeenCalledTimes(1);
   });
 
   it('stops a pending customer prompt on POS Cancel without cancelling an already failed payment', async () => {
     const harness = createHarness();
     const declined = paymentFixture('DECLINED');
-    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(declined);
+    jest
+      .mocked(harness.terminalPayments.startSale)
+      .mockResolvedValue(declined);
     jest.mocked(harness.terminalPayments.findById).mockResolvedValue(declined);
     let finishPrompt!: (retry: boolean) => void;
     const pendingConfirmation = new Promise<boolean>((resolve) => {
       finishPrompt = resolve;
     });
-    jest.mocked(harness.terminalPayments.completeCustomerInteraction)
+    jest
+      .mocked(harness.terminalPayments.completeCustomerInteraction)
       .mockReturnValue(pendingConfirmation);
 
     const input = {
@@ -517,16 +544,26 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     };
     const waiting = await harness.service.start(storeStableId, input);
-    expect(waiting).toMatchObject({ status: 'DECLINED', customerPromptPending: true });
+    expect(waiting).toMatchObject({
+      status: 'DECLINED',
+      customerPromptPending: true,
+    });
 
     const cancelling = await harness.service.cancel(storeStableId, input);
-    expect(cancelling).toMatchObject({ status: 'DECLINED', customerPromptPending: true });
-    expect(harness.terminalPayments.cancelCustomerConfirmation).toHaveBeenCalledTimes(1);
+    expect(cancelling).toMatchObject({
+      status: 'DECLINED',
+      customerPromptPending: true,
+    });
+    expect(
+      harness.terminalPayments.cancelCustomerConfirmation,
+    ).toHaveBeenCalledTimes(1);
     expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
 
     finishPrompt(false);
     await Promise.resolve();
-    expect(harness.paymentRealtime.publishCardPaymentStatus).toHaveBeenCalledWith(
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).toHaveBeenCalledWith(
       storeStableId,
       expect.objectContaining({
         status: 'DECLINED',
@@ -538,10 +575,12 @@ describe('PosCardPaymentOrchestrationService', () => {
 
   it('suppresses a device Retry prompt when it is disabled by the caller', async () => {
     const harness = createHarness();
-    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(
-      paymentFixture('FAILED'),
-    );
-    jest.mocked(harness.terminalPayments.completeCustomerInteraction).mockResolvedValue(true);
+    jest
+      .mocked(harness.terminalPayments.startSale)
+      .mockResolvedValue(paymentFixture('FAILED'));
+    jest
+      .mocked(harness.terminalPayments.completeCustomerInteraction)
+      .mockResolvedValue(true);
 
     const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
@@ -551,12 +590,12 @@ describe('PosCardPaymentOrchestrationService', () => {
     });
 
     expect(result.customerRetryRequested).not.toBe(true);
-    expect(harness.terminalPayments.completeCustomerInteraction).toHaveBeenCalledWith(
-      'FAILED',
-      null,
-      false,
-    );
-    expect(harness.orderFinalization.finalizeConfirmedPayment).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.completeCustomerInteraction,
+    ).toHaveBeenCalledWith('FAILED', null, false);
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
   });
 
   it('keeps reservations held when the provider result is UNKNOWN', async () => {
@@ -581,7 +620,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orderOperations.activateImmediatePreparation,
     ).not.toHaveBeenCalled();
     expect(result.status).toBe('UNKNOWN');
-    expect(harness.terminalPayments.completeCustomerInteraction).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.completeCustomerInteraction,
+    ).not.toHaveBeenCalled();
   });
 
   it('recovers UNKNOWN by reconciliation without a second sale', async () => {

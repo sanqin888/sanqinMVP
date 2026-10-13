@@ -604,7 +604,8 @@ describe('CloverTerminalTransport', () => {
   });
 
   it('shows a decline reason with Retry and returns the customer confirmation', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch')
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ response: true }), { status: 200 }),
       )
@@ -626,7 +627,9 @@ describe('CloverTerminalTransport', () => {
     expect(init?.headers).toMatchObject({ 'X-Clover-Timeout': '0' });
     expect(init?.method).toBe('POST');
     if (typeof init?.body !== 'string') {
-      throw new Error('Expected Clover confirmation request body to be JSON text');
+      throw new Error(
+        'Expected Clover confirmation request body to be JSON text',
+      );
     }
     expect(JSON.parse(init.body)).toEqual({
       text: 'Insufficient funds. Try another card?',
