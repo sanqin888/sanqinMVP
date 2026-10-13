@@ -41,7 +41,7 @@ No root/systemd/VM activity is performed through MCP. Before an operator runs co
 
 **Date:** 2026-10-13 (America/Toronto)  
 **Baseline:** `origin/dev@ba27dc3d08c8202d77ed403b7c10409be228da43` (G2-B2B5 PR #2798, CI #7184 7/7).  
-**Status:** LOCAL REVIEW. No guest access, root/systemd execution, production installation or S2 change. Production NO-GO.
+**Status (updated after PR #2799 / CI #7186, 7/7 green):** B2B6 protocol MERGED; current guest Gate 0/1 evidence still pending. No guest access, root/systemd execution, production installation or S2 change. Production NO-GO.
 
 ## What earlier slices prove
 
@@ -61,6 +61,7 @@ id -u
 id -g
 id -un
 getent passwd ubuntu
+getent passwd root
 uname -srmo
 cat /etc/os-release
 findmnt -n -o SOURCE,FSTYPE,OPTIONS /
