@@ -51,7 +51,7 @@ class OperatorSource:
 
 
 def _private_fixture(root: Path) -> int:
-    _require(type(root) is Path and root.is_absolute()
+    _require(isinstance(root, Path) and root.is_absolute()
              and root.parent == Path("/tmp") and root.name.startswith(PREFIX),
              "only fixed lab fixture allowed")
     fd = os.open(root, DIR_FLAGS)
