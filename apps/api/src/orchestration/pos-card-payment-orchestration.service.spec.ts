@@ -316,7 +316,14 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.paymentRealtime.publishCardPaymentStatus,
     ).toHaveBeenCalledWith(
       storeStableId,
-      expect.objectContaining({ status: 'SUCCEEDED' }),
+      expect.objectContaining({
+        status: 'SUCCEEDED',
+        externalAmountCents: 700,
+        surchargeCents: 20,
+        chargedTotalCents: 720,
+        pointsCents: 200,
+        balanceCents: 300,
+      }),
     );
     expect(
       harness.paymentRealtime.publishCardPaymentStatus,

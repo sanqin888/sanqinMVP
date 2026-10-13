@@ -761,6 +761,13 @@ export class PosGateway
     storeStableId: string,
     data: PosCardPaymentStatusRealtimeMessage,
   ) {
+    const hasAmountSnapshot =
+      data.externalAmountCents !== undefined &&
+      data.surchargeCents !== undefined &&
+      data.chargedTotalCents !== undefined &&
+      data.pointsCents !== undefined &&
+      data.balanceCents !== undefined &&
+      data.couponDiscountCents !== undefined;
     this.server
       .to(`store:${storeStableId}`)
       .emit(POS_CARD_PAYMENT_STATUS_UPDATED_EVENT, {
@@ -769,6 +776,21 @@ export class PosGateway
         status: data.status,
         failureCode: data.failureCode ?? null,
         failureMessage: data.failureMessage ?? null,
+        messageKind: hasAmountSnapshot ? 'SNAPSHOT' : 'NOTICE',
+        ...(data.externalAmountCents !== undefined && {
+          externalAmountCents: data.externalAmountCents,
+        }),
+        ...(data.surchargeCents !== undefined && {
+          surchargeCents: data.surchargeCents,
+        }),
+        ...(data.chargedTotalCents !== undefined && {
+          chargedTotalCents: data.chargedTotalCents,
+        }),
+        ...(data.pointsCents !== undefined && { pointsCents: data.pointsCents }),
+        ...(data.balanceCents !== undefined && { balanceCents: data.balanceCents }),
+        ...(data.couponDiscountCents !== undefined && {
+          couponDiscountCents: data.couponDiscountCents,
+        }),
         orderStableId: data.orderStableId ?? null,
         orderNumber: data.orderNumber ?? null,
         pickupCode: data.pickupCode ?? null,
