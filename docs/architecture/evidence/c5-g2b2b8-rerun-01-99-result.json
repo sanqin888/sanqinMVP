@@ -1,0 +1,52 @@
+{
+  "authorizedToMutateProduction": false,
+  "crossProcessQuiescenceVerified": false,
+  "gate": "c5-g2b2b8-disposable-systemd-v1",
+  "guestUuid": "0d46a6e8-abaf-4fa6-bd8d-987756143ee9",
+  "observations": {
+    "PASS": true,
+    "cleanupFailures": [],
+    "events": {
+      "S11_after_restore": {
+        "active": "active",
+        "file": "enabled-runtime",
+        "load": "loaded",
+        "next": "Thu 2099-01-01 00:00:00 UTC"
+      },
+      "S11_injected": "synthetic exception recognized",
+      "S1_after_restore": {
+        "active": "active",
+        "file": "enabled-runtime",
+        "load": "loaded",
+        "next": "Thu 2099-01-01 00:00:00 UTC"
+      },
+      "S1_original_enabled": {
+        "active": "active",
+        "file": "enabled-runtime",
+        "load": "loaded",
+        "next": "Thu 2099-01-01 00:00:00 UTC"
+      },
+      "S2_after_restore": {
+        "active": "inactive",
+        "file": "disabled",
+        "load": "loaded",
+        "next": ""
+      },
+      "S2_original_disabled": {
+        "active": "inactive",
+        "file": "disabled",
+        "load": "loaded",
+        "next": ""
+      },
+      "syntheticServiceStateRestorationVerified": true
+    },
+    "failures": [],
+    "mountNamespaceCoverageVerified": false,
+    "newConsumerAdmissionPrevented": false,
+    "rootLevelWholeHostExclusionVerified": false
+  },
+  "readyToInstall": false,
+  "stage": "99-result",
+  "unit": "sanq-g2b2b-lab-b2b8.timer",
+  "utc": "2026-10-13T18:09:27.741175+00:00"
+}

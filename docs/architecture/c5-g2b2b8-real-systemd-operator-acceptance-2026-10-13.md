@@ -72,3 +72,27 @@ No changes were made to the production VM, `/opt/sanq/runtime`, `sanq-backup.ser
 Next: **G2-B2B9 read-only remaining-safety-coverage readiness audit**. Freeze a separately reviewable contract for whole-host noncooperating consumer exclusion, mount namespace/inode aliases and new-actor admission, plus the outstanding S3–S10/S12 failure/cold-recovery cases. If this requires changing Backup, Deploy, MCP, installed systemd ownership, production privileges or other module boundaries, first present the reason, operational impact and alternatives and obtain explicit authorization. Any additional disposable root/systemd experiment likewise requires its own reviewed exact commands/source hash and authorization. Production stays **NO-GO**; S2 daily backup stays **PAUSED**.
 
 **Change scope of this closure:** architecture documentation only; no repository source/test/CI modification, no local lint/build/test, no commit/push/PR until explicit user review and authorization.
+
+## 6. 2026-10-13 — Separate RERUN-01 original evidence acquisition (later local review)
+
+The first run's volatile `/tmp/sanq-g2b2b-lab-b2b8-qql870j5/99-result.json` was later found missing; **that original raw artifact remains unavailable**. Do not retroactively attribute any rerun evidence to the first run or treat the earlier VirtualBox freeze as a validated S12 test.
+
+The human operator separately re-executed the **same pinned v2 script** in the disposable Ubuntu guest:
+
+- Command: `sudo /usr/bin/python3 -I -B /root/sanq-g2b2b8-pin/v1/g2b2b8_systemd_lab.py --run --expected-sha256 ec8674bdbea237d8b780e03ba7e298bdc7d9429467a5ce48b3c2e4c31f6f4569`
+- Second-run lab: `/tmp/sanq-g2b2b-lab-b2b8-ds_4vyqx` (different from the first run).
+- Receipt's own UTC time: `2026-10-13T18:09:27.741175+00:00`; receipt's `gate=c5-g2b2b8-disposable-systemd-v1`, `stage=99-result`, unit `sanq-g2b2b-lab-b2b8.timer`, and claimed guest UUID `0d46a6e8-abaf-4fa6-bd8d-987756143ee9`.
+- Guest `sudo stat`: original `99-result.json` root:root `0600`, **1,488 bytes**; `sudo sha256sum` matched the separately created `/home/ubuntu/g2b2b8-20261013-rerun-01-99-result.json` copy.
+- The user then supplied the **actual rerun JSON file**; a local byte-level SHA-256 check of the uploaded 1,488-byte file matched the two guest command outputs exactly:
+  `fe9452cf42decc800fdaedcc918953087045f7c61268ee800bc7c0a19ead65d9`.
+- **Exact uploaded original content, not reconstructed from terminal output:** [RERUN-01 `99-result.json`](./evidence/c5-g2b2b8-rerun-01-99-result.json). Its JSON bytes must remain unchanged in the repository; metadata belongs in this Markdown document.
+
+### Result and negative-only gates
+
+In the raw rerun receipt, `observations.PASS=true`, `observations.failures=[]`, `observations.cleanupFailures=[]`, `observations.events.syntheticServiceStateRestorationVerified=true`. The S1 enabled+active, S2 disabled+inactive and S11 injected-failure restoration fields repeat the earlier successful behavior. The operator **separately** ran `systemctl` checks, reporting timer `LoadState=not-found` / `ActiveState=inactive`, service `LoadState=not-found`, and **0 unit files**; these independent terminal observations are **not fields within this JSON artifact**.
+
+The receipt explicitly keeps `authorizedToMutateProduction=false`, `readyToInstall=false`, `crossProcessQuiescenceVerified=false`, `observations.mountNamespaceCoverageVerified=false`, `observations.rootLevelWholeHostExclusionVerified=false` and `observations.newConsumerAdmissionPrevented=false`. No S3–S10/S12 acceptance, true host-wide exclusion, namespace coverage, new admission prevention, independent guest attestation, Recovery Kit, source-to-release authorization or production cutover is established.
+
+**Evidence provenance limitation:** identical file hashes corroborate the chain from the operator-reported Ubuntu original/copy to the user-uploaded file; they do **not** independently authenticate the guest, establish a trusted timestamp, prove the complete test harness, or turn the operator's report into production authority. MacBook persistence and backup durability outside this Git repository are independent operator responsibilities.
+
+**RERUN-01 local change boundary:** this addition and the separate raw JSON are documentation/evidence only. No modified source/test/CI, no production or guest commands performed by MCP, no local CI runs, and no commit/push/PR until separate user review and approval. Production `C5-G2 NO-GO`; S2 scheduled daily backup remains `PAUSED`.
