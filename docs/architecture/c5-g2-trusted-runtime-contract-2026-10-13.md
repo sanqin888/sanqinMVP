@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-13 America/Toronto  
 **Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
-**State (2026-10-13):** G2-A MERGED PR #2791 CI #7169 GREEN; G2-B1 MERGED PR #2792 CI #7171 GREEN (dev `84f2674aae7db318aa2ae9b348196a9e39427328`); G2-B2A LOCAL REVIEW / NO ROOT PRODUCTION INSTALL / S2 DAILY BACKUP PAUSED.
+**State (2026-10-13, updated):** G2-A merged PR #2791; G2-B1 merged PR #2792; G2-B2A/B2B/B2B2/B2B3/B2B4/B2B5 merged PRs #2793-#2798, their PR CI all seven green (latest #7184). G2-B2B6 disposable guest acceptance contract LOCAL REVIEW. All lab receipts non-authorizing; NO ROOT PRODUCTION INSTALL; S2 DAILY BACKUP PAUSED.
 
 ## 1. Frozen design and ownership
 
@@ -121,7 +121,11 @@ sole permission.** A standalone flock is not quiescence: existing backup,
 
 **G2-B1 (merged):** bounded, negative-only normalized maintenance evidence contract and offline regression coverage, PR #2792 / CI #7171 green. It does not read the host, grant authority or create a true quiescence barrier.
 
-**G2-B2A (local review):** read-only, root-required `/proc` path-reference census with synthetic fixture tests. It cannot assert absence of all inode/namespace references, establish a maintenance barrier or grant authority. See [G2-B2A process census](./c5-g2b2a-proc-reference-census-2026-10-13.md).
+**G2-B2A (merged, PR #2793):** read-only, root-required `/proc` textual-reference census with synthetic fixture tests; cannot establish a barrier or authority. See [G2-B2A process census](./c5-g2b2a-proc-reference-census-2026-10-13.md).
+
+**G2-B2B through G2-B2B5 (merged, PRs #2794–#2798):** synthetic operator rehearsal, double idle-report negative check, second-process flock, same-user real Linux cwd/fd fixture, and isolated inode/hardlink/mmap fixture observation. All require explicit negative-only receipts; **none** prove cross-process quiescence, forbid new consumers, cover all namespaces, or grant root install authority.
+
+**G2-B2B6 (local review):** independent disposable Linux VM root/systemd barrier [B2B3/B2B6 guest acceptance protocol](./c5-g2b2b3-isolated-linux-acceptance-2026-10-13.md). This is a reviewable proposed evidence/command plan, **not executed**. Step 1 guest identity, snapshot and read-only evidence remains pending; privileged guest command approval is separate.
 
 **G2-B:** trusted operator delivery, mandatory maintenance gate/read-only
 Live State detector, direct production path execution contract still disabled,
@@ -155,4 +159,4 @@ paired-image mismatch, repacked original Archive, no production capabilities.
 The previous newest-release verifier, `stage_bundle.py` consumer, 17-file
 source allowlist, app deploy and legacy lab installer are unchanged.
 
-Per `AGENTS.md`, G2-B2A local tests/build/lint have not been executed; user review is required before its remote `dev` PR. G2-A/B1 CI have passed independently. Production remains `C5-G2 NO-GO` pending real G2-B maintenance/Kit gates, G2-C..E and distinct operator authority.
+G2-A through G2-B2B5 PR CI have passed independently (latest G2-B2B5 CI #7184, 7/7). B2B6 contains no executable host action and remains local for user review under `AGENTS.md`. Historical synthetic CI success does not satisfy separate disposable VM root/systemd tests. Production remains `C5-G2 NO-GO` pending real G2-B maintenance/Kit gates, G2-C..E and distinct operator authority.

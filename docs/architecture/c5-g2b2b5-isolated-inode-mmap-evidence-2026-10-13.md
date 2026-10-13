@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-13 (America/Toronto).  
 **Base:** `origin/dev@0876ae2a176565c5f6ba8390f8e7a132e1a9b1e8` (G2-B2B4 PR #2797, CI #7182 7/7 success).  
-**State:** LOCAL CODE REVIEW / NO ROOT VM TEST / PRODUCTION NO-GO. S2 paused.
+**State (updated 2026-10-13):** MERGED PR #2798, head `45eaf2086197b348d427d90450075813e1dfc02a`, dev squash `ba27dc3d08c8202d77ed403b7c10409be228da43`, CI #7184 all 7 jobs PASS / independent root VM not tested / PRODUCTION NO-GO. S2 paused.
 
 ## Gap demonstrated after B2B4
 
