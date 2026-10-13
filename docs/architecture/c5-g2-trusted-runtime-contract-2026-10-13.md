@@ -1,0 +1,158 @@
+# C5-G2 — Trusted Runtime independent acceptance and installation authority contract
+
+**Date:** 2026-10-13 America/Toronto  
+**Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
+**State:** G2-A LOCAL SOURCE FOR USER REVIEW / NO CI YET / NO ROOT PRODUCTION INSTALL / S2 DAILY BACKUP PAUSED.
+
+## 1. Frozen design and ownership
+
+Primary recovery remains **ABORT the interrupted transaction → isolate incident →
+download/decrypt an externally retained original Runtime Recovery Kit → start a
+brand-new, separately authorized clean reinstall**. A crashed Runtime install
+must **never** replay its old journal or infer authority from the old active tree.
+
+- Runtime trust/publication owner: `ops/runtime/build_bundle.py` and existing
+  `runtime_trust.py`; 17 exact source members, artifact-side
+  `productionActivationAuthorized=false`, paired GHCR api/web digests.
+- New **external offline verifier**:
+  `ops/runtime/historical_runtime_publication.py`, deliberately **not** one
+  of the 17 Runtime source members. It verifies a caller-pinned original
+  archive against historical GitHub main ancestry, matching successful main
+  push CI/publish run identities, both most-recent matching GitHub seals and
+  exact archive byte SHA-256. This is not a Runtime production component.
+- App deploy/rollback owner: existing installed
+  `ops/release/deploy_release.py` and independent per-app
+  `SANQ_IMAGE_SHA` / root `.sanq-release-state.json`. G2 shall not
+  rewrite app state, launch an app rollout, or skip its fixed compatibility
+  validation to make a Runtime upgrade seem possible.
+- Backup owner: `/home/ubuntu/backup-db.sh`, existing
+  `sanq-backup.service` (ubuntu), installed Nginx protected helper and
+  sudoers. **S2 still paused**; G2 shall not install a new daily backup helper,
+  change current backup retention, or make root-only state readable to ubuntu.
+- Root Runtime one-shot operator: **not yet implemented**. Later source must be
+  independently reviewed and copied to a root-only location outside
+  `/opt/sanq/runtime`, with no permanent Root Launcher, MCP sudo tool,
+  arbitrary arguments/paths, symlink Runtime, expanded 17-member allowlist,
+  Docker/DB writer, or unstated production authority.
+- Production VM: **NO WRITE AUTHORITY** from any of the above source contracts.
+  All verified receipts explicitly return
+  `readyToInstall=false` and `authorizedToMutateProduction=false`.
+
+## 2. Two different GitHub publication checks (do not conflate)
+
+| Purpose | Verifier | Contract |
+| --- | --- | --- |
+| Ordinary current release | `runtime_trust.verify_runtime_publication()` | Existing **latest successful published paired release** policy unchanged; current `stage_bundle.py` consumer unchanged |
+| C5 recovery old/current original bytes | `historical_runtime_publication.verify_historical_runtime_publication()` | Exact user/operator-approved source SHA, original Archive bytes, `main` ancestry, successful exact CI/publish runs, matching trusted paired-image and runtime SHA256 commit statuses; NEVER auto-select another release |
+
+Offline invocation for a separately obtained original archive (read-only **example**, not an
+installation command):
+
+```sh
+python3 ops/runtime/historical_runtime_publication.py \
+  --archive /trusted/offline/private/original-runtime.tar.gz \
+  --source-sha <exact-approved-40-hex-main-sha>
+```
+
+Use only reviewed code and an operator-protected archive in a trusted verification
+environment; do not elevate or run a user-writable checkout with `sudo`. The
+status creator identity `github-actions[bot]` and successful workflow are a
+**GitHub repository-scoped proof**, not an independent cryptographic signature.
+Do not make a failed historical verifier PASS by falling back to
+`verify_runtime_publication()`, changing SHA, repacking, or rewriting a status.
+
+`publish-images.yml` retains Runtime and release-proof artifacts for **90 days**.
+This slice does **not** solve long-term Archive availability or remote create-only
+integrity. The C5 preinstall gate must separately prove BOTH original versions
+are independently retrievable, have matching off-VM bytes and provenance, and
+can be decrypted/read back even after GitHub Artifact expiry. An external receipt
+cannot rely only on a Google Drive object name or self-declared Manifest hash.
+
+## 3. Mandatory G2 production-relevant gates (not yet implemented)
+
+| Gate | Required independently checked evidence | Failure |
+| --- | --- | --- |
+| Operator source | reviewed installer source SHA-256 and root-only installed path + uid/gid/mode + trusted ancestor FDs | BLOCKED |
+| Intended release | old/new complete main SHA, original Archives, independent external SHA256/CI/publish seals, 17/17 manifest and file checks | BLOCKED |
+| Current running app | `.env` / state settled, exact current/previous app SHA, actual api/web/worker image tags and digests, approved target Runtime/app backward compatibility | BLOCKED |
+| Storage | actual Compose project `sanq-app`, named DB volume `sanq-app_pgdata`, bind `/srv/sanq/uploads`, no DB/Uploads mutation | BLOCKED |
+| Privileged state | root `0600` Release State, ubuntu `0600` env, root C4 marker and original bytes/UID/GID/mode; inode may change but not hardlinked | BLOCKED |
+| External Kit | **before any active Runtime mutation**, unique txid, create-only encrypted off-VM Archive + live config and provenance, full independent remote decrypt/readback/hash, proven crypt-key escrow and retention | BLOCKED |
+| Quiescence | externally controlled operator maintenance window, root-owned lock outside active Runtime, stopped backup timer + idle service/helper/rclone, no concurrent deploy, no MCP production subprocess, no shell cwd/fd holders; double check | BLOCKED |
+| Handoff | private candidate and separate prior-tree evidence, fsync/atomic directory operation, non-overwrite journal, all resulting dirs verified; no automatic journal resume | INCIDENT / STOP |
+| Clean reinstall | source and executable independent of damaged Runtime, separately verified Kit and fresh txid, **same-version reinstall allowed only via a distinct recovery entry**, never changing normal upgrade same-SHA rejection | BLOCKED |
+| Exit | active Runtime file inventory and dynamic bytes rechecked, storage/container health, backup/MCP timer restored to **original** state, incident sealed, independent operator acceptance | NOT VERIFIED |
+
+**No root executable is permitted to accept a generic path, URL, shell fragment,
+raw archive from a caller-writable location, or boolean `authorized=true` as its
+sole permission.** A standalone flock is not quiescence: existing backup,
+`deploy_release.py`, MCP and SSH sessions do not automatically honor it.
+
+## 4. Approval tiers and freeze
+
+- **A — Architecture:** choose one-shot operator-owned installer and dynamic
+  logical path identity. Previously authorized for source/offline development;
+  not a production shell/VM privilege grant.
+- **B — Isolated acceptance:** independent disposable Linux ext4 VM, synthetic
+  credentials, actual root/ubuntu UID/GID and source pin, no production network
+  mounts/secrets. The 2026-10-10 2B2-B root lab and SIGKILL results are
+  evidence **for the old lab implementation only**.
+- **C — G2 independent acceptance:** CI green plus independently executed
+  complete fresh install and repeated-abort clean reinstall using only original
+  remote bytes/proof and disposable synthetic data, including readback failures,
+  stale state, occupied old journal, injected faults, mount/cwd contention.
+- **D — Production readiness review:** fresh dated host/consumer/backup
+  evidence and exact target. Explicitly distinguish Runtime source SHA
+  from App image SHA; if required external backup script/service/helper or app
+  controller compatibility is not demonstrated, stop for **grouped-release
+  architecture review**, not hidden S2 implementation.
+- **E — Production execution authorization:** a **new specific operator
+  approval** identifies VM, old/target Runtime full SHAs, original Archive hashes,
+  installed installer source hash, Kit txid/readback proof, current app and
+  previous app SHA, downtime window, initial systemd state, operator, abort rule.
+  D passing does not grant E.
+- **F — Post-install independent verification:** verify original storage
+  and active services, C4 marker/layout revalidation, no hidden app rollout,
+  retain prior slot/archives, close journal/incident only after evidence.
+
+## 5. Small, independently reviewed G2 slices
+
+**G2-A (this local change):** add a standalone historical-main immutable
+Archive verifier and focused synthetic failure tests; freeze this contract.
+**NOT** a production installer.
+
+**G2-B:** trusted operator delivery, mandatory maintenance gate/read-only
+Live State detector, direct production path execution contract still disabled,
+separate external Kit create-only crypt adapter and long-term original Archive
+retention policy (without integrating the daily scheduled job).
+
+**G2-C:** one-shot root-private install and *separate* fresh same-version
+clean-reinstall kernel; build upon FD-safe patterns but preserve lab-only
+`/tmp` guard in the old module. Every fault leaves a unique incident record;
+never resume/replay/overwrite.
+
+**G2-D:** independent disposable ext4 VM acceptance matrix; source proof,
+malicious entries, races, SIGKILL, fresh remote restore, stale secrets/state,
+repeat interruptions, preservation of DB/Uploads and original timer state.
+
+**G2-E:** exact current-vs-target production compatibility audit and one-time
+**separate** execution approval; never infer production authority from CI,
+the source code being merged, a GitHub artifact's flag, or S1's simulated
+round-trip receipt.
+
+Daily S2 remains **on hold until C5 is accepted**. No underlying
+`sanq-backup.service`, sudoers, script or retention cutover in this slice.
+
+## 6. Validation and exit
+
+G2-A tests under existing CI `api-checks`:
+`python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`.
+Offline cases cover: historical main ancestry, correct CI/publish workflow
+identity and exact source SHA, failed/spoofed/missing newest seals,
+paired-image mismatch, repacked original Archive, no production capabilities.
+The previous newest-release verifier, `stage_bundle.py` consumer, 17-file
+source allowlist, app deploy and legacy lab installer are unchanged.
+
+Per `AGENTS.md` no local tests/build/lint executed; user review is required
+before remote `dev` PR. Production remains `C5-G2 NO-GO` pending G2-B..E
+and distinct operator authority.

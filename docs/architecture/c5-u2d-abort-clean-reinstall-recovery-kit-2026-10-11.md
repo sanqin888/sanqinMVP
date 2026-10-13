@@ -1,12 +1,14 @@
 # C5-U2D — Abort & Clean Reinstall / Recovery Kit architecture amendment
 
-**Status: OPERATOR CHOSE OPTION 2 + OPTION 1 / S1 LOCAL SOURCE IMPLEMENTATION IN REVIEW / NOT DEPLOYED / PRODUCTION NO-GO**
+**Status: OPTION 2 PRIMARY + OPTION 1 SUPPLEMENTARY / S1 MERGED CI GREEN / C5-G2-A LOCAL REVIEW / NO PRODUCTION INSTALL AUTHORITY**
 
 > 2026-10-11 S1 implementation record:
 > [Protected Config Snapshot / old-plan retirement](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md).
-> Operator authorization covers only S1 local code and retirement of obsolete
-> previous-plan entrypoints. It is not approval for remote PR, sudoers/backup
-> service changes, live Runtime installation or automatic clean reinstall.  
+> S1 merged as PR #2789 / dev merge 7723262e (CI #7164 PR and #7165 dev green).
+> C5-G2-A is now a **separate local review** of historical archive provenance
+> and production authorization contracts. See
+> [G2 architecture contract](./c5-g2-trusted-runtime-contract-2026-10-13.md).
+> No sudoers, backup service, live Runtime or production install is authorized.  
 **Date:** 2026-10-11 (America/Toronto)  
 **Read-only baseline:** `origin/dev` `ffae689ec332d0499cefd9957273f6635041780d` (PR #2785 merged).  
 **Change type:** Explicitly proposed recovery-policy and backup-contract change; no implementation or production authorization is inferred from this document.
@@ -98,6 +100,6 @@ Produce: (a) precise owner/permission/consumer graph for daily and preflight; (b
 
 ## 7. Current disposition / next approval
 
-`TR-1 DIRECTION CHOSEN / S1 LOCAL SOURCE FOR USER REVIEW / NO PRODUCTION AUTHORIZATION`.
+`TR-2 S1 MERGED AND CI GREEN / C5-G2-A LOCAL REVIEW / PRODUCTION INSTALL NO-GO / S2 PAUSED`.
 
-Choosing this architecture and authorizing the **local S1** implementation does **not** close U2D-2B2-C power-loss evidence, authorize MacBook VM/snapshot deletion, or authorize any production backup/Runtime write. S1 ends at user review of local changes; remote `dev` PR/CI/merge still need explicit approval. S2–S5 and production installation remain separately gated.
+The S1 source was merged to `dev` only; no production helper, Runtime installation or daily-backup cutover occurred. G2-A adds separate historical-publication verification in a local feature branch, not an executable root installer. Existing U2D-2B2-C cold-power-loss evidence is still NOT VERIFIED; Mac/VirtualBox evidence may not be deleted without separate authorization. Production installation and S2–S5 remain independently gated.

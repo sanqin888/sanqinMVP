@@ -1,6 +1,6 @@
 # C5-U2D S1 — Protected Config Snapshot / old-plan retirement
 
-**State:** LOCAL SOURCE IMPLEMENTED FOR USER REVIEW / NO TESTS RUN / NO PR / NO PRODUCTION AUTHORIZATION  
+**State:** MERGED dev PR #2789 / PR CI #7164 AND post-merge #7165 GREEN / NOT INSTALLED / NO PRODUCTION AUTHORIZATION  
 **Baseline:** latest `origin/dev` at `48915a59f9262347a37c74e6339f496fc20567ad` (2026-10-11).  
 **Decision:** pre-install encrypted Runtime Recovery Kit is primary, daily config backup is supplementary; interrupted Runtime installation is abandoned, never resumed.
 
@@ -47,4 +47,4 @@ GitHub's existing `api-checks` lane discovers `ops/backup/tests/test_*.py` and `
 
 Per `AGENTS.md`, local validation is not run before user review. GitHub CI will be the next gate **only after** the operator explicitly authorizes remote delivery to a dev PR. S1 carries no migration, package/lockfile or 17-member Bundle change.
 
-**Exit:** S1 LOCAL REVIEW GATE / S2+S3+S4 PRODUCTION NO-GO.
+**Exit update 2026-10-13:** S1 MERGED/CI GREEN; production helper/crypt/installation remains NO-GO. C5-G2-A local work takes precedence over S2.
