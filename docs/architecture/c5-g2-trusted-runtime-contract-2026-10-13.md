@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-13 America/Toronto  
 **Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
-**State (2026-10-13):** G2-A MERGED AS PR #2791 (CI #7169 GREEN, dev squash SHA `154993898862a81123b8cde29506dace924c89e2`); G2-B1 LOCAL REVIEW / NO ROOT PRODUCTION INSTALL / S2 DAILY BACKUP PAUSED.
+**State (2026-10-13):** G2-A MERGED PR #2791 CI #7169 GREEN; G2-B1 MERGED PR #2792 CI #7171 GREEN (dev `84f2674aae7db318aa2ae9b348196a9e39427328`); G2-B2A LOCAL REVIEW / NO ROOT PRODUCTION INSTALL / S2 DAILY BACKUP PAUSED.
 
 ## 1. Frozen design and ownership
 
@@ -119,7 +119,9 @@ sole permission.** A standalone flock is not quiescence: existing backup,
 
 **G2-A (merged):** standalone historical-main immutable Archive verifier and synthetic failure tests, PR #2791 / CI #7169 green. **NOT** a production installer.
 
-**G2-B1 (local review):** bounded, negative-only normalized maintenance evidence contract and offline regression coverage, see [G2-B1 maintenance evidence gate](./c5-g2b1-maintenance-evidence-gate-2026-10-13.md). It does not read the host, grant authority or create a true quiescence barrier.
+**G2-B1 (merged):** bounded, negative-only normalized maintenance evidence contract and offline regression coverage, PR #2792 / CI #7171 green. It does not read the host, grant authority or create a true quiescence barrier.
+
+**G2-B2A (local review):** read-only, root-required `/proc` path-reference census with synthetic fixture tests. It cannot assert absence of all inode/namespace references, establish a maintenance barrier or grant authority. See [G2-B2A process census](./c5-g2b2a-proc-reference-census-2026-10-13.md).
 
 **G2-B:** trusted operator delivery, mandatory maintenance gate/read-only
 Live State detector, direct production path execution contract still disabled,
@@ -153,4 +155,4 @@ paired-image mismatch, repacked original Archive, no production capabilities.
 The previous newest-release verifier, `stage_bundle.py` consumer, 17-file
 source allowlist, app deploy and legacy lab installer are unchanged.
 
-Per `AGENTS.md`, G2-B1 local tests/build/lint have not been executed; user review is required before its remote `dev` PR. G2-A CI has passed independently. Production remains `C5-G2 NO-GO` pending live G2-B gates, G2-C..E and distinct operator authority.
+Per `AGENTS.md`, G2-B2A local tests/build/lint have not been executed; user review is required before its remote `dev` PR. G2-A/B1 CI have passed independently. Production remains `C5-G2 NO-GO` pending real G2-B maintenance/Kit gates, G2-C..E and distinct operator authority.

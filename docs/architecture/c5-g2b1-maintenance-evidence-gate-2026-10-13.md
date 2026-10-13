@@ -1,6 +1,6 @@
 # C5-G2-B1 — Inert maintenance evidence gate
 
-**State:** LOCAL IMPLEMENTATION FOR REVIEW / NO CI OR HOST OBSERVATION / NO PRODUCTION AUTHORIZATION.  
+**State (2026-10-13):** MERGED PR #2792 / CI #7171 GREEN / NO HOST OBSERVATION OR PRODUCTION AUTHORIZATION. G2-B2A now in separate local review.  
 **Baseline:** `origin/dev@154993898862a81123b8cde29506dace924c89e2` (G2-A PR #2791 merged; PR CI #7169 green).  
 **Owner:** Runtime / Ops. No deployment topology, Prisma, application or backup consumer modification.
 
@@ -91,5 +91,4 @@ authority fields. Existing CI `api-checks` discovers this test by
 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`.
 
 Per `AGENTS.md`, no local build/lint/tests or production action were run.
-No PR/push/CI for G2-B1 until the user reviews this local diff. The real
-maintenance barrier and Kit remain **NOT IMPLEMENTED / PRODUCTION NO-GO**.
+G2-B1 has passed its PR CI and merged to dev. G2-B2A adds a bounded /proc reference sensor in a **separate** local feature branch but does not establish a real maintenance barrier or Kit. Those remain **NOT IMPLEMENTED / PRODUCTION NO-GO**.
