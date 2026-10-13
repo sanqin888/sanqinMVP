@@ -525,9 +525,7 @@ describe('PosCardPaymentOrchestrationService', () => {
   it('stops a pending customer prompt on POS Cancel without cancelling an already failed payment', async () => {
     const harness = createHarness();
     const declined = paymentFixture('DECLINED');
-    jest
-      .mocked(harness.terminalPayments.startSale)
-      .mockResolvedValue(declined);
+    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(declined);
     jest.mocked(harness.terminalPayments.findById).mockResolvedValue(declined);
     let finishPrompt!: (retry: boolean) => void;
     const pendingConfirmation = new Promise<boolean>((resolve) => {
