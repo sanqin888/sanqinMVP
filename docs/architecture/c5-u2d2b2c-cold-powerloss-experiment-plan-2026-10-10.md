@@ -1,8 +1,16 @@
 # C5-U2D-2B2-C — VirtualBox cold/power-loss experiment, C2-C1 preparation
 
-**Status: REVIEW-ONLY LOCAL IMPLEMENTATION / NOT EXECUTED / FORCED POWER-OFF NOT AUTHORIZED / PRODUCTION NO-GO.**
+**Status: RETIRED AS DEFAULT PLAN / NOT EXECUTED / HISTORICAL EVIDENCE ONLY / PRODUCTION NO-GO.**
 
-> **Prospective change only (2026-10-11):** [Abort & Clean Reinstall / Recovery Kit amendment](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) proposes replacing this three-checkpoint forensic experiment as the *default* acceptance path with a fail-closed, externally sourced clean-reinstall drill. Until the amended acceptance criteria are explicitly approved, this plan remains the existing unexecuted evidence gate. Nothing in the amendment makes virtual power-loss `VERIFIED` or authorizes VM disk/snapshot deletion.
+> 2026-10-11 S1 scope: operator selected **Abort & Clean Reinstall** with verified
+> encrypted Recovery Kit. This prior three-checkpoint cold-power-loss protocol
+> is no longer an active implementation or acceptance plan. Its unused standalone
+> `ops/runtime/tests/c2_cold_powerloss_probe.py` has been removed from source.
+> The experiment records below remain historical (no cold-power-loss PASS).
+> Do not run the old instructions; do not delete operator-held VM snapshots
+> or forensic evidence without separately approved retention/disposal.
+
+> **Historical context (2026-10-11):** [Abort & Clean Reinstall / Recovery Kit amendment](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) replaced this prior default acceptance direction. This cold experiment was never run, so power-loss behavior remains `NOT VERIFIED`. No VM disk/snapshot deletion is authorized.
 
 This plan continues the 2B2-B root-isolated work and the C1 archived evidence gate. It does **not** approve execution of a root worker, stopping a guest or altering production. User review is required before any remote PR; further explicit per-experiment authorization is required before host-side power loss.
 

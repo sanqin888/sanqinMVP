@@ -1,6 +1,12 @@
 # C5-U2D — Abort & Clean Reinstall / Recovery Kit architecture amendment
 
-**Status: DOCUMENTATION PROPOSAL FOR USER REVIEW / NOT IMPLEMENTED / PRODUCTION NO-GO**  
+**Status: OPERATOR CHOSE OPTION 2 + OPTION 1 / S1 LOCAL SOURCE IMPLEMENTATION IN REVIEW / NOT DEPLOYED / PRODUCTION NO-GO**
+
+> 2026-10-11 S1 implementation record:
+> [Protected Config Snapshot / old-plan retirement](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md).
+> Operator authorization covers only S1 local code and retirement of obsolete
+> previous-plan entrypoints. It is not approval for remote PR, sudoers/backup
+> service changes, live Runtime installation or automatic clean reinstall.  
 **Date:** 2026-10-11 (America/Toronto)  
 **Read-only baseline:** `origin/dev` `ffae689ec332d0499cefd9957273f6635041780d` (PR #2785 merged).  
 **Change type:** Explicitly proposed recovery-policy and backup-contract change; no implementation or production authorization is inferred from this document.
@@ -92,6 +98,6 @@ Produce: (a) precise owner/permission/consumer graph for daily and preflight; (b
 
 ## 7. Current disposition / next approval
 
-`TR-0 DOCUMENTATION PROPOSED / RECOVERY KIT + DAILY BACKUP CONTRACT AWAITING USER REVIEW / NO IMPLEMENTATION OR PRODUCTION AUTHORIZATION`.
+`TR-1 DIRECTION CHOSEN / S1 LOCAL SOURCE FOR USER REVIEW / NO PRODUCTION AUTHORIZATION`.
 
-This proposal does **not** close the original U2D-2B2-C evidence, authorize MacBook VM/snapshot deletion, or constitute a production root install/backups mutation. After document review, normal repository workflow: explicit permission for remote `dev` PR, GitHub Actions green, merge; only then begin a separate **read-only implementation readiness audit**, and request distinct approval before code changes.
+Choosing this architecture and authorizing the **local S1** implementation does **not** close U2D-2B2-C power-loss evidence, authorize MacBook VM/snapshot deletion, or authorize any production backup/Runtime write. S1 ends at user review of local changes; remote `dev` PR/CI/merge still need explicit approval. S2–S5 and production installation remain separately gated.

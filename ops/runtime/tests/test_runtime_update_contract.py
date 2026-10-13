@@ -103,10 +103,12 @@ class RuntimeUpdateContractTests(unittest.TestCase):
         with self.assertRaises(contract.RuntimeUpdateBlocked):
             contract.propose_update(cur, target, op)
 
-    def test_failed_handoff_has_manual_recovery_only(self):
+    def test_aborted_handoff_requires_independent_clean_reinstall(self):
         plan = contract.propose_update(*fixture())
-        self.assertIn("manual", plan["failureRecovery"]["handoff_interrupted"])
+        self.assertIn("clean reinstall", plan["failureRecovery"]["handoff_interrupted"])
+        self.assertIn("no journal resume", plan["failureRecovery"]["post_handoff_invalid"])
         self.assertIn("no automatic", plan["failureRecovery"]["readiness_failure"])
+        self.assertTrue(any("Recovery Kit" in gate for gate in plan["requiredGates"]))
         self.assertNotIn("execute", plan)
         
 
