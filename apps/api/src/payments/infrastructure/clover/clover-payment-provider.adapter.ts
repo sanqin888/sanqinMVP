@@ -8,6 +8,7 @@ import type {
   PaymentTerminalProvider,
   RefundPaymentRequest,
   StartPaymentRequest,
+  TerminalCustomerInteractionStatus,
   VoidPaymentRequest,
 } from '../../application/payment-provider.port';
 import type { PaymentProviderOutcome } from '../../domain/payment.types';
@@ -47,6 +48,18 @@ export class CloverPaymentProviderAdapter
       };
     }
     return this.terminal.getAvailability();
+  }
+
+  cancelCustomerConfirmation(): Promise<void> {
+    return this.terminal.cancelCustomerConfirmation();
+  }
+
+  completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry = true,
+  ): Promise<boolean> {
+    return this.terminal.completeCustomerInteraction(status, failureCode, allowRetry);
   }
 
   async startPayment(

@@ -7,6 +7,7 @@ import type {
   PaymentTerminalAvailability,
   RefundPaymentRequest,
   StartPaymentRequest,
+  TerminalCustomerInteractionStatus,
   VoidPaymentRequest,
 } from '../../../application/payment-provider.port';
 import type { PaymentProviderOutcome } from '../../../domain/payment.types';
@@ -479,6 +480,101 @@ export class CloverTerminalTransport {
     return mapTerminalAvailabilityResponse(attempt.result, terminalId);
   }
 
+  // A device interaction is not a payment operation. Never re-issue a Sale here.
+  async completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry = true,
+  ): Promise<boolean> {
+    if (status === 'SUCCEEDED' || status === 'CANCELLED') {
+      await this.showWelcomeScreen();
+      return false;
+    }
+
+    // Do not invite a second payment for configuration/authorization errors.
+    if (
+      !allowRetry ||
+      (failureCode &&
+        /^(invalid_request|CLOVER_PLATFORM_MISCONFIGURED|CLOVER_TERMINAL_(MISCONFIGURED|CREDENTIAL_UNAVAILABLE|EXTERNAL_PAYMENT_ID_))/.test(
+          failureCode,
+        ))
+    ) {
+      await this.request('/connect/v1/device/display', {
+        method: 'POST',
+        body: {
+          text:
+            status === 'DECLINED'
+              ? 'Card declined. Please ask the cashier.'
+              : 'Payment unavailable. Please ask the cashier.',
+          beep: true,
+        },
+        timeoutSeconds: 5,
+      });
+      return false;
+    }
+
+    const message = /INSUFFICIENT/i.test(failureCode ?? '')
+      ? 'Insufficient funds. Try another card?'
+      : status === 'DECLINED'
+        ? 'Card declined. Would you like to try again?'
+        : 'Payment not completed. Would you like to retry?';
+    const attempt = await this.request('/connect/v1/device/read-confirmation', {
+      method: 'POST',
+      body: {
+        text: message,
+        acceptText: 'Retry',
+        rejectText: 'Cancel',
+        beep: true,
+      },
+      // The HTTP POS request has already returned; wait for customer action.
+      timeoutSeconds: 0,
+    });
+    if (attempt.kind !== 'response') {
+      this.logger.warn('[CloverTerminalTransport] customer retry prompt outcome uncertain');
+      return false;
+    }
+    if (attempt.result.httpStatus === 200) {
+      if (attempt.result.body?.response === true) {
+        await this.showWelcomeScreen();
+        return true;
+      }
+      if (attempt.result.body?.response === false) {
+        await this.showWelcomeScreen();
+        return false;
+      }
+    }
+    if (attempt.result.httpStatus === 209) {
+      await this.showWelcomeScreen();
+    } else {
+      this.logger.warn(
+        `[CloverTerminalTransport] customer retry prompt failed status=${attempt.result.httpStatus}`,
+      );
+    }
+    return false;
+  }
+
+  async cancelCustomerConfirmation(): Promise<void> {
+    // An acknowledgement only stops the device UI; it never establishes
+    // cancellation of a financial transaction.
+    const attempt = await this.request('/connect/v1/device/cancel', {
+      method: 'POST',
+      timeoutSeconds: 5,
+    });
+    if (attempt.kind !== 'response' || !attempt.result.ok) {
+      this.logger.warn('[CloverTerminalTransport] customer confirmation cancel not acknowledged');
+    }
+  }
+
+  private async showWelcomeScreen(): Promise<void> {
+    const attempt = await this.request('/connect/v1/device/welcome', {
+      method: 'POST',
+      timeoutSeconds: 5,
+    });
+    if (attempt.kind !== 'response' || attempt.result.httpStatus !== 200) {
+      this.logger.warn('[CloverTerminalTransport] welcome screen was not confirmed');
+    }
+  }
+
   async startPayment(
     request: StartPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
@@ -512,6 +608,9 @@ export class CloverTerminalTransport {
     const attempt = await this.request('/connect/v1/payments', {
       method: 'POST',
       idempotencyKey: request.idempotencyKey,
+      // Customer may leave the card unattended; only an explicit action or
+      // provider/network failure should end the foreground Sale.
+      timeoutSeconds: 0,
       body,
     });
     if (attempt.kind === 'credential_unavailable') {
@@ -760,6 +859,7 @@ export class CloverTerminalTransport {
     options: {
       method: 'GET' | 'POST';
       idempotencyKey?: string;
+      timeoutSeconds?: number;
       body?: Record<string, unknown> | CloverTerminalPaymentRequest;
     },
   ): Promise<CloverTerminalRequestAttempt> {
@@ -818,6 +918,7 @@ export class CloverTerminalTransport {
     options: {
       method: 'GET' | 'POST';
       idempotencyKey?: string;
+      timeoutSeconds?: number;
       body?: Record<string, unknown> | CloverTerminalPaymentRequest;
     },
     token: string,
@@ -825,16 +926,17 @@ export class CloverTerminalTransport {
     const apiBase = this.config.terminalApiBase;
     const terminalId = this.config.terminalDeviceId;
     const posId = this.config.terminalRemoteAppId;
-    const timeoutSeconds = this.config.terminalTimeoutSeconds;
+    const timeoutSeconds =
+      options.timeoutSeconds ?? this.config.terminalTimeoutSeconds;
     if (!apiBase || !terminalId || !posId || timeoutSeconds === undefined) {
       return null;
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      (timeoutSeconds + 5) * 1000,
-    );
+    const timer =
+      timeoutSeconds === 0
+        ? null
+        : setTimeout(() => controller.abort(), (timeoutSeconds + 5) * 1000);
     const headers: Record<string, string> = {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -863,7 +965,7 @@ export class CloverTerminalTransport {
       );
       return null;
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     }
 
     const rawText = await response.text();

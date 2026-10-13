@@ -46,6 +46,39 @@ describe("POS card payment realtime facts", () => {
     expect(parsePosCardPaymentSnapshot({ ...complete, surchargeCents: undefined })).toBeNull();
   });
 
+  it("keeps a same-attempt device Retry decision without changing financial finality", () => {
+    const declined: PosCardPaymentResult = {
+      ...complete,
+      status: "DECLINED",
+      orderStableId: null,
+      customerPromptPending: true,
+      customerRetryRequested: false,
+    };
+    const decision = parsePosCardPaymentSnapshot({
+      ...declined,
+      messageKind: "SNAPSHOT",
+      customerPromptPending: false,
+      customerRetryRequested: true,
+    });
+    expect(decision).not.toBeNull();
+    const merged = mergePosCardPaymentSnapshot(declined, decision!);
+    expect(merged).toMatchObject({
+      status: "DECLINED",
+      customerPromptPending: false,
+      customerRetryRequested: true,
+      orderStableId: null,
+    });
+    expect(mergePosCardPaymentSnapshot(merged, {
+      ...complete,
+      status: "PROCESSING",
+      orderStableId: null,
+    })).toEqual(merged);
+    expect(mergePosCardPaymentSnapshot(declined, {
+      ...declined,
+      customerPromptPending: undefined,
+    })?.customerPromptPending).toBe(true);
+  });
+
   it("rejects a delayed HTTP PROCESSING after socket SUCCEEDED", () => {
     expect(mergePosCardPaymentSnapshot(complete, {
       ...complete, status: "PROCESSING", chargedTotalCents: null,

@@ -68,8 +68,20 @@ export type PaymentTerminalAvailability = {
   failureMessage?: string | null;
 };
 
+export type TerminalCustomerInteractionStatus =
+  | 'SUCCEEDED'
+  | 'DECLINED'
+  | 'CANCELLED'
+  | 'FAILED';
+
 export interface PaymentTerminalProvider {
   getAvailability(): Promise<PaymentTerminalAvailability>;
+  cancelCustomerConfirmation(): Promise<void>;
+  completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry?: boolean,
+  ): Promise<boolean>;
 }
 
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
