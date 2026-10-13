@@ -39,9 +39,9 @@ FAILURE_MATRIX = {
     "invalid_installed_inventory": "stop; preserve active Runtime for manual investigation",
     "concurrent_operator": "stop; do not acquire a second upgrade transaction",
     "prepare_interrupted": "keep active untouched; quarantine incomplete private preparation",
-    "handoff_interrupted": "manual exclusive-lock recovery from matched complete snapshot",
-    "post_handoff_invalid": "do not execute new controller; manually restore matched prior tree",
-    "readiness_failure": "preserve release incident; no automatic image/schema rollback",
+    "handoff_interrupted": "abandon old transaction; external trusted Kit and new clean reinstall only",
+    "post_handoff_invalid": "quarantine incident; new independently approved clean reinstall, no journal resume",
+    "readiness_failure": "preserve incident; no automatic image/schema rollback or restart",
 }
 
 
@@ -132,7 +132,9 @@ def propose_update(
             "verify 17 installed root-owned member bytes, modes, manifest and fixed ancestor paths",
             "verify clean ACTIVE release-state, SHA alignment, no PENDING and backup/restore evidence",
             "exclusive operator lock with cross-process quiescence and no active controller invocation",
-            "create and verify complete matched previous Runtime snapshot and recovery path",
+            "create encrypted pre-install Recovery Kit with current/target original Archives",
+            "verify complete remote readback/decryption and exact SHA-256 before active writes",
+            "prove the prior Runtime can be independently clean reinstalled from external sources",
             "prepare verified new full 17-file Runtime and matching manifest in private root area",
             "preserve .env, release-state and C4 marker with original owner, modes and byte identity",
             "perform reviewed handoff with explicit downtime/atomicity boundary and recovery journal",

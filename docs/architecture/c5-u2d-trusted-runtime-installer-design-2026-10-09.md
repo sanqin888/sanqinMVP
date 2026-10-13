@@ -1,6 +1,11 @@
 # C5-U2D — Trusted Runtime Installer Design & Recovery Contract
 
-**状态：DESIGN PROPOSAL / SOURCE REVIEW REQUIRED / NOT AUTHORIZED FOR PRIVILEGED IMPLEMENTATION / PRODUCTION NO-GO**  
+**状态：HISTORICAL DESIGN / SUPERSEDED RECOVERY POLICY / PRODUCTION NO-GO**
+
+> The earlier inspect/journal/manual prior-tree restore plan is superseded for
+> interrupted Runtime installs by **Abort & Clean Reinstall** under the
+> 2026-10-11 Recovery Kit amendment. Historical design and test evidence below
+> is retained but is not an executable recovery playbook or an authorization.  
 **日期：2026-10-09 America/Toronto（生产证据为 2026-10-10 UTC）**  
 **分支：`audit/c5-u2c-runtime-live-consumers`（沿用尚未提交的 U2C 证据文档，不混入生产写入）。**
 
