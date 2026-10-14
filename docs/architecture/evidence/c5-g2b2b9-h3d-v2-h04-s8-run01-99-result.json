@@ -1,0 +1,274 @@
+{
+  "authorizedToMutateProduction": false,
+  "case": "H-04/S8",
+  "crossProcessQuiescenceVerified": false,
+  "endedUtc": "2026-10-14T19:32:02.361110+00:00",
+  "failures": [],
+  "faults": [
+    {
+      "classification": {
+        "authorizedToMutateProduction": false,
+        "classification": "UNKNOWN",
+        "hostAdapterCalls": 0,
+        "hypotheticalRuntimeHandoff": "BLOCKED",
+        "reasons": [
+          "PID_IDENTITY_MISMATCH"
+        ],
+        "runtimeHandoffAttempted": false
+      },
+      "fault": "pid-birth-mismatch",
+      "injectedFrame": {
+        "expectedEntries": 1,
+        "fdReadable": true,
+        "scanBudgetExhausted": false,
+        "scannedEntries": 1,
+        "startTicks": 1029767,
+        "statReadable": true
+      },
+      "injectedNotRealKernelFailure": true,
+      "originalPid": 1326,
+      "originalStartTicks": 1029766,
+      "realHolderIdentityStableAcrossInjection": true,
+      "utc": "2026-10-14T19:32:02.292194+00:00"
+    },
+    {
+      "classification": {
+        "authorizedToMutateProduction": false,
+        "classification": "UNKNOWN",
+        "hostAdapterCalls": 0,
+        "hypotheticalRuntimeHandoff": "BLOCKED",
+        "reasons": [
+          "PROCESS_STAT_UNKNOWN",
+          "PID_IDENTITY_MISMATCH"
+        ],
+        "runtimeHandoffAttempted": false
+      },
+      "fault": "proc-stat-unreadable",
+      "injectedFrame": {
+        "expectedEntries": 1,
+        "fdReadable": true,
+        "scanBudgetExhausted": false,
+        "scannedEntries": 1,
+        "startTicks": null,
+        "statReadable": false
+      },
+      "injectedNotRealKernelFailure": true,
+      "originalPid": 1326,
+      "originalStartTicks": 1029766,
+      "realHolderIdentityStableAcrossInjection": true,
+      "utc": "2026-10-14T19:32:02.292836+00:00"
+    },
+    {
+      "classification": {
+        "authorizedToMutateProduction": false,
+        "classification": "UNKNOWN",
+        "hostAdapterCalls": 0,
+        "hypotheticalRuntimeHandoff": "BLOCKED",
+        "reasons": [
+          "PROCESS_STAT_UNKNOWN",
+          "PID_IDENTITY_MISMATCH"
+        ],
+        "runtimeHandoffAttempted": false
+      },
+      "fault": "proc-stat-disappeared",
+      "injectedFrame": {
+        "expectedEntries": 1,
+        "fdReadable": true,
+        "scanBudgetExhausted": false,
+        "scannedEntries": 1,
+        "startTicks": null,
+        "statReadable": false
+      },
+      "injectedNotRealKernelFailure": true,
+      "originalPid": 1326,
+      "originalStartTicks": 1029766,
+      "realHolderIdentityStableAcrossInjection": true,
+      "utc": "2026-10-14T19:32:02.293459+00:00"
+    },
+    {
+      "classification": {
+        "authorizedToMutateProduction": false,
+        "classification": "UNKNOWN",
+        "hostAdapterCalls": 0,
+        "hypotheticalRuntimeHandoff": "BLOCKED",
+        "reasons": [
+          "PROCESS_FD_UNKNOWN"
+        ],
+        "runtimeHandoffAttempted": false
+      },
+      "fault": "fd-metadata-unreadable",
+      "injectedFrame": {
+        "expectedEntries": 1,
+        "fdReadable": false,
+        "scanBudgetExhausted": false,
+        "scannedEntries": 1,
+        "startTicks": 1029766,
+        "statReadable": true
+      },
+      "injectedNotRealKernelFailure": true,
+      "originalPid": 1326,
+      "originalStartTicks": 1029766,
+      "realHolderIdentityStableAcrossInjection": true,
+      "utc": "2026-10-14T19:32:02.294083+00:00"
+    },
+    {
+      "classification": {
+        "authorizedToMutateProduction": false,
+        "classification": "UNKNOWN",
+        "hostAdapterCalls": 0,
+        "hypotheticalRuntimeHandoff": "BLOCKED",
+        "reasons": [
+          "PROCESS_FD_UNKNOWN"
+        ],
+        "runtimeHandoffAttempted": false
+      },
+      "fault": "fd-entry-disappeared",
+      "injectedFrame": {
+        "expectedEntries": 1,
+        "fdReadable": false,
+        "scanBudgetExhausted": false,
+        "scannedEntries": 1,
+        "startTicks": 1029766,
+        "statReadable": true
+      },
+      "injectedNotRealKernelFailure": true,
+      "originalPid": 1326,
+      "originalStartTicks": 1029766,
+      "realHolderIdentityStableAcrossInjection": true,
+      "utc": "2026-10-14T19:32:02.294694+00:00"
+    },
+    {
+      "classification": {
+        "authorizedToMutateProduction": false,
+        "classification": "UNKNOWN",
+        "hostAdapterCalls": 0,
+        "hypotheticalRuntimeHandoff": "BLOCKED",
+        "reasons": [
+          "INCOMPLETE_OBSERVATION",
+          "SCAN_BUDGET_EXHAUSTED"
+        ],
+        "runtimeHandoffAttempted": false
+      },
+      "fault": "scan-budget-exhausted",
+      "injectedFrame": {
+        "expectedEntries": 1,
+        "fdReadable": true,
+        "scanBudgetExhausted": true,
+        "scannedEntries": 0,
+        "startTicks": 1029766,
+        "statReadable": true
+      },
+      "injectedNotRealKernelFailure": true,
+      "originalPid": 1326,
+      "originalStartTicks": 1029766,
+      "realHolderIdentityStableAcrossInjection": true,
+      "utc": "2026-10-14T19:32:02.295377+00:00"
+    }
+  ],
+  "kind": "c5-g2b2b9-h3d-s8-disposable-review-v1",
+  "lab": "/tmp/sanq-g2b2b-lab-h3d-v2-o1tlp9nu",
+  "mountNamespaceCoverageVerified": false,
+  "newConsumerAdmissionPrevented": false,
+  "observations": {
+    "held": {
+      "holder": {
+        "cgroup": "0::/system.slice/sanq-g2b2b-lab-h3d-v2-775514415f86.service\n",
+        "cwd": {
+          "dev": 2050,
+          "ino": 1048598
+        },
+        "cwdHeld": true,
+        "fdHeld": true,
+        "ownerUid": 0,
+        "payloadFd": {
+          "dev": 2050,
+          "ino": 1048600
+        },
+        "pid": 1326,
+        "ppid": 1,
+        "startTicks": 1029766,
+        "state": "S"
+      },
+      "liveProcfsIdentityObserved": true,
+      "realPidReuseObserved": false,
+      "realProcfsFailureObserved": false,
+      "unitState": {
+        "ActiveState": "active",
+        "LoadState": "loaded",
+        "MainPID": "1326",
+        "SubState": "running"
+      },
+      "utc": "2026-10-14T19:32:02.291523+00:00"
+    },
+    "heldAfterFaults": {
+      "holder": {
+        "cgroup": "0::/system.slice/sanq-g2b2b-lab-h3d-v2-775514415f86.service\n",
+        "cwd": {
+          "dev": 2050,
+          "ino": 1048598
+        },
+        "cwdHeld": true,
+        "fdHeld": true,
+        "ownerUid": 0,
+        "payloadFd": {
+          "dev": 2050,
+          "ino": 1048600
+        },
+        "pid": 1326,
+        "ppid": 1,
+        "startTicks": 1029766,
+        "state": "S"
+      },
+      "utc": "2026-10-14T19:32:02.295386+00:00"
+    },
+    "ready": {
+      "holderReceipt": {
+        "cgroup": "0::/system.slice/sanq-g2b2b-lab-h3d-v2-775514415f86.service\n",
+        "cwd": {
+          "dev": 2050,
+          "ino": 1048598
+        },
+        "kind": "h3d-v2-holder-ready-v1",
+        "ownerUid": 0,
+        "payloadFd": {
+          "dev": 2050,
+          "ino": 1048600
+        },
+        "pid": 1326,
+        "startTicks": 1029766,
+        "unit": "sanq-g2b2b-lab-h3d-v2-775514415f86.service"
+      },
+      "independentlyMatchedToLiveProcfs": true,
+      "utc": "2026-10-14T19:32:02.291505+00:00"
+    }
+  },
+  "postCleanupHolder": {
+    "pid": 1326,
+    "result": "GONE",
+    "startTicks": 1029766
+  },
+  "postCleanupUnitState": {
+    "ActiveState": "inactive",
+    "LoadState": "not-found",
+    "MainPID": "0",
+    "SubState": "dead"
+  },
+  "pre": {
+    "fixture": {
+      "dev": 2050,
+      "ino": 1048598
+    },
+    "payload": {
+      "dev": 2050,
+      "ino": 1048600
+    },
+    "unitAbsent": true,
+    "utc": "2026-10-14T19:32:02.115126+00:00"
+  },
+  "readyToInstall": false,
+  "reportedPass": true,
+  "rootLevelWholeHostExclusionVerified": false,
+  "sourceSha256": "b780be7df574041ff25b362962db96f32e6c75d0f5a02f85beb036ba5787cc82",
+  "startedUtc": "2026-10-14T19:32:02.100637+00:00",
+  "unit": "sanq-g2b2b-lab-h3d-v2-775514415f86.service"
+}
