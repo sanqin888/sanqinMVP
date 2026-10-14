@@ -1,0 +1,88 @@
+{
+  "authorizedToMutateProduction": false,
+  "case": "H-03/S5",
+  "crossProcessQuiescenceVerified": false,
+  "endedUtc": "2026-10-14T14:32:52.182686+00:00",
+  "failures": [],
+  "kind": "c5-g2b2b9-h3c-s5-disposable-review-v0",
+  "lab": "/tmp/sanq-g2b2b-lab-h3c-uwfyxifo",
+  "mountNamespaceCoverageVerified": false,
+  "newConsumerAdmissionPrevented": false,
+  "observations": {
+    "held": {
+      "flockFree": true,
+      "foreignHolder": {
+        "cgroup": "0::/system.slice/sanq-g2b2b-lab-h3c-a74b7444ce1c.service\n",
+        "cwd": {
+          "dev": 2050,
+          "ino": 1048604
+        },
+        "cwdHeld": true,
+        "fdHeld": true,
+        "ownerGid": 1000,
+        "ownerUid": 1000,
+        "payloadFd": {
+          "dev": 2050,
+          "ino": 1048606
+        },
+        "pid": 1354,
+        "startTicks": 137297
+      },
+      "foreignUidHolderDetected": true,
+      "hypotheticalRuntimeHandoff": "BLOCKED",
+      "independentFlockProbe": {
+        "authorizedToMutateProduction": false,
+        "hostAdapterCalls": 0,
+        "lock": {
+          "dev": 2050,
+          "ino": 1048607
+        },
+        "outcome": "ACQUIRED",
+        "pid": 1358,
+        "runtimeHandoffAttempted": false,
+        "uid": 0
+      },
+      "reason": "free advisory flock does not exclude foreign-UID cwd/fd holder",
+      "systemd": {
+        "ActiveState": "active",
+        "LoadState": "loaded",
+        "MainPID": "1354",
+        "SubState": "running"
+      },
+      "utc": "2026-10-14T14:32:52.125467+00:00"
+    }
+  },
+  "postCleanupHolder": {
+    "pid": 1354,
+    "result": "GONE",
+    "startTicks": 137297
+  },
+  "postCleanupUnitState": {
+    "ActiveState": "inactive",
+    "LoadState": "not-found",
+    "MainPID": "0",
+    "SubState": "dead"
+  },
+  "pre": {
+    "fixture": {
+      "dev": 2050,
+      "ino": 1048604
+    },
+    "lock": {
+      "dev": 2050,
+      "ino": 1048607
+    },
+    "payload": {
+      "dev": 2050,
+      "ino": 1048606
+    },
+    "unitAbsent": true,
+    "utc": "2026-10-14T14:32:51.757884+00:00"
+  },
+  "readyToInstall": false,
+  "reportedPass": true,
+  "rootLevelWholeHostExclusionVerified": false,
+  "sourceSha256": "093c70e0dfb4ab1c918f6eb7174fc35039a0131f99a3b9c1f84732a136ccd3f7",
+  "startedUtc": "2026-10-14T14:32:51.739456+00:00",
+  "unit": "sanq-g2b2b-lab-h3c-a74b7444ce1c.service"
+}
