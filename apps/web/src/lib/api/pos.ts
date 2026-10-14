@@ -196,6 +196,7 @@ export type PosCardPaymentResult = {
   customerRetryRequested?: boolean;
   customerPromptPending?: boolean;
   canResumeOriginalSale?: boolean;
+  terminalInteractionTimedOut?: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;

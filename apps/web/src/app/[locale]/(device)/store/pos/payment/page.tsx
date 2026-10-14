@@ -99,6 +99,7 @@ type SocketIoBrowserGlobal = {
 };
 
 const POS_CARD_PAYMENT_PENDING_STORAGE_KEY = "sanq.pos.cardPayment.pending.v1";
+const POS_CARD_PAYMENT_TIMEOUT_CHECKOUT_KEY = "sanq.pos.cardPayment.timeoutCheckout.v1";
 const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT = "POS_CARD_PAYMENT_STATUS_UPDATED";
 
 async function loadSocketIoFromCdn(): Promise<SocketIoBrowserGlobal["io"] | null> {
@@ -479,6 +480,8 @@ export default function StorePosPaymentPage() {
   const [pendingCardRequest, setPendingCardRequest] =
     useState<PosCardPaymentRequest | null>(null);
   const activeCardAttemptRef = useRef<string | null>(null);
+  const timeoutCheckoutAttemptRef = useRef<string | null>(null);
+  const manualOriginalResumeRef = useRef<string | null>(null);
   const latestCardResultRef = useRef<PosCardPaymentResult | null>(null);
   const cardRecoveryAttemptedRef = useRef(false);
   const deviceRetryHandledAttemptRef = useRef<string | null>(null);
@@ -1092,11 +1095,14 @@ export default function StorePosPaymentPage() {
 
   const clearPendingCardPayment = useCallback(() => {
     activeCardAttemptRef.current = null;
+    timeoutCheckoutAttemptRef.current = null;
+    manualOriginalResumeRef.current = null;
     latestCardResultRef.current = null;
     setPendingCardRequest(null);
     if (typeof window !== "undefined") {
       try {
         window.localStorage.removeItem(POS_CARD_PAYMENT_PENDING_STORAGE_KEY);
+        window.localStorage.removeItem(POS_CARD_PAYMENT_TIMEOUT_CHECKOUT_KEY);
       } catch (err) {
         console.warn("Failed to clear pending POS card payment:", err);
       }
@@ -1113,6 +1119,24 @@ export default function StorePosPaymentPage() {
       setCardPaymentResult(merged);
       setCardFlowState(merged.status);
       setCardFlowError(merged.failureMessage ?? null);
+
+      if (
+        merged.terminalInteractionTimedOut === true &&
+        ["UNKNOWN", "RECONCILING"].includes(merged.status) &&
+        manualOriginalResumeRef.current !== merged.attemptId
+      ) {
+        timeoutCheckoutAttemptRef.current = merged.attemptId;
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(POS_CARD_PAYMENT_TIMEOUT_CHECKOUT_KEY, merged.attemptId);
+          } catch (err) {
+            console.warn("Failed to persist timed-out POS card checkout UI state:", err);
+          }
+        }
+      }
+      if (timeoutCheckoutAttemptRef.current === merged.attemptId && manualOriginalResumeRef.current !== merged.attemptId) {
+        setCardPaymentOpen(false);
+      }
 
       if (merged.status === "SUCCEEDED" && merged.orderStableId) {
         clearPendingCardPayment();
@@ -1184,9 +1208,9 @@ export default function StorePosPaymentPage() {
   );
 
   const recoverTerminalCardPayment = useCallback(
-    async (request: PosCardPaymentRequest) => {
+    async (request: PosCardPaymentRequest, keepCheckoutVisible = false) => {
       activeCardAttemptRef.current = request.attemptId;
-      setCardPaymentOpen(true);
+      setCardPaymentOpen(!keepCheckoutVisible);
       setCardFlowState("RECONCILING");
       setCardFlowError(null);
       setSubmitting(true);
@@ -1274,13 +1298,18 @@ export default function StorePosPaymentPage() {
 
   const handleCardPaymentRecheck = useCallback(async () => {
     if (!pendingCardRequest) return;
-    await recoverTerminalCardPayment(pendingCardRequest);
+    await recoverTerminalCardPayment(
+      pendingCardRequest,
+      timeoutCheckoutAttemptRef.current === pendingCardRequest.attemptId,
+    );
   }, [pendingCardRequest, recoverTerminalCardPayment]);
 
   // Only the API can authorize the one-time replay of the original HTTP 504
   // identity. This is NOT the new-attempt "Retry" used after final declines.
   const handleOriginalCardResume = useCallback(async () => {
     if (!pendingCardRequest || cardPaymentResult?.canResumeOriginalSale !== true) return;
+    manualOriginalResumeRef.current = pendingCardRequest.attemptId;
+    setCardPaymentOpen(true);
     setSubmitting(true);
     setCardFlowError(null);
     try {
@@ -1320,8 +1349,10 @@ export default function StorePosPaymentPage() {
         return;
       }
       const request = parsed as PosCardPaymentRequest;
+      const timedOut = window.localStorage.getItem(POS_CARD_PAYMENT_TIMEOUT_CHECKOUT_KEY) === request.attemptId;
+      timeoutCheckoutAttemptRef.current = timedOut ? request.attemptId : null;
       setPendingCardRequest(request);
-      void recoverTerminalCardPayment(request);
+      void recoverTerminalCardPayment(request, timedOut);
     } catch (err) {
       console.warn("Failed to restore pending POS card payment:", err);
     }
@@ -1401,6 +1432,12 @@ export default function StorePosPaymentPage() {
 
   const handleConfirm = async () => {
     setError(null);
+    if (pendingCardRequest) {
+      setError(locale === "zh"
+        ? "上一笔银行卡付款尚未解除锁定。请先核对结果，避免重复扣款。"
+        : "A previous card payment remains locked. Recheck it before taking another payment.");
+      return;
+    }
     if (!pricingReady) {
       setError(t.pricingUnavailable);
       return;
@@ -1451,6 +1488,11 @@ export default function StorePosPaymentPage() {
   };
 
   const handleConfirmCashDialog = async () => {
+    if (pendingCardRequest) {
+      setCashDialogOpen(false);
+      setError(locale === "zh" ? "请先确认上一笔银行卡付款结果。" : "Resolve the previous card payment first.");
+      return;
+    }
     const cashReceivedCents = parseCentInput(cashReceivedInput);
     if (!Number.isFinite(cashReceivedCents) || cashReceivedCents <= 0) {
       setCashDialogError(t.cashDialogInvalid);
@@ -1533,6 +1575,11 @@ export default function StorePosPaymentPage() {
   const canCancelCardPayment =
     cardFlowState === "PROCESSING" ||
     cardPaymentResult?.customerPromptPending === true;
+  const timedOutCheckoutVisible =
+    !cardPaymentOpen &&
+    pendingCardRequest !== null &&
+    timeoutCheckoutAttemptRef.current === pendingCardRequest.attemptId;
+  const timedOutPaymentIsFinal = ["DECLINED", "CANCELLED", "FAILED"].includes(cardFlowState);
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
@@ -1814,13 +1861,47 @@ export default function StorePosPaymentPage() {
               </div>
             </div>
 
+            {timedOutCheckoutVisible && (
+              <div role="status" className="rounded-2xl border border-amber-500/60 bg-amber-500/10 p-3 space-y-3 text-sm text-amber-100">
+                <p className="font-semibold">
+                  {locale === "zh" ? "Clover 刷卡请求已超时" : "Clover card request timed out"}
+                </p>
+                <p>
+                  {timedOutPaymentIsFinal
+                    ? (locale === "zh" ? "原付款已确认未完成。请先结束这次记录，再选择新的付款操作。" : "The previous payment did not complete. Dismiss this attempt before choosing another payment.")
+                    : (locale === "zh" ? "已退出刷卡弹窗，原支付结果仍需确认。请检查 Compact 是否显示欢迎界面；确认前不能再次收款。" : "The card dialog is closed, but the payment is not yet resolved. Check the Compact screen. Do not take another payment before reconciliation.")}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {!timedOutPaymentIsFinal && (
+                    <button type="button" disabled={submitting} onClick={() => void handleCardPaymentRecheck()} className="rounded-xl bg-amber-400 px-3 py-2 font-semibold text-slate-950 disabled:opacity-50">
+                      {t.cardTerminalRecheck}
+                    </button>
+                  )}
+                  {!timedOutPaymentIsFinal && cardPaymentResult?.canResumeOriginalSale === true && (
+                    <button type="button" disabled={submitting} onClick={() => void handleOriginalCardResume()} className="rounded-xl border border-amber-300 px-3 py-2 font-medium disabled:opacity-50">
+                      {locale === "zh" ? "人工恢复原付款" : "Manually resume original payment"}
+                    </button>
+                  )}
+                  {timedOutPaymentIsFinal && (
+                    <button type="button" onClick={() => {
+                      clearPendingCardPayment();
+                      setCardPaymentResult(null);
+                      setCardFlowState("IDLE");
+                      setCardFlowError(null);
+                    }} className="rounded-xl bg-emerald-500 px-3 py-2 font-semibold text-slate-950">
+                      {locale === "zh" ? "关闭已结束的付款记录" : "Dismiss resolved payment"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {error && <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{error}</div>}
           </div>
 
           <div className="mt-auto pt-4 flex gap-3">
             <button onClick={handleBackKeepItems} className="flex-1 h-12 rounded-2xl border border-blue-500/60 text-sm font-medium text-blue-100 hover:bg-blue-500/10">{t.backKeepItems}</button>
             <button onClick={handleBack} className="flex-1 h-12 rounded-2xl border border-slate-600 text-sm font-medium text-slate-100 hover:bg-slate-700">{t.back}</button>
-            <button disabled={!hasItems || submitting || !snapshot || !fulfillment || !pricingReady} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
+            <button disabled={!hasItems || submitting || !!pendingCardRequest || !snapshot || !fulfillment || !pricingReady} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? t.confirming : t.confirm}
             </button>
           </div>

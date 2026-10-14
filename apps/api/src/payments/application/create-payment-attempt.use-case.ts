@@ -279,7 +279,30 @@ export class TerminalPaymentService {
       );
     }
 
-    return this.mergeProviderOutcome(claimed.transaction.id, outcome);
+    let persisted = await this.mergeProviderOutcome(
+      claimed.transaction.id,
+      outcome,
+    );
+    if (
+      outcome.resultCode === ORIGINAL_504_RESULT_CODE &&
+      ['UNKNOWN', 'RECONCILING'].includes(persisted.status)
+    ) {
+      // The provider Sale is over, but its financial outcome is not known.
+      // Device UI cleanup must not cancel/release the Payment or create an Order.
+      try {
+        await this.terminalProvider.clearTimedOutSaleDisplay(
+          snapshot.externalPaymentId ?? '',
+        );
+      } catch {
+        // Device cleanup is best-effort, never payment truth.
+      }
+      try {
+        persisted = await this.reconcile(persisted.id);
+      } catch {
+        // Keep the original durable 504 evidence if the re-query is uncertain.
+      }
+    }
+    return persisted;
   }
 
   /**

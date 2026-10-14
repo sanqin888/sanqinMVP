@@ -86,6 +86,19 @@ describe("POS card payment realtime facts", () => {
     })).toEqual(complete);
   });
 
+  it("keeps the device-timeout checkout hint without interpreting it as final cancellation", () => {
+    const unresolved: PosCardPaymentResult = {
+      ...complete,
+      status: "RECONCILING",
+      orderStableId: null,
+      terminalInteractionTimedOut: true,
+    };
+    const parsed = parsePosCardPaymentSnapshot({ ...unresolved, messageKind: "SNAPSHOT" });
+    expect(parsed).toMatchObject({ status: "RECONCILING", terminalInteractionTimedOut: true });
+    expect(mergePosCardPaymentSnapshot(unresolved, { ...unresolved, terminalInteractionTimedOut: undefined })?.terminalInteractionTimedOut).toBe(true);
+    expect(mergePosCardPaymentSnapshot(unresolved, { ...unresolved, status: "CANCELLED", terminalInteractionTimedOut: false })?.terminalInteractionTimedOut).toBe(false);
+  });
+
   it("passes an original-504 resume capability through full snapshots and revokes it after claim", () => {
     const unknown: PosCardPaymentResult = {
       ...complete,

@@ -49,6 +49,8 @@ export type PosCardPaymentView = {
   customerRetryRequested?: boolean;
   customerPromptPending?: boolean;
   canResumeOriginalSale: boolean;
+  /** UI-only hint: original Sale HTTP 504 ended device interaction, not funds. */
+  terminalInteractionTimedOut: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;
@@ -800,6 +802,10 @@ export class PosCardPaymentOrchestrationService {
         (payment
           ? this.terminalPayments.canResumeOriginal504Sale(payment)
           : false),
+      terminalInteractionTimedOut:
+        !!payment &&
+        ['UNKNOWN', 'RECONCILING'].includes(payment.status) &&
+        paymentSnapshot?.resultCode === 'CLOVER_TERMINAL_SALE_HTTP_504',
       failureCode:
         override?.failureCode ??
         paymentSnapshot?.failureCode ??

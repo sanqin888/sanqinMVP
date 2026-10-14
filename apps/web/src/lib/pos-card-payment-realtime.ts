@@ -9,6 +9,7 @@ export type PosCardPaymentRealtimeEvent = {
   customerPromptPending?: boolean;
   customerRetryRequested?: boolean;
   canResumeOriginalSale?: boolean;
+  terminalInteractionTimedOut?: boolean;
   messageKind?: "SNAPSHOT" | "NOTICE";
   externalAmountCents?: number;
   surchargeCents?: number | null;
@@ -63,6 +64,9 @@ export function parsePosCardPaymentSnapshot(
     ...(event.canResumeOriginalSale !== undefined && {
       canResumeOriginalSale: event.canResumeOriginalSale,
     }),
+    ...(event.terminalInteractionTimedOut !== undefined && {
+      terminalInteractionTimedOut: event.terminalInteractionTimedOut,
+    }),
     externalAmountCents,
     surchargeCents,
     chargedTotalCents,
@@ -113,6 +117,9 @@ export function mergePosCardPaymentSnapshot(
     canResumeOriginalSale:
       incoming.canResumeOriginalSale ??
       (incoming.status === previous.status ? previous.canResumeOriginalSale : false),
+    terminalInteractionTimedOut:
+      incoming.terminalInteractionTimedOut ??
+      (incoming.status === previous.status ? previous.terminalInteractionTimedOut : false),
     surchargeCents: incoming.surchargeCents ?? previous.surchargeCents,
     chargedTotalCents: incoming.chargedTotalCents ?? previous.chargedTotalCents,
     orderStableId: incoming.orderStableId ?? previous.orderStableId,
