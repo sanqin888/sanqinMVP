@@ -628,8 +628,12 @@ describe('PosCardPaymentOrchestrationService', () => {
       status: 'RECONCILING',
       terminalInteractionTimedOut: true,
     });
-    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
-    expect(harness.orderFinalization.finalizeConfirmedPayment).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
     expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
   });
 

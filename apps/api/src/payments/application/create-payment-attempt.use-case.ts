@@ -279,7 +279,10 @@ export class TerminalPaymentService {
       );
     }
 
-    let persisted = await this.mergeProviderOutcome(claimed.transaction.id, outcome);
+    let persisted = await this.mergeProviderOutcome(
+      claimed.transaction.id,
+      outcome,
+    );
     if (
       outcome.resultCode === ORIGINAL_504_RESULT_CODE &&
       ['UNKNOWN', 'RECONCILING'].includes(persisted.status)
