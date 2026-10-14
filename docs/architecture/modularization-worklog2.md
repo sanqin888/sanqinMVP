@@ -17,7 +17,7 @@
 
 ## 2026-10-13 — Clover Compact C-2C4: 504 original Sale idempotent manual resume
 
-**Branch/base:** `feat/clover-c2c4-504-same-identity-resume` from latest `origin/dev`. **State:** LOCAL SOURCE IMPLEMENTED / USER REVIEW PENDING / CI & COMPACT SANDBOX ACCEPTANCE PENDING / NO SCHEMA, MIGRATION, DEPENDENCY OR GRAPH CHANGE.
+**Branch/base:** `feat/clover-c2c4-504-same-identity-resume` from latest `origin/dev`. **State:** MERGED PR #2811 / FINAL HEAD `88a74128` / DEV MERGE `864ed8e0` / PR CI #7218 ALL SEVEN GREEN / COMPACT SANDBOX ACCEPTANCE PENDING / NO SCHEMA, MIGRATION, DEPENDENCY OR GRAPH CHANGE.
 
 **Observed trigger:** MacBook Sandbox Compact T1 Sale successful; unattended T2 encountered original Terminal Sale HTTP 504 and Platform v3 payment NOT_FOUND at approximately three minutes. That does not prove financial cancellation and cannot authorize automatic Benefits RELEASE. Replaced the previous 25-minute unattended-device acceptance target with provider-boundary timeout/recovery tests.
 
@@ -27,7 +27,17 @@
 
 **Safety:** canonical SUCCEEDED finalizes original Order and Benefits COMMIT; definitive cancellation/failure uses existing Benefits owner RELEASE. If unavailable/ambiguous or an operation fails after one-time claim, retain UNKNOWN/RECONCILING and HOLD for operator investigation; never infer finality from Platform NOT_FOUND or restart. No change to production Web Ecommerce execution or historical facts.
 
-**Validation/gate:** focused transport/adapter, owner Payments CAS/state, POS controller/orchestration and Web realtime tests added/updated. No local lint/build/tests run by AGENTS default; CI and new Compact Sandbox 504 real-device recovery remain pending explicit remote authorization. Existing pre-change UNKNOWN does not have the new original-504 result marker and is not automatically eligible. Owner detail: `docs/payments/clover-pos-phase-plan.md`; graph review: `docs/architecture/current-dependency-graph.md`.
+**Validation/gate:** focused transport/adapter, owner Payments CAS/state, POS controller/orchestration and Web realtime tests passed authoritative GitHub PR CI #7218 after scoped lint/mock fixes; deployment and actual Compact 504 recovery remain unverified. Existing pre-change UNKNOWN does not have the new original-504 result marker and is not automatically eligible. Owner detail: `docs/payments/clover-pos-phase-plan.md`; graph review: `docs/architecture/current-dependency-graph.md`.
+
+## 2026-10-13 — Clover Compact C-2C5 Sandbox acceptance readiness
+
+**Branch/base:** `docs/clover-c2c5-compact-sandbox-acceptance` from `origin/dev@864ed8e0`. **State:** DOCS-ONLY LOCAL / USER REVIEW PENDING / REAL COMPACT TESTS PENDING / NO APP CODE, SCHEMA, MIGRATION, DEPENDENCY OR GRAPH CHANGE.
+
+**Readiness audit:** PR #2811 C-2C4 is merged to dev with all seven PR CI #7218 checks green. Production VM still runs an older immutable API/Web image; current code is not deployed to production and must not be verified there. The user already has a MacBook-isolated localhost PostgreSQL, API, Web and POS proxy connected to the Test Merchant/Compact; that is the intended next acceptance host, subject to independently verifying its current code version, feature flag, local migration status and device network.
+
+**Evidence matrix:** owner plan `docs/payments/clover-pos-phase-plan.md` C-2C5 freezes S1 baseline successful payment, S2 original 504/canonical NOT_FOUND and eligible read-only state, S3 one-time exact-original-identity manual recovery with provider/device idempotency proof, S4 busy/offline/Welcome/concurrent/restart/second-504 fail-closed checks, and S5 Benefits HOLD/COMMIT/RELEASE checkpoint and 209 cancellation cases. Provider-observed ~3-minute payment window replaces the inappropriate 25-minute unattended assumption. Old pre-change UNKNOWN records are not eligible for fabricated replay evidence. Avoid disclosing merchant OAuth tokens, customer data or card facts.
+
+**Boundary/no-op:** this readiness document does not request device Sale, run live commands, mutate runtime config, deploy, change provider contract or bless production cutover. Same Payments/Clover and POS public capabilities are used; no architecture scanner/SCC/baseline changes. STOP on any real device disagreement with C-2C4 eligibility or replay behavior: report sanitized evidence and seek separate authorization for payment protocol changes. No automatic main promotion or production verification is claimed.
 
 ## 2026-10-05 — External Sales Slice F Post-start historical reconstruction
 

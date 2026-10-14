@@ -611,6 +611,28 @@ describe('PosCardPaymentOrchestrationService', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it('publishes a read-only timeout UI hint without cancelling payment or releasing benefits', async () => {
+    const harness = createHarness();
+    const timedOut = paymentFixture('RECONCILING').recordProviderObservation({
+      status: 'RECONCILING',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(timedOut);
+    const result = await harness.service.start(storeStableId, {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      order: orderInput,
+    });
+    expect(result).toMatchObject({
+      status: 'RECONCILING',
+      terminalInteractionTimedOut: true,
+    });
+    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
+    expect(harness.orderFinalization.finalizeConfirmedPayment).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
+  });
+
   it('keeps reservations held when the provider result is UNKNOWN', async () => {
     const harness = createHarness();
     jest

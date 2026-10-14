@@ -313,6 +313,7 @@ const createTerminalHarness = () => {
       available: true,
     }),
     prepareOriginalSaleResume: jest.fn().mockResolvedValue(true),
+    clearTimedOutSaleDisplay: jest.fn().mockResolvedValue(true),
     completeCustomerInteraction: jest.fn().mockResolvedValue(false),
     cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
   };
@@ -334,6 +335,40 @@ describe('TerminalPaymentService', () => {
     failureMessage: 'Clover Platform has not exposed the payment yet',
   });
 
+  it('preserves 504 evidence and HOLD after bounded display cleanup and canonical NOT_FOUND', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const result = await service.startSale(terminalInput);
+    expect(result.status).toBe('RECONCILING');
+    expect(result.toSnapshot()).toMatchObject({
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      providerPaymentId: null,
+    });
+    expect(terminalProvider.clearTimedOutSaleDisplay).toHaveBeenCalledTimes(1);
+    expect(provider.getPaymentStatus).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the original 504 result even if device cleanup fails', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    terminalProvider.clearTimedOutSaleDisplay.mockRejectedValueOnce(new Error('device unavailable'));
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const result = await service.startSale(terminalInput);
+    expect(result.status).toBe('RECONCILING');
+    expect(result.toSnapshot().resultCode).toBe('CLOVER_TERMINAL_SALE_HTTP_504');
+    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+  });
+
   it('rechecks the original 504 and replays at most once using identical payment identity', async () => {
     const { service, provider, terminalProvider } = createTerminalHarness();
     provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
@@ -343,7 +378,10 @@ describe('TerminalPaymentService', () => {
       failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
     });
     const initial = await service.startSale(terminalInput);
-    expect(initial.status).toBe('UNKNOWN');
+    expect(initial.status).toBe('RECONCILING');
+    expect(terminalProvider.clearTimedOutSaleDisplay).toHaveBeenCalledWith(
+      initial.toSnapshot().externalPaymentId,
+    );
 
     provider.startPayment.mockImplementation((request) =>
       Promise.resolve(canonicalOutcome(request)),
@@ -826,6 +864,7 @@ describe('TerminalPaymentService', () => {
     const terminalProvider: jest.Mocked<PaymentTerminalProvider> = {
       getAvailability: jest.fn(),
       prepareOriginalSaleResume: jest.fn().mockResolvedValue(true),
+      clearTimedOutSaleDisplay: jest.fn().mockResolvedValue(true),
       completeCustomerInteraction: jest.fn().mockResolvedValue(false),
       cancelCustomerConfirmation: jest.fn().mockResolvedValue(undefined),
     };

@@ -498,6 +498,40 @@ export class CloverTerminalTransport {
     return mapTerminalAvailabilityResponse(attempt.result, terminalId);
   }
 
+  /**
+   * Sale 504 is not financial cancellation. Check the original device payment
+   * identity before touching the display. An absent device payment plus an
+   * explicitly idle device permits Welcome only, never a device-wide cancel.
+   * Busy/unknown or a returned payment record cannot prove ownership of the
+   * current screen and must be left for operator reconciliation.
+   */
+  async clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean> {
+    if (!this.hasStaticConfiguration() || !externalPaymentId) return false;
+    const lookup = await this.request(
+      `/connect/v1/payments/external/${encodeURIComponent(externalPaymentId)}`,
+      { method: 'GET', timeoutSeconds: 5 },
+    );
+    if (lookup.kind !== 'response') return false;
+    const body = lookup.result.body;
+    const lookupExternalId =
+      stringValue(body, 'externalPaymentId') ??
+      stringValue(asRecord(body?.payment), 'externalPaymentId');
+    const explicitlyNotFound =
+      lookup.result.httpStatus === 200 &&
+      normalized(stringValue(body, 'queryStatus')) === 'NOT_FOUND' &&
+      lookupExternalId === externalPaymentId &&
+      !asRecord(body?.payment);
+    if (lookup.result.httpStatus !== 404 && !explicitlyNotFound) {
+      this.logger.warn(
+        '[CloverTerminalTransport] timeout display cleanup skipped: original device payment not confirmed absent',
+      );
+      return false;
+    }
+    // Reuse the stricter state verifier: generic HTTP 200 is not proof of IDLE.
+    // It performs one status read and sends Welcome only for IDLE/READY/AVAILABLE.
+    return this.prepareOriginalSaleResume();
+  }
+
   /** Require an explicit idle state; HTTP 200 without a state is not proof. */
   async prepareOriginalSaleResume(): Promise<boolean> {
     const attempt = await this.request('/connect/v1/device/status', {

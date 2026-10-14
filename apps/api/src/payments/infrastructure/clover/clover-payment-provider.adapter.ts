@@ -54,6 +54,10 @@ export class CloverPaymentProviderAdapter
     return this.terminal.prepareOriginalSaleResume();
   }
 
+  clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean> {
+    return this.terminal.clearTimedOutSaleDisplay(externalPaymentId);
+  }
+
   cancelCustomerConfirmation(): Promise<void> {
     return this.terminal.cancelCustomerConfirmation();
   }

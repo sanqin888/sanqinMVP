@@ -78,6 +78,8 @@ export interface PaymentTerminalProvider {
   getAvailability(): Promise<PaymentTerminalAvailability>;
   /** Only clear the display when the device reports idle; never a money decision. */
   prepareOriginalSaleResume(): Promise<boolean>;
+  /** Display-only cleanup after Sale 504; never establishes financial cancellation. */
+  clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean>;
   cancelCustomerConfirmation(): Promise<void>;
   completeCustomerInteraction(
     status: TerminalCustomerInteractionStatus,
