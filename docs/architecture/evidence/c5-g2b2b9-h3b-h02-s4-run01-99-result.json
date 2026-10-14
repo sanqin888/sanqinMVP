@@ -1,0 +1,84 @@
+{
+  "authorizedToMutateProduction": false,
+  "case": "H-02/S4",
+  "crossProcessQuiescenceVerified": false,
+  "endedUtc": "2026-10-14T14:13:04.284224+00:00",
+  "failures": [],
+  "kind": "c5-g2b2b9-h3b-s4-disposable-review-v0",
+  "lab": "/tmp/sanq-g2b2b-lab-h2-svgohdq2",
+  "lock": {
+    "dev": 2050,
+    "ino": 1048596
+  },
+  "mountNamespaceCoverageVerified": false,
+  "newConsumerAdmissionPrevented": false,
+  "observations": {
+    "held": {
+      "holder": {
+        "cgroup": "0::/system.slice/sanq-g2b2b-lab-h2-febc90f97cbc.service\n",
+        "lock": {
+          "dev": 2050,
+          "ino": 1048596
+        },
+        "ownerUid": 0,
+        "phase": "HELD",
+        "pid": 1050,
+        "startTicks": 18503
+      },
+      "holderFdPointsToLock": true,
+      "hypotheticalRuntimeHandoff": "BLOCKED",
+      "independentContender": {
+        "authorizedToMutateProduction": false,
+        "hostAdapterCalls": 0,
+        "lock": {
+          "dev": 2050,
+          "ino": 1048596
+        },
+        "outcome": "CONTENDED",
+        "ownerUid": 0,
+        "phase": "held",
+        "pid": 1052,
+        "runtimeHandoffAttempted": false
+      },
+      "unit": {
+        "ActiveState": "active",
+        "LoadState": "loaded",
+        "SubState": "running"
+      },
+      "utc": "2026-10-14T14:13:04.090818+00:00"
+    },
+    "released": {
+      "independentContender": {
+        "authorizedToMutateProduction": false,
+        "hostAdapterCalls": 0,
+        "lock": {
+          "dev": 2050,
+          "ino": 1048596
+        },
+        "outcome": "ACQUIRED",
+        "ownerUid": 0,
+        "phase": "released",
+        "pid": 1054,
+        "runtimeHandoffAttempted": false
+      },
+      "releaseIsNotMaintenanceAuthority": true,
+      "utc": "2026-10-14T14:13:04.245989+00:00"
+    }
+  },
+  "postCleanupHolder": {
+    "originalPid": 1050,
+    "originalStartTicks": 18503,
+    "result": "GONE"
+  },
+  "postCleanupUnitState": {
+    "ActiveState": "inactive",
+    "LoadState": "not-found",
+    "SubState": "dead"
+  },
+  "readyToInstall": false,
+  "reportedPass": true,
+  "rootLevelWholeHostExclusionVerified": false,
+  "sourceSha256": "98c408303310b95290668bf410e1adca84406e96c13cc0e61b96b2b9e41290f4",
+  "startedUtc": "2026-10-14T14:13:03.808915+00:00",
+  "unit": "sanq-g2b2b-lab-h2-febc90f97cbc.service"
+}
