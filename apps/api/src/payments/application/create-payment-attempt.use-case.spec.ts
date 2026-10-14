@@ -350,7 +350,9 @@ describe('TerminalPaymentService', () => {
       failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
       providerPaymentId: null,
     });
-    expect(terminalProvider.clearTimedOutSaleDisplay.mock.calls).toHaveLength(1);
+    expect(terminalProvider.clearTimedOutSaleDisplay.mock.calls).toHaveLength(
+      1,
+    );
     expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
     expect(provider.startPayment.mock.calls).toHaveLength(1);
   });
