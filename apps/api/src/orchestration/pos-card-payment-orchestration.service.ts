@@ -722,15 +722,23 @@ export class PosCardPaymentOrchestrationService {
         );
     } finally {
       this.activeCustomerPrompts.delete(checkout.attemptId);
-      const ready = await this.terminalPayments
-        .finishTerminalOperation(checkout.attemptId)
-        .catch(() => false);
-      this.publish(storeId, {
+      // Deliver the prompt decision immediately; optional device display
+      // recovery must not delay the customer's POS status update.
+      const decision = {
         ...waiting,
         customerPromptPending: false,
         customerRetryRequested,
-        terminalReadyForNextSale: ready,
-      });
+        terminalReadyForNextSale: false,
+      };
+      this.publish(storeId, decision);
+      void this.terminalPayments
+        .finishTerminalOperation(checkout.attemptId)
+        .then((ready) => {
+          if (ready) {
+            this.publish(storeId, { ...decision, terminalReadyForNextSale: true });
+          }
+        })
+        .catch(() => undefined);
     }
   }
 

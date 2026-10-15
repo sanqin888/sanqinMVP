@@ -31,8 +31,7 @@ import {
 } from './application/payment-transaction.repository';
 import { CloverPaymentProviderAdapter } from './infrastructure/clover/clover-payment-provider.adapter';
 import { CloverProviderInfrastructureModule } from './infrastructure/clover/clover-provider-infrastructure.module';
-import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
-import { PrismaPaymentTerminalOperationRepository } from './infrastructure/prisma/prisma-payment-terminal-operation.repository';
+import { PrismaPaymentTransactionRepository, PrismaPaymentTerminalOperationRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
 import {
   PAYMENT_TERMINAL_OPERATION_REPOSITORY,
   type PaymentTerminalOperationRepository,

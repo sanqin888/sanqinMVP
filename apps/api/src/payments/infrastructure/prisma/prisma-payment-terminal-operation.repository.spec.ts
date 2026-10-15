@@ -1,5 +1,4 @@
-import type { PrismaService } from '../../../prisma/prisma.service';
-import { PrismaPaymentTerminalOperationRepository } from './prisma-payment-terminal-operation.repository';
+import { PrismaPaymentTerminalOperationRepository } from './prisma-payment-transaction.repository';
 
 const initial = (state: 'RESERVED' | 'SALE_IN_FLIGHT' | 'CANCEL_REQUESTED' | 'FINALIZED') => ({
   terminalId: 'compact-1',
@@ -23,7 +22,9 @@ const setup = () => {
     },
   };
   const repository = new PrismaPaymentTerminalOperationRepository(
-    prisma as unknown as PrismaService,
+    prisma as unknown as ConstructorParameters<
+      typeof PrismaPaymentTerminalOperationRepository
+    >[0],
   );
   return { repository, table: prisma.paymentTerminalOperation };
 };
