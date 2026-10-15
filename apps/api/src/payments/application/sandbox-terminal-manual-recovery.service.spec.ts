@@ -252,9 +252,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
       );
       expect(terminalPayments.reconcile.mock.calls).toHaveLength(0);
       expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
-      expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
-        0,
-      );
+      expect(
+        terminalProvider.prepareOriginalSaleResume.mock.calls,
+      ).toHaveLength(0);
     },
   );
 
