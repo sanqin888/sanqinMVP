@@ -36,11 +36,7 @@ describe('PrismaPaymentTerminalOperationRepository fencing', () => {
     const { repository, table } = setup();
     table.findUnique.mockResolvedValue(initial('SALE_IN_FLIGHT'));
     expect(
-      await repository.reserve(
-        'compact-1',
-        '4750_Yonge_Street',
-        'attempt-2',
-      ),
+      await repository.reserve('compact-1', '4750_Yonge_Street', 'attempt-2'),
     ).toBe(false);
     expect(table.updateMany).not.toHaveBeenCalled();
     expect(table.create).not.toHaveBeenCalled();
@@ -51,11 +47,7 @@ describe('PrismaPaymentTerminalOperationRepository fencing', () => {
     table.findUnique.mockResolvedValue(initial('FINALIZED'));
     table.updateMany.mockResolvedValue({ count: 1 });
     expect(
-      await repository.reserve(
-        'compact-1',
-        '4750_Yonge_Street',
-        'attempt-2',
-      ),
+      await repository.reserve('compact-1', '4750_Yonge_Street', 'attempt-2'),
     ).toBe(true);
     expect(table.updateMany).toHaveBeenCalledWith({
       where: {
@@ -85,7 +77,8 @@ describe('PrismaPaymentTerminalOperationRepository fencing', () => {
     );
     expect(requested.requested).toBe(true);
     expect(requested.sendDeviceCancel).toBe(true);
-    const call = table.updateMany.mock.calls[0]?.[0] as unknown;
+    const calls = table.updateMany.mock.calls as Array<[unknown]>;
+    const call = calls[0]?.[0];
     expect(call).toMatchObject({
       where: {
         attemptId: 'attempt-1',
@@ -168,7 +161,8 @@ describe('PrismaPaymentTerminalOperationRepository fencing', () => {
     const { repository, table } = setup();
     table.updateMany.mockResolvedValue({ count: 1 });
     await repository.acknowledgeCancel('attempt-1');
-    const call = table.updateMany.mock.calls[0]?.[0] as unknown;
+    const calls = table.updateMany.mock.calls as Array<[unknown]>;
+    const call = calls[0]?.[0];
     expect(call).toMatchObject({
       where: { attemptId: 'attempt-1', state: 'CANCEL_REQUESTED' },
       data: { state: 'CANCEL_ACKED' },

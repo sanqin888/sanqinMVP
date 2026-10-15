@@ -950,7 +950,8 @@ describe('PosCardPaymentOrchestrationService', () => {
         requested: true,
         safeBeforeDispatch: true,
       });
-    jest.mocked(harness.terminalPayments.completeUndispatchedCancel)
+    jest
+      .mocked(harness.terminalPayments.completeUndispatchedCancel)
       .mockResolvedValue(true);
     const view = await harness.service.cancel(storeStableId, {
       attemptId: 'attempt-1',
@@ -1017,6 +1018,8 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(view.status).toBe('CANCELLED');
     expect(view.benefitsReleaseComplete).toBe(false);
     expect(view.terminalReadyForNextSale).toBe(false);
-    expect(harness.terminalPayments.finishTerminalOperation).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.finishTerminalOperation,
+    ).not.toHaveBeenCalled();
   });
 });

@@ -602,7 +602,9 @@ export class TerminalPaymentService {
           operation.paymentTransactionId !== paymentId) ||
         (operation.externalPaymentId !== null &&
           operation.externalPaymentId !== identity.externalPaymentId)
-      ) return transaction;
+      ) {
+        return transaction;
+      }
       if (
         transaction.status !== 'CREATED' &&
         transaction.status !== 'PROCESSING'
