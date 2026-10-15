@@ -15,6 +15,14 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-15 — Clover Compact R2 explicit terminal idle proof Hotfix
+
+**Branch/base:** `fix/clover-r2-explicit-idle-evidence` from `origin/dev@5c561946`. **State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PR/CI / NO MIGRATION / NO PROD DEPLOY / MACBOOK SANDBOX ACTIVE VERIFICATION BLOCKED. R2 PR #2819 merged at `166e1af7` after CI #7247 (7/7); user-generated additive R2 migration `20261015202242_add_terminal_sandbox_manual_recovery` committed to dev as `5c561946`, CI #7249 green; user independently confirmed local `restaurant@127.0.0.1:5432` DB already has table and Prisma reports 207 migrations/up to date.
+
+**Cause/scope:** Terminal transport retained a deliberate compatibility fallback: HTTP 200 missing device state mapped to AVAILABLE. Such fallback is not evidence that the Compact is idle and cannot justify an R2 irreversible payment-state decision. The existing Payments Terminal availability projection now also carries `providerStateExplicit` (actual nonempty state/status from Clover wire response), leaving legacy `state` and `available` unchanged. R2 operator recovery exclusively requires true availability, exact terminal ID, explicit marker and raw status `AVAILABLE/IDLE/READY` before local FAILED/Benefits RELEASE; the same check precedes final fence release, in addition to existing canonical NOT_FOUND and strict Welcome. Absent/unknown/busy device status and mismatched terminal fail closed. Focused mapper and R2 payment application tests cover inferred state, explicit IDLE/READY/AVAILABLE, BUSY/UNKNOWN, mismatched device, no CAS/reconcile when unsafe, and no fence finalization without explicit idle evidence.
+
+**Governance:** Scoped to existing Payments port/Clover transport/R2 application, no module owner change or new context graph edge, scanner allowance, schema/migration, dependency or protected production Web modification. Local lint/build/tests intentionally not run per AGENTS.md; await user review then GitHub Actions CI before MacBook T1 verification. Until then `POS_CLOVER_SANDBOX_MANUAL_RECOVERY_ENABLED` must remain off.
+
 ## 2026-10-15 — Clover Compact C-2C7 R2: isolated Sandbox operator-assessed unpaid closure
 
 **Branch/base:** `feat/clover-c2c7-r2-sandbox-manual-recovery` based on `origin/dev@edec60a0` after R1 PR #2818 merged and user reported R1 MacBook Sandbox acceptance passed. **State:** LOCAL SOURCE / USER REVIEW PENDING / NO PR, CI OR DEVICE VERIFICATION / MIGRATION REQUIRED.

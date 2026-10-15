@@ -3,6 +3,7 @@ import type { TerminalPaymentService } from './create-payment-attempt.use-case';
 import type { PaymentTerminalOperationRepository } from './payment-terminal-operation.repository';
 import type {
   PaymentProvider,
+  PaymentTerminalAvailability,
   PaymentTerminalProvider,
 } from './payment-provider.port';
 import { SandboxTerminalManualRecoveryService } from './sandbox-terminal-manual-recovery.service';
@@ -40,8 +41,10 @@ const createHarness = () => {
     findById: jest.fn().mockImplementation(() => Promise.resolve(payment)),
     getAvailability: jest.fn().mockResolvedValue({
       available: true,
-      state: 'IDLE',
+      state: 'AVAILABLE',
       terminalId: 'compact-test-1',
+      providerState: 'IDLE',
+      providerStateExplicit: true,
     }),
     reconcile: jest.fn().mockImplementation(() => Promise.resolve(payment)),
   } as unknown as jest.Mocked<TerminalPaymentService>;
@@ -169,6 +172,92 @@ describe('SandboxTerminalManualRecoveryService', () => {
     ]);
   });
 
+  const unsafeAvailabilities: Array<[string, PaymentTerminalAvailability]> = [
+    [
+      'HTTP 200 with no explicit state (synthetic AVAILABLE)',
+      {
+        state: 'AVAILABLE',
+        available: true,
+        configured: true,
+        terminalId: 'compact-test-1',
+        providerState: 'AVAILABLE',
+        providerStateExplicit: false,
+      },
+    ],
+    [
+      'HTTP 200 with UNKNOWN provider state',
+      {
+        state: 'AVAILABLE',
+        available: true,
+        configured: true,
+        terminalId: 'compact-test-1',
+        providerState: 'UNKNOWN',
+        providerStateExplicit: true,
+      },
+    ],
+    [
+      'device status exists but explicit-evidence marker is missing',
+      {
+        state: 'AVAILABLE',
+        available: true,
+        configured: true,
+        terminalId: 'compact-test-1',
+        providerState: 'IDLE',
+      },
+    ],
+    [
+      'busy device',
+      {
+        state: 'BUSY',
+        available: false,
+        configured: true,
+        terminalId: 'compact-test-1',
+        providerState: 'BUSY',
+        providerStateExplicit: true,
+      },
+    ],
+    [
+      'missing provider status',
+      {
+        state: 'AVAILABLE',
+        available: true,
+        configured: true,
+        terminalId: 'compact-test-1',
+        providerStateExplicit: true,
+      },
+    ],
+    [
+      'different terminal identity',
+      {
+        state: 'AVAILABLE',
+        available: true,
+        configured: true,
+        terminalId: 'another-terminal',
+        providerState: 'IDLE',
+        providerStateExplicit: true,
+      },
+    ],
+  ];
+
+  it.each(unsafeAvailabilities)(
+    'rejects %s before canonical reconciliation or any financial write',
+    async (_, availability) => {
+      const { service, operations, terminalPayments, terminalProvider } =
+        createHarness();
+      jest.spyOn(service, 'isEnabled').mockReturnValue(true);
+      terminalPayments.getAvailability.mockResolvedValue(availability);
+
+      await expect(service.acceptSandboxManualUnpaid(input)).rejects.toThrow(
+        'POS_SANDBOX_MANUAL_TERMINAL_NOT_IDLE',
+      );
+      expect(terminalPayments.reconcile.mock.calls).toHaveLength(0);
+      expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
+      expect(
+        terminalProvider.prepareOriginalSaleResume.mock.calls,
+      ).toHaveLength(0);
+    },
+  );
+
   it('rejects newly found successful payment without an operator claim', async () => {
     const { service, terminalPayments, operations } = createHarness();
     jest.spyOn(service, 'isEnabled').mockReturnValue(true);
@@ -212,6 +301,97 @@ describe('SandboxTerminalManualRecoveryService', () => {
     ).resolves.toMatchObject({ status: 'FAILED' });
     expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
     expect(terminalPayments.reconcile.mock.calls).toHaveLength(0);
+  });
+
+  it('keeps an attested terminal fenced when status only infers AVAILABLE', async () => {
+    const {
+      service,
+      operations,
+      provider,
+      terminalPayments,
+      terminalProvider,
+      setPayment,
+    } = createHarness();
+    jest.spyOn(service, 'isEnabled').mockReturnValue(true);
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      }),
+    );
+    operations.getSandboxManualUnpaidDecision.mockResolvedValue({
+      ...input,
+      paymentTransactionId: paymentId,
+      terminalId: 'compact-test-1',
+      externalPaymentId,
+      originalResultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      originalFailureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      canonicalCheckedAt: new Date(),
+      benefitsReleasedAt: new Date(),
+      terminalFinalizedAt: null,
+      lateCanonicalAt: null,
+      lateProviderPaymentId: null,
+    });
+    terminalPayments.getAvailability.mockResolvedValue({
+      state: 'AVAILABLE',
+      available: true,
+      configured: true,
+      terminalId: 'compact-test-1',
+      providerState: 'AVAILABLE',
+      providerStateExplicit: false,
+    });
+
+    await expect(
+      service.finishSandboxManualUnpaid(attemptId, storeStableId),
+    ).resolves.toBe(false);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
+    expect(operations.finalizeSandboxManualUnpaid.mock.calls).toHaveLength(0);
+  });
+
+  it('finalizes after explicit IDLE, fresh canonical NOT_FOUND and Welcome', async () => {
+    const {
+      service,
+      operations,
+      provider,
+      terminalPayments,
+      terminalProvider,
+      setPayment,
+    } = createHarness();
+    jest.spyOn(service, 'isEnabled').mockReturnValue(true);
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      }),
+    );
+    operations.getSandboxManualUnpaidDecision.mockResolvedValue({
+      ...input,
+      paymentTransactionId: paymentId,
+      terminalId: 'compact-test-1',
+      externalPaymentId,
+      originalResultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      originalFailureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      canonicalCheckedAt: new Date(),
+      benefitsReleasedAt: new Date(),
+      terminalFinalizedAt: null,
+      lateCanonicalAt: null,
+      lateProviderPaymentId: null,
+    });
+
+    await expect(
+      service.finishSandboxManualUnpaid(attemptId, storeStableId),
+    ).resolves.toBe(true);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
+    expect(terminalPayments.getAvailability.mock.calls).toHaveLength(1);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      1,
+    );
+    expect(operations.finalizeSandboxManualUnpaid.mock.calls).toEqual([
+      [attemptId],
+    ]);
   });
 
   it('does not finalize a manually-closed fence if canonical truth turns positive', async () => {
