@@ -44,6 +44,7 @@ const createHarness = () => {
       .mockResolvedValue({ enabled: true, storeId: storeStableId }),
     getBenefitsReview: jest.fn().mockResolvedValue({ items: [] }),
     getReviewAttempt: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
+    manuallyCloseSandboxUnpaid: jest.fn().mockResolvedValue({ status: 'FAILED' }),
     recheckReviewAttempt: jest
       .fn()
       .mockResolvedValue({ status: 'RECONCILING' }),
@@ -114,6 +115,9 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
   const recheckReviewAttempt = jest.fn().mockResolvedValue({
     status: 'RECONCILING',
   });
+  const manuallyCloseSandboxUnpaid = jest.fn().mockResolvedValue({
+    status: 'FAILED',
+  });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -125,6 +129,7 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
             cancel: cancelPayment,
             getReviewAttempt,
             recheckReviewAttempt,
+            manuallyCloseSandboxUnpaid,
           },
         },
       ],
@@ -138,8 +143,10 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
         canActivate: (context: ExecutionContext) => {
           const httpRequest = context.switchToHttp().getRequest<{
             posDevice?: AuthenticatedPosIdentity;
+            user?: { userStableId: string };
           }>();
           httpRequest.posDevice = posIdentity;
+          httpRequest.user = { userStableId: 'coperator-sandbox' };
           return true;
         },
       })
@@ -183,6 +190,40 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
       body.attemptId,
     );
     expect(cancelPayment).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit typed Sandbox operator attestation', async () => {
+    const response = await request(httpServer)
+      .post(
+        `/api/v1/pos/payments/card/review/${body.attemptId}/manual-close-unpaid`,
+      )
+      .send({
+        confirmation: 'CONFIRM UNPAID',
+        cloverOrderId: 'J69R16PIHFKYG',
+        operatorNote: 'Checked original Test Merchant order: No Payments',
+      });
+    expect(response.status).toBe(201);
+    expect(manuallyCloseSandboxUnpaid).toHaveBeenCalledWith(
+      storeStableId,
+      body.attemptId,
+      'coperator-sandbox',
+      'J69R16PIHFKYG',
+      'Checked original Test Merchant order: No Payments',
+    );
+  });
+
+  it('rejects an unconfirmed Sandbox request without changing payment facts', async () => {
+    const response = await request(httpServer)
+      .post(
+        `/api/v1/pos/payments/card/review/${body.attemptId}/manual-close-unpaid`,
+      )
+      .send({
+        confirmation: 'YES',
+        cloverOrderId: 'J69R16PIHFKYG',
+        operatorNote: 'Missing exact confirmation marker',
+      });
+    expect(response.status).toBe(400);
+    expect(manuallyCloseSandboxUnpaid).not.toHaveBeenCalled();
   });
 
   it('accepts a string attemptId route param and validates the body separately', async () => {

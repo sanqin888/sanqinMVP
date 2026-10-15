@@ -241,7 +241,25 @@ export type PosCardPaymentReviewDetail = PosCardPaymentResult & {
   providerPaymentId: string | null;
   terminalOperationState: string | null;
   terminalId: string | null;
+  sandboxManualRecoveryEnabled: boolean;
+  sandboxOperatorUnpaidAccepted: boolean;
+  sandboxRecoveryTerminalFinalized: boolean;
+  sandboxLateCanonicalPayment: boolean;
 };
+
+export function manuallyCloseSandboxUnpaid(
+  attemptId: string,
+  input: { confirmation: "CONFIRM UNPAID"; cloverOrderId: string; operatorNote: string },
+) {
+  return apiFetch<PosCardPaymentResult>(
+    `/pos/payments/card/review/${enc(attemptId)}/manual-close-unpaid`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
 
 export function fetchPosCardPaymentReviewAttempt(attemptId: string) {
   return apiFetch<PosCardPaymentReviewDetail>(

@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import {
   fetchPosCardPaymentBenefitsReview,
   fetchPosCardPaymentReviewAttempt,
+  manuallyCloseSandboxUnpaid,
   recheckPosCardPaymentReviewAttempt,
   type PosCardPaymentReviewDetail,
   type PosCardPaymentReviewItem,
@@ -21,6 +22,11 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
   const [detail, setDetail] = useState<PosCardPaymentReviewDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [lookupAttemptId, setLookupAttemptId] = useState("");
+  const [cloverOrderId, setCloverOrderId] = useState("");
+  const [operatorNote, setOperatorNote] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [understood, setUnderstood] = useState(false);
   const zh = locale === "zh";
 
   const reload = useCallback(async () => {
@@ -64,6 +70,46 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
     [reload, zh],
   );
 
+  const closeUnpaid = useCallback(async () => {
+    if (
+      !detail ||
+      confirmation !== "CONFIRM UNPAID" ||
+      !understood ||
+      cloverOrderId.trim().length < 4 ||
+      operatorNote.trim().length < 12
+    ) return;
+    setChecking(true);
+    setDetailError(null);
+    try {
+      await manuallyCloseSandboxUnpaid(detail.attemptId, {
+        confirmation: "CONFIRM UNPAID",
+        cloverOrderId: cloverOrderId.trim(),
+        operatorNote: operatorNote.trim(),
+      });
+      const latest = await fetchPosCardPaymentReviewAttempt(detail.attemptId);
+      setDetail(latest);
+      await reload();
+      setConfirmation("");
+      setUnderstood(false);
+    } catch {
+      setDetailError(
+        zh
+          ? "受控人工恢复尚未完成。可能存在付款冲突或设备/权益检查未通过，严禁再次刷卡。"
+          : "Manual recovery did not complete. Payment, device or benefit checks may have failed. Do not recharge.",
+      );
+    } finally {
+      setChecking(false);
+    }
+  }, [
+    detail,
+    confirmation,
+    understood,
+    cloverOrderId,
+    operatorNote,
+    reload,
+    zh,
+  ]);
+
   return (
     <section className="mx-auto w-full max-w-5xl px-4 pt-4">
       <div className="rounded-2xl border border-amber-400/30 bg-slate-800/80 p-3">
@@ -104,6 +150,23 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
                   ? "刷新待核查列表"
                   : "Refresh review queue"}
             </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={lookupAttemptId}
+                onChange={(event) => setLookupAttemptId(event.target.value)}
+                placeholder={zh ? "输入原付款 Attempt ID" : "Original Attempt ID"}
+                aria-label={zh ? "原付款 Attempt ID" : "Original Attempt ID"}
+                className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-500 bg-slate-900 px-3 text-xs"
+              />
+              <button
+                type="button"
+                disabled={checking || !lookupAttemptId.trim()}
+                onClick={() => void inspect(lookupAttemptId.trim(), false)}
+                className="min-h-10 rounded-lg border border-slate-500 px-3 text-xs text-slate-100 disabled:opacity-50"
+              >
+                {zh ? "按编号查看" : "Find attempt"}
+              </button>
+            </div>
             {error ? (
               <p role="alert" className="text-sm text-rose-200">
                 {zh
@@ -230,6 +293,93 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
                         ? "没有最终支付结论时，不得发起另一笔银行卡付款。"
                         : "Do not initiate another card Sale while payment truth is unknown."}
                     </p>
+                    {detail.sandboxLateCanonicalPayment && (
+                      <p role="alert" className="rounded-lg border border-rose-400 bg-rose-950/80 p-3 font-semibold text-rose-100">
+                        {zh
+                          ? "严重冲突：Clover 后来报告了真实付款！停止后续刷卡，立即核对退款和权益。"
+                          : "Critical: Clover later reported a real payment. Stop new card Sales and reconcile/refund manually."}
+                      </p>
+                    )}
+                    {detail.sandboxOperatorUnpaidAccepted && (
+                      <p className="text-amber-100">
+                        {detail.sandboxRecoveryTerminalFinalized
+                          ? zh
+                            ? "人工未扣款结案已记录；设备检查点已完成。这不是 Clover 自动取消。"
+                            : "Operator closure recorded and device finalized. Not a Clover cancellation."
+                          : zh
+                            ? "人工未扣款结案已记录；仍有权益或设备检查点待完成。"
+                            : "Operator closure recorded; benefit or device checkpoint remains pending."}
+                      </p>
+                    )}
+                    {detail.sandboxManualRecoveryEnabled &&
+                      ((
+                        detail.paymentStatus === "RECONCILING" &&
+                        detail.resultCode === "CLOVER_TERMINAL_SALE_HTTP_504" &&
+                        detail.terminalOperationState === "SALE_IN_FLIGHT"
+                      ) || (
+                        detail.sandboxOperatorUnpaidAccepted &&
+                        !detail.sandboxRecoveryTerminalFinalized
+                      )) && (
+                      <div className="space-y-3 rounded-lg border border-amber-500/50 p-3">
+                        <p className="font-semibold text-amber-100">
+                          {zh ? "Sandbox 人工确认未扣款（高风险）" : "Sandbox operator-attested unpaid closure"}
+                        </p>
+                        <p className="text-amber-200">
+                          {zh
+                            ? "仅适用于隔离 Sandbox。系统将再次查 Clover，并要求 Compact 空闲；操作员接受未发现付款不等于绝对没有扣款的风险。此操作可能释放积分、余额及优惠券。"
+                            : "Isolated Sandbox only. The server rechecks Clover and the idle device. NOT_FOUND is not absolute proof, and accepting the risk may release benefits."}
+                        </p>
+                        <input
+                          value={cloverOrderId}
+                          onChange={(event) => setCloverOrderId(event.target.value)}
+                          placeholder={zh ? "Clover Open 订单 ID" : "Clover Open order ID"}
+                          aria-label="Clover Order ID"
+                          className="min-h-11 w-full rounded-lg border border-slate-500 bg-slate-900 px-3"
+                        />
+                        <textarea
+                          value={operatorNote}
+                          onChange={(event) => setOperatorNote(event.target.value)}
+                          placeholder={zh ? "人工核对说明（至少 12 个字符）" : "Operator evidence and reason (min 12 characters)"}
+                          aria-label={zh ? "人工核对说明" : "Operator evidence and reason"}
+                          className="min-h-20 w-full rounded-lg border border-slate-500 bg-slate-900 p-3"
+                        />
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={understood}
+                            onChange={(event) => setUnderstood(event.target.checked)}
+                          />
+                          <span>
+                            {zh
+                              ? "我已经在 Test Merchant 核对该原订单 No Payments，知晓可能存在延迟入账和后续财务冲突。"
+                              : "I checked No Payments for the original order in Test Merchant and accept delayed-payment/conflict risk."}
+                          </span>
+                        </label>
+                        <input
+                          value={confirmation}
+                          onChange={(event) => setConfirmation(event.target.value)}
+                          placeholder="CONFIRM UNPAID"
+                          aria-label="CONFIRM UNPAID"
+                          className="min-h-11 w-full rounded-lg border border-amber-500/60 bg-slate-900 px-3"
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            checking ||
+                            !understood ||
+                            confirmation !== "CONFIRM UNPAID" ||
+                            cloverOrderId.trim().length < 4 ||
+                            operatorNote.trim().length < 12
+                          }
+                          onClick={() => void closeUnpaid()}
+                          className="min-h-11 w-full rounded-lg border border-amber-400 bg-amber-700/50 px-4 font-semibold text-amber-100 disabled:opacity-50"
+                        >
+                          {checking
+                            ? zh ? "正在执行安全核查…" : "Checking safety…"
+                            : zh ? "人工确认未扣款并恢复" : "Confirm unpaid and recover"}
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

@@ -32,6 +32,8 @@ import {
 import { PaymentTransaction } from '../../domain/payment-transaction';
 import type {
   PaymentTerminalOperationRepository,
+  SandboxManualUnpaidDecision,
+  SandboxManualUnpaidInput,
   TerminalCancelClaim,
   TerminalOperation,
 } from '../../application/payment-terminal-operation.repository';
@@ -1311,4 +1313,165 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
       data: { state: 'FINALIZED' },
     });
   }
+
+  async getSandboxManualUnpaidDecision(
+    attemptId: string,
+  ): Promise<SandboxManualUnpaidDecision | null> {
+    const row = await this.prisma.paymentTerminalSandboxRecovery.findUnique({
+      where: { attemptId },
+    });
+    if (!row) return null;
+    return {
+      attemptId: row.attemptId,
+      paymentTransactionId: row.paymentTransactionId,
+      terminalId: row.terminalId,
+      storeStableId: row.storeStableId,
+      externalPaymentId: row.externalPaymentId,
+      actorUserStableId: row.actorUserStableId,
+      cloverOrderId: row.cloverOrderId,
+      operatorNote: row.operatorNote,
+      originalResultCode: row.originalResultCode,
+      originalFailureCode: row.originalFailureCode,
+      canonicalCheckedAt: row.canonicalCheckedAt,
+      benefitsReleasedAt: row.benefitsReleasedAt,
+      terminalFinalizedAt: row.terminalFinalizedAt,
+      lateCanonicalAt: row.lateCanonicalAt,
+      lateProviderPaymentId: row.lateProviderPaymentId,
+    };
+  }
+
+  async noteSandboxLateCanonicalSuccess(
+    attemptId: string,
+    providerPaymentId: string | null,
+  ): Promise<void> {
+    await this.prisma.paymentTerminalSandboxRecovery.updateMany({
+      where: { attemptId, lateCanonicalAt: null },
+      data: {
+        lateCanonicalAt: new Date(),
+        lateProviderPaymentId: providerPaymentId,
+      },
+    });
+  }
+
+  async claimSandboxManualUnpaid(
+    input: SandboxManualUnpaidInput,
+  ): Promise<'CLAIMED' | 'ALREADY_CLAIMED' | 'CONFLICT'> {
+    return this.prisma.$transaction(
+      async (tx): Promise<'CLAIMED' | 'ALREADY_CLAIMED' | 'CONFLICT'> => {
+        const existing = await tx.paymentTerminalSandboxRecovery.findUnique({
+          where: { attemptId: input.attemptId },
+        });
+        if (existing) {
+          return existing.paymentTransactionId === input.paymentTransactionId &&
+            existing.storeStableId === input.storeStableId &&
+            existing.terminalId === input.terminalId
+            ? 'ALREADY_CLAIMED'
+            : 'CONFLICT';
+        }
+        const fence = await tx.paymentTerminalOperation.updateMany({
+          where: {
+            terminalId: input.terminalId,
+            storeStableId: input.storeStableId,
+            attemptId: input.attemptId,
+            paymentTransactionId: input.paymentTransactionId,
+            externalPaymentId: input.externalPaymentId,
+            state: 'SALE_IN_FLIGHT',
+            cancelRequestedAt: null,
+          },
+          data: { state: 'NEEDS_REVIEW' },
+        });
+        if (fence.count !== 1) return 'CONFLICT';
+        const payment = await tx.paymentTransaction.updateMany({
+          where: {
+            id: input.paymentTransactionId,
+            attemptId: input.attemptId,
+            source: 'POS_TERMINAL',
+            operation: 'SALE',
+            provider: 'CLOVER',
+            status: 'RECONCILING',
+            resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+            failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+            providerPaymentId: null,
+            externalPaymentId: input.externalPaymentId,
+          },
+          data: {
+            status: 'FAILED',
+            resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+            failureCode: 'SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT',
+            failureMessage:
+              'Sandbox operator-assessed unpaid. This is not Clover-confirmed cancellation.',
+            completedAt: new Date(),
+          },
+        });
+        if (payment.count !== 1) {
+          // Throw so that the earlier fence claim rolls back in this transaction.
+          throw new Error('SANDBOX_MANUAL_UNPAID_PAYMENT_CAS_CONFLICT');
+        }
+        await tx.paymentTerminalSandboxRecovery.create({
+          data: input,
+        });
+        return 'CLAIMED';
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async checkpointSandboxBenefitsReleased(attemptId: string): Promise<void> {
+    const decision = await this.prisma.paymentTerminalSandboxRecovery.findUnique({
+      where: { attemptId },
+      select: { attemptId: true },
+    });
+    if (!decision) throw new Error('Sandbox manual recovery decision missing');
+    await this.prisma.paymentTerminalSandboxRecovery.updateMany({
+      where: { attemptId, benefitsReleasedAt: null },
+      data: { benefitsReleasedAt: new Date() },
+    });
+  }
+
+  async finalizeSandboxManualUnpaid(attemptId: string): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const decision = await tx.paymentTerminalSandboxRecovery.findUnique({
+        where: { attemptId },
+      });
+      if (!decision || !decision.benefitsReleasedAt || decision.lateCanonicalAt) {
+        return false;
+      }
+      const operation = await tx.paymentTerminalOperation.findUnique({
+        where: { terminalId: decision.terminalId },
+      });
+      if (
+        !operation ||
+        operation.attemptId !== attemptId ||
+        operation.storeStableId !== decision.storeStableId ||
+        operation.paymentTransactionId !== decision.paymentTransactionId
+      ) return false;
+      if (operation.state === 'FINALIZED') {
+        return decision.terminalFinalizedAt !== null;
+      }
+      if (operation.state !== 'NEEDS_REVIEW') return false;
+      const payment = await tx.paymentTransaction.findUnique({
+        where: { id: decision.paymentTransactionId },
+        select: { status: true, resultCode: true },
+      });
+      if (
+        payment?.status !== 'FAILED' ||
+        payment.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID'
+      ) return false;
+      const updated = await tx.paymentTerminalOperation.updateMany({
+        where: {
+          terminalId: decision.terminalId,
+          attemptId,
+          state: 'NEEDS_REVIEW',
+        },
+        data: { state: 'FINALIZED' },
+      });
+      if (updated.count !== 1) return false;
+      await tx.paymentTerminalSandboxRecovery.update({
+        where: { attemptId },
+        data: { terminalFinalizedAt: new Date() },
+      });
+      return true;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
 }
