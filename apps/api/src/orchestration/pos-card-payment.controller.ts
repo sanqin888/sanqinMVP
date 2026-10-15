@@ -86,11 +86,11 @@ export class PosCardPaymentController {
   }
 
   @Post(':attemptId/cancel')
-  @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
   cancel(
     @Req() req: PosDeviceRequest,
     @Param('attemptId') attemptId: string,
-    @Body() body: PosCardPaymentStartDto,
+    @Body(new ZodValidationPipe(PosCardPaymentStartSchema))
+    body: PosCardPaymentStartDto,
   ) {
     if (body.attemptId !== attemptId) {
       throw new BadRequestException({
