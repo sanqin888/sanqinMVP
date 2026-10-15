@@ -10,6 +10,9 @@ export type PosCardPaymentRealtimeEvent = {
   customerRetryRequested?: boolean;
   canResumeOriginalSale?: boolean;
   terminalInteractionTimedOut?: boolean;
+  benefitsReleaseComplete?: boolean;
+  terminalReadyForNextSale?: boolean;
+  cancellationPending?: boolean;
   messageKind?: "SNAPSHOT" | "NOTICE";
   externalAmountCents?: number;
   surchargeCents?: number | null;
@@ -21,6 +24,14 @@ export type PosCardPaymentRealtimeEvent = {
   orderNumber?: string | null;
   pickupCode?: string | null;
 };
+
+/** A browser pending marker is never cancellation authority. */
+export function canUnlockCancelledPosCheckout(result: PosCardPaymentResult): boolean {
+  return (
+    result.status === "CANCELLED" &&
+    result.benefitsReleaseComplete === true
+  );
+}
 
 const isCents = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -66,6 +77,15 @@ export function parsePosCardPaymentSnapshot(
     }),
     ...(event.terminalInteractionTimedOut !== undefined && {
       terminalInteractionTimedOut: event.terminalInteractionTimedOut,
+    }),
+    ...(event.benefitsReleaseComplete !== undefined && {
+      benefitsReleaseComplete: event.benefitsReleaseComplete,
+    }),
+    ...(event.terminalReadyForNextSale !== undefined && {
+      terminalReadyForNextSale: event.terminalReadyForNextSale,
+    }),
+    ...(event.cancellationPending !== undefined && {
+      cancellationPending: event.cancellationPending,
     }),
     externalAmountCents,
     surchargeCents,
@@ -120,6 +140,9 @@ export function mergePosCardPaymentSnapshot(
     terminalInteractionTimedOut:
       incoming.terminalInteractionTimedOut ??
       (incoming.status === previous.status ? previous.terminalInteractionTimedOut : false),
+    benefitsReleaseComplete: incoming.benefitsReleaseComplete ?? previous.benefitsReleaseComplete,
+    terminalReadyForNextSale: incoming.terminalReadyForNextSale ?? previous.terminalReadyForNextSale,
+    cancellationPending: incoming.cancellationPending ?? previous.cancellationPending,
     surchargeCents: incoming.surchargeCents ?? previous.surchargeCents,
     chargedTotalCents: incoming.chargedTotalCents ?? previous.chargedTotalCents,
     orderStableId: incoming.orderStableId ?? previous.orderStableId,

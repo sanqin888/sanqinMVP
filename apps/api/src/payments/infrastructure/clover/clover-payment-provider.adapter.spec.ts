@@ -957,6 +957,54 @@ describe('CloverTerminalTransport', () => {
     });
   });
 
+  it('lets device Cancel interrupt the original waiting Sale without entering the Sale/Welcome queue', async () => {
+    let releaseSale!: (response: Response) => void;
+    let saleStarted!: () => void;
+    const seenSale = new Promise<void>((resolve) => { saleStarted = resolve; });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith('/connect/v1/payments')) {
+        saleStarted();
+        return new Promise<Response>((resolve) => { releaseSale = resolve; });
+      }
+      if (url.endsWith('/connect/v1/device/cancel')) {
+        return Promise.resolve(new Response('{}', { status: 200 }));
+      }
+      throw new Error(`Unexpected Clover request: ${url}`);
+    });
+    const terminal = createTerminalTransport();
+    const sale = terminal.startPayment({
+      paymentId: 'payment-1',
+      attemptId: 'attempt-1',
+      amountCents: 2000,
+      currency: 'CAD',
+      paymentMethod: 'CARD',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-1-sale',
+      externalPaymentId: 'external-1',
+    });
+    await seenSale;
+    // If Cancel were enqueued behind Sale this await would never resolve.
+    const ack = await terminal.cancelPayment({
+      paymentId: 'payment-1',
+      attemptId: 'attempt-1',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-1-sale',
+      externalPaymentId: 'external-1',
+    });
+    expect(ack.status).toBe('UNKNOWN');
+    expect(ack.failureCode).toBe('CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED');
+    releaseSale(new Response('{}', { status: 209 }));
+    expect(await sale).toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments',
+      'https://clover.example.test/connect/v1/device/cancel',
+    ]);
+  });
+
   it('sends Cloud REST Pay Display sale with the Unified database OAuth token and Terminal headers', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(

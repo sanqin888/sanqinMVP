@@ -32,13 +32,23 @@ import {
 import { CloverPaymentProviderAdapter } from './infrastructure/clover/clover-payment-provider.adapter';
 import { CloverProviderInfrastructureModule } from './infrastructure/clover/clover-provider-infrastructure.module';
 import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
+import { PrismaPaymentTerminalOperationRepository } from './infrastructure/prisma/prisma-payment-terminal-operation.repository';
+import {
+  PAYMENT_TERMINAL_OPERATION_REPOSITORY,
+  type PaymentTerminalOperationRepository,
+} from './application/payment-terminal-operation.repository';
 import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/prisma-payment-webhook-event.repository';
 
 @Module({
   imports: [PrismaModule, CloverProviderInfrastructureModule],
   providers: [
     PrismaPaymentTransactionRepository,
+    PrismaPaymentTerminalOperationRepository,
     PrismaPaymentWebhookEventRepository,
+    {
+      provide: PAYMENT_TERMINAL_OPERATION_REPOSITORY,
+      useExisting: PrismaPaymentTerminalOperationRepository,
+    },
     {
       provide: PAYMENT_TRANSACTION_REPOSITORY,
       useExisting: PrismaPaymentTransactionRepository,
@@ -90,18 +100,21 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
         transactions: PaymentTransactionRepository,
         provider: PaymentProvider,
         terminalProvider: PaymentTerminalProvider,
+        operations: PaymentTerminalOperationRepository,
       ) =>
         new TerminalPaymentService(
           createAttempt,
           transactions,
           provider,
           terminalProvider,
+          operations,
         ),
       inject: [
         CreatePaymentAttemptUseCase,
         PAYMENT_TRANSACTION_REPOSITORY,
         PAYMENT_PROVIDER,
         PAYMENT_TERMINAL_PROVIDER,
+        PAYMENT_TERMINAL_OPERATION_REPOSITORY,
       ],
     },
     {

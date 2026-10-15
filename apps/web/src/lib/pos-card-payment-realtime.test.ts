@@ -1,5 +1,6 @@
 import type { PosCardPaymentResult } from "./api/pos";
 import {
+  canUnlockCancelledPosCheckout,
   mergePosCardPaymentSnapshot,
   parsePosCardPaymentSnapshot,
 } from "./pos-card-payment-realtime";
@@ -154,5 +155,62 @@ describe("POS card payment realtime facts", () => {
     expect(mergePosCardPaymentSnapshot(complete, {
       ...complete, orderStableId: null, pickupCode: null,
     })).toEqual(complete);
+  });
+
+  it("unlocks a cancelled checkout only with server-confirmed Benefits RELEASE and safe device recovery", () => {
+    const cancelled: PosCardPaymentResult = {
+      ...complete,
+      status: "CANCELLED",
+      orderStableId: null,
+      benefitsReleaseComplete: false,
+      terminalReadyForNextSale: false,
+    };
+    expect(canUnlockCancelledPosCheckout(cancelled)).toBe(false);
+    // A failed Welcome cannot reverse final cancellation or keep the cash
+    // checkout locked; the server-side device fence still rejects a new Sale.
+    expect(canUnlockCancelledPosCheckout({
+      ...cancelled,
+      benefitsReleaseComplete: true,
+    })).toBe(true);
+    const released = {
+      ...cancelled,
+      benefitsReleaseComplete: true,
+      terminalReadyForNextSale: true,
+    };
+    expect(canUnlockCancelledPosCheckout(released)).toBe(true);
+    expect(canUnlockCancelledPosCheckout({
+      ...released,
+      status: "UNKNOWN",
+    })).toBe(false);
+    expect(canUnlockCancelledPosCheckout({
+      ...cancelled,
+      paymentId: null,
+      benefitsReleaseComplete: true,
+    })).toBe(true);
+  });
+
+  it("preserves cancellation checkpoint fields across full WebSocket snapshots", () => {
+    const final = parsePosCardPaymentSnapshot({
+      ...complete,
+      status: "CANCELLED",
+      orderStableId: null,
+      benefitsReleaseComplete: true,
+      terminalReadyForNextSale: true,
+      cancellationPending: false,
+      messageKind: "SNAPSHOT",
+    });
+    expect(final).toMatchObject({
+      status: "CANCELLED",
+      benefitsReleaseComplete: true,
+      terminalReadyForNextSale: true,
+      cancellationPending: false,
+    });
+    const partial = mergePosCardPaymentSnapshot(final, {
+      ...final!,
+      benefitsReleaseComplete: undefined,
+      terminalReadyForNextSale: undefined,
+    });
+    expect(partial?.benefitsReleaseComplete).toBe(true);
+    expect(partial?.terminalReadyForNextSale).toBe(true);
   });
 });
