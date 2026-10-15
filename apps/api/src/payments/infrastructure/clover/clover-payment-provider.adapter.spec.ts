@@ -726,8 +726,10 @@ describe('CloverTerminalTransport', () => {
       const fetchSpy = jest
         .spyOn(global, 'fetch')
         .mockResolvedValueOnce(new Response(null, { status: 404 }))
-        .mockResolvedValue(
-          new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+        .mockImplementation(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+          ),
         );
       const pending =
         createTerminalTransport().clearTimedOutSaleDisplay('external-504');
@@ -751,7 +753,9 @@ describe('CloverTerminalTransport', () => {
       const fetchSpy = jest
         .spyOn(global, 'fetch')
         .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-        .mockResolvedValue(new Response('{}', { status: 200 }));
+        .mockImplementation(() =>
+          Promise.resolve(new Response('{}', { status: 200 })),
+        );
       const pending =
         createTerminalTransport().clearTimedOutSaleDisplay('external-504');
       await jest.advanceTimersByTimeAsync(4000);
