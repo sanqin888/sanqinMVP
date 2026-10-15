@@ -15,6 +15,7 @@ import {
   type PosOrderOperationsPort,
 } from '../orders/public-api';
 import { TerminalPaymentService } from '../payments/application/create-payment-attempt.use-case';
+import { SandboxTerminalManualRecoveryService } from '../payments/application/sandbox-terminal-manual-recovery.service';
 import {
   PAYMENT_TRANSACTION_REPOSITORY,
   type PaymentTransactionRepository,
@@ -76,6 +77,10 @@ export type PosCardPaymentReviewDetail = PosCardPaymentView & {
   providerPaymentId: string | null;
   terminalOperationState: string | null;
   terminalId: string | null;
+  sandboxManualRecoveryEnabled: boolean;
+  sandboxOperatorUnpaidAccepted: boolean;
+  sandboxRecoveryTerminalFinalized: boolean;
+  sandboxLateCanonicalPayment: boolean;
 };
 
 export type PosCardPaymentStartInput = {
@@ -95,6 +100,7 @@ export class PosCardPaymentOrchestrationService {
     private readonly featureConfig: PosCardPaymentFeatureConfig,
     private readonly checkouts: PaymentCheckoutAttemptService,
     private readonly terminalPayments: TerminalPaymentService,
+    private readonly sandboxRecovery: SandboxTerminalManualRecoveryService,
     @Inject(PAYMENT_TRANSACTION_REPOSITORY)
     private readonly paymentTransactions: PaymentTransactionRepository,
     @Inject(PAYMENT_ORDER_FINALIZATION)
@@ -153,9 +159,18 @@ export class PosCardPaymentOrchestrationService {
       checkout.attemptId,
       storeStableId,
     );
+    const decision = this.sandboxRecovery.isEnabled()
+      ? await this.sandboxRecovery.getSandboxManualUnpaidDecision(
+          checkout.attemptId,
+        )
+      : null;
     const snapshot = payment?.toSnapshot();
     return {
       ...this.toView(checkout, payment ?? undefined),
+      sandboxManualRecoveryEnabled: this.sandboxRecovery.isEnabled(),
+      sandboxOperatorUnpaidAccepted: decision !== null,
+      sandboxRecoveryTerminalFinalized: decision?.terminalFinalizedAt != null,
+      sandboxLateCanonicalPayment: decision?.lateCanonicalAt != null,
       paymentStatus: payment?.status ?? null,
       resultCode: snapshot?.resultCode ?? null,
       externalPaymentId: snapshot?.externalPaymentId ?? null,
@@ -192,6 +207,26 @@ export class PosCardPaymentOrchestrationService {
       return this.handlePayment(storeStableId, checkout, reconciled);
     }
     if (
+      payment.status === 'FAILED' &&
+      payment.toSnapshot().resultCode ===
+        'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID' &&
+      this.sandboxRecovery.isEnabled()
+    ) {
+      const conflict =
+        await this.sandboxRecovery.inspectSandboxLateCanonicalSuccess(
+          payment.id,
+          storeStableId,
+        );
+      if (conflict) {
+        return this.toView(checkout, payment, undefined, {
+          terminalReadyForNextSale: false,
+          failureCode: 'POS_SANDBOX_LATE_CLOVER_PAYMENT_CONFLICT',
+          failureMessage:
+            'Clover now reports payment after an operator unpaid decision. Escalate for manual refund/reconciliation immediately.',
+        });
+      }
+    }
+    if (
       ['SUCCEEDED', 'DECLINED', 'CANCELLED', 'FAILED'].includes(payment.status)
     ) {
       // Existing idempotent finalization or Benefits RELEASE checkpoints.
@@ -199,6 +234,105 @@ export class PosCardPaymentOrchestrationService {
     }
     // Never resume an original Sale in CREATED/recent PROCESSING.
     return this.toView(checkout, payment);
+  }
+
+  /**
+   * Exception to provider-only finality for an isolated local Sandbox.
+   * Payments owns the audited operator decision; orchestration alone owns
+   * Checkout, Benefits RELEASE and operator checkpointing.
+   */
+  async manuallyCloseSandboxUnpaid(
+    storeStableId: string,
+    attemptId: string,
+    actorUserStableId: string,
+    cloverOrderId: string,
+    operatorNote: string,
+  ): Promise<PosCardPaymentView> {
+    this.requireEnabled();
+    if (!this.sandboxRecovery.isEnabled()) {
+      throw new ConflictException({
+        code: 'POS_SANDBOX_MANUAL_RECOVERY_DISABLED',
+        message: 'Manual unpaid recovery is disabled outside isolated Sandbox.',
+      });
+    }
+    const checkout = await this.requireReviewedCheckout(
+      storeStableId,
+      attemptId,
+    );
+    if (
+      checkout.externalAmountCents <= 0 ||
+      !['RECONCILING', 'FAILED'].includes(checkout.status)
+    ) {
+      throw new ConflictException({
+        code: 'POS_SANDBOX_MANUAL_CHECKOUT_NOT_ELIGIBLE',
+        message: 'Only an unresolved original Terminal card Sale is eligible.',
+      });
+    }
+    const payment = await this.findPaymentForCheckout(checkout);
+    if (!payment || payment.toSnapshot().attemptId !== attemptId) {
+      throw new ConflictException({
+        code: 'POS_SANDBOX_MANUAL_PAYMENT_MISSING',
+        message: 'Original Terminal payment identity could not be verified.',
+      });
+    }
+    if (!actorUserStableId.trim()) {
+      throw new BadRequestException('Operator stable identity required');
+    }
+    let decided: PaymentTransaction;
+    try {
+      decided = await this.sandboxRecovery.acceptSandboxManualUnpaid({
+        paymentId: payment.id,
+        attemptId,
+        storeStableId,
+        actorUserStableId,
+        cloverOrderId,
+        operatorNote,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith('POS_SANDBOX_MANUAL_')
+      ) {
+        throw new ConflictException({
+          code: error.message,
+          message:
+            'Sandbox manual closure conditions have not been satisfied. No new Sale was sent.',
+        });
+      }
+      throw error;
+    }
+    let savedCheckout = await this.checkouts.markFromPayment(
+      attemptId,
+      decided,
+    );
+    try {
+      savedCheckout = await this.checkouts.markDefinitiveFailureAndRelease(
+        attemptId,
+        'FAILED',
+      );
+    } catch {
+      savedCheckout = await this.checkouts.findByAttemptId(attemptId);
+    }
+    let terminalReady = false;
+    if (savedCheckout.benefitsReleasedAt) {
+      await this.sandboxRecovery.checkpointSandboxBenefitsReleased(attemptId);
+      // Fresh canonical NOT_FOUND + verified idle/Welcome are separately
+      // required before clearing this durable terminal fence.
+      terminalReady = await this.sandboxRecovery
+        .finishSandboxManualUnpaid(attemptId, storeStableId)
+        .catch(() => false);
+    }
+    const view = this.toView(savedCheckout, decided, undefined, {
+      terminalReadyForNextSale: terminalReady,
+      failureCode: terminalReady
+        ? 'POS_SANDBOX_OPERATOR_UNPAID_CLOSED'
+        : 'POS_SANDBOX_OPERATOR_UNPAID_REVIEW_PENDING',
+      failureMessage: terminalReady
+        ? 'Sandbox operator-attested unpaid; this is not Clover-confirmed cancellation.'
+        : 'Operator attestation stored. Benefits/device recovery is still pending; do not charge again.',
+    });
+    this.publish(storeStableId, view);
+    return view;
   }
 
   async start(

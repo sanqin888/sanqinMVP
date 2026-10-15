@@ -11,6 +11,7 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { CreateOrderSchema } from '@shared/order';
+import type { User } from '@prisma/client';
 import type { Request } from 'express';
 import { z } from 'zod';
 
@@ -34,8 +35,17 @@ const PosCardPaymentStartSchema = z.object({
 
 type PosCardPaymentStartDto = z.infer<typeof PosCardPaymentStartSchema>;
 
+const SandboxManualUnpaidSchema = z.object({
+  confirmation: z.literal('CONFIRM UNPAID'),
+  cloverOrderId: z.string().trim().min(4).max(50),
+  operatorNote: z.string().trim().min(12).max(500),
+});
+
+type SandboxManualUnpaidDto = z.infer<typeof SandboxManualUnpaidSchema>;
+
 type PosDeviceRequest = Request & {
   posDevice?: AuthenticatedPosIdentity;
+  user?: User;
 };
 
 @Controller('pos/payments/card')
@@ -82,6 +92,28 @@ export class PosCardPaymentController {
     return this.cardPayments.recheckReviewAttempt(
       this.requireStoreStableId(req),
       attemptId,
+    );
+  }
+
+  @Post('review/:attemptId/manual-close-unpaid')
+  manuallyCloseSandboxUnpaid(
+    @Req() req: PosDeviceRequest,
+    @Param('attemptId') attemptId: string,
+    @Body(new ZodValidationPipe(SandboxManualUnpaidSchema))
+    body: SandboxManualUnpaidDto,
+  ) {
+    const actor = req.user?.userStableId?.trim();
+    if (!actor) {
+      throw new UnauthorizedException(
+        'Authenticated operator identity required',
+      );
+    }
+    return this.cardPayments.manuallyCloseSandboxUnpaid(
+      this.requireStoreStableId(req),
+      attemptId,
+      actor,
+      body.cloverOrderId,
+      body.operatorNote,
     );
   }
 

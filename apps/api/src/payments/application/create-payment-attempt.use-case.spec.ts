@@ -1022,6 +1022,11 @@ describe('TerminalPaymentService', () => {
       }),
       acknowledgeCancel: jest.fn().mockResolvedValue(undefined),
       complete: jest.fn().mockResolvedValue(undefined),
+      getSandboxManualUnpaidDecision: jest.fn().mockResolvedValue(null),
+      claimSandboxManualUnpaid: jest.fn().mockResolvedValue('CLAIMED'),
+      checkpointSandboxBenefitsReleased: jest.fn().mockResolvedValue(undefined),
+      noteSandboxLateCanonicalSuccess: jest.fn().mockResolvedValue(undefined),
+      finalizeSandboxManualUnpaid: jest.fn().mockResolvedValue(true),
     });
 
   it('fences the Compact and accepts original Sale 209 only after canonical NOT_FOUND', async () => {

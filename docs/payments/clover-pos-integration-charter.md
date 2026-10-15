@@ -355,6 +355,8 @@ CREATED
 
 不得依赖“金额相同 + 时间接近”猜测支付。
 
+**仅隔离 Sandbox 的受控人工例外（C-2C7 R2）：** 原始 Terminal Sale HTTP 504、Platform v3 最新查询 NOT_FOUND、设备 IDLE/AVAILABLE/READY，以及 Clover Test Merchant 上人工观察到的 Open / No Payments，仍然不等于 Clover 已确认取消。为了处理真实 Dev Kit 的历史未决交易，已单独授权在明确启用的本地 Sandbox 中让已登录并绑定设备的 POS 操作员承担核查风险、记录 Clover Order ID、说明、身份和不可变审计，经 Payments 原身份 CAS 后将本地付款结案为带专用 operator-attested marker 的 `FAILED`，不得记为 `CLOVER_CANCELLED`。Orchestration 只能在 Benefits-owned RELEASE 完成后、再次查证 canonical 未付款并完成设备空闲/Welcome 检查后解除 Terminal Fence。此例外不适用于生产、Web Ecommerce 或任何仅凭 NOT_FOUND 自动判定的流程；后续若出现迟到成功付款必须作为人工财务冲突处理，不能默默覆盖或假装取消。详细门禁见 `docs/payments/clover-pos-phase-plan.md` §R2。
+
 ## 7. 幂等与重复扣款边界
 
 Sale / Refund / Void 等金融操作必须具备幂等设计：

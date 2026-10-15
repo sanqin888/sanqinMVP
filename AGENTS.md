@@ -603,6 +603,17 @@ In addition to section 3.1:
   require stable idempotency identities. Timeout or lost response is not proof
   of failure; preserve `UNKNOWN`/reconciling semantics where an external action
   may have succeeded.
+* **Explicitly authorized isolated Clover Compact Sandbox exception (C-2C7 R2):**
+  a human may accept the risk of an uncollected original HTTP 504 only in an
+  explicitly enabled development/test runtime with a loopback-only database,
+  sandbox Platform/Test Merchant isolation, an authenticated POS operator,
+  original identity/CAS fencing, a fresh canonical NOT_FOUND observation,
+  verified idle Compact and immutable operator evidence. The local `FAILED`
+  result must carry a distinctive operator-attested (NOT provider-confirmed)
+  marker and Benefits RELEASE must precede the final device fence release.
+  This exception does not permit automatic NOT_FOUND failure, production
+  recovery, silent late-payment success overwrites, or any Ecommerce change.
+  All other UNKNOWN/RECONCILING cases continue to HOLD and block new Sales.
 
 Prisma schema fields are persistence contracts, not automatically public or
 domain contracts. Map them once at the ownership boundary. Raw provider payloads

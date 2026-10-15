@@ -1377,6 +1377,31 @@ enum PaymentTerminalOperationState {
   NEEDS_REVIEW
 }
 
+// Immutable Sandbox-only human decision that an unresolved original Terminal
+// HTTP 504 is believed unpaid. This is operator evidence, NOT Clover finality.
+// Only Benefits/terminal checkpoints and later canonical-conflict evidence mutate.
+model PaymentTerminalSandboxRecovery {
+  attemptId             String    @id
+  paymentTransactionId  String    @unique @db.Uuid
+  terminalId            String
+  storeStableId         String
+  externalPaymentId     String
+  actorUserStableId     String
+  cloverOrderId         String
+  operatorNote          String
+  originalResultCode    String
+  originalFailureCode   String
+  canonicalCheckedAt    DateTime
+  acceptedAt            DateTime  @default(now())
+  benefitsReleasedAt    DateTime?
+  terminalFinalizedAt   DateTime?
+  lateCanonicalAt       DateTime?
+  lateProviderPaymentId String?
+
+  @@index([storeStableId, acceptedAt])
+  @@index([terminalId, acceptedAt])
+}
+
 // Channel-neutral checkout/payment preparation record. It freezes the server-
 // approved order/pricing/tender facts before any external provider action.
 model PaymentCheckoutAttempt {

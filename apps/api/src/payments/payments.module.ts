@@ -6,6 +6,7 @@ import {
   TerminalPaymentService,
 } from './application/create-payment-attempt.use-case';
 import { RefundPaymentService } from './application/refund-payment.service';
+import { SandboxTerminalManualRecoveryService } from './application/sandbox-terminal-manual-recovery.service';
 import {
   PAYMENT_PROVIDER_TRANSACTION_LOOKUP,
   type PaymentProviderTransactionLookup,
@@ -120,6 +121,27 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
       ],
     },
     {
+      provide: SandboxTerminalManualRecoveryService,
+      useFactory: (
+        terminalPayments: TerminalPaymentService,
+        operations: PaymentTerminalOperationRepository,
+        provider: PaymentProvider,
+        terminalProvider: PaymentTerminalProvider,
+      ) =>
+        new SandboxTerminalManualRecoveryService(
+          terminalPayments,
+          operations,
+          provider,
+          terminalProvider,
+        ),
+      inject: [
+        TerminalPaymentService,
+        PAYMENT_TERMINAL_OPERATION_REPOSITORY,
+        PAYMENT_PROVIDER,
+        PAYMENT_TERMINAL_PROVIDER,
+      ],
+    },
+    {
       provide: PaymentReverseSyncService,
       useFactory: (
         lookup: PaymentProviderTransactionLookup,
@@ -162,6 +184,7 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
     PAYMENT_TRANSACTION_REPOSITORY,
     PAYMENT_WEBHOOK_EVENT_REPOSITORY,
     TerminalPaymentService,
+    SandboxTerminalManualRecoveryService,
     RefundPaymentService,
     PaymentReverseSyncService,
   ],
