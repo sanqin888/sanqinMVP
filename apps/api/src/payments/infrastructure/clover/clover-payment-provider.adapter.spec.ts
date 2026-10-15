@@ -620,7 +620,44 @@ describe('CloverTerminalTransport', () => {
     ]);
   });
 
-  it('does not reset an active, returned or uncertain timed-out payment', async () => {
+  it('clears the observed HTTP 200 empty JSON device read only after explicit IDLE', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(
+      createTerminalTransport().clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('accepts HTTP 200 empty body for display cleanup, not an arbitrary JSON primitive', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('null', { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'AVAILABLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const transport = createTerminalTransport();
+    await expect(
+      transport.clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(false);
+    await expect(
+      transport.clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not reset a returned payment or an uninterpretable nonempty device response', async () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
@@ -634,28 +671,209 @@ describe('CloverTerminalTransport', () => {
           { status: 200 },
         ),
       )
-      .mockResolvedValueOnce(new Response(null, { status: 404 }))
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+        new Response(JSON.stringify({ queryStatus: 'PROCESSING' }), {
+          status: 200,
+        }),
       )
-      .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      .mockResolvedValueOnce(new Response('not-json', { status: 200 }));
     const transport = createTerminalTransport();
-    await expect(
-      transport.clearTimedOutSaleDisplay('external-504'),
-    ).resolves.toBe(false);
-    await expect(
-      transport.clearTimedOutSaleDisplay('external-504'),
-    ).resolves.toBe(false);
-    await expect(
-      transport.clearTimedOutSaleDisplay('external-504'),
-    ).resolves.toBe(false);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        transport.clearTimedOutSaleDisplay('external-504'),
+      ).resolves.toBe(false);
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
       'https://clover.example.test/connect/v1/device/cancel',
     );
     expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
       'https://clover.example.test/connect/v1/device/welcome',
     );
+  });
+
+  it('waits for a busy Compact to become IDLE before sending one Welcome', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const pending =
+        createTerminalTransport().clearTimedOutSaleDisplay('external-504');
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toBe(true);
+      expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+        'https://clover.example.test/connect/v1/payments/external/external-504',
+        'https://clover.example.test/connect/v1/device/status',
+        'https://clover.example.test/connect/v1/device/status',
+        'https://clover.example.test/connect/v1/device/welcome',
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops after three busy checks without sending Welcome or Cancel', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response(null, { status: 404 }))
+        .mockResolvedValue(
+          new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+        );
+      const pending =
+        createTerminalTransport().clearTimedOutSaleDisplay('external-504');
+      await jest.advanceTimersByTimeAsync(4000);
+      await expect(pending).resolves.toBe(false);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+        'https://clover.example.test/connect/v1/device/welcome',
+      );
+      expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+        'https://clover.example.test/connect/v1/device/cancel',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('never infers IDLE from repeated state-less status responses', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValue(new Response('{}', { status: 200 }));
+      const pending =
+        createTerminalTransport().clearTimedOutSaleDisplay('external-504');
+      await jest.advanceTimersByTimeAsync(4000);
+      await expect(pending).resolves.toBe(false);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+        'https://clover.example.test/connect/v1/device/welcome',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns false without financial actions if Welcome itself fails', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 503 }));
+    await expect(
+      createTerminalTransport().clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(false);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('serializes a new Sale behind an in-flight Welcome in one API process', async () => {
+    let resolveWelcome: (value: Response) => void = () => undefined;
+    let notifyWelcome: () => void = () => undefined;
+    const welcomePending = new Promise<Response>((resolve) => {
+      resolveWelcome = resolve;
+    });
+    const welcomeStarted = new Promise<void>((resolve) => {
+      notifyWelcome = resolve;
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockImplementationOnce(() => {
+        notifyWelcome();
+        return welcomePending;
+      })
+      .mockResolvedValueOnce(new Response('{}', { status: 209 }));
+    const terminal = createTerminalTransport();
+    const cleanup = terminal.clearTimedOutSaleDisplay('external-504');
+    await welcomeStarted;
+    const sale = terminal.startPayment({
+      paymentId: 'payment-2',
+      attemptId: 'attempt-2',
+      amountCents: 2000,
+      currency: 'CAD',
+      paymentMethod: 'CARD',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-2-sale',
+      externalPaymentId: 'external-2',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    resolveWelcome(new Response(null, { status: 200 }));
+    await expect(cleanup).resolves.toBe(true);
+    await expect(sale).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy.mock.calls[3]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/payments',
+    );
+  });
+
+  it('waits for an in-flight Sale to finish before checking or clearing its display', async () => {
+    let resolveSale: (value: Response) => void = () => undefined;
+    let notifySale: () => void = () => undefined;
+    const salePending = new Promise<Response>((resolve) => {
+      resolveSale = resolve;
+    });
+    const saleStarted = new Promise<void>((resolve) => {
+      notifySale = resolve;
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementationOnce(() => {
+        notifySale();
+        return salePending;
+      })
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const terminal = createTerminalTransport();
+    const sale = terminal.startPayment({
+      paymentId: 'payment-2',
+      attemptId: 'attempt-2',
+      amountCents: 2000,
+      currency: 'CAD',
+      paymentMethod: 'CARD',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-2-sale',
+      externalPaymentId: 'external-2',
+    });
+    await saleStarted;
+    const cleanup = terminal.clearTimedOutSaleDisplay('external-504');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    resolveSale(new Response('{}', { status: 209 }));
+    await expect(sale).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    await expect(cleanup).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments',
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
   });
 
   it('does not send Welcome when a device is still busy', async () => {

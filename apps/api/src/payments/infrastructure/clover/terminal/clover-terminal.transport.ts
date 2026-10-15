@@ -442,6 +442,24 @@ const uncertain = (
 @Injectable()
 export class CloverTerminalTransport {
   private readonly logger = new AppLogger(CloverTerminalTransport.name);
+  // Serializes Sale and display cleanup within this API process. A future
+  // multi-instance rollout requires a durable terminal-scoped coordination gate.
+  private deviceMutationQueue: Promise<void> = Promise.resolve();
+
+  private async withDeviceMutation<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.deviceMutationQueue;
+    let release: () => void = () => undefined;
+    const completion = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.deviceMutationQueue = previous.then(() => completion);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
 
   constructor(
     private readonly config: CloverProviderConfig,
@@ -499,54 +517,70 @@ export class CloverTerminalTransport {
   }
 
   /**
-   * Sale 504 is not financial cancellation. Check the original device payment
-   * identity before touching the display. An absent device payment plus an
-   * explicitly idle device permits Welcome only, never a device-wide cancel.
-   * Busy/unknown or a returned payment record cannot prove ownership of the
-   * current screen and must be left for operator reconciliation.
+   * Only reset display after a confirmed original Sale HTTP 504. A bare 200
+   * empty body/{} was observed on the Compact Sandbox after that timeout; it
+   * is ambiguous payment evidence, never financial NOT_FOUND or cancellation.
+   * An explicit idle device permits a display-only Welcome when the transport
+   * is not running another Sale in this process.
    */
   async clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean> {
     if (!this.hasStaticConfiguration() || !externalPaymentId) return false;
-    const lookup = await this.request(
-      `/connect/v1/payments/external/${encodeURIComponent(externalPaymentId)}`,
-      { method: 'GET', timeoutSeconds: 5 },
-    );
-    if (lookup.kind !== 'response') return false;
-    const body = lookup.result.body;
-    const lookupExternalId =
-      stringValue(body, 'externalPaymentId') ??
-      stringValue(asRecord(body?.payment), 'externalPaymentId');
-    const explicitlyNotFound =
-      lookup.result.httpStatus === 200 &&
-      normalized(stringValue(body, 'queryStatus')) === 'NOT_FOUND' &&
-      lookupExternalId === externalPaymentId &&
-      !asRecord(body?.payment);
-    if (lookup.result.httpStatus !== 404 && !explicitlyNotFound) {
-      this.logger.warn(
-        '[CloverTerminalTransport] timeout display cleanup skipped: original device payment not confirmed absent',
+    return this.withDeviceMutation(async () => {
+      const lookup = await this.request(
+        `/connect/v1/payments/external/${encodeURIComponent(externalPaymentId)}`,
+        { method: 'GET', timeoutSeconds: 5 },
       );
-      return false;
-    }
-    // Reuse the stricter state verifier: generic HTTP 200 is not proof of IDLE.
-    // It performs one status read and sends Welcome only for IDLE/READY/AVAILABLE.
-    return this.prepareOriginalSaleResume();
+      if (lookup.kind !== 'response') return false;
+      const { body, httpStatus, rawText } = lookup.result;
+      const lookupExternalId =
+        stringValue(body, 'externalPaymentId') ??
+        stringValue(asRecord(body?.payment), 'externalPaymentId');
+      const explicitlyNotFound =
+        httpStatus === 200 &&
+        normalized(stringValue(body, 'queryStatus')) === 'NOT_FOUND' &&
+        lookupExternalId === externalPaymentId &&
+        !asRecord(body?.payment);
+      const emptyResponse =
+        httpStatus === 200 &&
+        (rawText.trim() === '' ||
+          (body !== null && Object.keys(body).length === 0));
+      if (httpStatus !== 404 && !explicitlyNotFound && !emptyResponse) {
+        this.logger.warn(
+          '[CloverTerminalTransport] timeout display cleanup skipped: original device payment read is not safe for display cleanup',
+        );
+        return false;
+      }
+      // Never treat the empty device read as a payment outcome. Only the
+      // explicit device state can permit UI recovery; no Cancel or new Sale.
+      return this.welcomeWhenIdle(3);
+    });
   }
 
   /** Require an explicit idle state; HTTP 200 without a state is not proof. */
   async prepareOriginalSaleResume(): Promise<boolean> {
-    const attempt = await this.request('/connect/v1/device/status', {
-      method: 'GET',
-    });
-    if (attempt.kind !== 'response' || !attempt.result.ok) return false;
-    const body = attempt.result.body;
-    const state =
-      stringValue(body, 'state') ??
-      stringValue(body, 'status') ??
-      stringValue(asRecord(body?.device), 'status');
-    if (!state || !/^(AVAILABLE|IDLE|READY)$/.test(normalized(state))) {
-      return false;
+    return this.withDeviceMutation(() => this.welcomeWhenIdle(1));
+  }
+
+  private async welcomeWhenIdle(maxChecks: number): Promise<boolean> {
+    for (let check = 0; check < maxChecks; check += 1) {
+      const attempt = await this.request('/connect/v1/device/status', {
+        method: 'GET',
+        timeoutSeconds: 5,
+      });
+      if (attempt.kind !== 'response' || !attempt.result.ok) return false;
+      const body = attempt.result.body;
+      const state =
+        stringValue(body, 'state') ??
+        stringValue(body, 'status') ??
+        stringValue(asRecord(body?.device), 'status');
+      if (state && /^(AVAILABLE|IDLE|READY)$/.test(normalized(state))) {
+        return this.showWelcomeScreen();
+      }
+      if (check + 1 < maxChecks) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+      }
     }
-    return this.showWelcomeScreen();
+    return false;
   }
 
   // A device interaction is not a payment operation. Never re-issue a Sale here.
@@ -675,6 +709,16 @@ export class CloverTerminalTransport {
       };
     }
 
+    return this.withDeviceMutation(() =>
+      this.startPaymentOnDevice(request, terminalId, externalPaymentId),
+    );
+  }
+
+  private async startPaymentOnDevice(
+    request: StartPaymentRequest,
+    terminalId: string,
+    externalPaymentId: string,
+  ): Promise<PaymentProviderOutcome> {
     // Always run a final Sale; Canadian merchants do not support Auth/PreAuth.
     const body: CloverTerminalPaymentRequest = {
       amount: request.amountCents,
