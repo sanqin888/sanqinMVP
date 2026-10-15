@@ -313,7 +313,8 @@ describe('PosCardPaymentOrchestrationService', () => {
     jest
       .mocked(harness.paymentTransactions.findByAttemptId)
       .mockResolvedValue(payment);
-    jest.mocked(harness.terminalPayments.getTerminalOperationReview)
+    jest
+      .mocked(harness.terminalPayments.getTerminalOperationReview)
       .mockResolvedValue({ terminalId: 'compact-1', state: 'SALE_IN_FLIGHT' });
 
     await expect(
@@ -378,7 +379,9 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(result.benefitsReleaseComplete).toBe(false);
     expect(harness.terminalPayments.reconcile).toHaveBeenCalledWith(payment.id);
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
-    expect(harness.terminalPayments.resumeOriginal504Sale).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.resumeOriginal504Sale,
+    ).not.toHaveBeenCalled();
     expect(
       harness.checkouts.markDefinitiveFailureAndRelease,
     ).not.toHaveBeenCalled();
@@ -403,7 +406,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orderFinalization.finalizeConfirmedPayment,
     ).toHaveBeenCalledTimes(1);
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
-    expect(harness.terminalPayments.resumeOriginal504Sale).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.resumeOriginal504Sale,
+    ).not.toHaveBeenCalled();
   });
 
   it('does not try another Sale when the saved payment is missing', async () => {

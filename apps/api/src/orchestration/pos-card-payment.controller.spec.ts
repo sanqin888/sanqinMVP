@@ -44,7 +44,9 @@ const createHarness = () => {
       .mockResolvedValue({ enabled: true, storeId: storeStableId }),
     getBenefitsReview: jest.fn().mockResolvedValue({ items: [] }),
     getReviewAttempt: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
-    recheckReviewAttempt: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
+    recheckReviewAttempt: jest
+      .fn()
+      .mockResolvedValue({ status: 'RECONCILING' }),
     start: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     recover: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     resumeOriginalSale: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
@@ -106,7 +108,9 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
   let app: INestApplication;
   let httpServer: Server;
   const cancelPayment = jest.fn().mockResolvedValue({ status: 'PROCESSING' });
-  const getReviewAttempt = jest.fn().mockResolvedValue({ status: 'RECONCILING' });
+  const getReviewAttempt = jest
+    .fn()
+    .mockResolvedValue({ status: 'RECONCILING' });
   const recheckReviewAttempt = jest.fn().mockResolvedValue({
     status: 'RECONCILING',
   });
@@ -161,7 +165,10 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getReviewAttempt).toHaveBeenCalledWith(storeStableId, body.attemptId);
+    expect(getReviewAttempt).toHaveBeenCalledWith(
+      storeStableId,
+      body.attemptId,
+    );
     expect(cancelPayment).not.toHaveBeenCalled();
   });
 

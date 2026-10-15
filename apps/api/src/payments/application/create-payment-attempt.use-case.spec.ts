@@ -1084,9 +1084,9 @@ describe('TerminalPaymentService', () => {
         'other_store',
       ),
     ).resolves.toBeNull();
-    expect(provider.getPaymentStatus).not.toHaveBeenCalled();
-    expect(provider.startPayment).not.toHaveBeenCalled();
-    expect(operations.complete).not.toHaveBeenCalled();
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(0);
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
+    expect(operations.complete.mock.calls).toHaveLength(0);
   });
 
   it('prefers canonical success when original Sale 209 races a card tap', async () => {

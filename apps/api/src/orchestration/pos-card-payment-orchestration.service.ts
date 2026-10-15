@@ -192,9 +192,7 @@ export class PosCardPaymentOrchestrationService {
       return this.handlePayment(storeStableId, checkout, reconciled);
     }
     if (
-      ['SUCCEEDED', 'DECLINED', 'CANCELLED', 'FAILED'].includes(
-        payment.status,
-      )
+      ['SUCCEEDED', 'DECLINED', 'CANCELLED', 'FAILED'].includes(payment.status)
     ) {
       // Existing idempotent finalization or Benefits RELEASE checkpoints.
       return this.handlePayment(storeStableId, checkout, payment);
