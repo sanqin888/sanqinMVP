@@ -15,9 +15,17 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-15 — Clover Compact C-2C7 T1 Cancel HTTP body-validation hotfix
+
+**Branch/base:** `fix/clover-c2c7-cancel-body-validation` from `origin/dev@54d3c34a`. **State:** LOCAL SOURCE / USER REVIEW PENDING / NO PR OR NEW CI / NO SCHEMA OR MIGRATION / SANDBOX T1 FAIL / RETEST PENDING.
+
+**Evidence/root cause:** On the MacBook-isolated Compact Sandbox, `POST /api/v1/pos/payments/card/:attemptId/cancel` failed HTTP 400 in 3 ms with `Expected object, received string` in `ZodValidationPipe`. Method-level `@UsePipes(PosCardPaymentStartSchema)` was inadvertently applied to the string `@Param('attemptId')` before cancellation orchestration or provider command; this is not original Sale HTTP 209 or a financial cancellation event.
+
+**Scoped implementation:** The guarded POS Cancel controller attaches the unchanged schema only to `@Body()` (the same validated decorator pattern as POS refund). A real Nest HTTP request regression covers valid path/body, malformed body, and path/body identity mismatch, with mocked orchestration proving malformed requests never invoke payments. The same route, auth/device Store identity, Payments operation CAS, canonical financial truth, Benefits checkpoints, retry and recovery semantics are preserved. No change to Web Ecommerce, dependencies, architecture imports/SCC/baseline, Prisma or migration. After user review/CI and Sandbox API refresh, recheck the previous payment and terminal fence, then retest T1 before any further Sale. Rollback is the scoped HTTP adapter patch; never bypass validation, force-unlock the terminal or invent payment finality. Owner detail: `docs/payments/clover-pos-phase-plan.md` §C-2C7 T1.
+
 ## 2026-10-15 — Clover Compact C-2C7 Slice B1+B2: POS operator-initiated cancel and financial finality
 
-**Branch/base:** `feat/clover-c2c7-operator-cancel-finality` from `origin/dev@76934c8491786c352f7f16e95966098268411945`. **State:** LOCAL SOURCE / USER REVIEW PENDING / NO PR / NO CI / **MIGRATION REQUIRED** / NO PRODUCTION DEPLOYMENT.
+**Branch/base:** `feat/clover-c2c7-operator-cancel-finality` from `origin/dev@76934c8491786c352f7f16e95966098268411945`. **State:** PR #2816 MERGED `dev@c0c5c216` / PR CI #7235 GREEN / USER MIGRATION `20261015163244_add_pos_terminal_operation_fence` REVIEWED IN `dev@54d3c34a` / DEV CI #7237 GREEN (fresh-DB replay and Browser E2E) / COMPACT T1 ACCEPTANCE BLOCKED / NO PRODUCTION VERIFICATION.
 
 **Owners:** Payments application/infrastructure now fences a physical Compact to one active Store/Attempt, persists cancellation command intent and acknowledgement separately from original Sale and canonical payment truth, checks canonical Platform success before accepting correlated original HTTP 209 as final cancellation, and preserves all ambiguous outcomes (no timeout auto-release). POS Checkout orchestration reserves the device before provider start and continues to use Benefits-owned idempotent RELEASE and `benefitsReleasedAt` recovery; the existing Web production Ecommerce path is unchanged. POS Web unlocks after server-final CANCELLED and RELEASE, retains the original basket and session-only editable member preferences, refreshes membership and requotes after cancellation; failed device Welcome separately holds the terminal fence against new card Sales, but does not block editing or cash. No new graph edge/allowance/cycle; one additive Payments-owned Prisma model + enum with unique Terminal/Attempt fencing is introduced, along with additive POS HTTP/realtime fields.
 
