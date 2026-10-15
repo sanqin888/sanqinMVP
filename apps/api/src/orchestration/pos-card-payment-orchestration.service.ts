@@ -409,8 +409,7 @@ export class PosCardPaymentOrchestrationService {
       }
       const payment = await this.findPaymentForCheckout(checkout);
       const terminalReady =
-        checkout.status === 'CANCELLED' &&
-        checkout.benefitsReleasedAt != null
+        checkout.status === 'CANCELLED' && checkout.benefitsReleasedAt != null
           ? (await this.terminalPayments
               .completeUndispatchedCancel(checkout.attemptId)
               .catch(() => false)) ||
@@ -658,8 +657,7 @@ export class PosCardPaymentOrchestrationService {
       !this.activeCustomerPrompts.has(checkout.attemptId);
     if (promptPending) this.activeCustomerPrompts.add(checkout.attemptId);
     const terminalReady =
-      payment.status === 'CANCELLED' &&
-      checkout.benefitsReleasedAt != null
+      payment.status === 'CANCELLED' && checkout.benefitsReleasedAt != null
         ? (await this.terminalPayments
             .completeUndispatchedCancel(checkout.attemptId)
             .catch(() => false)) ||
@@ -735,7 +733,10 @@ export class PosCardPaymentOrchestrationService {
         .finishTerminalOperation(checkout.attemptId)
         .then((ready) => {
           if (ready) {
-            this.publish(storeId, { ...decision, terminalReadyForNextSale: true });
+            this.publish(storeId, {
+              ...decision,
+              terminalReadyForNextSale: true,
+            });
           }
         })
         .catch(() => undefined);

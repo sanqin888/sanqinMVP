@@ -960,12 +960,21 @@ describe('CloverTerminalTransport', () => {
   it('lets device Cancel interrupt the original waiting Sale without entering the Sale/Welcome queue', async () => {
     let releaseSale!: (response: Response) => void;
     let saleStarted!: () => void;
-    const seenSale = new Promise<void>((resolve) => { saleStarted = resolve; });
+    const seenSale = new Promise<void>((resolve) => {
+      saleStarted = resolve;
+    });
     const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
-      const url = String(input);
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
       if (url.endsWith('/connect/v1/payments')) {
         saleStarted();
-        return new Promise<Response>((resolve) => { releaseSale = resolve; });
+        return new Promise<Response>((resolve) => {
+          releaseSale = resolve;
+        });
       }
       if (url.endsWith('/connect/v1/device/cancel')) {
         return Promise.resolve(new Response('{}', { status: 200 }));

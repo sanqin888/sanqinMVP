@@ -153,11 +153,19 @@ const createHarness = () => {
       return { checkout, claimed: true };
     }),
     cancelBeforeProvider: jest.fn().mockImplementation(async () => {
-      checkout = { ...checkout, status: 'CANCELLED', benefitsReleasedAt: new Date() };
+      checkout = {
+        ...checkout,
+        status: 'CANCELLED',
+        benefitsReleasedAt: new Date(),
+      };
       return { checkout, cancelled: true };
     }),
     cancelAfterConfirmedNoDispatch: jest.fn().mockImplementation(async () => {
-      checkout = { ...checkout, status: 'CANCELLED', benefitsReleasedAt: new Date() };
+      checkout = {
+        ...checkout,
+        status: 'CANCELLED',
+        benefitsReleasedAt: new Date(),
+      };
       return checkout;
     }),
     markSucceededWithoutExternalPayment: jest
@@ -203,7 +211,10 @@ const createHarness = () => {
     }),
     startSale: jest.fn().mockResolvedValue(paymentFixture('SUCCEEDED')),
     reserveSale: jest.fn().mockResolvedValue(true),
-    requestPendingCancel: jest.fn().mockResolvedValue({ requested: true, safeBeforeDispatch: false }),
+    requestPendingCancel: jest.fn().mockResolvedValue({
+      requested: true,
+      safeBeforeDispatch: false,
+    }),
     finishTerminalOperation: jest.fn().mockResolvedValue(true),
     completeUndispatchedCancel: jest.fn().mockResolvedValue(false),
     findById: jest.fn(),
@@ -925,16 +936,20 @@ describe('PosCardPaymentOrchestrationService', () => {
     );
     expect(view.status).toBe('PROCESSING');
     expect(view.cancellationPending).toBe(true);
-    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
   });
 
   it('safely closes a PROCESSING checkout if durable fencing proves the Sale was never sent', async () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'PROCESSING' }));
-    jest.mocked(harness.terminalPayments.requestPendingCancel).mockResolvedValue({
-      requested: true,
-      safeBeforeDispatch: true,
-    });
+    jest
+      .mocked(harness.terminalPayments.requestPendingCancel)
+      .mockResolvedValue({
+        requested: true,
+        safeBeforeDispatch: true,
+      });
     jest.mocked(harness.terminalPayments.completeUndispatchedCancel)
       .mockResolvedValue(true);
     const view = await harness.service.cancel(storeStableId, {
@@ -945,8 +960,12 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(view.status).toBe('CANCELLED');
     expect(view.benefitsReleaseComplete).toBe(true);
     expect(view.terminalReadyForNextSale).toBe(true);
-    expect(harness.checkouts.cancelAfterConfirmedNoDispatch).toHaveBeenCalledWith('attempt-1');
-    expect(harness.terminalPayments.completeUndispatchedCancel).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.checkouts.cancelAfterConfirmedNoDispatch,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.terminalPayments.completeUndispatchedCancel,
+    ).toHaveBeenCalledWith('attempt-1');
     expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
   });
 
@@ -954,7 +973,9 @@ describe('PosCardPaymentOrchestrationService', () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'PROCESSING' }));
     const payment = paymentFixture('CANCELLED');
-    jest.mocked(harness.paymentTransactions.findByAttemptId).mockResolvedValue(payment);
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(payment);
     jest.mocked(harness.terminalPayments.cancel).mockResolvedValue(payment);
     const view = await harness.service.cancel(storeStableId, {
       attemptId: 'attempt-1',
@@ -964,22 +985,30 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(view.status).toBe('CANCELLED');
     expect(view.benefitsReleaseComplete).toBe(true);
     expect(view.terminalReadyForNextSale).toBe(true);
-    expect(harness.checkouts.markDefinitiveFailureAndRelease).toHaveBeenCalledWith(
-      'attempt-1',
-      'CANCELLED',
-    );
-    expect(harness.terminalPayments.finishTerminalOperation).toHaveBeenCalledWith('attempt-1');
-    expect(harness.orderFinalization.finalizeConfirmedPayment).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).toHaveBeenCalledWith('attempt-1', 'CANCELLED');
+    expect(
+      harness.terminalPayments.finishTerminalOperation,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
   });
 
   it('keeps POS locked when a Benefits owner RELEASE has not checkpointed', async () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'PROCESSING' }));
     const payment = paymentFixture('CANCELLED');
-    jest.mocked(harness.paymentTransactions.findByAttemptId).mockResolvedValue(payment);
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(payment);
     jest.mocked(harness.terminalPayments.cancel).mockResolvedValue(payment);
-    jest.mocked(harness.checkouts.markDefinitiveFailureAndRelease)
-      .mockRejectedValueOnce(new Error('coupon release temporarily unavailable'));
+    jest
+      .mocked(harness.checkouts.markDefinitiveFailureAndRelease)
+      .mockRejectedValueOnce(
+        new Error('coupon release temporarily unavailable'),
+      );
     const view = await harness.service.cancel(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',

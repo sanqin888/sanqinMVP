@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, type PaymentTransaction as PrismaPaymentTransactionRecord, type PaymentTerminalOperation as Row } from '@prisma/client';
+import {
+  Prisma,
+  type PaymentTransaction as PrismaPaymentTransactionRecord,
+  type PaymentTerminalOperation as Row,
+} from '@prisma/client';
 
 import {
   PaymentProviderTransactionIdentityConflictError,
@@ -26,7 +30,11 @@ import {
   type PaymentTransactionRepository,
 } from '../../application/payment-transaction.repository';
 import { PaymentTransaction } from '../../domain/payment-transaction';
-import type { PaymentTerminalOperationRepository, TerminalCancelClaim, TerminalOperation } from '../../application/payment-terminal-operation.repository';
+import type {
+  PaymentTerminalOperationRepository,
+  TerminalCancelClaim,
+  TerminalOperation,
+} from '../../application/payment-terminal-operation.repository';
 import {
   parsePaymentMethod,
   parsePaymentOperation,
@@ -1154,9 +1162,7 @@ export class PrismaPaymentTransactionRepository
 // architecture scanner's controlled Payments -> Runtime persistence edge.
 // The terminal operation has an independent class and application-owned port.
 @Injectable()
-export class PrismaPaymentTerminalOperationRepository
-  implements PaymentTerminalOperationRepository
-{
+export class PrismaPaymentTerminalOperationRepository implements PaymentTerminalOperationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   private map(row: Row): TerminalOperation {
@@ -1196,13 +1202,16 @@ export class PrismaPaymentTerminalOperationRepository
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === 'P2002'
-        ) return false;
+        ) {
+          return false;
+        }
         throw error;
       }
     }
     if (current.attemptId === attemptId) {
-      return current.storeStableId === storeStableId &&
-        current.state === 'RESERVED';
+      return (
+        current.storeStableId === storeStableId && current.state === 'RESERVED'
+      );
     }
     if (current.state !== 'FINALIZED') return false;
     const replaced = await this.prisma.paymentTerminalOperation.updateMany({

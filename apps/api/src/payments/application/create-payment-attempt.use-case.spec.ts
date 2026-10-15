@@ -297,7 +297,9 @@ const deferred = <T>() => {
   return { promise, resolve, reject };
 };
 
-const createTerminalHarness = (operations?: PaymentTerminalOperationRepository) => {
+const createTerminalHarness = (
+  operations?: PaymentTerminalOperationRepository,
+) => {
   const transactions = new InMemoryPaymentTransactionRepository();
   const createAttempt = new CreatePaymentAttemptUseCase(transactions);
   const provider: jest.Mocked<PaymentProvider> = {
@@ -1000,30 +1002,32 @@ describe('TerminalPaymentService', () => {
     });
   });
 
-  const guardedOperations = (): jest.Mocked<PaymentTerminalOperationRepository> => ({
-    reserve: jest.fn().mockResolvedValue(true),
-    findByAttemptId: jest.fn().mockResolvedValue({
-      terminalId: 'compact-1',
-      storeStableId: '4750_Yonge_Street',
-      attemptId: terminalInput.attemptId,
-      paymentTransactionId: null,
-      externalPaymentId: null,
-      state: 'SALE_IN_FLIGHT',
-      cancelRequestedAt: null,
-    }),
-    claimDispatch: jest.fn().mockResolvedValue(true),
-    requestCancel: jest.fn().mockResolvedValue({
-      operation: null,
-      sendDeviceCancel: true,
-      requested: true,
-    }),
-    acknowledgeCancel: jest.fn().mockResolvedValue(undefined),
-    complete: jest.fn().mockResolvedValue(undefined),
-  });
+  const guardedOperations =
+    (): jest.Mocked<PaymentTerminalOperationRepository> => ({
+      reserve: jest.fn().mockResolvedValue(true),
+      findByAttemptId: jest.fn().mockResolvedValue({
+        terminalId: 'compact-1',
+        storeStableId: '4750_Yonge_Street',
+        attemptId: terminalInput.attemptId,
+        paymentTransactionId: null,
+        externalPaymentId: null,
+        state: 'SALE_IN_FLIGHT',
+        cancelRequestedAt: null,
+      }),
+      claimDispatch: jest.fn().mockResolvedValue(true),
+      requestCancel: jest.fn().mockResolvedValue({
+        operation: null,
+        sendDeviceCancel: true,
+        requested: true,
+      }),
+      acknowledgeCancel: jest.fn().mockResolvedValue(undefined),
+      complete: jest.fn().mockResolvedValue(undefined),
+    });
 
   it('fences the Compact and accepts original Sale 209 only after canonical NOT_FOUND', async () => {
     const operations = guardedOperations();
-    const { service, provider, transactions } = createTerminalHarness(operations);
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
     const started = deferred<void>();
     const originalSale = deferred<PaymentProviderOutcome>();
     provider.startPayment.mockImplementation(() => {
@@ -1047,7 +1051,8 @@ describe('TerminalPaymentService', () => {
     );
     expect(ack.status).toBe('UNKNOWN');
     expect(operations.requestCancel).toHaveBeenCalledWith(
-      terminalInput.attemptId, '4750_Yonge_Street',
+      terminalInput.attemptId,
+      '4750_Yonge_Street',
     );
     expect(operations.acknowledgeCancel).toHaveBeenCalledTimes(1);
 
@@ -1094,13 +1099,16 @@ describe('TerminalPaymentService', () => {
     expect(result.status).toBe('CANCELLED');
     expect(provider.startPayment).not.toHaveBeenCalled();
     expect(operations.complete).not.toHaveBeenCalled();
-    expect(await service.completeUndispatchedCancel(terminalInput.attemptId)).toBe(true);
+    expect(
+      await service.completeUndispatchedCancel(terminalInput.attemptId),
+    ).toBe(true);
     expect(operations.complete).toHaveBeenCalledWith(terminalInput.attemptId);
   });
 
   it('blocks original 504 resume after this terminal owner recorded a Cancel intent', async () => {
     const operations = guardedOperations();
-    const { service, provider, transactions } = createTerminalHarness(operations);
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
     const payment = PaymentTransaction.create({
       id: 'e28e67cc-0992-46b1-a240-286a195968f1',
       attemptId: terminalInput.attemptId,
@@ -1112,11 +1120,13 @@ describe('TerminalPaymentService', () => {
       amountCents: terminalInput.amountCents,
       currency: 'CAD',
       externalPaymentId: 'external-resume-1',
-    }).transitionTo('PROCESSING').applyProviderOutcome({
-      status: 'UNKNOWN',
-      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
-      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
-    });
+    })
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome({
+        status: 'UNKNOWN',
+        resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+        failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      });
     transactions.rows.push(payment);
     operations.findByAttemptId.mockResolvedValue({
       terminalId: 'compact-1',
@@ -1127,8 +1137,9 @@ describe('TerminalPaymentService', () => {
       state: 'CANCEL_ACKED',
       cancelRequestedAt: new Date(),
     });
-    await expect(service.resumeOriginal504Sale(payment.id))
-      .rejects.toThrow('terminal ownership or cancellation');
+    await expect(service.resumeOriginal504Sale(payment.id)).rejects.toThrow(
+      'terminal ownership or cancellation',
+    );
     expect(provider.startPayment).not.toHaveBeenCalled();
   });
 
@@ -1143,7 +1154,8 @@ describe('TerminalPaymentService', () => {
       state: 'SALE_IN_FLIGHT',
       cancelRequestedAt: null,
     });
-    const { service, provider, transactions } = createTerminalHarness(operations);
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
     const running = PaymentTransaction.create({
       id: 'e28e67cc-0992-46b1-a240-286a195968f1',
       attemptId: terminalInput.attemptId,

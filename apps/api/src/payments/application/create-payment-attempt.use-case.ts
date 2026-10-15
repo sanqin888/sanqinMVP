@@ -244,7 +244,11 @@ export class TerminalPaymentService {
     storeStableId: string,
     availability: PaymentTerminalAvailability,
   ): Promise<boolean> {
-    if (!this.terminalOperations || !availability.available || !availability.terminalId) {
+    if (
+      !this.terminalOperations ||
+      !availability.available ||
+      !availability.terminalId
+    ) {
       return false;
     }
     return this.terminalOperations.reserve(
@@ -269,7 +273,9 @@ export class TerminalPaymentService {
     // If the device dispatch was already claimed, delegate to the same
     // identity-checked cancel command rather than merely recording an ACK.
     if (previous.paymentTransactionId) {
-      const linked = await this.transactions.findById(previous.paymentTransactionId);
+      const linked = await this.transactions.findById(
+        previous.paymentTransactionId,
+      );
       if (linked) await this.cancel(linked.id, storeStableId);
       return { requested: true, safeBeforeDispatch: false };
     }
@@ -597,7 +603,10 @@ export class TerminalPaymentService {
         (operation.externalPaymentId !== null &&
           operation.externalPaymentId !== identity.externalPaymentId)
       ) return transaction;
-      if (transaction.status !== 'CREATED' && transaction.status !== 'PROCESSING') {
+      if (
+        transaction.status !== 'CREATED' &&
+        transaction.status !== 'PROCESSING'
+      ) {
         return transaction;
       }
       const claim = await this.terminalOperations.requestCancel(
@@ -624,7 +633,10 @@ export class TerminalPaymentService {
       transaction = localCancel.transaction;
     }
 
-    if (!sendDeviceCancel || !['CREATED', 'PROCESSING'].includes(transaction.status)) {
+    if (
+      !sendDeviceCancel ||
+      !['CREATED', 'PROCESSING'].includes(transaction.status)
+    ) {
       return transaction;
     }
 
@@ -651,9 +663,7 @@ export class TerminalPaymentService {
       );
     }
 
-    if (
-      outcome.failureCode === 'CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED'
-    ) {
+    if (outcome.failureCode === 'CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED') {
       await this.terminalOperations?.acknowledgeCancel(snapshot.attemptId);
     }
 
