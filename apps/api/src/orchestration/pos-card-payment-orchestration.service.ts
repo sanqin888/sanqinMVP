@@ -167,11 +167,9 @@ export class PosCardPaymentOrchestrationService {
     const snapshot = payment?.toSnapshot();
     return {
       ...this.toView(checkout, payment ?? undefined),
-      sandboxManualRecoveryEnabled:
-        this.sandboxRecovery.isEnabled(),
+      sandboxManualRecoveryEnabled: this.sandboxRecovery.isEnabled(),
       sandboxOperatorUnpaidAccepted: decision !== null,
-      sandboxRecoveryTerminalFinalized:
-        decision?.terminalFinalizedAt != null,
+      sandboxRecoveryTerminalFinalized: decision?.terminalFinalizedAt != null,
       sandboxLateCanonicalPayment: decision?.lateCanonicalAt != null,
       paymentStatus: payment?.status ?? null,
       resultCode: snapshot?.resultCode ?? null,
@@ -214,10 +212,11 @@ export class PosCardPaymentOrchestrationService {
         'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID' &&
       this.sandboxRecovery.isEnabled()
     ) {
-      const conflict = await this.sandboxRecovery.inspectSandboxLateCanonicalSuccess(
-        payment.id,
-        storeStableId,
-      );
+      const conflict =
+        await this.sandboxRecovery.inspectSandboxLateCanonicalSuccess(
+          payment.id,
+          storeStableId,
+        );
       if (conflict) {
         return this.toView(checkout, payment, undefined, {
           terminalReadyForNextSale: false,
@@ -236,7 +235,6 @@ export class PosCardPaymentOrchestrationService {
     // Never resume an original Sale in CREATED/recent PROCESSING.
     return this.toView(checkout, payment);
   }
-
 
   /**
    * Exception to provider-only finality for an isolated local Sandbox.

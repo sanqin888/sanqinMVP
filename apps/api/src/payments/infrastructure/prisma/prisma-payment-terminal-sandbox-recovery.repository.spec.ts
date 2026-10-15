@@ -31,9 +31,11 @@ const setup = () => {
     },
   };
   const prisma = {
-    $transaction: jest.fn().mockImplementation(
-      (action: (transaction: typeof tx) => Promise<unknown>) => action(tx),
-    ),
+    $transaction: jest
+      .fn()
+      .mockImplementation(
+        (action: (transaction: typeof tx) => Promise<unknown>) => action(tx),
+      ),
     paymentTerminalSandboxRecovery: {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
@@ -50,41 +52,46 @@ const setup = () => {
 describe('Sandbox-only operator unpaid persistence', () => {
   it('records original evidence and payment FAILED as one CAS transaction', async () => {
     const { repository, tx } = setup();
-    await expect(repository.claimSandboxManualUnpaid(input))
-      .resolves.toBe('CLAIMED');
-    expect(tx.paymentTerminalOperation.updateMany.mock.calls[0]?.[0])
-      .toMatchObject({
-        where: {
-          terminalId: input.terminalId,
-          attemptId: input.attemptId,
-          state: 'SALE_IN_FLIGHT',
-          cancelRequestedAt: null,
-        },
-        data: { state: 'NEEDS_REVIEW' },
-      });
-    expect(tx.paymentTransaction.updateMany.mock.calls[0]?.[0])
-      .toMatchObject({
-        where: {
-          id: input.paymentTransactionId,
-          status: 'RECONCILING',
-          resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
-          failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
-          providerPaymentId: null,
-        },
-        data: {
-          status: 'FAILED',
-          resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
-        },
-      });
-    expect(tx.paymentTerminalSandboxRecovery.create.mock.calls[0]?.[0])
-      .toEqual({ data: input });
+    await expect(repository.claimSandboxManualUnpaid(input)).resolves.toBe(
+      'CLAIMED',
+    );
+    const fenceCalls: Array<[unknown]> =
+      tx.paymentTerminalOperation.updateMany.mock.calls;
+    expect(fenceCalls[0]?.[0]).toMatchObject({
+      where: {
+        terminalId: input.terminalId,
+        attemptId: input.attemptId,
+        state: 'SALE_IN_FLIGHT',
+        cancelRequestedAt: null,
+      },
+      data: { state: 'NEEDS_REVIEW' },
+    });
+    const paymentCalls: Array<[unknown]> =
+      tx.paymentTransaction.updateMany.mock.calls;
+    expect(paymentCalls[0]?.[0]).toMatchObject({
+      where: {
+        id: input.paymentTransactionId,
+        status: 'RECONCILING',
+        resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+        failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+        providerPaymentId: null,
+      },
+      data: {
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      },
+    });
+    const auditCalls: Array<[unknown]> =
+      tx.paymentTerminalSandboxRecovery.create.mock.calls;
+    expect(auditCalls[0]?.[0]).toEqual({ data: input });
   });
 
   it('cannot mark a payment failed when a terminal fence is already owned', async () => {
     const { repository, tx } = setup();
     tx.paymentTerminalOperation.updateMany.mockResolvedValue({ count: 0 });
-    await expect(repository.claimSandboxManualUnpaid(input))
-      .resolves.toBe('CONFLICT');
+    await expect(repository.claimSandboxManualUnpaid(input)).resolves.toBe(
+      'CONFLICT',
+    );
     expect(tx.paymentTransaction.updateMany.mock.calls).toHaveLength(0);
     expect(tx.paymentTerminalSandboxRecovery.create.mock.calls).toHaveLength(0);
   });
@@ -97,8 +104,9 @@ describe('Sandbox-only operator unpaid persistence', () => {
       terminalFinalizedAt: null,
       lateCanonicalAt: null,
     });
-    await expect(repository.finalizeSandboxManualUnpaid(input.attemptId))
-      .resolves.toBe(false);
+    await expect(
+      repository.finalizeSandboxManualUnpaid(input.attemptId),
+    ).resolves.toBe(false);
     expect(tx.paymentTerminalOperation.updateMany.mock.calls).toHaveLength(0);
     tx.paymentTerminalSandboxRecovery.findUnique.mockResolvedValue({
       ...input,
@@ -106,8 +114,9 @@ describe('Sandbox-only operator unpaid persistence', () => {
       terminalFinalizedAt: null,
       lateCanonicalAt: new Date(),
     });
-    await expect(repository.finalizeSandboxManualUnpaid(input.attemptId))
-      .resolves.toBe(false);
+    await expect(
+      repository.finalizeSandboxManualUnpaid(input.attemptId),
+    ).resolves.toBe(false);
     expect(tx.paymentTerminalOperation.updateMany.mock.calls).toHaveLength(0);
   });
 });

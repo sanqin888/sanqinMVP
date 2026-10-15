@@ -104,7 +104,9 @@ export class PosCardPaymentController {
   ) {
     const actor = req.user?.userStableId?.trim();
     if (!actor) {
-      throw new UnauthorizedException('Authenticated operator identity required');
+      throw new UnauthorizedException(
+        'Authenticated operator identity required',
+      );
     }
     return this.cardPayments.manuallyCloseSandboxUnpaid(
       this.requireStoreStableId(req),

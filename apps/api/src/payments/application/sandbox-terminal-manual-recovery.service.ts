@@ -95,7 +95,8 @@ export class SandboxTerminalManualRecoveryService {
       original.providerPaymentId !== null ||
       !original.externalPaymentId ||
       Date.now() - original.createdAt.getTime() < 5 * 60 * 1000
-    ) throw new Error('POS_SANDBOX_MANUAL_RECOVERY_NOT_ELIGIBLE');
+    )
+      throw new Error('POS_SANDBOX_MANUAL_RECOVERY_NOT_ELIGIBLE');
     const operation = await this.terminalOperations.findByAttemptId(
       input.attemptId,
     );
@@ -106,13 +107,15 @@ export class SandboxTerminalManualRecoveryService {
       operation.paymentTransactionId !== input.paymentId ||
       operation.externalPaymentId !== original.externalPaymentId ||
       operation.cancelRequestedAt !== null
-    ) throw new Error('POS_SANDBOX_MANUAL_TERMINAL_FENCE_CONFLICT');
+    )
+      throw new Error('POS_SANDBOX_MANUAL_TERMINAL_FENCE_CONFLICT');
     const available = await this.terminalPayments.getAvailability();
     if (
       !available.available ||
       !['AVAILABLE', 'IDLE', 'READY'].includes(available.state) ||
       available.terminalId !== operation.terminalId
-    ) throw new Error('POS_SANDBOX_MANUAL_TERMINAL_NOT_IDLE');
+    )
+      throw new Error('POS_SANDBOX_MANUAL_TERMINAL_NOT_IDLE');
     const checked = await this.terminalPayments.reconcile(payment.id);
     const latest = checked.toSnapshot();
     if (
@@ -121,7 +124,8 @@ export class SandboxTerminalManualRecoveryService {
       latest.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND' ||
       latest.providerPaymentId !== null ||
       latest.externalPaymentId !== original.externalPaymentId
-    ) throw new Error('POS_SANDBOX_MANUAL_CANONICAL_CONFLICT');
+    )
+      throw new Error('POS_SANDBOX_MANUAL_CANONICAL_CONFLICT');
     const result = await this.terminalOperations.claimSandboxManualUnpaid({
       attemptId: input.attemptId,
       paymentTransactionId: payment.id,

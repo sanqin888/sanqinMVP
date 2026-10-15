@@ -1094,7 +1094,6 @@ describe('TerminalPaymentService', () => {
     expect(operations.complete.mock.calls).toHaveLength(0);
   });
 
-
   it('prefers canonical success when original Sale 209 races a card tap', async () => {
     const operations = guardedOperations();
     const { service, provider } = createTerminalHarness(operations);

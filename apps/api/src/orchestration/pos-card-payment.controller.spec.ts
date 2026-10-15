@@ -44,7 +44,9 @@ const createHarness = () => {
       .mockResolvedValue({ enabled: true, storeId: storeStableId }),
     getBenefitsReview: jest.fn().mockResolvedValue({ items: [] }),
     getReviewAttempt: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
-    manuallyCloseSandboxUnpaid: jest.fn().mockResolvedValue({ status: 'FAILED' }),
+    manuallyCloseSandboxUnpaid: jest
+      .fn()
+      .mockResolvedValue({ status: 'FAILED' }),
     recheckReviewAttempt: jest
       .fn()
       .mockResolvedValue({ status: 'RECONCILING' }),

@@ -1417,11 +1417,14 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
   }
 
   async checkpointSandboxBenefitsReleased(attemptId: string): Promise<void> {
-    const decision = await this.prisma.paymentTerminalSandboxRecovery.findUnique({
-      where: { attemptId },
-      select: { attemptId: true },
-    });
-    if (!decision) throw new Error('Sandbox manual recovery decision missing');
+    const decision =
+      await this.prisma.paymentTerminalSandboxRecovery.findUnique({
+        where: { attemptId },
+        select: { attemptId: true },
+      });
+    if (!decision) {
+      throw new Error('Sandbox manual recovery decision missing');
+    }
     await this.prisma.paymentTerminalSandboxRecovery.updateMany({
       where: { attemptId, benefitsReleasedAt: null },
       data: { benefitsReleasedAt: new Date() },
@@ -1429,49 +1432,60 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
   }
 
   async finalizeSandboxManualUnpaid(attemptId: string): Promise<boolean> {
-    return this.prisma.$transaction(async (tx) => {
-      const decision = await tx.paymentTerminalSandboxRecovery.findUnique({
-        where: { attemptId },
-      });
-      if (!decision || !decision.benefitsReleasedAt || decision.lateCanonicalAt) {
-        return false;
-      }
-      const operation = await tx.paymentTerminalOperation.findUnique({
-        where: { terminalId: decision.terminalId },
-      });
-      if (
-        !operation ||
-        operation.attemptId !== attemptId ||
-        operation.storeStableId !== decision.storeStableId ||
-        operation.paymentTransactionId !== decision.paymentTransactionId
-      ) return false;
-      if (operation.state === 'FINALIZED') {
-        return decision.terminalFinalizedAt !== null;
-      }
-      if (operation.state !== 'NEEDS_REVIEW') return false;
-      const payment = await tx.paymentTransaction.findUnique({
-        where: { id: decision.paymentTransactionId },
-        select: { status: true, resultCode: true },
-      });
-      if (
-        payment?.status !== 'FAILED' ||
-        payment.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID'
-      ) return false;
-      const updated = await tx.paymentTerminalOperation.updateMany({
-        where: {
-          terminalId: decision.terminalId,
-          attemptId,
-          state: 'NEEDS_REVIEW',
-        },
-        data: { state: 'FINALIZED' },
-      });
-      if (updated.count !== 1) return false;
-      await tx.paymentTerminalSandboxRecovery.update({
-        where: { attemptId },
-        data: { terminalFinalizedAt: new Date() },
-      });
-      return true;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return this.prisma.$transaction(
+      async (tx) => {
+        const decision = await tx.paymentTerminalSandboxRecovery.findUnique({
+          where: { attemptId },
+        });
+        if (
+          !decision ||
+          !decision.benefitsReleasedAt ||
+          decision.lateCanonicalAt
+        ) {
+          return false;
+        }
+        const operation = await tx.paymentTerminalOperation.findUnique({
+          where: { terminalId: decision.terminalId },
+        });
+        if (
+          !operation ||
+          operation.attemptId !== attemptId ||
+          operation.storeStableId !== decision.storeStableId ||
+          operation.paymentTransactionId !== decision.paymentTransactionId
+        ) {
+          return false;
+        }
+        if (operation.state === 'FINALIZED') {
+          return decision.terminalFinalizedAt !== null;
+        }
+        if (operation.state !== 'NEEDS_REVIEW') return false;
+        const payment = await tx.paymentTransaction.findUnique({
+          where: { id: decision.paymentTransactionId },
+          select: { status: true, resultCode: true },
+        });
+        if (
+          payment?.status !== 'FAILED' ||
+          payment.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID'
+        ) {
+          return false;
+        }
+        const updated = await tx.paymentTerminalOperation.updateMany({
+          where: {
+            terminalId: decision.terminalId,
+            attemptId,
+            state: 'NEEDS_REVIEW',
+          },
+          data: { state: 'FINALIZED' },
+        });
+        if (updated.count !== 1) return false;
+        await tx.paymentTerminalSandboxRecovery.update({
+          where: { attemptId },
+          data: { terminalFinalizedAt: new Date() },
+        });
+        return true;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
 }

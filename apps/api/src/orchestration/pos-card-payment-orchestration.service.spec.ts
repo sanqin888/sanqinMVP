@@ -231,7 +231,9 @@ const createHarness = () => {
   const sandboxRecovery = {
     isEnabled: jest.fn().mockReturnValue(false),
     getSandboxManualUnpaidDecision: jest.fn().mockResolvedValue(null),
-    acceptSandboxManualUnpaid: jest.fn().mockResolvedValue(paymentFixture('FAILED')),
+    acceptSandboxManualUnpaid: jest
+      .fn()
+      .mockResolvedValue(paymentFixture('FAILED')),
     checkpointSandboxBenefitsReleased: jest.fn().mockResolvedValue(undefined),
     finishSandboxManualUnpaid: jest.fn().mockResolvedValue(true),
     inspectSandboxLateCanonicalSuccess: jest.fn().mockResolvedValue(false),
@@ -435,7 +437,6 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
   });
 
-
   it('keeps Sandbox manual closure disabled by default without touching finance', async () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
@@ -450,16 +451,17 @@ describe('PosCardPaymentOrchestrationService', () => {
     ).rejects.toMatchObject({
       response: { code: 'POS_SANDBOX_MANUAL_RECOVERY_DISABLED' },
     });
-    expect(harness.sandboxRecovery.acceptSandboxManualUnpaid)
-      .not.toHaveBeenCalled();
+    expect(
+      harness.sandboxRecovery.acceptSandboxManualUnpaid,
+    ).not.toHaveBeenCalled();
   });
 
   it('audits a Sandbox operator decision before owner RELEASE and terminal finalization', async () => {
     const harness = createHarness();
-    jest.mocked(harness.sandboxRecovery.isEnabled)
-      .mockReturnValue(true);
+    jest.mocked(harness.sandboxRecovery.isEnabled).mockReturnValue(true);
     harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
-    jest.mocked(harness.paymentTransactions.findByAttemptId)
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
       .mockResolvedValue(paymentFixture('RECONCILING'));
 
     const result = await harness.service.manuallyCloseSandboxUnpaid(
@@ -472,32 +474,40 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(result.status).toBe('FAILED');
     expect(result.benefitsReleaseComplete).toBe(true);
     expect(result.terminalReadyForNextSale).toBe(true);
-    expect(harness.sandboxRecovery.acceptSandboxManualUnpaid)
-      .toHaveBeenCalledWith(expect.objectContaining({
+    expect(
+      harness.sandboxRecovery.acceptSandboxManualUnpaid,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
         paymentId: '33333333-3333-4333-8333-333333333333',
         storeStableId,
         attemptId: 'attempt-1',
         actorUserStableId: 'coperator',
-      }));
-    expect(harness.checkouts.markDefinitiveFailureAndRelease)
-      .toHaveBeenCalledWith('attempt-1', 'FAILED');
-    expect(harness.sandboxRecovery.checkpointSandboxBenefitsReleased)
-      .toHaveBeenCalledWith('attempt-1');
-    expect(harness.sandboxRecovery.finishSandboxManualUnpaid)
-      .toHaveBeenCalledWith('attempt-1', storeStableId);
+      }),
+    );
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).toHaveBeenCalledWith('attempt-1', 'FAILED');
+    expect(
+      harness.sandboxRecovery.checkpointSandboxBenefitsReleased,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.sandboxRecovery.finishSandboxManualUnpaid,
+    ).toHaveBeenCalledWith('attempt-1', storeStableId);
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
-    expect(harness.terminalPayments.resumeOriginal504Sale)
-      .not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.resumeOriginal504Sale,
+    ).not.toHaveBeenCalled();
   });
 
   it('keeps a manually decided Sandbox fence non-final after failed Benefits RELEASE', async () => {
     const harness = createHarness();
-    jest.mocked(harness.sandboxRecovery.isEnabled)
-      .mockReturnValue(true);
+    jest.mocked(harness.sandboxRecovery.isEnabled).mockReturnValue(true);
     harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
-    jest.mocked(harness.paymentTransactions.findByAttemptId)
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
       .mockResolvedValue(paymentFixture('RECONCILING'));
-    jest.mocked(harness.checkouts.markDefinitiveFailureAndRelease)
+    jest
+      .mocked(harness.checkouts.markDefinitiveFailureAndRelease)
       .mockRejectedValueOnce(new Error('Benefits owner unavailable'));
 
     const result = await harness.service.manuallyCloseSandboxUnpaid(
@@ -510,20 +520,23 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(result.status).toBe('FAILED');
     expect(result.benefitsReleaseComplete).toBe(false);
     expect(result.terminalReadyForNextSale).toBe(false);
-    expect(harness.sandboxRecovery.checkpointSandboxBenefitsReleased)
-      .not.toHaveBeenCalled();
-    expect(harness.sandboxRecovery.finishSandboxManualUnpaid)
-      .not.toHaveBeenCalled();
+    expect(
+      harness.sandboxRecovery.checkpointSandboxBenefitsReleased,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.sandboxRecovery.finishSandboxManualUnpaid,
+    ).not.toHaveBeenCalled();
   });
 
   it('refuses a cross-Store manual closure before claiming the original payment', async () => {
     const harness = createHarness();
-    jest.mocked(harness.sandboxRecovery.isEnabled)
-      .mockReturnValue(true);
-    harness.setCheckout(checkoutFixture({
-      storeId: 'another_store',
-      status: 'RECONCILING',
-    }));
+    jest.mocked(harness.sandboxRecovery.isEnabled).mockReturnValue(true);
+    harness.setCheckout(
+      checkoutFixture({
+        storeId: 'another_store',
+        status: 'RECONCILING',
+      }),
+    );
     await expect(
       harness.service.manuallyCloseSandboxUnpaid(
         storeStableId,
@@ -533,9 +546,11 @@ describe('PosCardPaymentOrchestrationService', () => {
         'Clover test merchant showed No Payments',
       ),
     ).rejects.toBeDefined();
-    expect(harness.sandboxRecovery.acceptSandboxManualUnpaid)
-      .not.toHaveBeenCalled();
+    expect(
+      harness.sandboxRecovery.acceptSandboxManualUnpaid,
+    ).not.toHaveBeenCalled();
   });
+
 
   it('acknowledges an async Sale immediately and publishes the canonical result later', async () => {
     const harness = createHarness();

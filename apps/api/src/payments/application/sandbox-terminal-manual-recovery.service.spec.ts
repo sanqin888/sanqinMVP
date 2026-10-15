@@ -89,7 +89,9 @@ const createHarness = () => {
     operations,
     provider,
     terminalProvider,
-    setPayment(next: PaymentTransaction) { payment = next; },
+    setPayment(next: PaymentTransaction) {
+      payment = next;
+    },
   };
 };
 const input = {
@@ -115,24 +117,31 @@ describe('SandboxTerminalManualRecoveryService', () => {
     };
     expect(service.isEnabled(env)).toBe(true);
     expect(service.isEnabled({ ...env, NODE_ENV: 'production' })).toBe(false);
-    expect(service.isEnabled({
-      ...env,
-      DATABASE_URL: 'postgresql://user:pass@live-db:5432/restaurant',
-    })).toBe(false);
-    expect(service.isEnabled({
-      ...env,
-      CLOVER_UNIFIED_PLATFORM_API_BASE: 'https://api.clover.com',
-    })).toBe(false);
-    expect(service.isEnabled({
-      ...env,
-      CLOVER_UNIFIED_MERCHANT_ID: 'production-merchant',
-    })).toBe(false);
+    expect(
+      service.isEnabled({
+        ...env,
+        DATABASE_URL: 'postgresql://user:pass@live-db:5432/restaurant',
+      }),
+    ).toBe(false);
+    expect(
+      service.isEnabled({
+        ...env,
+        CLOVER_UNIFIED_PLATFORM_API_BASE: 'https://api.clover.com',
+      }),
+    ).toBe(false);
+    expect(
+      service.isEnabled({
+        ...env,
+        CLOVER_UNIFIED_MERCHANT_ID: 'production-merchant',
+      }),
+    ).toBe(false);
   });
 
   it('rejects unauthorised runtime before provider or persistence calls', async () => {
     const { service, provider, operations } = createHarness();
-    await expect(service.acceptSandboxManualUnpaid(input))
-      .rejects.toThrow('POS_SANDBOX_MANUAL_RECOVERY_DISABLED');
+    await expect(service.acceptSandboxManualUnpaid(input)).rejects.toThrow(
+      'POS_SANDBOX_MANUAL_RECOVERY_DISABLED',
+    );
     expect(provider.getPaymentStatus.mock.calls).toHaveLength(0);
     expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
   });
@@ -163,14 +172,15 @@ describe('SandboxTerminalManualRecoveryService', () => {
   it('rejects newly found successful payment without an operator claim', async () => {
     const { service, terminalPayments, operations } = createHarness();
     jest.spyOn(service, 'isEnabled').mockReturnValue(true);
-    jest.mocked(terminalPayments.reconcile).mockResolvedValue(
+    terminalPayments.reconcile.mockResolvedValue(
       originalPayment().applyProviderOutcome({
         status: 'SUCCEEDED',
         providerPaymentId: 'real-canonical-payment',
       }),
     );
-    await expect(service.acceptSandboxManualUnpaid(input))
-      .rejects.toThrow('POS_SANDBOX_MANUAL_CANONICAL_CONFLICT');
+    await expect(service.acceptSandboxManualUnpaid(input)).rejects.toThrow(
+      'POS_SANDBOX_MANUAL_CANONICAL_CONFLICT',
+    );
     expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
   });
 
@@ -184,7 +194,7 @@ describe('SandboxTerminalManualRecoveryService', () => {
         resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
       }),
     );
-    jest.mocked(operations.getSandboxManualUnpaidDecision).mockResolvedValue({
+    operations.getSandboxManualUnpaidDecision.mockResolvedValue({
       ...input,
       paymentTransactionId: paymentId,
       terminalId: 'compact-test-1',
@@ -197,8 +207,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
       lateCanonicalAt: null,
       lateProviderPaymentId: null,
     });
-    await expect(service.acceptSandboxManualUnpaid(input))
-      .resolves.toMatchObject({ status: 'FAILED' });
+    await expect(
+      service.acceptSandboxManualUnpaid(input),
+    ).resolves.toMatchObject({ status: 'FAILED' });
     expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
     expect(terminalPayments.reconcile.mock.calls).toHaveLength(0);
   });
@@ -207,11 +218,13 @@ describe('SandboxTerminalManualRecoveryService', () => {
     const { service, operations, provider, terminalProvider, setPayment } =
       createHarness();
     jest.spyOn(service, 'isEnabled').mockReturnValue(true);
-    setPayment(originalPayment().applyProviderOutcome({
-      status: 'FAILED',
-      resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
-    }));
-    jest.mocked(operations.getSandboxManualUnpaidDecision).mockResolvedValue({
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      }),
+    );
+    operations.getSandboxManualUnpaidDecision.mockResolvedValue({
       ...input,
       paymentTransactionId: paymentId,
       terminalId: 'compact-test-1',
@@ -224,7 +237,7 @@ describe('SandboxTerminalManualRecoveryService', () => {
       lateCanonicalAt: null,
       lateProviderPaymentId: null,
     });
-    jest.mocked(provider.getPaymentStatus).mockResolvedValue({
+    provider.getPaymentStatus.mockResolvedValue({
       status: 'SUCCEEDED',
       providerPaymentId: 'late-paid',
     });
@@ -234,7 +247,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
     expect(operations.noteSandboxLateCanonicalSuccess.mock.calls).toEqual([
       [attemptId, 'late-paid'],
     ]);
-    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(0);
+    expect(
+      terminalProvider.prepareOriginalSaleResume.mock.calls,
+    ).toHaveLength(0);
     expect(operations.finalizeSandboxManualUnpaid.mock.calls).toHaveLength(0);
   });
 });
