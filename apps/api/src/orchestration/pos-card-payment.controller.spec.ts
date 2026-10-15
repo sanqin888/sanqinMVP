@@ -43,6 +43,8 @@ const createHarness = () => {
       .fn()
       .mockResolvedValue({ enabled: true, storeId: storeStableId }),
     getBenefitsReview: jest.fn().mockResolvedValue({ items: [] }),
+    getReviewAttempt: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
+    recheckReviewAttempt: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
     start: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     recover: jest.fn().mockResolvedValue({ status: 'PROCESSING' }),
     resumeOriginalSale: jest.fn().mockResolvedValue({ status: 'RECONCILING' }),
@@ -62,6 +64,8 @@ describe('PosCardPaymentController store identity', () => {
     controller.getConfig(req);
     await controller.getAvailability(req);
     await controller.getBenefitsReview(req);
+    await controller.getReviewAttempt(req, body.attemptId);
+    await controller.recheckReviewAttempt(req, body.attemptId);
     await controller.start(req, body);
     await controller.recover(req, body);
     await controller.resumeOriginal(req, body);
@@ -70,6 +74,14 @@ describe('PosCardPaymentController store identity', () => {
     expect(cardPayments.getConfig).toHaveBeenCalledWith(storeStableId);
     expect(cardPayments.getAvailability).toHaveBeenCalledWith(storeStableId);
     expect(cardPayments.getBenefitsReview).toHaveBeenCalledWith(storeStableId);
+    expect(cardPayments.getReviewAttempt).toHaveBeenCalledWith(
+      storeStableId,
+      body.attemptId,
+    );
+    expect(cardPayments.recheckReviewAttempt).toHaveBeenCalledWith(
+      storeStableId,
+      body.attemptId,
+    );
     expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.resumeOriginalSale).toHaveBeenCalledWith(
@@ -94,6 +106,10 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
   let app: INestApplication;
   let httpServer: Server;
   const cancelPayment = jest.fn().mockResolvedValue({ status: 'PROCESSING' });
+  const getReviewAttempt = jest.fn().mockResolvedValue({ status: 'RECONCILING' });
+  const recheckReviewAttempt = jest.fn().mockResolvedValue({
+    status: 'RECONCILING',
+  });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -101,7 +117,11 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
       providers: [
         {
           provide: PosCardPaymentOrchestrationService,
-          useValue: { cancel: cancelPayment },
+          useValue: {
+            cancel: cancelPayment,
+            getReviewAttempt,
+            recheckReviewAttempt,
+          },
         },
       ],
     })
@@ -133,6 +153,29 @@ describe('PosCardPaymentController cancel HTTP validation', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  it('reads the saved Attempt using the authenticated device Store', async () => {
+    const response = await request(httpServer).get(
+      `/api/v1/pos/payments/card/review/${body.attemptId}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(getReviewAttempt).toHaveBeenCalledWith(storeStableId, body.attemptId);
+    expect(cancelPayment).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the original Attempt without a new Sale request body', async () => {
+    const response = await request(httpServer).post(
+      `/api/v1/pos/payments/card/review/${body.attemptId}/recheck`,
+    );
+
+    expect(response.status).toBe(201);
+    expect(recheckReviewAttempt).toHaveBeenCalledWith(
+      storeStableId,
+      body.attemptId,
+    );
+    expect(cancelPayment).not.toHaveBeenCalled();
   });
 
   it('accepts a string attemptId route param and validates the body separately', async () => {

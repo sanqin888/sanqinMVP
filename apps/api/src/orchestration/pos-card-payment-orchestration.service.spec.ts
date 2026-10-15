@@ -210,6 +210,7 @@ const createHarness = () => {
       failureMessage: null,
     }),
     startSale: jest.fn().mockResolvedValue(paymentFixture('SUCCEEDED')),
+    getTerminalOperationReview: jest.fn().mockResolvedValue(null),
     reserveSale: jest.fn().mockResolvedValue(true),
     requestPendingCancel: jest.fn().mockResolvedValue({
       requested: true,
@@ -298,6 +299,123 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.checkouts.findPosCardPaymentReviewItems,
     ).toHaveBeenCalledWith(storeStableId);
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+  });
+
+  it('reads original 504 evidence without Clover access even when Terminal is disabled', async () => {
+    const harness = createHarness();
+    jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
+    harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
+    const payment = paymentFixture('RECONCILING').recordProviderObservation({
+      status: 'UNKNOWN',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(payment);
+    jest.mocked(harness.terminalPayments.getTerminalOperationReview)
+      .mockResolvedValue({ terminalId: 'compact-1', state: 'SALE_IN_FLIGHT' });
+
+    await expect(
+      harness.service.getReviewAttempt(storeStableId, 'attempt-1'),
+    ).resolves.toMatchObject({
+      status: 'RECONCILING',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      externalPaymentId: 'sq_attempt_1',
+      terminalOperationState: 'SALE_IN_FLIGHT',
+      terminalId: 'compact-1',
+    });
+    expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+  });
+
+  it('permits read-only inspection but blocks recheck while Terminal is disabled', async () => {
+    const harness = createHarness();
+    jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
+    await expect(
+      harness.service.getReviewAttempt(storeStableId, 'attempt-1'),
+    ).resolves.toBeDefined();
+    await expect(
+      harness.service.recheckReviewAttempt(storeStableId, 'attempt-1'),
+    ).rejects.toMatchObject({
+      response: { code: 'POS_CLOVER_TERMINAL_PAYMENT_DISABLED' },
+    });
+    expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
+  });
+
+  it('rejects review from another Store before consulting Clover', async () => {
+    const harness = createHarness();
+    harness.setCheckout(checkoutFixture({ storeId: 'other_store' }));
+    await expect(
+      harness.service.getReviewAttempt(storeStableId, 'attempt-1'),
+    ).rejects.toBeDefined();
+    await expect(
+      harness.service.recheckReviewAttempt(storeStableId, 'attempt-1'),
+    ).rejects.toBeDefined();
+    expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+  });
+
+  it('rechecks 504 + canonical NOT_FOUND without releasing Benefits or creating a Sale', async () => {
+    const harness = createHarness();
+    harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
+    const payment = paymentFixture('RECONCILING').recordProviderObservation({
+      status: 'UNKNOWN',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(payment);
+    jest.mocked(harness.terminalPayments.reconcile).mockResolvedValue(payment);
+
+    const result = await harness.service.recheckReviewAttempt(
+      storeStableId,
+      'attempt-1',
+    );
+    expect(result.status).toBe('RECONCILING');
+    expect(result.benefitsReleaseComplete).toBe(false);
+    expect(harness.terminalPayments.reconcile).toHaveBeenCalledWith(payment.id);
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.resumeOriginal504Sale).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('finalizes canonical success through the existing path but never starts another Sale', async () => {
+    const harness = createHarness();
+    harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(paymentFixture('RECONCILING'));
+    jest
+      .mocked(harness.terminalPayments.reconcile)
+      .mockResolvedValue(paymentFixture('SUCCEEDED'));
+
+    const result = await harness.service.recheckReviewAttempt(
+      storeStableId,
+      'attempt-1',
+    );
+    expect(result.status).toBe('SUCCEEDED');
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).toHaveBeenCalledTimes(1);
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.resumeOriginal504Sale).not.toHaveBeenCalled();
+  });
+
+  it('does not try another Sale when the saved payment is missing', async () => {
+    const harness = createHarness();
+    harness.setCheckout(checkoutFixture({ status: 'RECONCILING' }));
+    await expect(
+      harness.service.recheckReviewAttempt(storeStableId, 'attempt-1'),
+    ).rejects.toMatchObject({
+      response: { code: 'POS_CARD_REVIEW_PAYMENT_MISSING' },
+    });
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
   });
 
   it('acknowledges an async Sale immediately and publishes the canonical result later', async () => {

@@ -61,6 +61,30 @@ export class PosCardPaymentController {
     return this.cardPayments.getBenefitsReview(this.requireStoreStableId(req));
   }
 
+  // Stored original attempt facts only; does not contact Clover.
+  @Get('review/:attemptId')
+  getReviewAttempt(
+    @Req() req: PosDeviceRequest,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.cardPayments.getReviewAttempt(
+      this.requireStoreStableId(req),
+      attemptId,
+    );
+  }
+
+  // Explicit canonical payment recheck; never starts or resumes a Sale.
+  @Post('review/:attemptId/recheck')
+  recheckReviewAttempt(
+    @Req() req: PosDeviceRequest,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.cardPayments.recheckReviewAttempt(
+      this.requireStoreStableId(req),
+      attemptId,
+    );
+  }
+
   @Post('start')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
   start(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {
