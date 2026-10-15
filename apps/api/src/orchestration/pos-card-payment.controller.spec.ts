@@ -12,7 +12,7 @@ import {
   type AuthenticatedPosIdentity,
 } from '../pos/public-api';
 import { PosCardPaymentController } from './pos-card-payment.controller';
-import type { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
+import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
 
 const storeStableId = '4750_Yonge_Street';
 const posIdentity: AuthenticatedPosIdentity = {
