@@ -404,11 +404,13 @@ export const mapTerminalAvailabilityResponse = (
       failureMessage: message,
     };
   }
-  const providerState =
+  const reportedState =
     stringValue(result.body, 'state') ??
     stringValue(result.body, 'status') ??
-    stringValue(asRecord(result.body?.device), 'status') ??
-    'AVAILABLE';
+    stringValue(asRecord(result.body?.device), 'status');
+  // Keep ordinary availability compatibility; R2 must distinguish this
+  // fallback from a state explicitly reported by the physical terminal.
+  const providerState = reportedState ?? 'AVAILABLE';
   const upper = normalized(providerState);
   const busy = /BUSY|IN_PROGRESS|PROCESSING/.test(upper);
   const unavailable = /OFFLINE|DISCONNECTED|UNAVAILABLE|ERROR/.test(upper);
@@ -418,6 +420,7 @@ export const mapTerminalAvailabilityResponse = (
     available: !busy && !unavailable,
     terminalId,
     providerState,
+    providerStateExplicit: reportedState != null,
   };
 };
 

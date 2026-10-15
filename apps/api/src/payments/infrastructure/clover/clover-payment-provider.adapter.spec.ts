@@ -5,6 +5,7 @@ import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport
 import type { CloverMerchantAccessTokenService } from './oauth/clover-merchant-access-token.service';
 import {
   CloverTerminalTransport,
+  mapTerminalAvailabilityResponse,
   mapTerminalPaymentResponse,
 } from './terminal/clover-terminal.transport';
 
@@ -498,6 +499,78 @@ describe('CloverPaymentProviderAdapter', () => {
       available: true,
     });
     expect(getAvailability).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('R2 terminal availability state evidence', () => {
+  const response = (body: Record<string, unknown> | null) =>
+    mapTerminalAvailabilityResponse(
+      { httpStatus: 200, ok: true, body, rawText: '' },
+      'compact-test-1',
+    );
+
+  it('preserves the ordinary AVAILABLE fallback but flags empty HTTP 200 as inferred', () => {
+    expect(response(null)).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      terminalId: 'compact-test-1',
+      providerState: 'AVAILABLE',
+      providerStateExplicit: false,
+    });
+    expect(response({})).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerStateExplicit: false,
+    });
+    expect(response({ device: {} })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerStateExplicit: false,
+    });
+    expect(response({ state: '' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerStateExplicit: false,
+    });
+  });
+
+  it('preserves explicit raw states for R2 without changing ordinary availability mapping', () => {
+    expect(response({ status: 'IDLE' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'IDLE',
+      providerStateExplicit: true,
+    });
+    expect(response({ state: 'READY' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'READY',
+      providerStateExplicit: true,
+    });
+    expect(response({ device: { status: 'AVAILABLE' } })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'AVAILABLE',
+      providerStateExplicit: true,
+    });
+    expect(response({ state: 'BUSY' })).toMatchObject({
+      state: 'BUSY',
+      available: false,
+      providerState: 'BUSY',
+      providerStateExplicit: true,
+    });
+    expect(response({ status: 'PROCESSING' })).toMatchObject({
+      state: 'BUSY',
+      available: false,
+      providerState: 'PROCESSING',
+      providerStateExplicit: true,
+    });
+    expect(response({ status: 'UNKNOWN' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'UNKNOWN',
+      providerStateExplicit: true,
+    });
   });
 });
 

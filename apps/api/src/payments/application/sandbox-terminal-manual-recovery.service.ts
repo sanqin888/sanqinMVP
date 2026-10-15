@@ -6,6 +6,7 @@ import type {
 } from './payment-terminal-operation.repository';
 import type {
   PaymentProvider,
+  PaymentTerminalAvailability,
   PaymentTerminalProvider,
 } from './payment-provider.port';
 
@@ -110,12 +111,9 @@ export class SandboxTerminalManualRecoveryService {
     )
       throw new Error('POS_SANDBOX_MANUAL_TERMINAL_FENCE_CONFLICT');
     const available = await this.terminalPayments.getAvailability();
-    if (
-      !available.available ||
-      !['AVAILABLE', 'IDLE', 'READY'].includes(available.state) ||
-      available.terminalId !== operation.terminalId
-    )
+    if (!this.hasExplicitIdleEvidence(available, operation.terminalId)) {
       throw new Error('POS_SANDBOX_MANUAL_TERMINAL_NOT_IDLE');
+    }
     const checked = await this.terminalPayments.reconcile(payment.id);
     const latest = checked.toSnapshot();
     if (
@@ -190,12 +188,9 @@ export class SandboxTerminalManualRecoveryService {
     }
     if (decision.terminalFinalizedAt) return true;
     const available = await this.terminalPayments.getAvailability();
-    if (
-      !available.available ||
-      !['AVAILABLE', 'IDLE', 'READY'].includes(available.state) ||
-      available.terminalId !== decision.terminalId
-    )
+    if (!this.hasExplicitIdleEvidence(available, decision.terminalId)) {
       return false;
+    }
     const idleWelcome = await this.terminalProvider.prepareOriginalSaleResume();
     if (!idleWelcome) return false;
     return this.terminalOperations.finalizeSandboxManualUnpaid(attemptId);
@@ -243,6 +238,23 @@ export class SandboxTerminalManualRecoveryService {
     )
       return false;
     throw new Error('POS_SANDBOX_MANUAL_CANONICAL_RECHECK_UNAVAILABLE');
+  }
+
+  /** The coarse AVAILABLE state may be synthesized for HTTP 200 without
+   * device status. R2 requires an explicit idle response before money changes. */
+  private hasExplicitIdleEvidence(
+    availability: PaymentTerminalAvailability,
+    terminalId: string,
+  ): boolean {
+    return (
+      availability.available === true &&
+      availability.terminalId === terminalId &&
+      availability.providerStateExplicit === true &&
+      typeof availability.providerState === 'string' &&
+      /^(AVAILABLE|IDLE|READY)$/.test(
+        availability.providerState.trim().toUpperCase(),
+      )
+    );
   }
 
   async checkpointSandboxBenefitsReleased(attemptId: string): Promise<void> {

@@ -64,6 +64,9 @@ export type PaymentTerminalAvailability = {
   available: boolean;
   terminalId?: string | null;
   providerState?: string | null;
+  /** True only when the device actually supplied state/status in its response.
+   * A legacy AVAILABLE fallback is never sufficient for a financial decision. */
+  providerStateExplicit?: boolean;
   failureCode?: string | null;
   failureMessage?: string | null;
 };
