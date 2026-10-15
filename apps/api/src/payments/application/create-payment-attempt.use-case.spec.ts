@@ -1050,11 +1050,10 @@ describe('TerminalPaymentService', () => {
       '4750_Yonge_Street',
     );
     expect(ack.status).toBe('UNKNOWN');
-    expect(operations.requestCancel).toHaveBeenCalledWith(
-      terminalInput.attemptId,
-      '4750_Yonge_Street',
-    );
-    expect(operations.acknowledgeCancel).toHaveBeenCalledTimes(1);
+    expect(operations.requestCancel.mock.calls).toEqual([
+      [terminalInput.attemptId, '4750_Yonge_Street'],
+    ]);
+    expect(operations.acknowledgeCancel.mock.calls).toHaveLength(1);
 
     originalSale.resolve({
       status: 'CANCELLED',
@@ -1062,8 +1061,8 @@ describe('TerminalPaymentService', () => {
       resultCode: 'CLOVER_CANCELLED',
     });
     expect((await pending).status).toBe('CANCELLED');
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
-    expect(provider.getPaymentStatus).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
   });
 
   it('prefers canonical success when original Sale 209 races a card tap', async () => {
@@ -1079,7 +1078,7 @@ describe('TerminalPaymentService', () => {
     );
     const paid = await service.startSale(terminalInput);
     expect(paid.status).toBe('SUCCEEDED');
-    expect(operations.complete).not.toHaveBeenCalled();
+    expect(operations.complete.mock.calls).toHaveLength(0);
   });
 
   it('prevents a new Sale after a durable pre-dispatch cancellation', async () => {
@@ -1097,12 +1096,12 @@ describe('TerminalPaymentService', () => {
     const { service, provider } = createTerminalHarness(operations);
     const result = await service.startSale(terminalInput);
     expect(result.status).toBe('CANCELLED');
-    expect(provider.startPayment).not.toHaveBeenCalled();
-    expect(operations.complete).not.toHaveBeenCalled();
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
+    expect(operations.complete.mock.calls).toHaveLength(0);
     expect(
       await service.completeUndispatchedCancel(terminalInput.attemptId),
     ).toBe(true);
-    expect(operations.complete).toHaveBeenCalledWith(terminalInput.attemptId);
+    expect(operations.complete.mock.calls).toEqual([[terminalInput.attemptId]]);
   });
 
   it('blocks original 504 resume after this terminal owner recorded a Cancel intent', async () => {
@@ -1140,7 +1139,7 @@ describe('TerminalPaymentService', () => {
     await expect(service.resumeOriginal504Sale(payment.id)).rejects.toThrow(
       'terminal ownership or cancellation',
     );
-    expect(provider.startPayment).not.toHaveBeenCalled();
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
   });
 
   it('does not cancel another Store terminal operation', async () => {
@@ -1171,6 +1170,6 @@ describe('TerminalPaymentService', () => {
     transactions.rows.push(running);
     const result = await service.cancel(running.id, '4750_Yonge_Street');
     expect(result.status).toBe('PROCESSING');
-    expect(provider.cancelPayment).not.toHaveBeenCalled();
+    expect(provider.cancelPayment.mock.calls).toHaveLength(0);
   });
 });
