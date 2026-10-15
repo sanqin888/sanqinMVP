@@ -162,7 +162,8 @@ export class SandboxTerminalManualRecoveryService {
       payment.status !== 'FAILED' ||
       identity.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID' ||
       identity.externalPaymentId !== decision.externalPaymentId
-    ) return false;
+    )
+      return false;
     // Fresh canonical check even AFTER operator attestation. Late success
     // blocks this terminal rather than being overwritten by an old NOT_FOUND.
     const canonical = await this.provider.getPaymentStatus({
@@ -193,7 +194,8 @@ export class SandboxTerminalManualRecoveryService {
       !available.available ||
       !['AVAILABLE', 'IDLE', 'READY'].includes(available.state) ||
       available.terminalId !== decision.terminalId
-    ) return false;
+    )
+      return false;
     const idleWelcome = await this.terminalProvider.prepareOriginalSaleResume();
     if (!idleWelcome) return false;
     return this.terminalOperations.finalizeSandboxManualUnpaid(attemptId);
@@ -211,7 +213,8 @@ export class SandboxTerminalManualRecoveryService {
     if (
       identity.status !== 'FAILED' ||
       identity.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID'
-    ) return false;
+    )
+      return false;
     const decision = await this.getSandboxManualUnpaidDecision(
       identity.attemptId,
     );
@@ -237,7 +240,8 @@ export class SandboxTerminalManualRecoveryService {
     if (
       canonical.status === 'UNKNOWN' &&
       canonical.failureCode === 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND'
-    ) return false;
+    )
+      return false;
     throw new Error('POS_SANDBOX_MANUAL_CANONICAL_RECHECK_UNAVAILABLE');
   }
 

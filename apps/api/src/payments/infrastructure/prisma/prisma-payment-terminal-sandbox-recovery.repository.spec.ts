@@ -55,8 +55,8 @@ describe('Sandbox-only operator unpaid persistence', () => {
     await expect(repository.claimSandboxManualUnpaid(input)).resolves.toBe(
       'CLAIMED',
     );
-    const fenceCalls: Array<[unknown]> =
-      tx.paymentTerminalOperation.updateMany.mock.calls;
+    const fenceCalls =
+      tx.paymentTerminalOperation.updateMany.mock.calls as Array<[unknown]>;
     expect(fenceCalls[0]?.[0]).toMatchObject({
       where: {
         terminalId: input.terminalId,
@@ -66,8 +66,8 @@ describe('Sandbox-only operator unpaid persistence', () => {
       },
       data: { state: 'NEEDS_REVIEW' },
     });
-    const paymentCalls: Array<[unknown]> =
-      tx.paymentTransaction.updateMany.mock.calls;
+    const paymentCalls =
+      tx.paymentTransaction.updateMany.mock.calls as Array<[unknown]>;
     expect(paymentCalls[0]?.[0]).toMatchObject({
       where: {
         id: input.paymentTransactionId,
@@ -81,8 +81,8 @@ describe('Sandbox-only operator unpaid persistence', () => {
         resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
       },
     });
-    const auditCalls: Array<[unknown]> =
-      tx.paymentTerminalSandboxRecovery.create.mock.calls;
+    const auditCalls =
+      tx.paymentTerminalSandboxRecovery.create.mock.calls as Array<[unknown]>;
     expect(auditCalls[0]?.[0]).toEqual({ data: input });
   });
 

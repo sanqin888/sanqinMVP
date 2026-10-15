@@ -89,7 +89,7 @@ const createHarness = () => {
     operations,
     provider,
     terminalProvider,
-    setPayment(next: PaymentTransaction) {
+    setPayment: (next: PaymentTransaction) => {
       payment = next;
     },
   };
@@ -247,9 +247,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
     expect(operations.noteSandboxLateCanonicalSuccess.mock.calls).toEqual([
       [attemptId, 'late-paid'],
     ]);
-    expect(
-      terminalProvider.prepareOriginalSaleResume.mock.calls,
-    ).toHaveLength(0);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
     expect(operations.finalizeSandboxManualUnpaid.mock.calls).toHaveLength(0);
   });
 });

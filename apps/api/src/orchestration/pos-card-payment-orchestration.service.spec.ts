@@ -551,7 +551,6 @@ describe('PosCardPaymentOrchestrationService', () => {
     ).not.toHaveBeenCalled();
   });
 
-
   it('acknowledges an async Sale immediately and publishes the canonical result later', async () => {
     const harness = createHarness();
     let completeSale!: (payment: PaymentTransaction) => void;

@@ -1487,5 +1487,4 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
   }
-
 }
