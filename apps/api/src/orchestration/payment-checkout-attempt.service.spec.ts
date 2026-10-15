@@ -136,10 +136,14 @@ const createHarness = () => {
       const releaseCheckpointMatches =
         where.benefitsReleasedAt === undefined ||
         where.benefitsReleasedAt === row.benefitsReleasedAt;
+      const paymentIdentityMatches =
+        where.paymentTransactionId === undefined ||
+        where.paymentTransactionId === row.paymentTransactionId;
       if (
         !statusMatches ||
         !idMatches ||
         !attemptMatches ||
+        !paymentIdentityMatches ||
         !releaseCheckpointMatches
       ) {
         return { count: 0 };
@@ -480,6 +484,35 @@ describe('PaymentCheckoutAttemptService', () => {
       harness.paymentCouponReservations.releasePaymentCoupons,
     ).toHaveBeenCalledTimes(2);
     expect(harness.getRow()?.benefitsReleasedAt).toBeInstanceOf(Date);
+  });
+
+  it('only cancels a never-dispatched PROCESSING checkout with a CAS and owner RELEASE', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    await harness.service.claimProviderStart('attempt-1');
+    const cancelled =
+      await harness.service.cancelAfterConfirmedNoDispatch('attempt-1');
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(cancelled.benefitsReleasedAt).toBeInstanceOf(Date);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledTimes(1);
+    const again =
+      await harness.service.cancelAfterConfirmedNoDispatch('attempt-1');
+    expect(again.status).toBe('CANCELLED');
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(2);
   });
 
   it('keeps a durable pending checkpoint when coupon release fails and repairs it on retry', async () => {

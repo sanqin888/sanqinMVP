@@ -1349,6 +1349,34 @@ model PaymentTransaction {
   @@index([status, updatedAt])
 }
 
+// POS Terminal device coordination; never a substitute for PaymentTransaction
+// or canonical Clover financial truth. One row per physical terminal fences
+// competing POS attempts until the original operation is safely concluded.
+model PaymentTerminalOperation {
+  terminalId           String                        @id
+  storeStableId        String
+  attemptId            String                        @unique
+  paymentTransactionId String?                       @unique @db.Uuid
+  externalPaymentId    String?
+  state                PaymentTerminalOperationState @default(RESERVED)
+  cancelRequestedAt    DateTime?
+  cancelAcknowledgedAt DateTime?
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+
+  @@index([state, updatedAt])
+  @@index([storeStableId, state])
+}
+
+enum PaymentTerminalOperationState {
+  RESERVED
+  SALE_IN_FLIGHT
+  CANCEL_REQUESTED
+  CANCEL_ACKED
+  FINALIZED
+  NEEDS_REVIEW
+}
+
 // Channel-neutral checkout/payment preparation record. It freezes the server-
 // approved order/pricing/tender facts before any external provider action.
 model PaymentCheckoutAttempt {

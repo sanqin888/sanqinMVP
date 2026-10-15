@@ -23,6 +23,7 @@ import {
   type PosOrderPricingQuote,
 } from "@/lib/api/pos";
 import {
+  canUnlockCancelledPosCheckout,
   mergePosCardPaymentSnapshot,
   parsePosCardPaymentSnapshot,
   type PosCardPaymentRealtimeEvent,
@@ -34,6 +35,11 @@ import {
 } from "@/lib/pos-display";
 import type { PaymentMethod } from "@/lib/api/pos";
 import { PosCardPaymentBenefitsReview } from "./PosCardPaymentBenefitsReview";
+import {
+  clearPosCheckoutEditDraft,
+  readPosCheckoutEditDraft,
+  savePosCheckoutEditDraft,
+} from "@/lib/pos-checkout-draft";
 
 type FulfillmentType = "pickup" | "dine_in";
 
@@ -446,6 +452,7 @@ export default function StorePosPaymentPage() {
   const [pricingQuoteStructuralKey, setPricingQuoteStructuralKey] = useState<string | null>(null);
   const [pricingQuoteLoading, setPricingQuoteLoading] = useState(false);
   const [pricingQuoteError, setPricingQuoteError] = useState(false);
+  const [pricingRefreshEpoch, setPricingRefreshEpoch] = useState(0);
   const [earnRate, setEarnRate] = useState(0.01);
   const [tierMultipliers, setTierMultipliers] = useState({
     BRONZE: 1,
@@ -486,6 +493,9 @@ export default function StorePosPaymentPage() {
   const cardRecoveryAttemptedRef = useRef(false);
   const deviceRetryHandledAttemptRef = useRef<string | null>(null);
   const cardConfirmInFlightRef = useRef(false);
+  const checkoutDraftRestoredRef = useRef(false);
+  const restoredMemberStableIdRef = useRef<string | null>(null);
+  const [draftMemberLoading, setDraftMemberLoading] = useState(false);
 
   // 从 localStorage 读取 POS 界面保存的订单快照
   useEffect(() => {
@@ -501,6 +511,75 @@ export default function StorePosPaymentPage() {
       setLoadingSnapshot(false);
     }
   }, []);
+
+  // Restore only editable choices. Membership is fetched afresh; no cached
+  // balances, payment truth, or server Benefits reservation are trusted.
+  useEffect(() => {
+    const saved = readPosCheckoutEditDraft();
+    if (!saved) {
+      checkoutDraftRestoredRef.current = true;
+      return;
+    }
+    setFulfillment(saved.fulfillment);
+    if (["cash", "card", "wechat_alipay", "store_balance"].includes(saved.paymentMethod)) {
+      setPaymentMethod(saved.paymentMethod as LocalPaymentMethod);
+    }
+    setRedeemPointsInput(saved.redeemPointsInput);
+    setUseBalanceInput(saved.useBalanceInput);
+    setDiscountOption(saved.discountOption);
+    setOtherDiscountInput(saved.otherDiscountInput);
+    restoredMemberStableIdRef.current = saved.memberStableId;
+    checkoutDraftRestoredRef.current = true;
+    if (!saved.memberStableId) return;
+    let active = true;
+    setDraftMemberLoading(true);
+    void apiFetch<MemberDetailResponse>(
+      `/admin/members/${encodeURIComponent(saved.memberStableId)}`,
+    ).then((detail) => {
+      if (!active) return;
+      setMemberInfo({
+        userStableId: detail.userStableId,
+        displayName: detail.displayName ?? null,
+        phone: detail.phone ?? null,
+        tier: detail.account.tier,
+        points: detail.account.points,
+        balance: detail.account.balance,
+        availableDiscountCents: detail.availableDiscountCents,
+        lifetimeSpendCents: detail.account.lifetimeSpendCents,
+      });
+      setMemberPhone(detail.phone ?? "");
+    }).catch(() => {
+      if (!active) return;
+      restoredMemberStableIdRef.current = null;
+      setMemberInfo(null);
+      setRedeemPointsInput("");
+      setUseBalanceInput("");
+    }).finally(() => {
+      if (active) setDraftMemberLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!checkoutDraftRestoredRef.current) return;
+    savePosCheckoutEditDraft({
+      memberStableId: memberInfo?.userStableId ?? restoredMemberStableIdRef.current,
+      fulfillment,
+      paymentMethod,
+      redeemPointsInput,
+      useBalanceInput,
+      discountOption,
+      otherDiscountInput,
+    });
+  }, [
+    memberInfo?.userStableId,
+    fulfillment,
+    paymentMethod,
+    redeemPointsInput,
+    useBalanceInput,
+    discountOption,
+    otherDiscountInput,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -716,6 +795,7 @@ export default function StorePosPaymentPage() {
     pricingInputKey,
     pricingItems,
     pricingStructuralKey,
+    pricingRefreshEpoch,
   ]);
 
   const currentPricingQuote =
@@ -842,7 +922,7 @@ export default function StorePosPaymentPage() {
   ]);
 
   const pricingReady = Boolean(
-    currentPricingQuote && !pricingQuoteLoading && !pricingQuoteError,
+    currentPricingQuote && !pricingQuoteLoading && !pricingQuoteError && !draftMemberLoading,
   );
 
   // 更新副屏
@@ -916,6 +996,7 @@ export default function StorePosPaymentPage() {
   }, [locale]);
 
   const handleMemberLookup = async () => {
+    restoredMemberStableIdRef.current = null;
     if (!memberPhone.trim()) {
       setMemberLookupError(t.memberNotFound);
       return;
@@ -954,6 +1035,7 @@ export default function StorePosPaymentPage() {
   };
 
   const handleMemberClear = () => {
+    restoredMemberStableIdRef.current = null;
     setMemberInfo(null);
     setMemberPhone("");
     setRedeemPointsInput("");
@@ -965,6 +1047,7 @@ export default function StorePosPaymentPage() {
   const handleBackKeepItems = () => router.push(`/${locale}/store/pos`);
 
   const handleBack = () => {
+    clearPosCheckoutEditDraft();
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
     }
@@ -1079,6 +1162,7 @@ export default function StorePosPaymentPage() {
         try { window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY); } catch {}
       }
 
+      clearPosCheckoutEditDraft();
       setSuccessInfo({
         orderNumber: order.orderNumber ?? order.orderStableId,
         pickupCode: order.pickupCode ?? null,
@@ -1120,6 +1204,26 @@ export default function StorePosPaymentPage() {
       setCardFlowState(merged.status);
       setCardFlowError(merged.failureMessage ?? null);
 
+      if (canUnlockCancelledPosCheckout(merged)) {
+        // These are server-confirmed checkpoints, NOT a browser-side
+        // cancellation. Keep the POS basket/member data for editing/repricing.
+        clearPendingCardPayment();
+        setCardPaymentOpen(false);
+        setCardPaymentResult(null);
+        setCardFlowState("IDLE");
+        setCardFlowError(null);
+        if (merged.paymentId && merged.terminalReadyForNextSale !== true) {
+          setError(locale === "zh"
+            ? "原银行卡付款已取消、权益已释放。可以修改订单或改现金；Clover 尚未确认 Welcome，下一笔银行卡收款前须检查设备。"
+            : "Card payment was cancelled and benefits released. You can edit or use cash, but inspect Clover before another card payment.");
+        }
+        setPricingQuote(null);
+        setPricingQuoteKey(null);
+        setPricingQuoteStructuralKey(null);
+        setPricingRefreshEpoch((current) => current + 1);
+        return;
+      }
+
       if (
         merged.terminalInteractionTimedOut === true &&
         ["UNKNOWN", "RECONCILING"].includes(merged.status) &&
@@ -1140,6 +1244,7 @@ export default function StorePosPaymentPage() {
 
       if (merged.status === "SUCCEEDED" && merged.orderStableId) {
         clearPendingCardPayment();
+        clearPosCheckoutEditDraft();
         if (typeof window !== "undefined") {
           try {
             window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
@@ -1564,16 +1669,20 @@ export default function StorePosPaymentPage() {
     }
   })();
   const canRetryCardPayment =
-    ["DECLINED", "CANCELLED", "FAILED"].includes(cardFlowState) &&
+    ["DECLINED", "FAILED"].includes(cardFlowState) &&
     cardPaymentResult?.customerPromptPending !== true &&
     cardPaymentResult?.customerRetryRequested !== true;
-  const canRecheckCardPayment = ["UNKNOWN", "RECONCILING"].includes(
-    cardFlowState,
-  );
+  const canRecheckCardPayment =
+    ["UNKNOWN", "RECONCILING"].includes(cardFlowState) ||
+    (cardFlowState === "CANCELLED" &&
+      (cardPaymentResult?.benefitsReleaseComplete !== true ||
+        (cardPaymentResult?.terminalReadyForNextSale !== true &&
+          cardPaymentResult?.paymentId !== null)));
   const canResumeOriginalCardPayment =
     canRecheckCardPayment && cardPaymentResult?.canResumeOriginalSale === true;
   const canCancelCardPayment =
-    cardFlowState === "PROCESSING" ||
+    (cardFlowState === "PROCESSING" &&
+      cardPaymentResult?.cancellationPending !== true) ||
     cardPaymentResult?.customerPromptPending === true;
   const timedOutCheckoutVisible =
     !cardPaymentOpen &&
@@ -1926,7 +2035,11 @@ export default function StorePosPaymentPage() {
                 <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-400" />
               )}
               <p className="text-base font-medium text-slate-100">
-                {cardPaymentResult?.customerPromptPending
+                {cardPaymentResult?.cancellationPending
+                  ? (locale === "zh"
+                    ? "已请求终止原付款，正在等待 Clover 返回原 Sale 最终结果。此时不可重复收款。"
+                    : "Cancellation requested. Waiting for the original Clover Sale outcome; do not charge again.")
+                  : cardPaymentResult?.customerPromptPending
                   ? (locale === "zh"
                     ? "请在 Clover 终端选择重试或取消，POS 将持续等待。"
                     : "Choose Retry or Cancel on Clover. POS will keep waiting.")

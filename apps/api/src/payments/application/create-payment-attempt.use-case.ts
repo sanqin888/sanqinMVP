@@ -8,6 +8,7 @@ import type {
   PaymentProviderOutcome,
   PaymentStatus,
 } from '../domain/payment.types';
+import type { PaymentTerminalOperationRepository } from './payment-terminal-operation.repository';
 import type {
   PaymentProvider,
   PaymentTerminalAvailability,
@@ -185,6 +186,7 @@ export class TerminalPaymentService {
     private readonly transactions: PaymentTransactionRepository,
     private readonly provider: PaymentProvider,
     private readonly terminalProvider: PaymentTerminalProvider,
+    private readonly terminalOperations?: PaymentTerminalOperationRepository,
   ) {}
 
   canResumeOriginal504Sale(transaction: PaymentTransaction): boolean {
@@ -233,6 +235,99 @@ export class TerminalPaymentService {
     }
   }
 
+  /**
+   * Reserve a single Compact for exactly one store/attempt before claiming
+   * checkout provider start. A held/uncertain previous Sale cannot be stolen.
+   */
+  async reserveSale(
+    attemptId: string,
+    storeStableId: string,
+    availability: PaymentTerminalAvailability,
+  ): Promise<boolean> {
+    if (
+      !this.terminalOperations ||
+      !availability.available ||
+      !availability.terminalId
+    ) {
+      return false;
+    }
+    return this.terminalOperations.reserve(
+      availability.terminalId,
+      storeStableId,
+      attemptId,
+    );
+  }
+
+  /** Persist cancellation while the checkout is PROCESSING but payment is not yet visible. */
+  async requestPendingCancel(
+    attemptId: string,
+    storeStableId: string,
+  ): Promise<{ requested: boolean; safeBeforeDispatch: boolean }> {
+    if (!this.terminalOperations) {
+      return { requested: false, safeBeforeDispatch: false };
+    }
+    const previous = await this.terminalOperations.findByAttemptId(attemptId);
+    if (!previous || previous.storeStableId !== storeStableId) {
+      return { requested: false, safeBeforeDispatch: false };
+    }
+    // If the device dispatch was already claimed, delegate to the same
+    // identity-checked cancel command rather than merely recording an ACK.
+    if (previous.paymentTransactionId) {
+      const linked = await this.transactions.findById(
+        previous.paymentTransactionId,
+      );
+      if (linked) await this.cancel(linked.id, storeStableId);
+      return { requested: true, safeBeforeDispatch: false };
+    }
+    const claimed = await this.terminalOperations.requestCancel(
+      attemptId,
+      storeStableId,
+    );
+    const safeBeforeDispatch =
+      claimed.operation?.paymentTransactionId === null &&
+      claimed.operation.state === 'CANCEL_REQUESTED';
+    return {
+      requested: claimed.operation !== null,
+      safeBeforeDispatch,
+    };
+  }
+
+  async completeUndispatchedCancel(attemptId: string): Promise<boolean> {
+    if (!this.terminalOperations) return false;
+    const operation = await this.terminalOperations.findByAttemptId(attemptId);
+    if (!operation) return false;
+    if (operation.state === 'FINALIZED') return true;
+    if (!['CANCEL_REQUESTED', 'CANCEL_ACKED'].includes(operation.state)) {
+      return false;
+    }
+    const payment = await this.transactions.findByAttemptId(attemptId);
+    const neverDispatched = payment
+      ? payment.status === 'CANCELLED' &&
+        payment.toSnapshot().resultCode ===
+          'TERMINAL_CANCELLED_BEFORE_DISPATCH' &&
+        (operation.paymentTransactionId === null ||
+          operation.paymentTransactionId === payment.id)
+      : operation.paymentTransactionId === null;
+    if (!neverDispatched) return false;
+    await this.terminalOperations.complete(attemptId);
+    return true;
+  }
+
+  /** Best-effort display recovery; never treats Welcome or IDLE as financial truth. */
+  async finishTerminalOperation(attemptId: string): Promise<boolean> {
+    if (!this.terminalOperations) return false;
+    const operation = await this.terminalOperations.findByAttemptId(attemptId);
+    if (!operation) return false;
+    const payment = await this.transactions.findByAttemptId(attemptId);
+    if (!payment || !this.isFinal(payment)) return false;
+    if (operation.state === 'FINALIZED') return true;
+    // The owning orchestration invokes this only after a definitive outcome
+    // (and after benefits release for a cancelled checkout).
+    const ready = await this.terminalProvider.prepareOriginalSaleResume();
+    if (ready) await this.terminalOperations.complete(attemptId);
+    return ready;
+  }
+
   async startSale(input: StartTerminalSaleInput): Promise<PaymentTransaction> {
     const transaction = await this.createAttempt.execute({
       attemptId: input.attemptId,
@@ -248,6 +343,47 @@ export class TerminalPaymentService {
 
     if (transaction.status !== 'CREATED') return transaction;
 
+    if (this.terminalOperations) {
+      const dispatched = await this.terminalOperations.claimDispatch(
+        input.attemptId,
+        transaction.id,
+        transaction.toSnapshot().externalPaymentId ?? '',
+      );
+      if (!dispatched) {
+        // A reserved operation may have been cancelled before the Sale was sent.
+        // Without our durable terminal fence, never send a provider command.
+        const operation = await this.terminalOperations.findByAttemptId(
+          input.attemptId,
+        );
+        if (
+          operation?.paymentTransactionId === transaction.id &&
+          (operation.state === 'SALE_IN_FLIGHT' ||
+            operation.state === 'CANCEL_REQUESTED' ||
+            operation.state === 'CANCEL_ACKED')
+        ) {
+          // Another caller won this exact Attempt's durable dispatch claim.
+          // Never cancel its CREATED transaction or issue a second Sale.
+          return transaction;
+        }
+        const safeCancelled =
+          operation?.state === 'CANCEL_REQUESTED' &&
+          operation.paymentTransactionId === null;
+        // Never manufacture cancellation merely because we failed to claim
+        // the terminal. Only the persisted pre-dispatch Cancel proves safety.
+        if (!safeCancelled) return transaction;
+        const local = transaction.applyProviderOutcome({
+          status: 'CANCELLED',
+          resultCode: 'TERMINAL_CANCELLED_BEFORE_DISPATCH',
+        });
+        const saved = await this.transactions.saveIfCurrentStatus(
+          local,
+          'CREATED',
+        );
+        // Preserve the terminal fence until Checkout completes Benefits RELEASE.
+        return saved.transaction;
+      }
+    }
+
     const processing = transaction.transitionTo('PROCESSING');
     const claimed = await this.transactions.saveIfCurrentStatus(
       processing,
@@ -256,6 +392,30 @@ export class TerminalPaymentService {
     if (!claimed.updated) return claimed.transaction;
 
     const snapshot = claimed.transaction.toSnapshot();
+    if (this.terminalOperations) {
+      const operation = await this.terminalOperations.findByAttemptId(
+        snapshot.attemptId,
+      );
+      if (
+        operation?.paymentTransactionId === snapshot.id &&
+        (operation.state === 'CANCEL_REQUESTED' ||
+          operation.state === 'CANCEL_ACKED')
+      ) {
+        // Dispatch was claimed but this worker has not sent the Sale yet.
+        // Prevent the provider call and close from the owned local evidence.
+        const cancelled = claimed.transaction.applyProviderOutcome({
+          status: 'CANCELLED',
+          resultCode: 'TERMINAL_CANCELLED_BEFORE_DISPATCH',
+        });
+        const local = await this.transactions.saveIfCurrentStatus(
+          cancelled,
+          'PROCESSING',
+        );
+        // No Clover Sale was sent; the checkout will release Benefits before
+        // the terminal operation is finalized.
+        return local.transaction;
+      }
+    }
     let outcome: PaymentProviderOutcome;
     try {
       outcome = await this.provider.startPayment({
@@ -277,6 +437,44 @@ export class TerminalPaymentService {
           'Terminal payment request outcome is uncertain',
         ),
       );
+    }
+
+    // A device-level Cancel can race with a successful card tap. Before
+    // accepting the original Sale 209, query canonical financial truth using
+    // the SAME frozen identity. An unavailable query is not a negative result.
+    if (
+      this.terminalOperations &&
+      outcome.status === 'CANCELLED' &&
+      outcome.evidence === 'TERMINAL_SALE_CANCELLED'
+    ) {
+      try {
+        const canonical = await this.provider.getPaymentStatus({
+          paymentId: snapshot.id,
+          attemptId: snapshot.attemptId,
+          source: snapshot.source,
+          idempotencyKey: snapshot.idempotencyKey,
+          externalPaymentId: snapshot.externalPaymentId,
+          providerPaymentId: snapshot.providerPaymentId,
+          amountCents: snapshot.amountCents,
+          currency: snapshot.currency,
+        });
+        if (canonical.status === 'SUCCEEDED') {
+          outcome = canonical;
+        } else if (
+          canonical.status !== 'UNKNOWN' ||
+          canonical.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND'
+        ) {
+          outcome = providerCallUnknown(
+            'TERMINAL_SALE_CANCEL_CANONICAL_REVIEW',
+            'Original Sale ended with 209, but canonical verification is not yet conclusive',
+          );
+        }
+      } catch {
+        outcome = providerCallUnknown(
+          'TERMINAL_SALE_CANCEL_CANONICAL_UNAVAILABLE',
+          'Cannot confirm canonical payment status after original Sale cancellation',
+        );
+      }
     }
 
     let persisted = await this.mergeProviderOutcome(
@@ -314,6 +512,20 @@ export class TerminalPaymentService {
   async resumeOriginal504Sale(paymentId: string): Promise<PaymentTransaction> {
     const previous = await this.requireTerminalSale(paymentId);
     if (!isResumableOriginal504Sale(previous)) return previous;
+    if (this.terminalOperations) {
+      const operation = await this.terminalOperations.findByAttemptId(
+        previous.toSnapshot().attemptId,
+      );
+      if (
+        operation?.state !== 'SALE_IN_FLIGHT' ||
+        operation.paymentTransactionId !== paymentId ||
+        operation.externalPaymentId !== previous.toSnapshot().externalPaymentId
+      ) {
+        throw new InvalidTerminalPaymentError(
+          'Original Sale resume is blocked by terminal ownership or cancellation; reconcile the existing payment',
+        );
+      }
+    }
 
     const reconciled = await this.reconcile(paymentId);
     if (!isResumableOriginal504Sale(reconciled)) return reconciled;
@@ -369,19 +581,66 @@ export class TerminalPaymentService {
     return this.requireTransaction(paymentId);
   }
 
-  async cancel(paymentId: string): Promise<PaymentTransaction> {
+  async cancel(
+    paymentId: string,
+    storeStableId?: string,
+  ): Promise<PaymentTransaction> {
     let transaction = await this.requireTerminalSale(paymentId);
-    if (transaction.status === 'CREATED') {
-      const cancelled = transaction.transitionTo('CANCELLED');
+    const identity = transaction.toSnapshot();
+    let sendDeviceCancel = transaction.status === 'PROCESSING';
+    if (this.terminalOperations) {
+      const operation = await this.terminalOperations.findByAttemptId(
+        identity.attemptId,
+      );
+      // Device Cancel is NOT payment-scoped. Never interrupt another terminal
+      // operation or accept a mismatched store/transaction binding.
+      if (
+        !operation ||
+        !storeStableId ||
+        operation.storeStableId !== storeStableId ||
+        (operation.paymentTransactionId !== null &&
+          operation.paymentTransactionId !== paymentId) ||
+        (operation.externalPaymentId !== null &&
+          operation.externalPaymentId !== identity.externalPaymentId)
+      ) {
+        return transaction;
+      }
+      if (
+        transaction.status !== 'CREATED' &&
+        transaction.status !== 'PROCESSING'
+      ) {
+        return transaction;
+      }
+      const claim = await this.terminalOperations.requestCancel(
+        identity.attemptId,
+        storeStableId,
+      );
+      if (!claim.requested) return transaction;
+      sendDeviceCancel = claim.sendDeviceCancel;
+    }
+    if (transaction.status === 'CREATED' && !sendDeviceCancel) {
+      // The CAS fence was still RESERVED: original Sale cannot be dispatched
+      // after CANCEL_REQUESTED, so a CREATED transaction may close locally.
+      const cancelled = transaction.applyProviderOutcome({
+        status: 'CANCELLED',
+        resultCode: 'TERMINAL_CANCELLED_BEFORE_DISPATCH',
+      });
       const localCancel = await this.transactions.saveIfCurrentStatus(
         cancelled,
         'CREATED',
       );
-      if (localCancel.updated) return localCancel.transaction;
+      if (localCancel.updated) {
+        return localCancel.transaction;
+      }
       transaction = localCancel.transaction;
     }
 
-    if (transaction.status !== 'PROCESSING') return transaction;
+    if (
+      !sendDeviceCancel ||
+      !['CREATED', 'PROCESSING'].includes(transaction.status)
+    ) {
+      return transaction;
+    }
 
     const snapshot = transaction.toSnapshot();
     let outcome: PaymentProviderOutcome;
@@ -406,6 +665,10 @@ export class TerminalPaymentService {
       );
     }
 
+    if (outcome.failureCode === 'CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED') {
+      await this.terminalOperations?.acknowledgeCancel(snapshot.attemptId);
+    }
+
     outcome = {
       ...outcome,
       status: 'UNKNOWN',
@@ -416,6 +679,12 @@ export class TerminalPaymentService {
         'Terminal cancel requires reconciliation before final payment truth',
     };
 
+    const latest = await this.requireTerminalSale(transaction.id);
+    if (latest.status === 'CREATED') {
+      // A concurrent dispatcher has not yet published PROCESSING. The durable
+      // CANCEL_REQUESTED/CANCEL_ACKED fence remains until original Sale finality.
+      return latest;
+    }
     return this.mergeProviderOutcome(transaction.id, outcome);
   }
 

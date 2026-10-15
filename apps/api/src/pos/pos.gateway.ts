@@ -785,6 +785,18 @@ export class PosGateway
         ...(data.canResumeOriginalSale !== undefined && {
           canResumeOriginalSale: data.canResumeOriginalSale,
         }),
+        ...(data.terminalInteractionTimedOut !== undefined && {
+          terminalInteractionTimedOut: data.terminalInteractionTimedOut,
+        }),
+        ...(data.benefitsReleaseComplete !== undefined && {
+          benefitsReleaseComplete: data.benefitsReleaseComplete,
+        }),
+        ...(data.terminalReadyForNextSale !== undefined && {
+          terminalReadyForNextSale: data.terminalReadyForNextSale,
+        }),
+        ...(data.cancellationPending !== undefined && {
+          cancellationPending: data.cancellationPending,
+        }),
         messageKind: hasAmountSnapshot ? 'SNAPSHOT' : 'NOTICE',
         ...(data.externalAmountCents !== undefined && {
           externalAmountCents: data.externalAmountCents,

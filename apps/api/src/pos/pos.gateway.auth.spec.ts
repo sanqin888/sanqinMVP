@@ -380,6 +380,9 @@ describe('PosGateway device authorization', () => {
       customerPromptPending: false,
       customerRetryRequested: false,
       canResumeOriginalSale: false,
+      benefitsReleaseComplete: true,
+      terminalReadyForNextSale: true,
+      cancellationPending: false,
     });
 
     expect(to).toHaveBeenCalledWith('store:store-a');
@@ -399,6 +402,9 @@ describe('PosGateway device authorization', () => {
         customerPromptPending: false,
         customerRetryRequested: false,
         canResumeOriginalSale: false,
+        benefitsReleaseComplete: true,
+        terminalReadyForNextSale: true,
+        cancellationPending: false,
       }),
     );
   });

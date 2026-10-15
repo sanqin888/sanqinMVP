@@ -15,6 +15,7 @@ import type {
   PaymentTerminalProvider,
   StartPaymentRequest,
 } from './payment-provider.port';
+import type { PaymentTerminalOperationRepository } from './payment-terminal-operation.repository';
 import {
   PaymentTransactionUniquenessError,
   type PaymentTransactionRepository,
@@ -296,7 +297,9 @@ const deferred = <T>() => {
   return { promise, resolve, reject };
 };
 
-const createTerminalHarness = () => {
+const createTerminalHarness = (
+  operations?: PaymentTerminalOperationRepository,
+) => {
   const transactions = new InMemoryPaymentTransactionRepository();
   const createAttempt = new CreatePaymentAttemptUseCase(transactions);
   const provider: jest.Mocked<PaymentProvider> = {
@@ -322,6 +325,7 @@ const createTerminalHarness = () => {
     transactions,
     provider,
     terminalProvider,
+    operations,
   );
   return { transactions, provider, terminalProvider, service };
 };
@@ -996,5 +1000,176 @@ describe('TerminalPaymentService', () => {
       available: true,
       terminalId: 'device-1',
     });
+  });
+
+  const guardedOperations =
+    (): jest.Mocked<PaymentTerminalOperationRepository> => ({
+      reserve: jest.fn().mockResolvedValue(true),
+      findByAttemptId: jest.fn().mockResolvedValue({
+        terminalId: 'compact-1',
+        storeStableId: '4750_Yonge_Street',
+        attemptId: terminalInput.attemptId,
+        paymentTransactionId: null,
+        externalPaymentId: null,
+        state: 'SALE_IN_FLIGHT',
+        cancelRequestedAt: null,
+      }),
+      claimDispatch: jest.fn().mockResolvedValue(true),
+      requestCancel: jest.fn().mockResolvedValue({
+        operation: null,
+        sendDeviceCancel: true,
+        requested: true,
+      }),
+      acknowledgeCancel: jest.fn().mockResolvedValue(undefined),
+      complete: jest.fn().mockResolvedValue(undefined),
+    });
+
+  it('fences the Compact and accepts original Sale 209 only after canonical NOT_FOUND', async () => {
+    const operations = guardedOperations();
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
+    const started = deferred<void>();
+    const originalSale = deferred<PaymentProviderOutcome>();
+    provider.startPayment.mockImplementation(() => {
+      started.resolve(undefined);
+      return originalSale.promise;
+    });
+    provider.cancelPayment.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED',
+    });
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const pending = service.startSale(terminalInput);
+    await started.promise;
+    const ack = await service.cancel(
+      transactions.rows[0].id,
+      '4750_Yonge_Street',
+    );
+    expect(ack.status).toBe('UNKNOWN');
+    expect(operations.requestCancel.mock.calls).toEqual([
+      [terminalInput.attemptId, '4750_Yonge_Street'],
+    ]);
+    expect(operations.acknowledgeCancel.mock.calls).toHaveLength(1);
+
+    originalSale.resolve({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    expect((await pending).status).toBe('CANCELLED');
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
+  });
+
+  it('prefers canonical success when original Sale 209 races a card tap', async () => {
+    const operations = guardedOperations();
+    const { service, provider } = createTerminalHarness(operations);
+    provider.startPayment.mockResolvedValue({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    provider.getPaymentStatus.mockImplementation((request) =>
+      Promise.resolve(canonicalOutcome(request, 'SUCCEEDED')),
+    );
+    const paid = await service.startSale(terminalInput);
+    expect(paid.status).toBe('SUCCEEDED');
+    expect(operations.complete.mock.calls).toHaveLength(0);
+  });
+
+  it('prevents a new Sale after a durable pre-dispatch cancellation', async () => {
+    const operations = guardedOperations();
+    operations.claimDispatch.mockResolvedValue(false);
+    operations.findByAttemptId.mockResolvedValue({
+      terminalId: 'compact-1',
+      storeStableId: '4750_Yonge_Street',
+      attemptId: terminalInput.attemptId,
+      paymentTransactionId: null,
+      externalPaymentId: null,
+      state: 'CANCEL_REQUESTED',
+      cancelRequestedAt: new Date(),
+    });
+    const { service, provider } = createTerminalHarness(operations);
+    const result = await service.startSale(terminalInput);
+    expect(result.status).toBe('CANCELLED');
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
+    expect(operations.complete.mock.calls).toHaveLength(0);
+    expect(
+      await service.completeUndispatchedCancel(terminalInput.attemptId),
+    ).toBe(true);
+    expect(operations.complete.mock.calls).toEqual([[terminalInput.attemptId]]);
+  });
+
+  it('blocks original 504 resume after this terminal owner recorded a Cancel intent', async () => {
+    const operations = guardedOperations();
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
+    const payment = PaymentTransaction.create({
+      id: 'e28e67cc-0992-46b1-a240-286a195968f1',
+      attemptId: terminalInput.attemptId,
+      idempotencyKey: terminalInput.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: terminalInput.amountCents,
+      currency: 'CAD',
+      externalPaymentId: 'external-resume-1',
+    })
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome({
+        status: 'UNKNOWN',
+        resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+        failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      });
+    transactions.rows.push(payment);
+    operations.findByAttemptId.mockResolvedValue({
+      terminalId: 'compact-1',
+      storeStableId: '4750_Yonge_Street',
+      attemptId: terminalInput.attemptId,
+      paymentTransactionId: payment.id,
+      externalPaymentId: 'external-resume-1',
+      state: 'CANCEL_ACKED',
+      cancelRequestedAt: new Date(),
+    });
+    await expect(service.resumeOriginal504Sale(payment.id)).rejects.toThrow(
+      'terminal ownership or cancellation',
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
+  });
+
+  it('does not cancel another Store terminal operation', async () => {
+    const operations = guardedOperations();
+    operations.findByAttemptId.mockResolvedValue({
+      terminalId: 'compact-1',
+      storeStableId: 'another-store',
+      attemptId: terminalInput.attemptId,
+      paymentTransactionId: null,
+      externalPaymentId: null,
+      state: 'SALE_IN_FLIGHT',
+      cancelRequestedAt: null,
+    });
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
+    const running = PaymentTransaction.create({
+      id: 'e28e67cc-0992-46b1-a240-286a195968f1',
+      attemptId: terminalInput.attemptId,
+      idempotencyKey: terminalInput.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: terminalInput.amountCents,
+      currency: 'CAD',
+      externalPaymentId: 'different-external',
+    }).transitionTo('PROCESSING');
+    transactions.rows.push(running);
+    const result = await service.cancel(running.id, '4750_Yonge_Street');
+    expect(result.status).toBe('PROCESSING');
+    expect(provider.cancelPayment.mock.calls).toHaveLength(0);
   });
 });

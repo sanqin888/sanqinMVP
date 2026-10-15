@@ -15,15 +15,23 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-15 — Clover Compact C-2C7 Slice B1+B2: POS operator-initiated cancel and financial finality
+
+**Branch/base:** `feat/clover-c2c7-operator-cancel-finality` from `origin/dev@76934c8491786c352f7f16e95966098268411945`. **State:** LOCAL SOURCE / USER REVIEW PENDING / NO PR / NO CI / **MIGRATION REQUIRED** / NO PRODUCTION DEPLOYMENT.
+
+**Owners:** Payments application/infrastructure now fences a physical Compact to one active Store/Attempt, persists cancellation command intent and acknowledgement separately from original Sale and canonical payment truth, checks canonical Platform success before accepting correlated original HTTP 209 as final cancellation, and preserves all ambiguous outcomes (no timeout auto-release). POS Checkout orchestration reserves the device before provider start and continues to use Benefits-owned idempotent RELEASE and `benefitsReleasedAt` recovery; the existing Web production Ecommerce path is unchanged. POS Web unlocks after server-final CANCELLED and RELEASE, retains the original basket and session-only editable member preferences, refreshes membership and requotes after cancellation; failed device Welcome separately holds the terminal fence against new card Sales, but does not block editing or cash. No new graph edge/allowance/cycle; one additive Payments-owned Prisma model + enum with unique Terminal/Attempt fencing is introduced, along with additive POS HTTP/realtime fields.
+
+**Gate:** assistant must not write migration files. User-local `prisma migrate dev --create-only --name add_pos_terminal_operation_fence` against verified disposable/dev DB, inspect generated SQL, commit companion migration to dev, then CI + MacBook Compact acceptance before any production promotion. Local lint/build/tests not run per `AGENTS.md`. Detailed plan: `docs/payments/clover-pos-phase-plan.md` §C-2C7 Slice B; dependency note: `docs/architecture/current-dependency-graph.md`. Feature flag rollback stops new Sales; unresolved payment/terminal rows must survive rollback.
+
 ## 2026-10-15 — Clover Compact C-2C7 Slice A: post-504 idle Welcome cleanup
 
-**Branch/base:** `feat/clover-c2c7-504-idle-welcome-cleanup` from latest `origin/dev`. **State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PR / NO CI YET / NO PRISMA, MIGRATION, DEPENDENCY, PUBLIC CONTRACT OR GRAPH CHANGE.
+**Branch/base:** `feat/clover-c2c7-504-idle-welcome-cleanup` from prior `origin/dev`. **State:** PR #2815 MERGED / DEV `76934c84` / CI #7229 ALL SEVEN GREEN / NO PRISMA, MIGRATION, DEPENDENCY, PUBLIC CONTRACT OR GRAPH CHANGE / COMPACT POST-MERGE DEVICE VERIFICATION PENDING.
 
 **Observed evidence:** MacBook Sandbox A1 on 2026-10-15 observed original Sale HTTP 504 at about 121 seconds; a subsequent device payment lookup returned HTTP 200 with no JSON keys while the Compact reported `IDLE` at approximately +5/+10/+21 seconds. Previous A2 on 2026-10-14 explicitly sent Welcome after IDLE and restored the physical screen (HTTP 200). Neither response is proof of the payment's financial finality.
 
 **Payments/Clover owner:** after an original 504, an empty HTTP 200 device payment response is now eligible for *display-only* cleanup, never definitive NOT_FOUND/CANCELLED. Explicit device idle state is checked at most three times with two-second gaps before a single Welcome; returned payment, malformed response, BUSY/UNKNOWN and failed Welcome remain fail-closed. A transport-local Promise queue serializes Sale against the status/Welcome cleanup within one API process, not between independent instances. No new payment request, Benefits RELEASE, Order creation or change in the one-time original Sale replay permission is introduced. Distinct voluntary POS Cancel while awaiting payment remains deferred and needs financial-finality design.
 
-**Scope/gates:** existing POS Terminal feature flag only; unchanged Web Ecommerce/Payments canonical Platform v3 authority, Payments/POS public API, 12-context graph/scanner baseline and compatibility registry. Focused regression tests authored for observed empty result, unsafe responses, bounded busy/idle polling and in-process concurrency. No local lint/build/test per repository rules; await reviewed remote PR CI and MacBook Sandbox post-change timeout/Welcome verification. See `docs/payments/clover-pos-phase-plan.md` C-2C7 and `docs/architecture/current-dependency-graph.md`.
+**Scope/gates:** existing POS Terminal feature flag only; unchanged Web Ecommerce/Payments canonical Platform v3 authority, Payments/POS public API, 12-context graph/scanner baseline and compatibility registry. Focused regression tests authored for observed empty result, unsafe responses, bounded busy/idle polling and in-process concurrency. No local lint/build/test per repository rules; PR #2815 CI #7229 completed green; MacBook Sandbox post-merge timeout/Welcome verification remains pending. See `docs/payments/clover-pos-phase-plan.md` C-2C7 and `docs/architecture/current-dependency-graph.md`.
 
 ## 2026-10-13 — Clover Compact C-2C4: 504 original Sale idempotent manual resume
 

@@ -67,6 +67,7 @@ export type PreparedPaymentCheckout = {
   paymentTransactionId: string | null;
   orderStableId: string;
   expiresAt: Date;
+  benefitsReleasedAt?: Date | null;
   snapshot: PreparedPaymentOrderSnapshot;
 };
 
@@ -293,6 +294,29 @@ export class PaymentCheckoutAttemptService {
       checkout: await this.findByAttemptId(attemptId),
       cancelled: cancelled.count === 1,
     };
+  }
+
+  /**
+   * Only called after the Payments terminal-operation fence proved the original
+   * provider Sale was never dispatched. The checkout CAS prevents closing a
+   * completed or already-finalizing payment.
+   */
+  async cancelAfterConfirmedNoDispatch(
+    attemptId: string,
+  ): Promise<PreparedPaymentCheckout> {
+    await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: {
+        attemptId,
+        status: 'PROCESSING',
+        paymentTransactionId: null,
+      },
+      data: { status: 'CANCELLED' },
+    });
+    const current = await this.findByAttemptId(attemptId);
+    if (current.status === 'CANCELLED') {
+      await this.releaseReservations(attemptId);
+    }
+    return this.findByAttemptId(attemptId);
   }
 
   async markExternallyReversedAndRelease(
@@ -613,6 +637,7 @@ export class PaymentCheckoutAttemptService {
       paymentTransactionId: record.paymentTransactionId,
       orderStableId: record.orderStableId,
       expiresAt: record.expiresAt,
+      benefitsReleasedAt: record.benefitsReleasedAt,
       snapshot,
     };
   }

@@ -834,9 +834,12 @@ export class CloverTerminalTransport {
         terminalId,
       );
     }
+    // Device Cancel must bypass the long-running Sale/Welcome queue and use a
+    // bounded command ACK timeout. A timeout remains UNKNOWN, never final.
     const attempt = await this.request('/connect/v1/device/cancel', {
       method: 'POST',
       idempotencyKey: `${request.idempotencyKey}:cancel`,
+      timeoutSeconds: 5,
       body: {},
     });
     if (attempt.kind === 'credential_unavailable') {

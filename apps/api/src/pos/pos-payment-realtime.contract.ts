@@ -9,6 +9,10 @@ export type PosCardPaymentStatusRealtimeMessage = {
   customerPromptPending?: boolean;
   customerRetryRequested?: boolean;
   canResumeOriginalSale?: boolean;
+  terminalInteractionTimedOut?: boolean;
+  benefitsReleaseComplete?: boolean;
+  terminalReadyForNextSale?: boolean;
+  cancellationPending?: boolean;
   // A notice (e.g. reverse sync) has no amount facts. Do not invent zeros.
   externalAmountCents?: number;
   surchargeCents?: number | null;
