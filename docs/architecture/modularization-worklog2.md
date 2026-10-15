@@ -15,6 +15,14 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-15 — Clover Compact C-2C7 R1: persisted review and explicit canonical recheck
+
+**Branch:** `feat/clover-c2c7-r1-review-recheck` from latest `origin/dev@f6b85200`. **State:** LOCAL SOURCE / USER REVIEW PENDING / NO PR / NO CI / NO SCHEMA OR MIGRATION / COMPACT T1 STILL BLOCKED.
+
+**Implementation:** The existing authenticated POS device controller adds Store-scoped `GET /pos/payments/card/review/:attemptId` to inspect saved Checkout/Payment status, original Sale 504 marker and sanitized provider identifiers; and explicit `POST /pos/payments/card/review/:attemptId/recheck` to call Payments canonical reconciliation on the original Attempt without browser checkout reconstruction or a second Sale. Definitive canonical outcomes use the existing Checkout/Benefits/Order orchestration; UNKNOWN/RECONCILING/NOT_FOUND cannot release Benefits or finish a Terminal Fence. A missing payment or cross-Store Attempt fails closed. The bounded POS long-wait list adds detail/recheck controls, and competing card checkout now shows the `POS_TERMINAL_ALREADY_RESERVED` reason rather than silently dismissing the popup.
+
+**Governance/validation:** Same POS → Orchestration → Payments owner boundaries, no graph/SCC/allowance or Prisma/schema/migration change, dependencies, provider credentials, protected production Web Ecommerce modification or payout semantics. Controller HTTP and orchestrator regression tests cover Store identity, read-only inspection, unknown recheck, canonical success, disabled flag and no new Sale. Local lint/build/tests not run per `AGENTS.md`; PR CI/Compact live T1 remain pending user review/approval. R2 proposed human-attested 504/NOT_FOUND closure is explicitly excluded and requires separate architecture/payment-policy authorization.
+
 ## 2026-10-15 — Clover Compact C-2C7 T1 Cancel HTTP body-validation hotfix
 
 **Branch/base:** `fix/clover-c2c7-cancel-body-validation` from `origin/dev@54d3c34a`. **State:** LOCAL SOURCE / USER REVIEW PENDING / NO PR OR NEW CI / NO SCHEMA OR MIGRATION / SANDBOX T1 FAIL / RETEST PENDING.

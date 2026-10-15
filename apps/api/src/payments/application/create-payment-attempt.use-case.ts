@@ -8,7 +8,10 @@ import type {
   PaymentProviderOutcome,
   PaymentStatus,
 } from '../domain/payment.types';
-import type { PaymentTerminalOperationRepository } from './payment-terminal-operation.repository';
+import type {
+  PaymentTerminalOperationRepository,
+  TerminalOperationState,
+} from './payment-terminal-operation.repository';
 import type {
   PaymentProvider,
   PaymentTerminalAvailability,
@@ -191,6 +194,19 @@ export class TerminalPaymentService {
 
   canResumeOriginal504Sale(transaction: PaymentTransaction): boolean {
     return isResumableOriginal504Sale(transaction);
+  }
+
+  /** Scoped durable fence read for POS operations review, not payment truth. */
+  async getTerminalOperationReview(
+    attemptId: string,
+    storeStableId: string,
+  ): Promise<{ terminalId: string; state: TerminalOperationState } | null> {
+    const operation = await this.terminalOperations?.findByAttemptId(attemptId);
+    if (!operation || operation.storeStableId !== storeStableId) return null;
+    return {
+      terminalId: operation.terminalId,
+      state: operation.state,
+    };
   }
 
   async getAvailability(): Promise<PaymentTerminalAvailability> {

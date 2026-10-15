@@ -1212,7 +1212,11 @@ export default function StorePosPaymentPage() {
         setCardPaymentResult(null);
         setCardFlowState("IDLE");
         setCardFlowError(null);
-        if (merged.paymentId && merged.terminalReadyForNextSale !== true) {
+        if (merged.failureCode === "POS_TERMINAL_ALREADY_RESERVED") {
+          setError(locale === "zh"
+            ? "Clover 设备被上一笔未解决的付款占用，本次没有发起刷卡。请在上方待核查列表检查原付款，不要反复点击确认收款。"
+            : "An unresolved previous payment owns this Clover device. No new card charge was sent. Review the original payment above before retrying.");
+        } else if (merged.paymentId && merged.terminalReadyForNextSale !== true) {
           setError(locale === "zh"
             ? "原银行卡付款已取消、权益已释放。可以修改订单或改现金；Clover 尚未确认 Welcome，下一笔银行卡收款前须检查设备。"
             : "Card payment was cancelled and benefits released. You can edit or use cash, but inspect Clover before another card payment.");
@@ -2004,7 +2008,24 @@ export default function StorePosPaymentPage() {
                 </div>
               </div>
             )}
-            {error && <div className="rounded-2xl border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{error}</div>}
+            {error && (
+              <div
+                role="alert"
+                className="fixed left-4 right-4 top-20 z-40 mx-auto max-w-2xl rounded-2xl border border-rose-500/60 bg-slate-900 px-4 py-3 text-sm text-rose-100 shadow-xl"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex-1">{error}</span>
+                  <button
+                    type="button"
+                    onClick={() => setError(null)}
+                    className="shrink-0 rounded-lg border border-rose-400/40 px-2 py-1"
+                    aria-label={locale === "zh" ? "关闭提示" : "Dismiss alert"}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-auto pt-4 flex gap-3">

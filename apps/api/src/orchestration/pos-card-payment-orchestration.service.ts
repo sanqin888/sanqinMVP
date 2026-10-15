@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import type { CreateOrderInput } from '@shared/order';
 
@@ -67,6 +68,16 @@ export type PosCardPaymentView = {
   pickupCode: string | null;
 };
 
+/** Operational review only; never includes raw provider payloads or tokens. */
+export type PosCardPaymentReviewDetail = PosCardPaymentView & {
+  paymentStatus: PosCardPaymentStatus | null;
+  resultCode: string | null;
+  externalPaymentId: string | null;
+  providerPaymentId: string | null;
+  terminalOperationState: string | null;
+  terminalId: string | null;
+};
+
 export type PosCardPaymentStartInput = {
   attemptId: string;
   idempotencyKey: string;
@@ -126,6 +137,68 @@ export class PosCardPaymentOrchestrationService {
     return {
       items: await this.checkouts.findPosCardPaymentReviewItems(storeStableId),
     };
+  }
+
+  /** Read original payment/checkout facts, without Clover calls or mutations. */
+  async getReviewAttempt(
+    storeStableId: string,
+    attemptId: string,
+  ): Promise<PosCardPaymentReviewDetail> {
+    const checkout = await this.requireReviewedCheckout(
+      storeStableId,
+      attemptId,
+    );
+    const payment = await this.findPaymentForCheckout(checkout);
+    const operation = await this.terminalPayments.getTerminalOperationReview(
+      checkout.attemptId,
+      storeStableId,
+    );
+    const snapshot = payment?.toSnapshot();
+    return {
+      ...this.toView(checkout, payment ?? undefined),
+      paymentStatus: payment?.status ?? null,
+      resultCode: snapshot?.resultCode ?? null,
+      externalPaymentId: snapshot?.externalPaymentId ?? null,
+      providerPaymentId: snapshot?.providerPaymentId ?? null,
+      terminalOperationState: operation?.state ?? null,
+      terminalId: operation?.terminalId ?? null,
+    };
+  }
+
+  /** Reconcile the original payment. Never starts, resumes, or cancels a Sale. */
+  async recheckReviewAttempt(
+    storeStableId: string,
+    attemptId: string,
+  ): Promise<PosCardPaymentView> {
+    this.requireEnabled();
+    const checkout = await this.requireReviewedCheckout(
+      storeStableId,
+      attemptId,
+    );
+    const payment = await this.findPaymentForCheckout(checkout);
+    if (!payment) {
+      throw new ConflictException({
+        code: 'POS_CARD_REVIEW_PAYMENT_MISSING',
+        message: 'Original payment missing; no new Sale was started.',
+      });
+    }
+    if (
+      payment.status === 'UNKNOWN' ||
+      payment.status === 'RECONCILING' ||
+      (payment.status === 'PROCESSING' &&
+        this.processingCanBeReconciled(payment))
+    ) {
+      const reconciled = await this.terminalPayments.reconcile(payment.id);
+      return this.handlePayment(storeStableId, checkout, reconciled);
+    }
+    if (
+      ['SUCCEEDED', 'DECLINED', 'CANCELLED', 'FAILED'].includes(payment.status)
+    ) {
+      // Existing idempotent finalization or Benefits RELEASE checkpoints.
+      return this.handlePayment(storeStableId, checkout, payment);
+    }
+    // Never resume an original Sale in CREATED/recent PROCESSING.
+    return this.toView(checkout, payment);
   }
 
   async start(
@@ -868,6 +941,25 @@ export class PosCardPaymentOrchestrationService {
     });
     this.publish(storeId, view);
     return view;
+  }
+
+  private async requireReviewedCheckout(
+    storeStableId: string,
+    attemptId: string,
+  ): Promise<PreparedPaymentCheckout> {
+    if (!attemptId.trim() || attemptId.length > 128) {
+      throw new BadRequestException('Invalid payment attemptId');
+    }
+    const checkout = await this.checkouts.findByAttemptId(attemptId.trim());
+    if (
+      checkout.storeId !== storeStableId ||
+      checkout.source !== 'POS_TERMINAL' ||
+      checkout.paymentMethod !== 'CARD'
+    ) {
+      // Do not disclose attempts owned by another Store.
+      throw new NotFoundException('POS card payment attempt not found');
+    }
+    return checkout;
   }
 
   private async findPaymentForCheckout(

@@ -234,6 +234,29 @@ export async function fetchPosCardPaymentBenefitsReview() {
   );
 }
 
+export type PosCardPaymentReviewDetail = PosCardPaymentResult & {
+  paymentStatus: PosCardPaymentResult["status"] | null;
+  resultCode: string | null;
+  externalPaymentId: string | null;
+  providerPaymentId: string | null;
+  terminalOperationState: string | null;
+  terminalId: string | null;
+};
+
+export function fetchPosCardPaymentReviewAttempt(attemptId: string) {
+  return apiFetch<PosCardPaymentReviewDetail>(
+    `/pos/payments/card/review/${enc(attemptId)}`,
+  );
+}
+
+/** Recheck the original identity; never dispatch a new Sale. */
+export function recheckPosCardPaymentReviewAttempt(attemptId: string) {
+  return apiFetch<PosCardPaymentResult>(
+    "/pos/payments/card/review/" + enc(attemptId) + "/recheck",
+    { method: "POST" },
+  );
+}
+
 export type PosCardPaymentRequest = {
   attemptId: string;
   idempotencyKey: string;

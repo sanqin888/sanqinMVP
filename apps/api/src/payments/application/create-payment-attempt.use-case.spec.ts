@@ -1065,6 +1065,30 @@ describe('TerminalPaymentService', () => {
     expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
   });
 
+  it('exposes only the current Store terminal fence state without provider calls', async () => {
+    const operations = guardedOperations();
+    const { service, provider } = createTerminalHarness(operations);
+
+    await expect(
+      service.getTerminalOperationReview(
+        terminalInput.attemptId,
+        '4750_Yonge_Street',
+      ),
+    ).resolves.toEqual({
+      terminalId: 'compact-1',
+      state: 'SALE_IN_FLIGHT',
+    });
+    await expect(
+      service.getTerminalOperationReview(
+        terminalInput.attemptId,
+        'other_store',
+      ),
+    ).resolves.toBeNull();
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(0);
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
+    expect(operations.complete.mock.calls).toHaveLength(0);
+  });
+
   it('prefers canonical success when original Sale 209 races a card tap', async () => {
     const operations = guardedOperations();
     const { service, provider } = createTerminalHarness(operations);
