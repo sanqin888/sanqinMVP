@@ -186,6 +186,7 @@ class DeploymentSafetyTests(unittest.TestCase):
              patch.object(deploy, "read_state", return_value=state), \
              patch.object(deploy, "preflight_current") as old_readiness, \
              patch.object(deploy, "check_backup") as backup, \
+             patch.object(deploy, "verify_rollback_images"), \
              patch.object(deploy, "run"), \
              patch.object(deploy, "candidate_migration_status", return_value=False), \
              patch.object(deploy, "write_state"), \
@@ -357,6 +358,68 @@ class DeploymentSafetyTests(unittest.TestCase):
             deploy.deploy(execute=True, apply_migrations=True)
             compose.assert_not_called()
             migration.assert_not_called()
+
+    def test_batch_a_image_only_forward_and_runtime_change_gate(self):
+        manifest = {
+            "sourceSha": CURRENT,
+            "applicationImages": {
+                name: {"ref": f"ghcr.io/sanqin888/{name}:{CURRENT}", "digest": DIGEST}
+                for name in deploy.IMAGE_NAMES
+            },
+        }
+        unchanged = {"status": "ahead", "behind_by": 0, "total_commits": 1, "files": [
+            {"filename": "apps/api/src/something.ts", "status": "modified"},
+        ]}
+        with patch.object(deploy, "runtime_manifest", return_value=manifest), \
+             patch.object(deploy, "github_json", return_value=unchanged):
+            deploy.verify_runtime_release(candidate())
+        for comparison in (
+            {**unchanged, "files": [{"filename": "ops/release/deploy_release.py", "status": "modified"}]},
+            {**unchanged, "files": [{"filename": "ops/verify-runtime-readiness.sh", "status": "renamed", "previous_filename": "legacy"}]},
+            {**unchanged, "files": None},
+            {**unchanged, "status": "diverged", "behind_by": 1},
+            {**unchanged, "total_commits": 251},
+        ):
+            with self.subTest(comparison=comparison), \
+                 patch.object(deploy, "runtime_manifest", return_value=manifest), \
+                 patch.object(deploy, "github_json", return_value=comparison):
+                with self.assertRaises(deploy.DeploymentBlocked):
+                    deploy.verify_runtime_release(candidate())
+
+    def test_batch_a_previous_images_need_exact_digests(self):
+        old_release = candidate(CURRENT)
+        with patch.object(deploy, "sealed_release_for_sha", return_value=old_release) as sealed, \
+             patch.object(deploy, "verify_local_image") as verify:
+            deploy.verify_rollback_images(CURRENT)
+            self.assertEqual(verify.call_count, 2)
+            self.assertEqual({call.args[0] for call in verify.call_args_list},
+                             {old_release["images"][name]["ref"] for name in deploy.IMAGE_NAMES})
+            sealed.assert_called_once()
+        with patch.object(deploy, "sealed_release_for_sha", return_value=old_release), \
+             patch.object(deploy, "verify_local_image",
+                          side_effect=deploy.DeploymentBlocked("digest differs")):
+            with self.assertRaisesRegex(deploy.DeploymentBlocked, "digest differs"):
+                deploy.verify_rollback_images(CURRENT)
+
+    def test_batch_a_rollback_digest_gate_is_before_pending_or_mutation(self):
+        state = {"current": TARGET, "previous": CURRENT, "phase": "active"}
+        with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "read_current_sha", return_value=TARGET), \
+             patch.object(deploy, "read_state", return_value=state), \
+             patch.object(deploy, "check_backup"), \
+             patch.object(deploy, "verify_rollback_images",
+                          side_effect=deploy.DeploymentBlocked("previous image digest mismatch")), \
+             patch.object(deploy, "candidate_migration_status") as migration, \
+             patch.object(deploy, "write_state") as write_state, \
+             patch.object(deploy, "update_env_sha") as env, \
+             patch.object(deploy, "promote_images") as up:
+            with self.assertRaisesRegex(deploy.DeploymentBlocked, "previous image digest mismatch"):
+                deploy.rollback(execute=True)
+            migration.assert_not_called()
+            write_state.assert_not_called()
+            env.assert_not_called()
+            up.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
