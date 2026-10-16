@@ -15,6 +15,16 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-16 — Clover Compact C-2C7 P1-A real PostgreSQL CAS race harness
+
+**Baseline/branch:** `test/clover-c2c7-p1a-postgres-cas-contention` from latest `origin/dev@eb9a5b0c` (subsequent unrelated Runtime docs #2827); S4-D PR #2826 merged previously at `dev@9a209849` and dev CI #7266 all seven green. **State: OPERATOR-ONLY TEST HARNESS AUTHORED / NOT EXECUTED / REVIEW PENDING / NO PR / NO MACBOOK DB ACCESS / NO PRODUCTION OR COMPACT TRAFFIC.** Previous S4-B/C/D Mock regressions were merged and green (PRs #2824/#2825/#2826); older pre-merge progress entries remain historical.
+
+**P0 closeout evidence:** user provided Clover Test Merchant list/details showing exactly two successful recorded Sandbox card charges (CAD $5.65 and $11.30); latter Payment `HY8KKDPK82HQT` corresponds to the original S3 external ID and had no refunds. Original Attempt Review after POS reload remained `SUCCEEDED` with fence `FINALIZED`. MacBook API Debug log export shows only the three expected prior Sale responses (S1 200, S2 504, S3 200), no new Sale responses after S4-A refresh/Review, and no logged request failures for the Sale endpoint. This supports **S4-A P0 SANDBOX OBSERVED PASS** under the scoped log and merchant-screen evidence, not packet-capture proof or globally complete provider ledger enumeration.
+
+**P1-A addition:** a manually invoked `apps/api/test/manual/clover-s4-p1a-cas.cjs` uses two **actual child processes** with independent PrismaClient connections to the existing MacBook-local PostgreSQL. Both exercise the existing Payments-owned `PrismaPaymentTransactionRepository.claimUncertainResultCode` while a third transaction holds an actual PostgreSQL row lock. Unique namespaced `RECONCILING/ORIGINAL_504/NOT_FOUND` scratch Payment fixture is created, the release produces one CAS winner and one loser, a repeated claim must fail, and exact identity and absence of Checkout/Terminal row are asserted. Strict opt-in guards require loopback `restaurant` DB and live macOS/Postgres fingerprint; on completion the exact scratch row is deleted. No actual Clover Provider, Orders or Benefits interaction; existing S1–S3 data remains untouched. This is neither an automatic GitHub CI test nor an observed MacBook result yet.
+
+**Boundaries:** Payments remains the sole CAS owner, no production runtime imports/HTTP/public contracts, migrations, schema, new dependency, CI workflow, infrastructure topology, direct context edges, scanner/SCC/baseline or Web Ecommerce behavior change. This is a narrowly scoped manual experiment under existing Payment infrastructure. Execute only after code review + PR/CI + local MacBook `dev` pull; collect sanitized evidence and close P1-A only on actual PostgreSQL output. P1-B genuine process termination and later canonical recovery are separate gates. Details: `docs/payments/clover-pos-phase-plan.md` §P1-A.
+
 ## 2026-10-16 — Clover Compact C-2C7 S4-D restart and late canonical safety characterization
 
 **Baseline:** `test/clover-c2c7-s4d-restart-late-canonical-characterization` from `origin/dev@33b68810`. S4-C PR #2825 squash-merged; PR CI #7263 and dev CI #7264 7/7 green. **LOCAL SOURCE / REVIEW PENDING / TESTS NOT RUN / NO S4-D PR OR CI / NO REAL API KILL OR DEVICE/PRODUCTION ACTION.**
