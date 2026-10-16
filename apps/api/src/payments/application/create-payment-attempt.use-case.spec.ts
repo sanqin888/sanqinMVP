@@ -461,6 +461,113 @@ describe('TerminalPaymentService', () => {
     expect((await service.findById(initial.id)).status).toBe('RECONCILING');
   });
 
+  it('keeps the original 504 claim unconsumed when Compact is offline', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const original = await service.startSale(terminalInput);
+    terminalProvider.getAvailability.mockResolvedValue({
+      state: 'UNAVAILABLE',
+      configured: true,
+      available: false,
+      failureCode: 'CLOVER_TERMINAL_STATUS_UNCERTAIN',
+    });
+
+    await expect(service.resumeOriginal504Sale(original.id)).rejects.toThrow(
+      'device is not idle',
+    );
+    const persisted = await service.findById(original.id);
+    expect(persisted.status).toBe('RECONCILING');
+    expect(persisted.toSnapshot().resultCode).toBe(
+      'CLOVER_TERMINAL_SALE_HTTP_504',
+    );
+    expect(service.canResumeOriginal504Sale(persisted)).toBe(true);
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+  });
+
+  it('fails closed if the Compact availability request throws before the claim', async () => {
+    const { service, provider, terminalProvider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const original = await service.startSale(terminalInput);
+    terminalProvider.getAvailability.mockRejectedValueOnce(
+      new Error('Compact connection timed out'),
+    );
+
+    await expect(service.resumeOriginal504Sale(original.id)).rejects.toThrow(
+      'device is not idle',
+    );
+    const persisted = await service.findById(original.id);
+    expect(persisted.status).toBe('RECONCILING');
+    expect(persisted.toSnapshot().resultCode).toBe(
+      'CLOVER_TERMINAL_SALE_HTTP_504',
+    );
+    expect(terminalProvider.prepareOriginalSaleResume.mock.calls).toHaveLength(
+      0,
+    );
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+  });
+
+  it('consumes the one-time claim without sending Sale if Welcome throws', async () => {
+    const operations = guardedOperations();
+    const {
+      service,
+      provider,
+      transactions,
+      terminalProvider,
+    } = createTerminalHarness(operations);
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const original = await service.startSale(terminalInput);
+    operations.findByAttemptId.mockResolvedValue({
+      terminalId: 'compact-1',
+      storeStableId: '4750_Yonge_Street',
+      attemptId: terminalInput.attemptId,
+      paymentTransactionId: original.id,
+      externalPaymentId: original.toSnapshot().externalPaymentId,
+      state: 'SALE_IN_FLIGHT',
+      cancelRequestedAt: null,
+    });
+    terminalProvider.prepareOriginalSaleResume.mockRejectedValueOnce(
+      new Error('Welcome request timed out'),
+    );
+
+    await expect(service.resumeOriginal504Sale(original.id)).rejects.toThrow(
+      'Welcome request timed out',
+    );
+    const persisted = await service.findById(original.id);
+    expect(transactions.rows).toHaveLength(1);
+    expect(persisted.status).toBe('RECONCILING');
+    expect(persisted.toSnapshot()).toMatchObject({
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+      providerPaymentId: null,
+      externalPaymentId: original.toSnapshot().externalPaymentId,
+    });
+    expect(service.canResumeOriginal504Sale(persisted)).toBe(false);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(operations.complete.mock.calls).toHaveLength(0);
+
+    // Repeated operator action cannot dispatch a second Sale after the claim.
+    await service.resumeOriginal504Sale(original.id);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(operations.complete.mock.calls).toHaveLength(0);
+  });
+
   it('holds the original payment if Welcome is not confirmed after the claim', async () => {
     const { service, provider, terminalProvider } = createTerminalHarness();
     provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
