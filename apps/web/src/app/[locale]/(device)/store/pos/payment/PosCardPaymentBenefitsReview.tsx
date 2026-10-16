@@ -13,6 +13,19 @@ import {
 
 type Props = { locale: "zh" | "en" };
 
+/** Warn only while the original financial outcome is not final. */
+export function shouldWarnUnresolvedCardReview(
+  detail: Pick<PosCardPaymentReviewDetail, "status" | "paymentStatus">,
+): boolean {
+  const status = detail.paymentStatus ?? detail.status;
+  return (
+    status === "CREATED" ||
+    status === "PROCESSING" ||
+    status === "UNKNOWN" ||
+    status === "RECONCILING"
+  );
+}
+
 export function PosCardPaymentBenefitsReview({ locale }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [items, setItems] = useState<PosCardPaymentReviewItem[]>([]);
@@ -288,11 +301,13 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
                           ? "否"
                           : "No"}
                     </p>
-                    <p className="text-amber-200">
-                      {zh
-                        ? "没有最终支付结论时，不得发起另一笔银行卡付款。"
-                        : "Do not initiate another card Sale while payment truth is unknown."}
-                    </p>
+                    {shouldWarnUnresolvedCardReview(detail) && (
+                      <p className="text-amber-200">
+                        {zh
+                          ? "没有最终支付结论时，不得发起另一笔银行卡付款。"
+                          : "Do not initiate another card Sale while payment truth is unknown."}
+                      </p>
+                    )}
                     {detail.sandboxLateCanonicalPayment && (
                       <p role="alert" className="rounded-lg border border-rose-400 bg-rose-950/80 p-3 font-semibold text-rose-100">
                         {zh
