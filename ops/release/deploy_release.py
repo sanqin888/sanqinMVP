@@ -26,7 +26,7 @@ from typing import Any
 
 from release_contract import (
     REPOSITORY, ReleaseContractError, checked_digest,
-    discover_release, github_json, require_sha,
+    discover_release, github_json, require_sha, sealed_release_for_sha,
 )
 
 # C4-B fixed host layout. Do NOT infer the active runtime from the checked-out
@@ -431,6 +431,22 @@ def verify_local_image(ref: str, expected_digest: str) -> None:
         raise DeploymentBlocked("pulled image digest differs from sealed GHCR manifest")
 
 
+def verify_rollback_images(previous: str) -> None:
+    """Require an exact historic GitHub seal and matching local image digests.
+
+    Rollback is operator-triggered; a SHA tag's mere presence is not proof
+    of an authentic prior release. Missing historical seal means manual
+    recovery review rather than selecting an unverified image.
+    """
+    release = sealed_release_for_sha(
+        previous,
+        fetch=lambda path: github_json(path, token=os.environ.get("GITHUB_TOKEN") or None),
+    )
+    for name in IMAGE_NAMES:
+        image = release["images"][name]
+        verify_local_image(image["ref"], image["digest"])
+
+
 def pull_and_verify(candidate: dict[str, Any]) -> None:
     for name in IMAGE_NAMES:
         image = candidate["images"][name]
@@ -591,9 +607,10 @@ def rollback(*, execute: bool) -> None:
     # reaction to health failure. An unhealthy current release must NOT block
     # an operator-authorized rollback; protect backup and migration parity.
     check_backup()
-    for name in IMAGE_NAMES:
-        ref = f"ghcr.io/sanqin888/{name}:{previous}"
-        run(["docker", "image", "inspect", ref], capture=True)
+    # Historical tag availability alone does not authenticate old bytes.
+    # Validate BOTH local RepoDigests against the exact previous GitHub seal,
+    # before writing PENDING or changing SANQ_IMAGE_SHA.
+    verify_rollback_images(previous)
     if candidate_migration_status(previous):
         raise DeploymentBlocked("rollback image requires unapplied migrations; manual recovery required")
     write_state("pending", current=previous, previous=current, reason="rollback-start")

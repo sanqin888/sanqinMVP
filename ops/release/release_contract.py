@@ -195,6 +195,40 @@ def is_sealed_status(status: Any) -> bool:
     )
 
 
+def sealed_release_for_sha(source_sha: str, fetch=github_json) -> dict[str, Any]:
+    """Read the exact previous release seal; never substitute a newer release.
+
+    GitHub statuses are newest-first. A later failed or pending seal of the
+    same context overrides prior success, and missing evidence blocks rollback.
+    This contract authenticates only the existing GitHub paired-image seal;
+    local RepoDigests still need to be checked before any image switch.
+    """
+    source_sha = require_sha(source_sha)
+    statuses = fetch(f"/repos/{REPOSITORY}/commits/{source_sha}/statuses?per_page=100")
+    if not isinstance(statuses, list):
+        raise ReleaseContractError("invalid historical release status response")
+    seal = next(
+        (s for s in statuses if isinstance(s, dict) and s.get("context") == RELEASE_CONTEXT),
+        None,
+    )
+    if not is_sealed_status(seal):
+        raise ReleaseContractError("previous release lacks a current valid paired-image seal")
+    match = SEALED_DIGEST_PATTERN.fullmatch(seal["description"])
+    if match is None:
+        raise ReleaseContractError("invalid previous release digest seal")
+    return {
+        "sourceSha": source_sha,
+        "publicationUrl": seal["target_url"],
+        "images": {
+            name: {
+                "ref": f"ghcr.io/sanqin888/{name}:{source_sha}",
+                "digest": "sha256:" + digest,
+            }
+            for name, digest in zip(("sanq-api", "sanq-web"), match.groups())
+        },
+    }
+
+
 def discover_release(fetch=github_json, *, max_commits: int = 20) -> dict[str, Any]:
     """Find the newest sealed main commit; unsealed CI results are not releases."""
     if not 1 <= max_commits <= 100:
