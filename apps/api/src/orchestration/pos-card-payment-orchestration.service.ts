@@ -927,22 +927,37 @@ export class PosCardPaymentOrchestrationService {
         );
     } finally {
       this.activeCustomerPrompts.delete(checkout.attemptId);
-      // Deliver the prompt decision immediately; optional device display
-      // recovery must not delay the customer's POS status update.
+      // Clear the prompt immediately, but never signal an automatic Web Retry
+      // until the Benefits owners have durably completed RELEASE *and* the
+      // Payments-owned terminal fence has safely reached Welcome/FINALIZED.
       const decision = {
         ...waiting,
         customerPromptPending: false,
-        customerRetryRequested,
+        customerRetryRequested: false,
         terminalReadyForNextSale: false,
       };
       this.publish(storeId, decision);
-      void this.terminalPayments
-        .finishTerminalOperation(checkout.attemptId)
-        .then((ready) => {
+      void this.checkouts
+        .findByAttemptId(checkout.attemptId)
+        .then(async (latest) => {
+          if (
+            latest.status !== payment.status ||
+            latest.paymentTransactionId !== payment.id ||
+            latest.benefitsReleasedAt == null
+          ) {
+            // A partial RELEASE stays queued for the existing recovery worker.
+            // The customer confirmation alone cannot unlock or retry a Sale.
+            return;
+          }
+          const ready = await this.terminalPayments
+            .finishTerminalOperation(checkout.attemptId)
+            .catch(() => false);
           if (ready) {
             this.publish(storeId, {
               ...decision,
+              benefitsReleaseComplete: true,
               terminalReadyForNextSale: true,
+              customerRetryRequested,
             });
           }
         })
