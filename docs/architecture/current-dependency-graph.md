@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-16 **C5-G2 B02-B one-shot root operator admission source skeleton**: local-source / tests authored, NOT RUN, not committed or pushed. New `ops/runtime/trusted_root_operator_gate.py` is an inert structural admission contract, not an executable/root actor; all proposed production operations permanently return BLOCKED. **No dependency graph, SCC, scanner baseline, business-context import/owner, public HTTP, Prisma/schema/migration or 17-member Runtime Bundle change**; production G2 remains NO-GO.
+
+
 2026-10-16 **C5-G2 B02-A inert root-operator source-evidence structural reviewer** is **LOCAL SOURCE / UNIT TESTS AUTHORED / NOT RUN / NO GRAPH OR BASELINE CHANGE** on `feat/c5-g2-b02a-trusted-source-preflight-20261016`. New `ops/runtime/trusted_operator_source_review.py` is deliberately outside the fixed Runtime Bundle and has no privileged filesystem access, installer execution, business-context ownership, public API, Prisma/schema, dependency, import-edge/SCC/scanner allowance or `tools/architecture/context-baseline.json` impact. It can reject inconsistent evidence but never grant source authentication, quiescence, kit acceptance or production install. See `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`; G2 NO-GO and S2 paused remain.
 
 
