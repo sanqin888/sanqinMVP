@@ -50,6 +50,17 @@ Application image SHA is now independent of the installed Runtime source SHA. `v
 
 The existing `release_contract.discover_release()` and Docker RepoDigest checks still authenticate the candidate GHCR pair. Conditional migration logic from PR #2755 remains unchanged. This first batch does **not** install a new Runtime or remove the production MCP checkout. Existing Runtime's controller source remains older until separately authorized installed Runtime handoff; no production deployment is performed here.
 
+## 2026-10-16 — Batch A06 Prisma migrate-status fail-closed tightening (local review)
+
+**LOCAL SOURCE + REGRESSION TESTS AUTHORED / NOT EXECUTED / NO PR OR CI / NO PRODUCTION UPDATE.**
+Source branch: `feat/c5-batch-a-a06-prisma-status-guard-20261016`, based on latest `origin/dev` after A08 PR #2834 merge.
+
+The committed `pnpm-lock.yaml` resolves Prisma CLI **6.19.1**. Its upstream `packages/migrate/src/commands/MigrateStatus.ts` outputs one of two acceptable states for the existing controller: complete clean status (`exit 0` plus `Database schema is up to date!`) or complete pending-only status (`exit 1` plus migration count, exact pending names, and the development/production command guidance). The existing parser accepted any `exit 0` including empty output and accepted `exit 1` with a partial pending substring plus unfamiliar text. Other `exit 1` meanings include drift, missing migration table and failed migrations.
+
+A06 changes **only** `ops/release/deploy_release.py`'s read-only status classification and `ops/release/tests/test_deploy_release.py`. It enforces full bounded stdout grammar, PostgreSQL datasource/schema banner, count/heading agreement, unique bounded migration names, recognized CLI command guidance, explicit clean success, and empty stderr. Any unexpected output or noncanonical CLI variant is **BLOCKED** before the release controller creates PENDING or mutates application state; no automatic migration is introduced. Existing explicit `--apply-migrations` plus SQL safety review remain mandatory for pending SQL. The output grammar is intentionally coupled to Prisma CLI 6.19.1 and may need a separately reviewed update if the future installed candidate image uses another Prisma release.
+
+A06 fixtures derive from pinned upstream source and known prior production clean-status evidence, **not** a newly executed real PostgreSQL/Prisma process. The full repository `api-checks` validation is deferred to GitHub Actions after review and remote authorization. No changes to `SOURCE_FILES` membership, Prisma schema/migrations, dependency lockfile, Ops privileges, backup, Compose, Docker, MCP, production data, Runtime installation or application rollout. A06 does not close Batch A / C5-G2 production readiness, and previously installed Runtime remains frozen.
+
 ## Review and validation gates
 
 GitHub Actions is the authoritative test gate after user review and remote authorization. Existing `ops/release/tests/test_deploy_release.py` was extended for pending, no-pending, drift, explicit opt-in, PENDING on failure and rollback. No local test/lint/build was run, following `AGENTS.md`. After approval, open PR against dev and inspect all CI jobs. **Do not perform production deploy/migration/root operations as part of this branch.**

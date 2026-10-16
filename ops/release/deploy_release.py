@@ -454,11 +454,86 @@ def pull_and_verify(candidate: dict[str, Any]) -> None:
         verify_local_image(image["ref"], image["digest"])
 
 
-def candidate_migration_status(target_sha: str) -> bool:
-    """Return True only for Prisma's pending-migrations status.
+def classify_prisma_migration_status(returncode: int, stdout: str, stderr: str) -> bool:
+    """Recognize only complete Prisma CLI 6.19.1 migrate-status transcripts.
 
-    Reject ambiguous failures, drift, and failed migration histories.
+    True means pending ONLY; False means an explicitly reported clean schema.
+    Every other outcome blocks, including exit 0 with missing/extra output.
+    This is output classification, never SQL safety or migration authorization.
     """
+    blocked = "candidate Prisma migration status is ambiguous or unsafe"
+    if (type(returncode) is not int or returncode not in (0, 1)
+        or not isinstance(stdout, str) or not isinstance(stderr, str)
+        or stderr.strip() or len(stdout) > 65536 or "\x1b" in stdout
+        or "\r" in stdout.replace("\r\n", "")):
+        raise DeploymentBlocked(blocked)
+    lines = stdout.replace("\r\n", "\n").split("\n")
+    while lines and not lines[0]:
+        lines.pop(0)
+    while lines and not lines[-1]:
+        lines.pop()
+    if len(lines) > 512:
+        raise DeploymentBlocked(blocked)
+
+    # Prisma's own CLI banners precede the migration count. Unknown extra
+    # messages (even when another line says "pending") must never be ignored.
+    banner = re.compile(
+        r'(?:Environment variables loaded from .+|'
+        r'Prisma schema loaded from .+|'
+        r'Loaded Prisma config from .+|'
+        r'Prisma config detected, skipping environment variable loading\.|'
+        r'Datasource "[^"]+": PostgreSQL database .+)\Z'
+    )
+    count_line = re.compile(r'([1-9][0-9]{0,4}) migrations? found in prisma/migrations\Z')
+    seen_schema = seen_datasource = False
+    while lines and not count_line.fullmatch(lines[0]):
+        item = lines.pop(0)
+        if not item:
+            continue
+        if not banner.fullmatch(item):
+            raise DeploymentBlocked(blocked)
+        schema_line = item.startswith("Prisma schema loaded from ")
+        datasource_line = item.startswith('Datasource "')
+        if (schema_line and seen_schema) or (datasource_line and seen_datasource):
+            raise DeploymentBlocked(blocked)
+        seen_schema |= schema_line
+        seen_datasource |= datasource_line
+    if not lines or not seen_schema or not seen_datasource:
+        raise DeploymentBlocked(blocked)
+    count_match = count_line.fullmatch(lines.pop(0))
+    if count_match is None:
+        raise DeploymentBlocked(blocked)
+    total = int(count_match.group(1))
+    if total > 10000 or (total == 1) != (" migration found " in count_match.group(0)):
+        raise DeploymentBlocked(blocked)
+
+    # v6.19.1 prints an extra blank line before the clean-state message;
+    # pending-state output starts immediately after the count.
+    if returncode == 0:
+        if lines not in (["Database schema is up to date!"],
+                         ["", "Database schema is up to date!"]):
+            raise DeploymentBlocked(blocked)
+        return False
+
+    if len(lines) < 4:
+        raise DeploymentBlocked(blocked)
+    heading = re.fullmatch(r"Following migration(s?) have not yet been applied:", lines[0])
+    executor = r"(?:npx |pnpm (?:exec )?|yarn |bunx |npm exec -- )?prisma migrate "
+    if (heading is None
+        or re.fullmatch("To apply migrations in development run " + executor + r"dev\.", lines[-2]) is None
+        or re.fullmatch("To apply migrations in production run " + executor + r"deploy\.", lines[-1]) is None):
+        raise DeploymentBlocked(blocked)
+    names = lines[1:-2]
+    safe_name = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}\Z")
+    if (not names or len(names) > total or len(set(names)) != len(names)
+        or any(safe_name.fullmatch(name) is None for name in names)
+        or bool(heading.group(1)) != (len(names) > 1)):
+        raise DeploymentBlocked(blocked)
+    return True
+
+
+def candidate_migration_status(target_sha: str) -> bool:
+    """Classify only a validated Prisma v6.19.1 status from the candidate image."""
     args = [
         "docker", "compose", "--project-name", EXPECTED_PROJECT,
         "--project-directory", str(ROOT), "--env-file", str(ENV),
@@ -471,15 +546,7 @@ def candidate_migration_status(target_sha: str) -> bool:
     result = subprocess.run(args, cwd=ROOT, env=env, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             check=False)
-    if result.returncode == 0:
-        return False
-    output = result.stdout + "\n" + result.stderr
-    pending = "Following migration(s) have not yet been applied:" in output
-    forbidden = ("failed", "diverged", "modified", "does not match",
-                 "migration history", "error:", "could not")
-    if not pending or any(term in output.lower() for term in forbidden):
-        raise DeploymentBlocked("candidate migration status is not cleanly pending")
-    return True
+    return classify_prisma_migration_status(result.returncode, result.stdout, result.stderr)
 
 
 def apply_reviewed_migrations(target_sha: str) -> None:
