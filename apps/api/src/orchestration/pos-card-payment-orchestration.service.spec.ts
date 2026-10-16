@@ -1051,6 +1051,79 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(result.status).toBe('SUCCEEDED');
   });
 
+  it('recovers a claimed uncertain payment after a browser/API restart without new Sale or premature release', async () => {
+    const harness = createHarness();
+    const claimed = paymentFixture('RECONCILING').recordProviderObservation({
+      status: 'RECONCILING',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    harness.setCheckout(
+      checkoutFixture({
+        status: 'RECONCILING',
+        paymentTransactionId: claimed.id,
+      }),
+    );
+    jest.mocked(harness.terminalPayments.findById).mockResolvedValue(claimed);
+    jest
+      .mocked(harness.terminalPayments.reconcile)
+      .mockResolvedValueOnce(claimed)
+      .mockResolvedValueOnce(paymentFixture('SUCCEEDED'));
+
+    const originalRequest = {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      order: orderInput,
+    };
+    const unresolved = await harness.service.recover(
+      storeStableId,
+      originalRequest,
+    );
+    expect(unresolved.status).toBe('RECONCILING');
+    expect(harness.terminalPayments.reconcile).toHaveBeenCalledWith(claimed.id);
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.resumeOriginal504Sale,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
+
+    // A later canonical result is applied on the same frozen checkout;
+    // repeated browser RECOVER does not dispatch another Compact Sale.
+    const settled = await harness.service.recover(
+      storeStableId,
+      originalRequest,
+    );
+    expect(settled.status).toBe('SUCCEEDED');
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(
+      harness.terminalPayments.resumeOriginal504Sale,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).toHaveBeenCalledWith('cpaymentorder1', storeStableId);
+
+    const completed = await harness.service.recover(
+      storeStableId,
+      originalRequest,
+    );
+    expect(completed.status).toBe('SUCCEEDED');
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).toHaveBeenCalledTimes(1);
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+  });
+
   it('reloads an already-completed checkout without repricing or recreating the order', async () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'COMPLETED' }));

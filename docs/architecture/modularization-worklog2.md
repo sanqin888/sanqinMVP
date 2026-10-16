@@ -15,6 +15,14 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-16 — Clover Compact C-2C7 S4-D restart and late canonical safety characterization
+
+**Baseline:** `test/clover-c2c7-s4d-restart-late-canonical-characterization` from `origin/dev@33b68810`. S4-C PR #2825 squash-merged; PR CI #7263 and dev CI #7264 7/7 green. **LOCAL SOURCE / REVIEW PENDING / TESTS NOT RUN / NO S4-D PR OR CI / NO REAL API KILL OR DEVICE/PRODUCTION ACTION.**
+
+**Scope:** Payments application adds parameterized after-claim restart simulation on two isolated service instances with a **shared in-memory** Payment repository: canonical remains NOT_FOUND, consumed 504 claim cannot replay, then late canonical SUCCEEDED or DECLINED merges onto one original Payment, subsequent reconcile is idempotent and there is no new provider Sale. POS orchestration adds a `RECOVER` replay after a consumed `RECONCILING` claim, proving unresolved reads cannot start/resume a Sale, release Benefits or create the paid Order; when canonical later succeeds, existing Checkout finalization occurs once and further recovery returns the completed Order. Existing browser localStorage identity preservation and `recover` invocation are source-audited only. This **does not** simulate a real process crash, PostgreSQL persistence/restart, network partitions, external Clover client leases, or independently prove terminal fence DB state or actual merchant charge uniqueness.
+
+**Architecture:** Payments retains provider truth and once-only CAS; POS orchestration retains Checkout/Benefits/Orders coordination; Web browser state is not financial authority. No runtime code, public contract, schema/migration, dependencies, topology, context edges, SCC or scanner baseline changes. Local tests intentionally deferred under `AGENTS.md`; separate user review/PR CI/merge gate. An unresolved post-claim/recovery state requires reviewed operator evidence, not forced failure, refund, new Sale or Benefits RELEASE. Owner detail and external gates: `docs/payments/clover-pos-phase-plan.md` C-2C7 S4-D.
+
 ## 2026-10-16 — Clover Compact C-2C7 S4-C device availability / Welcome fail-closed characterization
 
 **Branch/base:** `test/clover-c2c7-s4c-fault-safety-characterization` from `origin/dev@27bdb5a4`. S4-B PR #2824 merged after CI #7260 7/7 green; separate dev CI #7261 subsequently completed with all seven jobs green. **State: LOCAL TESTS AUTHORED / USER REVIEW PENDING / NO LOCAL TEST EXECUTION / NO PR OR S4-C CI / NO COMPACT OR PRODUCTION TRAFFIC.**

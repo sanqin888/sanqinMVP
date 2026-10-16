@@ -683,6 +683,86 @@ describe('TerminalPaymentService', () => {
     expect(provider.startPayment.mock.calls).toHaveLength(2);
   });
 
+  it.each(['SUCCEEDED', 'DECLINED'] as const)(
+    'reconciles late canonical %s on a fresh service after the replay claim without another Sale',
+    async (finalStatus) => {
+      // Model restart after the once-only claim was persisted, but before a
+      // recoverable result from the original Compact Sale could be recorded.
+      // This is a shared-repository unit test, NOT a real process-kill test.
+      const operations = guardedOperations();
+      const { service, transactions, provider, terminalProvider } =
+        createTerminalHarness(operations);
+      provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+      provider.getPaymentStatus.mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      });
+      const original = await service.startSale(terminalInput);
+      const claim = await transactions.claimUncertainResultCode(
+        original.id,
+        'CLOVER_TERMINAL_SALE_HTTP_504',
+        'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+        'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      );
+      expect(claim.updated).toBe(true);
+
+      const restarted = new TerminalPaymentService(
+        new CreatePaymentAttemptUseCase(transactions),
+        transactions,
+        provider,
+        terminalProvider,
+        operations,
+      );
+      const repeated = await restarted.resumeOriginal504Sale(original.id);
+      expect(repeated.toSnapshot().resultCode).toBe(
+        'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+      );
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
+
+      const stillUnknown = await restarted.reconcile(original.id);
+      expect(stillUnknown.status).toBe('RECONCILING');
+      expect(stillUnknown.toSnapshot().resultCode).toBe(
+        'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+      );
+      expect(restarted.canResumeOriginal504Sale(stillUnknown)).toBe(false);
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
+      expect(operations.complete.mock.calls).toHaveLength(0);
+
+      provider.getPaymentStatus.mockImplementationOnce((request) =>
+        Promise.resolve(
+          canonicalOutcome(
+            {
+              ...request,
+              amountCents: terminalInput.amountCents,
+              currency: terminalInput.currency,
+            },
+            finalStatus,
+          ),
+        ),
+      );
+      const settled = await restarted.reconcile(original.id);
+      expect(settled.status).toBe(finalStatus);
+      expect(settled.toSnapshot()).toMatchObject({
+        attemptId: terminalInput.attemptId,
+        idempotencyKey: terminalInput.idempotencyKey,
+        externalPaymentId: original.toSnapshot().externalPaymentId,
+        providerPaymentId: 'clover-payment-1',
+      });
+      expect(transactions.rows).toHaveLength(1);
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
+      expect(operations.complete.mock.calls).toHaveLength(0);
+
+      // Once canonical final, repeated reads do not ask the provider or
+      // issue another Sale; Checkout/Benefits finality belongs to orchestration.
+      const canonicalReads = provider.getPaymentStatus.mock.calls.length;
+      const again = await restarted.reconcile(original.id);
+      expect(again.status).toBe(finalStatus);
+      expect(provider.getPaymentStatus.mock.calls).toHaveLength(canonicalReads);
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
+    },
+  );
+
   it('does not re-arm retry after another 504 from the identical Sale', async () => {
     const { service, provider } = createTerminalHarness();
     provider.startPayment.mockResolvedValue(terminal504Unknown());
