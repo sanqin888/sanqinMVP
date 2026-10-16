@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-16 — C5-G2 B02-A inert operator-source review
+
+**LOCAL SOURCE + FOCUSED UNIT TESTS AUTHORED / USER REVIEW PENDING / NOT TESTED OR PUSHED / NO PRODUCTION CHANGE.** Branch `feat/c5-g2-b02a-trusted-source-preflight-20261016` from latest `dev` after A06 PR #2835. Added `ops/runtime/trusted_operator_source_review.py` as a negative-only checker for claimed SHA-256, private root-owned source ancestry and leaf FD identity. No real host observation or trusted-source authentication is claimed; all production authority flags remain false. No Runtime Bundle member changes, installer, privileged entrypoint, CI workflow, migration, dependencies, service, backup or context graph change. B02-B root-owned operator source delivery and isolated guest execution remain a separately authorized trust boundary. Owner `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
+
 ## 2026-10-16 — C5 Batch A06 Prisma CLI migration-status fail-closed classification
 
 **LOCAL SOURCE / TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR OR DEPLOY.** Branch `feat/c5-batch-a-a06-prisma-status-guard-20261016` from newest dev after #2834. Runtime/Release owner only: replace substring-based Prisma pending detection and unverified successful exit with exact bounded Prisma 6.19.1 stdout/stderr and exit-code classification. Recognized clean returns no migration; recognized pending still requires user-authorized SQL review and `--apply-migrations`; missing/unknown/mixed output fails closed. No new runtime dependency, business context ownership/imports, schema/migration, Runtime Bundle member, privilege or production mutation. Synthetic source-informed tests authored; real Prisma/PostgreSQL execution and GitHub CI pending. See `docs/architecture/postmod-ghcr-deploy-simplification-2026-10-08.md` §A06.
