@@ -506,10 +506,16 @@ describe('TerminalPaymentService', () => {
     // Model two Nest worker instances with independent services sharing one
     // in-memory Payment repository (not an actual Postgres concurrency test).
     const operations = guardedOperations();
-    const { service: workerA, transactions, provider, terminalProvider } =
-      createTerminalHarness(operations);
+    const {
+      service: workerA,
+      transactions,
+      provider,
+      terminalProvider,
+    } = createTerminalHarness(operations);
     operations.findByAttemptId.mockImplementation((attemptId) => {
-      const payment = transactions.rows.find((row) => row.attemptId === attemptId);
+      const payment = transactions.rows.find(
+        (row) => row.attemptId === attemptId,
+      );
       return Promise.resolve(
         payment
           ? {
@@ -548,7 +554,7 @@ describe('TerminalPaymentService', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     // One original 504 call plus exactly one claimed recovery call.
-    expect(provider.startPayment).toHaveBeenCalledTimes(2);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
     expect(provider.startPayment.mock.calls[1]?.[0]).toMatchObject({
       paymentId: original.id,
       attemptId: terminalInput.attemptId,
@@ -571,7 +577,7 @@ describe('TerminalPaymentService', () => {
 
     // A stale worker cannot re-arm a second resume after the first claim.
     await workerB.resumeOriginal504Sale(original.id);
-    expect(provider.startPayment).toHaveBeenCalledTimes(2);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
   });
 
   it('does not re-arm retry after another 504 from the identical Sale', async () => {
