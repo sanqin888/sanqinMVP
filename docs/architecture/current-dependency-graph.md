@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-16 **C5-G2 B02-B2 read-only root-private FD source verifier**: local source and isolated synthetic tests written, NOT RUN/NO PR. New external `ops/runtime/root_private_source_fd.py` introduces no business-context ownership or import edge, no cycle/scanner baseline adjustment, public HTTP/API, schema, dependency or Runtime 17-source-member change. All inspection receipts disallow installation and explicitly do not authenticate anchor provenance or independent witness; C5-G2 remains NO-GO.
+
+
 2026-10-16 **C5-G2 B02-B one-shot root operator admission source skeleton**: local-source / tests authored, NOT RUN, not committed or pushed. New `ops/runtime/trusted_root_operator_gate.py` is an inert structural admission contract, not an executable/root actor; all proposed production operations permanently return BLOCKED. **No dependency graph, SCC, scanner baseline, business-context import/owner, public HTTP, Prisma/schema/migration or 17-member Runtime Bundle change**; production G2 remains NO-GO.
 
 
