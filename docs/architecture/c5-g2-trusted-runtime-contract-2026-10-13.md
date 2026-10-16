@@ -155,6 +155,10 @@ round-trip receipt.
 Daily S2 remains **on hold until C5 is accepted**. No underlying
 `sanq-backup.service`, sudoers, script or retention cutover in this slice.
 
+## 2026-10-16 — B02-A source identity review (local / non-authorizing)
+
+**LOCAL SOURCE + TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO INSTALL OR CI.** The new external, non-bundle Python module `ops/runtime/trusted_operator_source_review.py` validates only the **shape** of independently supplied disposable-guest source evidence: independently pinned SHA-256, claimed installed bytes, exact root-owned private ancestry, no symlinks, leaf single-link regular file, and stable leaf FD device/inode. Unknown or inconsistent claims BLOCK. The receipt explicitly reports `evidenceSourceAuthenticated=false`, `rootOperatorExecutionVerified=false`, `quiescenceVerified=false`, `externalKitVerified=false`, `readyToInstall=false` and `authorizedToMutateProduction=false`. It neither reads or installs an operator nor collects privileged host facts and is **not** admitted to the fixed 17-member Runtime Bundle. Existing `offline_root_private_installer.py` retains its /tmp-only guard. Even a clean caller-provided record is not independent source verification; a separately approved root-private delivery and an independent guest witness are required next. No path, privilege, maintenance, backup, database, Docker or production change.
+
 ## 6. Validation and exit
 
 G2-A tests under existing CI `api-checks`:
