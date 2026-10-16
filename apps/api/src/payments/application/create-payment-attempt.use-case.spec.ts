@@ -521,12 +521,8 @@ describe('TerminalPaymentService', () => {
 
   it('consumes the one-time claim without sending Sale if Welcome throws', async () => {
     const operations = guardedOperations();
-    const {
-      service,
-      provider,
-      transactions,
-      terminalProvider,
-    } = createTerminalHarness(operations);
+    const { service, provider, transactions, terminalProvider } =
+      createTerminalHarness(operations);
     provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
     provider.getPaymentStatus.mockResolvedValue({
       status: 'UNKNOWN',
