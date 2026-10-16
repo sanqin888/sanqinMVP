@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-16 — C5-G2 B02-B inert one-shot operator gate source
+
+**LOCAL SOURCE + FOCUSED TESTS AUTHORED / UNTESTED / REVIEW PENDING / NO PR.** `feat/c5-g2-b02b-root-operator-gated-source-20261016` adds external `ops/runtime/trusted_root_operator_gate.py`, a fixed-location/version/operation structural gate for hypothetical root operator prerequisites, including explicit noncooperating process and new-consumer exclusions. Even all-true claimed evidence permanently returns BLOCKED; no actual privileged entrypoint, root execution, real Runtime filesystem writes, Docker, DB, backup, CI change, bundle expansion, public contract or dependency graph changes. Real root-private delivery and privileged root implementation require subsequent separate authorization and independent disposable guest testing. See `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
+
 ## 2026-10-16 — C5-G2 B02-A inert operator-source review
 
 **LOCAL SOURCE + FOCUSED UNIT TESTS AUTHORED / USER REVIEW PENDING / NOT TESTED OR PUSHED / NO PRODUCTION CHANGE.** Branch `feat/c5-g2-b02a-trusted-source-preflight-20261016` from latest `dev` after A06 PR #2835. Added `ops/runtime/trusted_operator_source_review.py` as a negative-only checker for claimed SHA-256, private root-owned source ancestry and leaf FD identity. No real host observation or trusted-source authentication is claimed; all production authority flags remain false. No Runtime Bundle member changes, installer, privileged entrypoint, CI workflow, migration, dependencies, service, backup or context graph change. B02-B root-owned operator source delivery and isolated guest execution remain a separately authorized trust boundary. Owner `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
