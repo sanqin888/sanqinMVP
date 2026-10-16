@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-16 — C5-G2 B02-B2 root-private FD source verification
+
+**LOCAL SOURCE + SYNTHETIC UNIT TESTS AUTHORED / REVIEW PENDING / NOT TESTED OR PUSHED** — `feat/c5-g2-b02b2-root-private-fd-verifier-20261016`. External `ops/runtime/root_private_source_fd.py` validates a pre-opened root-private anchor/descendant via no-follow FDs, same-device root-owned private ancestry, bounded regular-file byte read, mutation/entry identity checks and independently pinned SHA-256. This is read-only inspection of a caller-provided anchor and cannot establish that the anchor is trustworthy or that a future executor runs those bytes. Root-only delivery remains proposed protocol, not implemented/executed. No privilege, installation, CI, runtime allowlist, graph, DB/Backup/Deploy/MCP change; production G2 NO-GO, S2 paused. Owner: `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
+
 ## 2026-10-16 — C5-G2 B02-B inert one-shot operator gate source
 
 **LOCAL SOURCE + FOCUSED TESTS AUTHORED / UNTESTED / REVIEW PENDING / NO PR.** `feat/c5-g2-b02b-root-operator-gated-source-20261016` adds external `ops/runtime/trusted_root_operator_gate.py`, a fixed-location/version/operation structural gate for hypothetical root operator prerequisites, including explicit noncooperating process and new-consumer exclusions. Even all-true claimed evidence permanently returns BLOCKED; no actual privileged entrypoint, root execution, real Runtime filesystem writes, Docker, DB, backup, CI change, bundle expansion, public contract or dependency graph changes. Real root-private delivery and privileged root implementation require subsequent separate authorization and independent disposable guest testing. See `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
