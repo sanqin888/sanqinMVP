@@ -502,6 +502,84 @@ describe('TerminalPaymentService', () => {
     expect(provider.startPayment.mock.calls).toHaveLength(2);
   });
 
+  it('shares the one-time 504 replay claim across separate API service instances', async () => {
+    // Model two Nest worker instances with independent services sharing one
+    // in-memory Payment repository (not an actual Postgres concurrency test).
+    const operations = guardedOperations();
+    const {
+      service: workerA,
+      transactions,
+      provider,
+      terminalProvider,
+    } = createTerminalHarness(operations);
+    operations.findByAttemptId.mockImplementation((attemptId) => {
+      const payment = transactions.rows.find(
+        (row) => row.attemptId === attemptId,
+      );
+      return Promise.resolve(
+        payment
+          ? {
+              terminalId: 'compact-1',
+              storeStableId: '4750_Yonge_Street',
+              attemptId,
+              paymentTransactionId: payment.id,
+              externalPaymentId: payment.toSnapshot().externalPaymentId,
+              state: 'SALE_IN_FLIGHT' as const,
+              cancelRequestedAt: null,
+            }
+          : null,
+      );
+    });
+    provider.startPayment.mockResolvedValueOnce(terminal504Unknown());
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    const original = await workerA.startSale(terminalInput);
+    expect(original.status).toBe('RECONCILING');
+
+    const workerB = new TerminalPaymentService(
+      new CreatePaymentAttemptUseCase(transactions),
+      transactions,
+      provider,
+      terminalProvider,
+      operations,
+    );
+    const recoveredSale = deferred<PaymentProviderOutcome>();
+    provider.startPayment.mockReturnValue(recoveredSale.promise);
+
+    const requestA = workerA.resumeOriginal504Sale(original.id);
+    const requestB = workerB.resumeOriginal504Sale(original.id);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    // One original 504 call plus exactly one claimed recovery call.
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
+    expect(provider.startPayment.mock.calls[1]?.[0]).toMatchObject({
+      paymentId: original.id,
+      attemptId: terminalInput.attemptId,
+      idempotencyKey: terminalInput.idempotencyKey,
+      externalPaymentId: original.toSnapshot().externalPaymentId,
+      amountCents: terminalInput.amountCents,
+      currency: terminalInput.currency,
+    });
+
+    recoveredSale.resolve({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    await Promise.all([requestA, requestB]);
+    expect(transactions.rows).toHaveLength(1);
+    expect(transactions.rows[0]?.toSnapshot().resultCode).toBe(
+      'CLOVER_TERMINAL_SALE_HTTP_504_RESUME_CLAIMED',
+    );
+
+    // A stale worker cannot re-arm a second resume after the first claim.
+    await workerB.resumeOriginal504Sale(original.id);
+    expect(provider.startPayment.mock.calls).toHaveLength(2);
+  });
+
   it('does not re-arm retry after another 504 from the identical Sale', async () => {
     const { service, provider } = createTerminalHarness();
     provider.startPayment.mockResolvedValue(terminal504Unknown());

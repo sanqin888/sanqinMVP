@@ -67,6 +67,33 @@ describe('PrismaPaymentTerminalOperationRepository fencing', () => {
     });
   });
 
+  it('permits only the winning competing Attempt to replace a FINALIZED slot', async () => {
+    const { repository, table } = setup();
+    // Both callers read the same finalized row before the conditional write.
+    table.findUnique.mockResolvedValue(initial('FINALIZED'));
+    table.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const [first, second] = await Promise.all([
+      repository.reserve('compact-1', '4750_Yonge_Street', 'attempt-2'),
+      repository.reserve('compact-1', '4750_Yonge_Street', 'attempt-3'),
+    ]);
+    expect([first, second]).toEqual([true, false]);
+    expect(table.updateMany).toHaveBeenCalledTimes(2);
+    for (const [input] of table.updateMany.mock.calls) {
+      expect(input).toMatchObject({
+        where: {
+          terminalId: 'compact-1',
+          attemptId: 'attempt-1',
+          state: 'FINALIZED',
+        },
+        data: { state: 'RESERVED' },
+      });
+    }
+    expect(table.create).not.toHaveBeenCalled();
+  });
+
   it('sends a device cancellation only for the first same-Store SALE_IN_FLIGHT claim', async () => {
     const { repository, table } = setup();
     table.findUnique.mockResolvedValue(initial('SALE_IN_FLIGHT'));
