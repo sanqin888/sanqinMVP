@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-16 — C5 Batch A06 Prisma CLI migration-status fail-closed classification
+
+**LOCAL SOURCE / TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR OR DEPLOY.** Branch `feat/c5-batch-a-a06-prisma-status-guard-20261016` from newest dev after #2834. Runtime/Release owner only: replace substring-based Prisma pending detection and unverified successful exit with exact bounded Prisma 6.19.1 stdout/stderr and exit-code classification. Recognized clean returns no migration; recognized pending still requires user-authorized SQL review and `--apply-migrations`; missing/unknown/mixed output fails closed. No new runtime dependency, business context ownership/imports, schema/migration, Runtime Bundle member, privilege or production mutation. Synthetic source-informed tests authored; real Prisma/PostgreSQL execution and GitHub CI pending. See `docs/architecture/postmod-ghcr-deploy-simplification-2026-10-08.md` §A06.
+
 ## 2026-10-08 — MCP GitHub main source-reader cutover
 
 **LOCAL IMPLEMENTATION / USER REVIEW PENDING / CI NOT RUN / NO PRODUCTION CHANGE.** Production source tools use authenticated GitHub `main`, with immutable SHA file reads, bounded GitHub code search, explicit commit comparisons and no production Git/ripgrep subprocess. Docker ps/logs use the separate `/opt/sanq/runtime` Compose root; isolated workspace Git/PR behavior remains unchanged. MCP service installation, production credentials, systemd/tunnel and final checkout deletion remain independently gated. See `docs/architecture/postmod-ghcr-source-retirement-phase2-2026-10-08.md`.
