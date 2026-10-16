@@ -15,6 +15,14 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-16 — Clover Compact C-2C7 S4-C device availability / Welcome fail-closed characterization
+
+**Branch/base:** `test/clover-c2c7-s4c-fault-safety-characterization` from `origin/dev@27bdb5a4`. S4-B PR #2824 merged after CI #7260 7/7 green; separate dev CI #7261 subsequently completed with all seven jobs green. **State: LOCAL TESTS AUTHORED / USER REVIEW PENDING / NO LOCAL TEST EXECUTION / NO PR OR S4-C CI / NO COMPACT OR PRODUCTION TRAFFIC.**
+
+**S4-C tests and boundaries:** Existing Payments source already fails closed for device BUSY, stateless status HTTP 200, Welcome return false, and second original-recovery 504. This batch adds three Payments-only characterization tests for (1) explicitly `UNAVAILABLE` Compact, (2) availability request throwing and being mapped to server `UNKNOWN` before claim, and (3) post-CAS `prepareOriginalSaleResume()` throwing. Verify no additional provider Sale, preserve original Payment `RECONCILING`, retain unconsumed 504 result code before claim, and, after Welcome failure, persist `RESUME_CLAIMED` with no payment provider ID, no terminal fence completion and no ability to re-arm. No asserted Benefits/Order creation from the mocks; no real device disconnect/timeout. An inferred availability HTTP 200 still needs the stricter physical-state/Welcome gate; once claim is consumed, operations require an explicit operator incident path rather than blind new payment identity or RELEASE.
+
+**Architecture/validation:** Payment truth and replay CAS remain Payments-owned; Terminal operation fencing remains Payments-owned; Checkout Benefits/Order orchestration and live Web Clover Ecommerce untouched. No runtime code, module owner or contract changes, no Prisma/schema/migration/dependency/CI/graph/SCC/scanner allowance/baseline adjustment. Only existing application test and progress documentation changed. GitHub CI deferred until user approves remote PR per `AGENTS.md`. S4-C MOCK COVERAGE / DEVICE VERIFICATION NOT COMPLETE; S4-D restart/late canonical and merchant single-charge gates remain open. Owner details: `docs/payments/clover-pos-phase-plan.md` §C-2C7 S4-C.
+
 ## 2026-10-16 — Clover Compact C-2C7 S4-B duplicate/concurrent Sale claim characterization
 
 **Branch/base:** `test/clover-c2c7-s4b-concurrency-characterization`, latest `origin/dev` following PR #2823 merge `12b21b61` and dev CI #7258 all seven green. **Status: LOCAL SOURCE / USER REVIEW PENDING / TESTS NOT RUN / NO PR OR CI FOR THIS SLICE / NO DEVICE OR PRODUCTION TRAFFIC.**
