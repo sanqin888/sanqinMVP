@@ -791,7 +791,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       customerPromptPending: true,
       orderStableId: null,
     });
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(
       harness.paymentRealtime.publishCardPaymentStatus,
     ).toHaveBeenCalledWith(
@@ -800,12 +800,185 @@ describe('PosCardPaymentOrchestrationService', () => {
         status: 'DECLINED',
         customerPromptPending: false,
         customerRetryRequested: true,
+        benefitsReleaseComplete: true,
+        terminalReadyForNextSale: true,
       }),
     );
+    expect(harness.checkouts.findByAttemptId).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.terminalPayments.finishTerminalOperation,
+    ).toHaveBeenCalledWith('attempt-1');
     expect(
       harness.orderFinalization.finalizeConfirmedPayment,
     ).not.toHaveBeenCalled();
     expect(harness.terminalPayments.startSale).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['DECLINED', 'FAILED'] as const)(
+    'keeps %s Retry and terminal fence blocked when Benefits RELEASE fails',
+    async (status) => {
+      const harness = createHarness();
+      jest
+        .mocked(harness.terminalPayments.startSale)
+        .mockResolvedValue(paymentFixture(status));
+      jest
+        .mocked(harness.terminalPayments.completeCustomerInteraction)
+        .mockResolvedValue(true);
+      jest
+        .mocked(harness.checkouts.markDefinitiveFailureAndRelease)
+        .mockRejectedValueOnce(new Error('coupon release unavailable'));
+
+      const result = await harness.service.start(storeStableId, {
+        attemptId: 'attempt-1',
+        idempotencyKey: 'client-idem-1',
+        retryPromptEnabled: true,
+        order: orderInput,
+      });
+      expect(result.benefitsReleaseComplete).toBe(false);
+      expect(result.customerPromptPending).toBe(true);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(
+        harness.paymentRealtime.publishCardPaymentStatus,
+      ).toHaveBeenCalledWith(
+        storeStableId,
+        expect.objectContaining({
+          status,
+          customerPromptPending: false,
+          customerRetryRequested: false,
+          terminalReadyForNextSale: false,
+        }),
+      );
+      expect(
+        harness.terminalPayments.finishTerminalOperation,
+      ).not.toHaveBeenCalled();
+      expect(
+        harness.orderFinalization.finalizeConfirmedPayment,
+      ).not.toHaveBeenCalled();
+      expect(harness.terminalPayments.startSale).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not send Web Retry when the released checkout still has an unready terminal', async () => {
+    const harness = createHarness();
+    jest
+      .mocked(harness.terminalPayments.startSale)
+      .mockResolvedValue(paymentFixture('DECLINED'));
+    jest
+      .mocked(harness.terminalPayments.completeCustomerInteraction)
+      .mockResolvedValue(true);
+    jest
+      .mocked(harness.terminalPayments.finishTerminalOperation)
+      .mockResolvedValue(false);
+
+    await harness.service.start(storeStableId, {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      retryPromptEnabled: true,
+      order: orderInput,
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(
+      harness.terminalPayments.finishTerminalOperation,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).not.toHaveBeenCalledWith(
+      storeStableId,
+      expect.objectContaining({ customerRetryRequested: true }),
+    );
+    expect(harness.terminalPayments.startSale).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads a completed RELEASE checkpoint before allowing the device Retry', async () => {
+    const harness = createHarness();
+    const declined = paymentFixture('DECLINED');
+    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(declined);
+    jest
+      .mocked(harness.checkouts.markDefinitiveFailureAndRelease)
+      .mockRejectedValueOnce(new Error('temporary tender release failure'));
+    let finishPrompt!: (retry: boolean) => void;
+    const pendingPrompt = new Promise<boolean>((resolve) => {
+      finishPrompt = resolve;
+    });
+    jest
+      .mocked(harness.terminalPayments.completeCustomerInteraction)
+      .mockReturnValue(pendingPrompt);
+
+    const result = await harness.service.start(storeStableId, {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      retryPromptEnabled: true,
+      order: orderInput,
+    });
+    expect(result.benefitsReleaseComplete).toBe(false);
+
+    // The existing Benefits recovery worker may finish after the first failed
+    // release; the prompt completion must consult its durable checkpoint.
+    harness.setCheckout(
+      checkoutFixture({
+        status: 'DECLINED',
+        paymentTransactionId: declined.id,
+        benefitsReleasedAt: new Date(),
+      }),
+    );
+    finishPrompt(true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(
+      harness.terminalPayments.finishTerminalOperation,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).toHaveBeenCalledWith(
+      storeStableId,
+      expect.objectContaining({
+        customerRetryRequested: true,
+        benefitsReleaseComplete: true,
+        terminalReadyForNextSale: true,
+      }),
+    );
+  });
+
+  it('does not finalize the terminal when the released Checkout belongs to another Payment', async () => {
+    const harness = createHarness();
+    jest
+      .mocked(harness.terminalPayments.startSale)
+      .mockResolvedValue(paymentFixture('DECLINED'));
+    let finishPrompt!: (retry: boolean) => void;
+    const pendingPrompt = new Promise<boolean>((resolve) => {
+      finishPrompt = resolve;
+    });
+    jest
+      .mocked(harness.terminalPayments.completeCustomerInteraction)
+      .mockReturnValue(pendingPrompt);
+
+    await harness.service.start(storeStableId, {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      retryPromptEnabled: true,
+      order: orderInput,
+    });
+    harness.setCheckout(
+      checkoutFixture({
+        status: 'DECLINED',
+        paymentTransactionId: '44444444-4444-4444-8444-444444444444',
+        benefitsReleasedAt: new Date(),
+      }),
+    );
+    finishPrompt(true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(
+      harness.terminalPayments.finishTerminalOperation,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).not.toHaveBeenCalledWith(
+      storeStableId,
+      expect.objectContaining({ customerRetryRequested: true }),
+    );
   });
 
   it('stops a pending customer prompt on POS Cancel without cancelling an already failed payment', async () => {
