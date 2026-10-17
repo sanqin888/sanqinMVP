@@ -181,6 +181,10 @@ Daily S2 remains **on hold until C5 is accepted**. No underlying
 
 **Before any B4B-2 privilege:** independently authenticate both Bootstrap and operator bytes with an external trust root; identify exactly who opens/holds and consumes FD-backed bytes without reopening a path; independently pin the actual interpreter binary, dynamic loader/native libraries, startup flags, environment and complete transitive import closure; demonstrate fail-closed behavior against TOCTOU, forged claims, fake Python path/import substitution, incomplete source delivery and unknown system state on a separately authorized disposable Linux VM. B4B-1 CI, if green later, is *not* privileged verification. C5-G2 stays NO-GO and S2 remains PAUSED.
 
+## 2026-10-17 — B02-B4B-2 synthetic guest byte-consumer source / NOT EXECUTED
+
+**LOCAL SOURCE + SYNTHETIC TESTS / USER REVIEW PENDING / NO ROOT/VM TEST.** Added external `ops/runtime/g2b4b2_disposable_guest_byte_consumer.py` and unprivileged tests for Linux-only, fixed bytes `RESULT = 40 + 2\n` consumed through a bounded verified synthetic /tmp fixture with FD identity checks. This is a **real compile/exec of one fixed harmless expression** but **not** the trusted Bootstrap/Operator and cannot load caller-supplied code or access production Runtime. It always denies production authority. The current MCP has no guest command access, and local ChatGPT compute lacks QEMU/KVM: `B4B-2 GUEST REAL-ROOT VERIFICATION = NOT RUN`. See [B02-B4B-2 disposable guest acceptance](./c5-g2b4b2-disposable-guest-byte-consumption-acceptance-2026-10-17.md) for explicit Gate 0/1, source-hash review, exact command approval and independent evidence requirements. No existing Runtime 17 member, maintenance/backup owner, root privileges or production services changed; S2 stays paused and G2 NO-GO.
+
 ## 6. Validation and exit
 
 G2-A tests under existing CI `api-checks`:
