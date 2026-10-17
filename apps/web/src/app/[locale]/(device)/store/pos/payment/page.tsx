@@ -35,6 +35,7 @@ import {
 } from "@/lib/pos-display";
 import type { PaymentMethod } from "@/lib/api/pos";
 import { PosCardPaymentBenefitsReview } from "./PosCardPaymentBenefitsReview";
+import { usePosCardPaymentReadback } from "./usePosCardPaymentReadback";
 import {
   clearPosCheckoutEditDraft,
   readPosCheckoutEditDraft,
@@ -1538,6 +1539,13 @@ export default function StorePosPaymentPage() {
     pendingCardRequest?.attemptId,
     t.cardTerminalUnknown,
   ]);
+
+  usePosCardPaymentReadback({
+    enabled: cardTerminalConfig?.enabled === true,
+    attemptId: pendingCardRequest?.attemptId,
+    latestSnapshot: cardPaymentResult,
+    onSnapshot: applyCardPaymentResult,
+  });
 
   const handleConfirm = async () => {
     setError(null);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isIP } from 'node:net';
 
 @Injectable()
 export class CloverProviderConfig {
@@ -80,20 +81,44 @@ export class CloverProviderConfig {
       const platform = new URL(env.CLOVER_UNIFIED_PLATFORM_API_BASE ?? '');
       const terminal = new URL(env.CLOVER_TERMINAL_API_BASE ?? '');
       const unifiedMerchant = env.CLOVER_UNIFIED_MERCHANT_ID?.trim();
+      const webMerchant = env.CLOVER_MERCHANT_ID?.trim();
       return (
         (db.protocol === 'postgres:' || db.protocol === 'postgresql:') &&
         ['localhost', '127.0.0.1', '[::1]'].includes(db.hostname) &&
         platform.protocol === 'https:' &&
         platform.hostname === 'apisandbox.dev.clover.com' &&
         terminal.protocol === 'https:' &&
-        terminal.hostname === 'apisandbox.dev.clover.com' &&
+        (terminal.hostname === 'apisandbox.dev.clover.com' ||
+          this.isPrivateCompactLanUrl(terminal)) &&
         Boolean(unifiedMerchant) &&
-        unifiedMerchant !== env.CLOVER_MERCHANT_ID?.trim() &&
+        unifiedMerchant !== webMerchant &&
         Boolean(env.CLOVER_TERMINAL_DEVICE_ID?.trim())
       );
     } catch {
       return false;
     }
+  }
+
+  /** A physical Compact's local REST Pay Display listener, not an arbitrary URL. */
+  private isPrivateCompactLanUrl(url: URL): boolean {
+    if (
+      url.port !== '12346' ||
+      url.pathname !== '/' ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      isIP(url.hostname) !== 4
+    ) {
+      return false;
+    }
+    const octets = url.hostname.split('.').map(Number);
+    const [first, second] = octets;
+    return (
+      first === 10 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168)
+    );
   }
 
   private optionalBaseUrl(raw: string | undefined): string | undefined {

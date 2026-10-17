@@ -2,6 +2,7 @@ import type { PosCardPaymentResult } from "./api/pos";
 import {
   canUnlockCancelledPosCheckout,
   mergePosCardPaymentSnapshot,
+  needsPosCardPaymentReadback,
   parsePosCardPaymentSnapshot,
 } from "./pos-card-payment-realtime";
 
@@ -23,6 +24,32 @@ const complete: PosCardPaymentResult = {
 };
 
 describe("POS card payment realtime facts", () => {
+  it("keeps readback active until the original checkout is safely resolved", () => {
+    expect(needsPosCardPaymentReadback(null)).toBe(true);
+    const unresolvedStatuses = [
+      "CREATED", "PROCESSING", "UNKNOWN", "RECONCILING",
+    ] as const;
+    for (const status of unresolvedStatuses) {
+      expect(needsPosCardPaymentReadback({ ...complete, status })).toBe(true);
+    }
+    expect(needsPosCardPaymentReadback({ ...complete, orderStableId: null })).toBe(true);
+    expect(needsPosCardPaymentReadback(complete)).toBe(false);
+    expect(needsPosCardPaymentReadback({
+      ...complete,
+      status: "CANCELLED",
+      orderStableId: null,
+      benefitsReleaseComplete: false,
+    })).toBe(true);
+    expect(needsPosCardPaymentReadback({
+      ...complete,
+      status: "CANCELLED",
+      orderStableId: null,
+      benefitsReleaseComplete: true,
+    })).toBe(false);
+    expect(needsPosCardPaymentReadback({ ...complete, status: "DECLINED" })).toBe(false);
+    expect(needsPosCardPaymentReadback({ ...complete, status: "FAILED" })).toBe(false);
+  });
+
   it("retains all cents from a complete Socket.IO event", () => {
     expect(parsePosCardPaymentSnapshot({ ...complete, messageKind: "SNAPSHOT" })).toEqual(complete);
   });

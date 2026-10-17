@@ -165,8 +165,17 @@ export class PosCardPaymentOrchestrationService {
         )
       : null;
     const snapshot = payment?.toSnapshot();
+    // A completed Checkout is the sole authority for exposing its existing
+    // Order on this read-only review path. Never finalize or create it here.
+    const completedOrder =
+      checkout.status === 'COMPLETED'
+        ? await this.orderOperations.getByStableIdForStore(
+            checkout.orderStableId,
+            storeStableId,
+          )
+        : undefined;
     return {
-      ...this.toView(checkout, payment ?? undefined),
+      ...this.toView(checkout, payment ?? undefined, completedOrder),
       sandboxManualRecoveryEnabled: this.sandboxRecovery.isEnabled(),
       sandboxOperatorUnpaidAccepted: decision !== null,
       sandboxRecoveryTerminalFinalized: decision?.terminalFinalizedAt != null,

@@ -25,6 +25,27 @@ export type PosCardPaymentRealtimeEvent = {
   pickupCode?: string | null;
 };
 
+/**
+ * Poll only the persisted original Attempt while realtime may be missed.
+ * A terminal success still needs a confirmed existing Order to leave checkout.
+ * Do not auto-trigger payment reconciliation or another provider Sale.
+ */
+export function needsPosCardPaymentReadback(
+  result: PosCardPaymentResult | null,
+): boolean {
+  if (!result) return true;
+  if (
+    ["CREATED", "PROCESSING", "UNKNOWN", "RECONCILING"].includes(result.status)
+  ) {
+    return true;
+  }
+  if (result.status === "SUCCEEDED") return !result.orderStableId;
+  if (result.status === "CANCELLED") {
+    return result.benefitsReleaseComplete !== true;
+  }
+  return false;
+}
+
 /** A browser pending marker is never cancellation authority. */
 export function canUnlockCancelledPosCheckout(result: PosCardPaymentResult): boolean {
   return (

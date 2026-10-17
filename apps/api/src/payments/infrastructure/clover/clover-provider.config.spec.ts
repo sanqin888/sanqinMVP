@@ -210,6 +210,61 @@ describe('CloverProviderConfig', () => {
     });
   });
 
+  it('does not require any Web Ecommerce merchant in an isolated Sandbox', () => {
+    const isolatedLan = {
+      ...isolatedSandbox,
+      CLOVER_TERMINAL_API_BASE: 'https://192.168.2.219:12346',
+      CLOVER_MERCHANT_ID: undefined,
+    };
+    withEnvironment(isolatedLan, () => {
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        true,
+      );
+    });
+  });
+
+  it.each([
+    'https://192.168.2.219:12346',
+    'https://10.0.0.5:12346',
+    'https://172.16.2.5:12346',
+    'https://172.31.255.254:12346',
+  ])(
+    'allows a private IPv4 Compact LAN endpoint %s only in isolated Sandbox',
+    (base) => {
+      const lanSandbox = { ...isolatedSandbox, CLOVER_TERMINAL_API_BASE: base };
+      withEnvironment(lanSandbox, () => {
+        expect(
+          new CloverProviderConfig().terminalSandboxManualEntryEnabled,
+        ).toBe(true);
+      });
+    },
+  );
+
+  it.each([
+    'http://192.168.2.219:12346',
+    'https://192.168.2.219:12345',
+    'https://192.168.2.219',
+    'https://192.168.2.219:12346/connect',
+    'https://192.168.2.219:12346/?debug=1',
+    'https://user@192.168.2.219:12346',
+    'https://127.0.0.1:12346',
+    'https://169.254.2.219:12346',
+    'https://172.32.0.1:12346',
+    'https://8.8.8.8:12346',
+    'https://compact.local:12346',
+    'https://api.clover.com',
+  ])('rejects unsafe Terminal manual-entry URL %s', (base) => {
+    const unsafeSandbox = {
+      ...isolatedSandbox,
+      CLOVER_TERMINAL_API_BASE: base,
+    };
+    withEnvironment(unsafeSandbox, () => {
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        false,
+      );
+    });
+  });
+
   it.each([
     ['production runtime', { NODE_ENV: 'production' }],
     [

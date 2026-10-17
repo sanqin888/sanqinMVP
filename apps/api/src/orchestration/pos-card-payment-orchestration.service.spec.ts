@@ -345,6 +345,51 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
   });
 
+  it('returns completed Order identity in read-only review', async () => {
+    const harness = createHarness();
+    harness.setCheckout(checkoutFixture({ status: 'COMPLETED' }));
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(paymentFixture('SUCCEEDED'));
+
+    const reviewed = await harness.service.getReviewAttempt(
+      storeStableId,
+      'attempt-1',
+    );
+    expect(reviewed).toMatchObject({
+      status: 'SUCCEEDED',
+      orderStableId: orderDto.orderStableId,
+      orderNumber: orderDto.orderNumber,
+      pickupCode: orderDto.pickupCode,
+    });
+    expect(harness.orderOperations.getByStableIdForStore).toHaveBeenCalledWith(
+      orderDto.orderStableId,
+      storeStableId,
+    );
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
+  });
+
+  it('does not read Orders for unfinished checkouts', async () => {
+    const harness = createHarness();
+    harness.setCheckout(checkoutFixture({ status: 'PROCESSING' }));
+    const reviewed = await harness.service.getReviewAttempt(
+      storeStableId,
+      'attempt-1',
+    );
+    expect(reviewed.orderStableId).toBeNull();
+    expect(
+      harness.orderOperations.getByStableIdForStore,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+  });
+
   it('permits read-only inspection but blocks recheck while Terminal is disabled', async () => {
     const harness = createHarness();
     jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
