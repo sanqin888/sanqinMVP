@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-16 — C5-G2 B02-B4A inert execution-material binding
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR.** Branch `feat/c5-g2-b02b4a-inert-execution-binding-20261016` from latest `origin/dev`. Added external pure `ops/runtime/root_operator_execution_binding.py` and focused synthetic tests: immutable pinned SHA-256 source snapshot, exact same-object hypothetical consumer bytes, claimed FD identity equality, rejection of path reopen/import/copy/mismatched inode or digest. These are untrusted synthetic observations; no real executor, FD/host collection, root privilege, Runtime mutation, release Kit, maintenance admission or production authority. Every receipt returns BLOCKED. No changed owner/API, dependency graph/baseline, Runtime Bundle, Prisma/migrations, CI workflow, Backup, Deploy or MCP. Detail: `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`. Primary modularization worklog remains oversized for MCP's patch cap; canonical Runtime supplement documents the same slice without truncating it.
+
 ## 2026-10-16 — C5-G2 B02-B3 fixed FD create-only source delivery
 
 **LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / REVIEW PENDING / NO PR.** Branch `feat/c5-g2-b02b3-source-delivery-20261016` adds `ops/runtime/root_private_source_delivery.py` with immutable input SHA-256 preflight, fixed root-private descendant, FD-anchored secure directory checks, non-overwriting `O_EXCL`, fsync and B02-B2 reopen/readback. Failures preserve occupied/partial files for independent incident review; no cleanup or retry. Synthetic tests model successful fresh delivery and fail-closed paths; actual root delivery, anchor provenance, post-readback execution binding, production installation, independent witness, maintenance quiescence and off-VM Kit remain NOT VERIFIED/NOT AUTHORIZED. No Runtime Bundle, graph, CI, DB, Docker or Backup mutation. Owner: `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.

@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-16 **C5-G2 B02-B4A inert execution-material binding model**: LOCAL SOURCE + SYNTHETIC UNIT TESTS AUTHORED / NOT RUN / REVIEW PENDING. External `ops/runtime/root_operator_execution_binding.py` is pure negative-only modeling with no execution, OS operations or consumer cutover; it is excluded from the exact 17-file Runtime Bundle. **No context owner, public API, direct-import debt, dependency graph, SCC/cycle, architecture scanner baseline, Prisma/schema, CI workflow or production change**. All installation authority stays false. See `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
+
+
 2026-10-16 **C5-G2 B02-B3 root-private source delivery kernel** is **local-only/untested/review pending**. Added offline fixed-FD create-only source delivery and synthetic tests outside the fixed 17-file Runtime Bundle. There is **no change to context ownership, public APIs, import dependencies/SCCs, architecture scanner baseline, schema/migration, CI workflow, production services or backup owner**. All delivery receipts remain non-authorizing; G2 NO-GO.
 
 
