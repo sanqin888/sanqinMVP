@@ -740,7 +740,9 @@ describe('CloverTerminalTransport', () => {
       capture: true,
       final: true,
       externalPaymentId: 'external-manual-test',
-      deviceOptions: { cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'] },
+      deviceOptions: {
+        cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'],
+      },
     });
   });
 

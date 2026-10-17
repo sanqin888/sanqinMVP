@@ -348,9 +348,9 @@ describe('PosCardPaymentOrchestrationService', () => {
   it('returns completed Order identity in read-only review', async () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'COMPLETED' }));
-    jest.mocked(harness.paymentTransactions.findByAttemptId).mockResolvedValue(
-      paymentFixture('SUCCEEDED'),
-    );
+    jest
+      .mocked(harness.paymentTransactions.findByAttemptId)
+      .mockResolvedValue(paymentFixture('SUCCEEDED'));
 
     const reviewed = await harness.service.getReviewAttempt(
       storeStableId,

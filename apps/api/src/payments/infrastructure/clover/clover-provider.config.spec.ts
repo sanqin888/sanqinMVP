@@ -233,9 +233,9 @@ describe('CloverProviderConfig', () => {
     (base) => {
       const lanSandbox = { ...isolatedSandbox, CLOVER_TERMINAL_API_BASE: base };
       withEnvironment(lanSandbox, () => {
-        expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
-          true,
-        );
+        expect(
+          new CloverProviderConfig().terminalSandboxManualEntryEnabled,
+        ).toBe(true);
       });
     },
   );
@@ -254,7 +254,10 @@ describe('CloverProviderConfig', () => {
     'https://compact.local:12346',
     'https://api.clover.com',
   ])('rejects unsafe Terminal manual-entry URL %s', (base) => {
-    const unsafeSandbox = { ...isolatedSandbox, CLOVER_TERMINAL_API_BASE: base };
+    const unsafeSandbox = {
+      ...isolatedSandbox,
+      CLOVER_TERMINAL_API_BASE: base,
+    };
     withEnvironment(unsafeSandbox, () => {
       expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
         false,
