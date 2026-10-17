@@ -1222,8 +1222,8 @@ describe('TerminalPaymentService', () => {
     const cancelled = await service.startSale(terminalInput);
     expect(cancelled.status).toBe('CANCELLED');
     expect(cancelled.toSnapshot().resultCode).toBe('CLOVER_CANCELLED');
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
-    expect(provider.getPaymentStatus).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(1);
     expect(transactions.rows).toHaveLength(1);
   });
 
@@ -1258,7 +1258,7 @@ describe('TerminalPaymentService', () => {
       const result = await service.startSale(terminalInput);
       expect(result.status).not.toBe('CANCELLED');
       expect(result.status).not.toBe('SUCCEEDED');
-      expect(provider.startPayment).toHaveBeenCalledTimes(1);
+      expect(provider.startPayment.mock.calls).toHaveLength(1);
       if (reason === 'mismatched canonical identity') {
         expect(result.toSnapshot().failureCode).toBe(
           'TERMINAL_SALE_CANCEL_CANONICAL_REVIEW',
@@ -1289,7 +1289,7 @@ describe('TerminalPaymentService', () => {
     );
     const reviewed = await service.reconcile(pending.id);
     expect(reviewed.status).toBe('RECONCILING');
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
   });
 
   it('keeps HOLD-protecting uncertainty for an unverified cancellation response', async () => {

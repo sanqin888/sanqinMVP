@@ -1951,19 +1951,22 @@ describe('Clover Platform Payments Gateway', () => {
     expect(collectionUrl).toContain('filter=externalPaymentId%3Dexternal-1');
   });
 
-  it('maps complete multi-FAIL rows to non-final unpaid evidence', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({
-        elements: [
-          platformPayment({ id: 'decline-1', result: 'FAIL' }),
-          platformPayment({ id: 'decline-2', result: 'FAIL' }),
-        ],
-      }), { status: 200 }),
-    );
-    await expect(createPlatformGateway().getCanonicalPayment({
+  const mockCollection = (elements: unknown[]) => {
+    const response = new Response(JSON.stringify({ elements }), { status: 200 });
+    return jest.spyOn(global, 'fetch').mockResolvedValue(response);
+  };
+  const readCollection = () =>
+    createPlatformGateway().getCanonicalPayment({
       ...platformRequest,
       providerPaymentId: null,
-    })).resolves.toMatchObject({
+    });
+
+  it('maps complete multi-FAIL rows to non-final unpaid evidence', async () => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'decline-2', result: 'FAIL' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'UNKNOWN',
       evidence: 'CANONICAL',
       failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
@@ -1972,18 +1975,11 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('selects one canonical success after checking failed predecessors', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({
-        elements: [
-          platformPayment({ id: 'decline-1', result: 'FAIL' }),
-          platformPayment({ id: 'approved-2', result: 'SUCCESS' }),
-        ],
-      }), { status: 200 }),
-    );
-    await expect(createPlatformGateway().getCanonicalPayment({
-      ...platformRequest,
-      providerPaymentId: null,
-    })).resolves.toMatchObject({
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'approved-2', result: 'SUCCESS' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'SUCCEEDED',
       providerPaymentId: 'approved-2',
       chargedTotalCents: 2048,
@@ -1999,36 +1995,22 @@ describe('Clover Platform Payments Gateway', () => {
     ['duplicate payment id', { id: 'decline-1' }],
     ['missing payment id', { id: undefined }],
   ])('rejects multiple payments containing %s', async (_label, bad) => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({
-        elements: [
-          platformPayment({ id: 'decline-1', result: 'FAIL' }),
-          platformPayment({ id: 'decline-2', result: 'FAIL', ...bad }),
-        ],
-      }), { status: 200 }),
-    );
-    await expect(createPlatformGateway().getCanonicalPayment({
-      ...platformRequest,
-      providerPaymentId: null,
-    })).resolves.toMatchObject({
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'decline-2', result: 'FAIL', ...bad }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'UNKNOWN',
       failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
     });
   });
 
   it('rejects two successes on the same external Sale', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({
-        elements: [
-          platformPayment({ id: 'approved-1' }),
-          platformPayment({ id: 'approved-2' }),
-        ],
-      }), { status: 200 }),
-    );
-    await expect(createPlatformGateway().getCanonicalPayment({
-      ...platformRequest,
-      providerPaymentId: null,
-    })).resolves.toMatchObject({
+    mockCollection([
+      platformPayment({ id: 'approved-1' }),
+      platformPayment({ id: 'approved-2' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'UNKNOWN',
       failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
     });
@@ -2038,17 +2020,16 @@ describe('Clover Platform Payments Gateway', () => {
     const failedPage = Array.from({ length: 50 }, (_, index) =>
       platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
     );
-    const fetchSpy = jest.spyOn(global, 'fetch')
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        elements: failedPage,
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        elements: [platformPayment({ id: 'approved-51' })],
-      }), { status: 200 }));
-    await expect(createPlatformGateway().getCanonicalPayment({
-      ...platformRequest,
-      providerPaymentId: null,
-    })).resolves.toMatchObject({
+    const first = new Response(JSON.stringify({ elements: failedPage }), {
+      status: 200,
+    });
+    const last = new Response(
+      JSON.stringify({ elements: [platformPayment({ id: 'approved-51' })] }),
+      { status: 200 },
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(last);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'SUCCEEDED',
       providerPaymentId: 'approved-51',
     });
@@ -2062,15 +2043,13 @@ describe('Clover Platform Payments Gateway', () => {
     const failedPage = Array.from({ length: 50 }, (_, index) =>
       platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
     );
-    jest.spyOn(global, 'fetch')
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        elements: failedPage,
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 500 }));
-    await expect(createPlatformGateway().getCanonicalPayment({
-      ...platformRequest,
-      providerPaymentId: null,
-    })).resolves.toMatchObject({
+    const first = new Response(JSON.stringify({ elements: failedPage }), {
+      status: 200,
+    });
+    const error = new Response('{}', { status: 500 });
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(error);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'UNKNOWN',
       failureCode: 'CLOVER_PLATFORM_HTTP_500',
     });
@@ -2080,15 +2059,8 @@ describe('Clover Platform Payments Gateway', () => {
     const page = Array.from({ length: 50 }, (_, index) =>
       platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
     );
-    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ elements: page }), { status: 200 }),
-      ),
-    );
-    await expect(createPlatformGateway().getCanonicalPayment({
-      ...platformRequest,
-      providerPaymentId: null,
-    })).resolves.toMatchObject({
+    const fetchSpy = mockCollection(page);
+    await expect(readCollection()).resolves.toMatchObject({
       status: 'UNKNOWN',
       failureCode: 'CLOVER_PLATFORM_PAYMENT_COLLECTION_INCOMPLETE',
     });
