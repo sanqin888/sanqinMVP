@@ -24,85 +24,29 @@ Monorepo (pnpm workspace) for **Sanqin Roujiamo** web + API, deployed with Docke
 
 ## Local Development
 
-### 1) Install dependencies
-```bash
-pnpm install
-2) Run DB (optional)
-If you prefer Docker for Postgres:
-
-bash
-复制代码
-docker compose up -d db
-3) Run API/Web locally
-Example (adjust to your scripts):
-
-bash
-复制代码
-pnpm --filter api dev
-pnpm --filter web dev
-Production Deployment (VM)
-1) Use the production VM's existing Compose environment source.
-
-Do not assume a fixed path such as `/etc/sanqin/sanqin.env`. The active
-production VM verified on 2026-09-29 does not have that path; its existing
-Compose environment resolves correctly when `docker compose` is run from the
-production repository directory.
-
-2) Pull and run a validated release
-
-The production Compose environment must define `GOOGLE_MAPS_BROWSER_KEY`, `CLOVER_WEB_PUBLIC_TOKEN`, and `CLOVER_WEB_SDK_URL` before the runtime-config slices are deployed. `GOOGLE_MAPS_BROWSER_KEY` remains distinct from the server-side `GOOGLE_MAPS_API_KEY` used for geocoding; Clover Web Ecommerce browser configuration is supplied by the API at runtime while `CLOVER_MERCHANT_ID` remains the existing server-side merchant identity. The Web image is environment-neutral and must not receive production `NEXT_PUBLIC_*` build args.
-
-Production must also define `SANQ_IMAGE_SHA` as the full 40-character commit SHA of a `main` release whose `ci` and `publish-images` workflows both completed successfully. API and Uber worker intentionally use the same API image tag.
-
-Pull only the application images so deployment does not refresh the mutable PostgreSQL base image unintentionally:
+Use the pinned pnpm workspace and committed dependency state:
 
 ```bash
-docker compose pull api ubereats-worker web
-docker compose up -d --no-build
+pnpm install --frozen-lockfile --prefer-offline
 ```
 
-Do not use `docker compose up -d --build` on production. Production application images are built by GitHub Actions and pulled from GHCR; the Lightsail VM is runtime-only.
+Run API/Web through their workspace scripts in a development environment with the required configuration. MCP-workspace does not expose lint/build/test execution; follow [AGENTS.md](AGENTS.md).
 
-Do not treat container start alone as deployment success. Apply any explicitly
-authorized production Prisma migrations through the normal controlled migration
-gate, then verify migration parity plus local/public runtime readiness.
+## Documentation
 
-For rollback after a GHCR-based release, set `SANQ_IMAGE_SHA` back to the full SHA of the previously verified published release, pull the three application services again, run `docker compose up -d --no-build`, and repeat runtime-readiness verification. For the first GHCR cutover, keep the pre-cutover local images and prior Compose revision available until the new release is verified; do not prune them during the cutover window.
+Start with the [project document index](docs/文档索引.md). It links the current architecture, product queue, payment/Uber contracts, operations and continuous worklog. Historical phase records are evidence for their stated dates and scopes.
 
-GHCR image publishing foundation:
+## Production Publishing and Runtime
 
-After the authoritative `ci` workflow succeeds for a push to `main`, GitHub Actions builds the validated commit with `Dockerfile.api` and `Dockerfile.web` and publishes immutable images tagged with the full commit SHA:
+The VM runs immutable GHCR API/Web images published for a full `main` commit SHA after authoritative CI. API and Uber worker share the same API image. Paired-image publication does not deploy, apply migrations or authorize a production change. Production must not build application images locally.
 
-```text
-ghcr.io/sanqin888/sanq-api:<full-git-sha>
-ghcr.io/sanqin888/sanq-web:<full-git-sha>
-```
+Production paths were cut over to `/opt/sanq/runtime`, `/srv/sanq/uploads` and `/srv/sanq/backups`; the Compose project and existing DB volume remain `sanq-app` and `sanq-app_pgdata`. An installed Runtime has already been recorded. Its source SHA is distinct from the running application image SHA, and newer `dev` controller fixes are not automatically installed. Verify the exact live versions before operating.
 
-The publishing workflow does not deploy to production, run Prisma migrations, or move a mutable `latest` / `main` tag. The first GHCR pull-only cutover was production-verified on 2026-10-04; the above explicit SHA deployment remains the production process.
+The environment must define `GOOGLE_MAPS_BROWSER_KEY`, `CLOVER_WEB_PUBLIC_TOKEN`, `CLOVER_WEB_SDK_URL` and the full application `SANQ_IMAGE_SHA`. `GOOGLE_MAPS_BROWSER_KEY` remains distinct from server-side `GOOGLE_MAPS_API_KEY`; `CLOVER_MERCHANT_ID` stays server-side. Web browser configuration comes from the API at runtime; do not pass production `NEXT_PUBLIC_*` build args into the environment-neutral Web image.
 
-Batch A adds a post-publish paired-image seal: once both image jobs finish successfully, CI checks both registry manifest digests and linux/amd64 availability, uploads a release proof artifact and seals the validated **source commit SHA** with `sanq/paired-images-published`. Batch B also embeds both image digests in this status so the pull-only VM can compare them without a GitHub artifact-access token. Discover the latest eligible main release without changing the VM using `python3 ops/release/release_contract.py discover --pretty`.
+Use [GHCR 发布与 Runtime 状态](docs/runbooks/GHCR发布与Runtime状态.md) for the existing publication, migration, readiness and manual recovery contracts, the distinction between installed Runtime and source, and links to detailed evidence. It replaces obsolete pre-C4 command/context guidance; it does not authorize production execution. New Runtime installation, pending migrations, rollback and eventual legacy-checkout deletion retain their separate gates. Do not prune previous images, data, backups or the old checkout during documentation cleanup.
 
-Batch B provides a separately gated, **manual-only** deployment controller: `python3 ops/release/deploy_release.py plan` (read-only) or, **only after explicit production authorization**, `python3 ops/release/deploy_release.py deploy --execute`. The controller skips Prisma migrations when candidate status is current; for a strictly pending migration set it blocks by default and requires independent SQL/backup/maintenance review and explicit `deploy --execute --apply-migrations`. Unknown/drift/failed statuses remain blocked. **This controller is still not production-installed or production-verified.** Application images may advance independently of the installed Runtime SHA only while the GitHub ancestry comparison confirms no Runtime Bundle source files changed; the installed Runtime manifest/files are still root-owned and checksum-checked. If Runtime files changed or comparison is incomplete, a separately approved Runtime installation is required. The checkout-free controller is not yet installed or production-verified. The final acceptance target is to retire the production VM's `/home/ubuntu/sanq-app` main Git checkout **only after** source-independent deployment/rollback, backup, systemd, MCP and storage dependencies are inspected and production verified, and only with a separate deletion authorization. The existing manual GHCR deployment instructions remain valid. See `docs/architecture/postmod-ghcr-batch-b-manual-deploy.md` and `docs/architecture/postmod-ghcr-deploy-simplification-2026-10-08.md`.
-
-Batch C1 adds a **source-locked Runtime artifact** to the successful `publish-images` run: `sanq-runtime-<full-source-SHA>`. It contains only reviewed Compose/ops code plus a manifest matching the exact published API/Web image digests; no `.env`, uploads, backups or credentials. The archive is deliberately **not yet a deployable standalone /opt/sanq installation**, and it is not installed on production. Batch C2 adds a versioned **proposed-only** Runtime directory contract and a manually gated, inert staging tool. Staging never activates containers and currently requires the matching main Git checkout to verify archive source bytes. See `docs/architecture/postmod-ghcr-batch-c1-runtime-bundle.md` and `docs/architecture/postmod-ghcr-batch-c2-runtime-staging.md`.
-
-Batch C3-B (Alternative B) prepares the **future** /opt/sanq/runtime and /srv/sanq backup paths in source only, includes the matched backup script/helper/unit/sudoers in the Runtime bundle and changes proposed backup service logs to journal. These templates **must not be installed onto the existing /home/ubuntu/sanq-app production layout**: a separately reviewed C4 data/backup cutover and a root-owned activation marker are required. See `docs/architecture/postmod-ghcr-batch-c3b-backup-path-decision.md` and `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`. C4-A adds a **read-only** source compatibility audit (`python3 ops/runtime/audit_compose_cutover.py`) of the previous relative uploads mounts and source-dependent deployment/readiness checks. C4-B source then pins the target absolute uploads paths, the Compose identity and the Runtime release/readiness controls, but it still does **not** authorize production cutover. See `docs/architecture/postmod-ghcr-batch-c4a-source-readiness.md` and `docs/architecture/postmod-ghcr-batch-c4b-runtime-path-implementation.md`.
-
-C5-B1 adds a separate `sanq/runtime-archive-sha256` GitHub commit status and read-only Runtime archive verification after successful artifact upload, bound to the same successful `publish-images` run and paired-image SHA/digests. C5-B2A now prepares checkout-free **inert staging**, retaining the exact externally authenticated archive inside each SHA staging directory. C5-B2B0 adds a read-only audit of staged archive/file parity. C5-B2B1 adds exact-SHA historic publication verification and an inert version-transition contract. C5-B2B2 adds a pure, non-executable Runtime install transaction planner with manual-recovery and fixed-volume guards; **none of these install or roll back production**. The C4 deployment controller **still needs Git** until a separately approved authority cutover. Do not remove it. GitHub Actions artifact retention is still 90 days. See `docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md` and `docs/architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md`.
-
-Docker/image-workflow and dependency-manifest changes targeting `dev` also run the independent `image-build-checks` workflow. It builds and loads API/Web images on hosted runners, checks API runtime packaging and Web standalone health, and records build duration, local uncompressed size and cache details. It does not publish or deploy and does not run for ordinary source-only PRs. Its build/load timing is separate from release build/push timing; API packaging smoke does not establish database-backed runtime readiness. See [CI and image-build performance](docs/architecture/postmod-ci-performance.md).
-
-Batch C4-B source pins `ops/verify-runtime-readiness.sh` to
-`/opt/sanq/runtime` and Compose project `sanq-app`. The optional first
-argument may only be `/opt/sanq/runtime/.env`; old `/etc/sanqin/sanqin.env`
-and relative `.env` examples will be rejected. **Do not run C4-B sources
-on the legacy production checkout before separately approved C4 cutover.**
-
-The verification script is read-only with respect to Prisma: it runs
-`prisma migrate status`, then checks API readiness, Uber worker readiness,
-Web-local health, public Web reachability, Web BFF -> API readiness, and the
-public menu smoke path. A pending/failed migration or failed readiness/smoke
-check must block deployment completion.
+Docker/image-workflow and dependency-manifest changes targeting `dev` also run independent `image-build-checks`: API/Web image builds and runtime packaging/smoke validation, without publication or deployment. See [CI and image-build performance](docs/architecture/postmod-ci-performance.md).
 
 Services:
 

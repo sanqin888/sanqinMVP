@@ -190,25 +190,16 @@ Compose / readiness gates. See
 `docs/architecture/postmod-ghcr-batch-a-release-discovery.md`.
 Existing pre-Batch-A releases are not retroactively sealed.
 
-### Batch B manually gated deployment (not yet production installed)
+### Historical Batch B deployment proposal
 
-After operator review and a separate explicit production rollout authorization,
-the proposed controller can be used from the original production repo:
+The pre-C4 Batch B proposal used the original production checkout. Its old
+command/context guide has been retired; the R5 and 2026-10-04 records below
+remain historical evidence and are not rewritten as later controller tests.
 
-```bash
-python3 ops/release/deploy_release.py plan
-python3 ops/release/deploy_release.py deploy --execute
-```
-
-It keeps the existing Compose and encrypted backup .env path as the only active
-SHA authority, atomically edits that single key after all checks and writes a
-gitignored previous/current release journal. It verifies paired image digests,
-a 26-hour local backup, current readiness and read-only target Prisma migration
-status **before** recreating only api/ubereats-worker/web. Database migration
-and data volumes are never changed by this script. Failures after the switch
-remain pending for manual investigation; rollback requires an explicit command
-and compatible prior local images. See
-`docs/architecture/postmod-ghcr-batch-b-manual-deploy.md`.
+For the existing paired-image proof, migration/backup/readiness checks,
+PENDING/manual rollback semantics, installed Runtime version distinction and
+remaining gates, see [GHCR 发布与 Runtime 状态](./GHCR发布与Runtime状态.md).
+Its source references do not prove that the latest controller is installed.
 
 > **C4-B source/production separation (2026-10-08):** the helper's *new
 > source* is fixed to /opt/sanq/runtime and project sanq-app. The command
