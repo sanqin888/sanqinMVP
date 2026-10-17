@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-16 — C5-G2 B02-B3 fixed FD create-only source delivery
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / REVIEW PENDING / NO PR.** Branch `feat/c5-g2-b02b3-source-delivery-20261016` adds `ops/runtime/root_private_source_delivery.py` with immutable input SHA-256 preflight, fixed root-private descendant, FD-anchored secure directory checks, non-overwriting `O_EXCL`, fsync and B02-B2 reopen/readback. Failures preserve occupied/partial files for independent incident review; no cleanup or retry. Synthetic tests model successful fresh delivery and fail-closed paths; actual root delivery, anchor provenance, post-readback execution binding, production installation, independent witness, maintenance quiescence and off-VM Kit remain NOT VERIFIED/NOT AUTHORIZED. No Runtime Bundle, graph, CI, DB, Docker or Backup mutation. Owner: `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.
+
 ## 2026-10-16 — C5-G2 B02-B2 root-private FD source verification
 
 **LOCAL SOURCE + SYNTHETIC UNIT TESTS AUTHORED / REVIEW PENDING / NOT TESTED OR PUSHED** — `feat/c5-g2-b02b2-root-private-fd-verifier-20261016`. External `ops/runtime/root_private_source_fd.py` validates a pre-opened root-private anchor/descendant via no-follow FDs, same-device root-owned private ancestry, bounded regular-file byte read, mutation/entry identity checks and independently pinned SHA-256. This is read-only inspection of a caller-provided anchor and cannot establish that the anchor is trustworthy or that a future executor runs those bytes. Root-only delivery remains proposed protocol, not implemented/executed. No privilege, installation, CI, runtime allowlist, graph, DB/Backup/Deploy/MCP change; production G2 NO-GO, S2 paused. Owner: `docs/architecture/c5-g2-trusted-runtime-contract-2026-10-13.md`.

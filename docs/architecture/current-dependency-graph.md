@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-16 **C5-G2 B02-B3 root-private source delivery kernel** is **local-only/untested/review pending**. Added offline fixed-FD create-only source delivery and synthetic tests outside the fixed 17-file Runtime Bundle. There is **no change to context ownership, public APIs, import dependencies/SCCs, architecture scanner baseline, schema/migration, CI workflow, production services or backup owner**. All delivery receipts remain non-authorizing; G2 NO-GO.
+
+
 2026-10-16 **C5-G2 B02-B2 read-only root-private FD source verifier**: local source and isolated synthetic tests written, NOT RUN/NO PR. New external `ops/runtime/root_private_source_fd.py` introduces no business-context ownership or import edge, no cycle/scanner baseline adjustment, public HTTP/API, schema, dependency or Runtime 17-source-member change. All inspection receipts disallow installation and explicitly do not authenticate anchor provenance or independent witness; C5-G2 remains NO-GO.
 
 
