@@ -1,6 +1,6 @@
 # C5-G2 B02-B4B-2 — Disposable guest synthetic byte consumption readiness
 
-**Date:** 2026-10-17 America/Toronto. **State:** LOCAL SOURCE / TESTS AUTHORED; UNREVIEWED; NO GUEST EXECUTION OR ROOT COMMAND; C5-G2 NO-GO; S2 BACKUP PAUSED.
+**Date:** 2026-10-17 America/Toronto. **Original readiness state:** LOCAL SOURCE / TESTS AUTHORED; UNREVIEWED; NO GUEST EXECUTION OR ROOT COMMAND. **Later operator-reported update (same date):** disposable VirtualBox Guest experimental root mechanism 8/8 observed cases matched expectations; see §6 below. This does **not** close the original Gate 0/1 prerequisites or constitute independently witnessed root acceptance. **C5-G2 NO-GO; S2 BACKUP PAUSED.** Sections 1–5 preserve the pre-execution readiness protocol and its historical statements.
 
 ## 1. Trust scope and isolation
 
@@ -42,3 +42,55 @@ No root/guest commands are given or approved in this source slice. This document
 - Disposable-guest root execution, interpreter/dynamic loader and full transitive import closure, independent trusted Bootstrap identity, controlled source-to-execution binding, noncooperating actor admission barrier and independent external Recovery Kit all remain **OPEN**.
 
 **G2 cannot proceed to installation from these experiments. S2 backup remains PAUSED.**
+
+## 6. 2026-10-17 operator-reported disposable Guest root experiment — **MECHANISM OBSERVED / G2 NO-GO**
+
+**Evidence class:** human operator pasted actual MacBook/Ubuntu terminal output in the project conversation; the assistant reviewed the reported transcript and relevant `origin/dev` source, but did **not** connect to the Guest, witness root independently, retrieve original Guest evidence bytes, or independently certify host/Guest isolation. This later experiment **does not retroactively satisfy** the strict pre-execution Gate 0/1 readiness/independent-rollback gates above. The user explicitly authorized a bounded **`EXPERIMENTAL ROOT ONLY / G2 NO-GO`** exception and declined the snapshot *restore rehearsal*, not the production safety gates. No production Runtime command or install was authorized.
+
+### 6.1 Operator-reported target / isolation / source identity
+
+| Evidence | Observed operator output / boundary |
+| --- | --- |
+| MacBook VirtualBox target | `SanQ-H05-Restore-Check-20261015`; hardware UUID `4b1bd5e7-54c5-45c4-9cc3-dba2ed48a033` |
+| Ubuntu DMI identity | `e7d51b4b-c554-c445-9cc3-dba2ed48a033` (the expected SMBIOS byte-order representation) |
+| Network | `nic1=hostonlynetwork`, `nic2..8=none`; Guest `enp0s3` MAC `08:00:27:97:c9:ea`, IPv4 `192.168.56.2/24`; no IPv4/IPv6 default route observed; macOS IPv4/IPv6 forwarding each reported `0`. These are **limited configuration observations**, not independent assurance of every network/proxy/host escape path |
+| Storage / mount observation | Ubuntu 24.04.5, Python 3.12.3, ext4 `/dev/sda2` for `/` and `/tmp`; `/tmp` `root:root 1777`; no `/opt/sanq/runtime` found and no SanQ systemd unit or vboxsf/nfs/cifs mount in scoped queries; **absence of all credentials/volumes not independently certified** |
+| Snapshot | `SanQ-Runtime-B4B2-Clean-Baseline-20261017`, UUID `028a681b-18b9-4dc7-a67f-69257e7cf85b`, listed and read back. **Actual restoration never attempted / unverified**, by explicit user choice |
+| Runner source | Mac `origin/dev@22f422111ebd6cff93d11cb292613815acba44fb` and independently fetched GitHub `dev` source (when observed) yielded SHA-256 `0e724d1fbd8fe01852c6e7550e81f5e192da4ba155c34e8ba72297e1cdb7e537` (`8922` bytes); Guest staging readback reported the same digest |
+| Stage and root pin | Unprivileged `/home/ubuntu/.sanq-b4b2-stage.P3Zacrlx/g2b4b2_disposable_guest_byte_consumer.py` (`1000:1000 0600`, private directory `0700`); root-owned `/root/sanq-b4b2-20261017-b4b20001/runner.py` (`0:0 0600`, link count 1, dev `2050`, inode `1444295`); root directory `0700` |
+| Interpreter | `/usr/bin/python3.12`, SHA-256 `e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f`, executed with `-I -S -B`; the operator also inventoried dynamic loader, `libc`, `libm`, `libz`, `libexpat`, `_hashlib`, and `libcrypto.so.3`. `libcrypto` SHA-256 `6866ed711dab8927e1bf82bf1cd30e828bdfc34f3cc1e83b1c9eb01ce6c37d9a`. **Transitive Python stdlib/import/native closure and independent trust origin remain OPEN** |
+
+The source is a **fixed synthetic consumer** outside the frozen 17-member Runtime Bundle. Successful execution is not proof that a trusted Bootstrap, Operator, or production code could safely consume arbitrary executable material.
+
+### 6.2 Observed root case matrix: 1 normal + 6 negative + 1 deterministic path replacement
+
+Following the user's separate, narrow Guest-root approval, the operator reported a root-only preflight checking Guest DMI/MAC, no default routes, absent real Runtime path, exact pinned runner/interpreter SHA-256, new artifact collisions, root owners and modes. The root-private test fixtures use `/tmp/sanq-g2b4b2-lab-<case>` (`0700`), fixed `.sanq-g2b4b2-synthetic-only` and `synthetic.py` (`0600` unless intentionally invalid), with no arbitrary executable input. Fixed synthetic source: `RESULT = 40 + 2\n`, SHA-256 `d06a312be9e44e6885f40ce1d07653101be2c6eb864955009490097a18404a8f`.
+
+| Case | Real root synthetic action | Operator-reported observed result | Classification |
+| --- | --- | --- | --- |
+| `b4b20001` | Root CLI consumed verified fixed bytes in root-owned fixture (source dev `2050` / inode `1048600`) | `ROOT_PREPARATION=PASS`, `ROOT_RUN_EXIT=0`, `fixedSyntheticCodeConsumed=true`, `decision=BLOCKED`, `operatorCodeExecuted=false` | **Observed happy-path PASS**; not production approval |
+| `b4b20002` | Required Marker absent | Exit `2`, stdout empty, stderr `BLOCKED: ... FileNotFoundError` | **Observed negative PASS** |
+| `b4b20003` | Synthetic source changed to `RESULT = 40 + 3\n` | Exit `2`, stdout empty, stderr `BLOCKED: ... GuestBoundaryBlocked` | **Observed negative PASS** |
+| `b4b20004` | Source mode `0644` rather than `0600` | Exit `2`, stdout empty, `GuestBoundaryBlocked` | **Observed negative PASS** |
+| `b4b20005` | Marker content tampered | Exit `2`, stdout empty, `GuestBoundaryBlocked` | **Observed negative PASS** |
+| `b4b20006` | Source entry a symbolic link | Exit `2`, stdout empty, `OSError` | **Observed negative PASS** |
+| `b4b20007` | Source with hard-link count `2` | Exit `2`, stdout empty, `GuestBoundaryBlocked` | **Observed negative PASS** |
+| `b4b20008` | **Separate** root Python one-off imports the pinned runner, calls `snapshot_verified_synthetic_bytes`, renames original path, creates replacement `RESULT = 40 + 3\n`, then calls `consume_synthetic_snapshot` and attempts a fresh recapture | Exit `0`; captured inode `1048621`, replacement inode `1048622`; `snapshotConsumedAfterSwap=true`, `postSwapRecaptureBlocked=true`, `fixedSyntheticCodeConsumed=true`; no stderr | **Observed deterministic saved-byte/pass + recapture-block PASS**; not the runner CLI itself and not general concurrency proof |
+
+**Observed tally: 8/8 narrow experiment cases matched expectations.** The six static negative fixtures reported empty stdout and `BLOCKED:` stderr, with per-case `.stdout`, `.stderr`, `.rc` files inside the Guest root-private test directory. Case `b4b20008` reported stdout SHA-256 `c7d2d7c6f5b806ab6ee6a3d8b8c974b06265d141ea99fa92080caec33f85a35b`, empty stderr SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, exit-record SHA-256 `9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3ab86aa`. These are *reported digests*, **not verified access to original evidence bytes**. No confirmation was provided that a complete host-off-Guest immutable log/receipt bundle was preserved; the happy-path receipt was pasted directly in terminal output.
+
+The runner's own response continues to say `rootGuestExecutionIndependentlyWitnessed=false` and `independentGuestIdentityAuthenticated=false`. These are **static non-authorizing fields**; operator-reported successful root invocation does not flip them or substitute for an independent observer.
+
+### 6.3 Closeout and evidence still blocking production
+
+**Disposition:** `B02-B4B-2 EXPERIMENTAL ROOT SYNTHETIC MECHANISM OBSERVED (8/8)` **only**. Preserve the case-specific root Guest files and operator terminal evidence; no automatic cleanup, snapshot restore, repository execution, production installation, service/Backup/Docker alteration or GitHub push is part of this documentation closeout.
+
+**Unclosed formal gates (explicit, not waived):**
+- Snapshot **restorability** untested by operator choice; a named/listed snapshot is not a successful restore. Original §3/H2 protocol remains **NOT SATISFIED** for unconditional privileged acceptance.
+- Whole-host network/host routing/proxies/shared-file and credential/volume isolation not independently certified by the observed Host-only, route, forwarding and scoped mount checks.
+- Runner/interpreter/loader/library hashes and selected stdlib import origins recorded, but full transitive dependency provenance, independently trusted executable root, safe future Bootstrap/Operator execution binding and adversarial TOCTOU/concurrency coverage **not proven**.
+- The path-swap case is a deterministic *post-capture* replacement, not a real scheduler-driven race or generalized no-new-consumer admission barrier. Existing B2B9-H07/noncooperator whole-host exclusion remains OPEN.
+- Independent execution witnessing, complete original stdout/stderr/exit receipts with off-Guest custody, independently verified Recovery Kit, production maintenance/backup owner isolation and G2-C/D/E rollout remain OPEN.
+
+**Final production decision: `C5-G2 NO-GO`; `S2 BACKUP PAUSED`; `readyToInstall=false`; `authorizedToMutateProduction=false`.** No source code, schema, migration, dependencies, Runtime 17-file Bundle membership, module owner, CI workflow or production Runtime behavior was changed by this operator-reported experiment or its documentation.
+
