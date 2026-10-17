@@ -21,6 +21,7 @@ export class CloverProviderConfig {
   readonly terminalDeviceId: string | undefined;
   readonly terminalRemoteAppId: string | undefined;
   readonly terminalTimeoutSeconds: number | undefined;
+  readonly terminalSandboxManualEntryEnabled: boolean;
 
   readonly oauthStateTtlMs = 10 * 60 * 1000;
   readonly oauthRefreshSkewMs = 2 * 60 * 1000;
@@ -62,6 +63,37 @@ export class CloverProviderConfig {
     this.terminalTimeoutSeconds = this.parseTerminalTimeout(
       process.env.CLOVER_TERMINAL_TIMEOUT_SECONDS,
     );
+    this.terminalSandboxManualEntryEnabled =
+      this.isIsolatedSandboxManualEntryEnabled(process.env);
+  }
+
+  /** Opt-in device test only: never enable manual entry on production payment traffic. */
+  private isIsolatedSandboxManualEntryEnabled(env: NodeJS.ProcessEnv): boolean {
+    if (
+      (env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test') ||
+      env.CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED !== 'true'
+    ) {
+      return false;
+    }
+    try {
+      const db = new URL(env.DATABASE_URL ?? '');
+      const platform = new URL(env.CLOVER_UNIFIED_PLATFORM_API_BASE ?? '');
+      const terminal = new URL(env.CLOVER_TERMINAL_API_BASE ?? '');
+      const unifiedMerchant = env.CLOVER_UNIFIED_MERCHANT_ID?.trim();
+      return (
+        (db.protocol === 'postgres:' || db.protocol === 'postgresql:') &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(db.hostname) &&
+        platform.protocol === 'https:' &&
+        platform.hostname === 'apisandbox.dev.clover.com' &&
+        terminal.protocol === 'https:' &&
+        terminal.hostname === 'apisandbox.dev.clover.com' &&
+        Boolean(unifiedMerchant) &&
+        unifiedMerchant !== env.CLOVER_MERCHANT_ID?.trim() &&
+        Boolean(env.CLOVER_TERMINAL_DEVICE_ID?.trim())
+      );
+    } catch {
+      return false;
+    }
   }
 
   private optionalBaseUrl(raw: string | undefined): string | undefined {
