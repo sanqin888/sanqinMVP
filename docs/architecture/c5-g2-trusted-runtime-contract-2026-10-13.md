@@ -4,6 +4,8 @@
 **Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
 **State (2026-10-13, post-merge operator-evidence update):** G2-A PR #2791, G2-B1 PR #2792, G2-B2A–B2B5 PRs #2793–#2798, G2-B2B6 PR #2799, and G2-B2B7 PR #2801 **MERGED** (B2B7 CI #7190 7/7 green). G2-B2B8 separate disposable VirtualBox guest real-systemd **S1/S2/S11 3/3 operator-reported PASS** with independently queried synthetic unit cleanup. This does **not** prove host-wide quiescence, namespace coverage or new-consumer prevention; preceding VirtualBox freeze root cause remains unknown. All lab receipts non-authorizing; **NO ROOT PRODUCTION INSTALL; C5-G2 NO-GO; S2 DAILY BACKUP PAUSED.**
 
+> **2026-10-17 documentation consolidation:** inherited GHCR/U1–U2D constraints are now indexed in [Runtime delivery/install constraints](./Runtime交付与安装约束.md), with the 27 original dated decisions and bounded lab evidence at [historical evidence index](./Runtime历史决策与证据索引.md). This changes no G2 authority, acceptance requirement, experiment result or source implementation.
+
 ## 1. Frozen design and ownership
 
 Primary recovery remains **ABORT the interrupted transaction → isolate incident →

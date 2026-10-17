@@ -37,7 +37,7 @@ The Python library's private `_capture(..., anchor=..., ids=...)` fixture seam e
 
 - Deleted unexecuted and unused `ops/runtime/tests/c2_cold_powerloss_probe.py`; it was outside the 17-member source allowlist, had no CI test-discovery entry and was not a production consumer.
 - `ops/runtime/runtime_update_contract.py` now describes abandoned transactions and **new independently authorized clean reinstall**, not resumption from a previous journal/slot. Ordinary Runtime updates still reject the same SHA; S4 will introduce an explicitly separate recovery contract.
-- Historical architecture records for the retired power-loss acceptance plan and earlier prior-tree recovery design are marked **superseded**, not deleted or falsely marked passed.
+- At the original S1 closeout, the retired power-loss plan and prior-tree recovery design were marked **superseded**, not deleted or falsely marked passed. The separately approved 2026-10-17 documentation consolidation now carries their original decisions, bounded evidence, fixed-version originals and **NOT EXECUTED** state in the [historical evidence index](./Runtime历史决策与证据索引.md); it does not change the recovery policy or claim cold-power-loss PASS.
 - Existing `offline_root_private_installer.py`, FD/kill safety tests, and journals remain **lab-only evidence** and have no production privilege. Deleting them or replacing Runtime atomic handoff semantics is a separate architecture decision, not a consequence of S1.
 - S1 does not retrospectively close cold-power-loss evidence or authorize deletion of Mac/VirtualBox evidence.
 

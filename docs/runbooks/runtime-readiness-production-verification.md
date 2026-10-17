@@ -186,8 +186,10 @@ VM can verify pulled Docker RepoDigests without authenticated artifact access.
 A status without both digests is deliberately not eligible for deployment.
 Discovery does not write `.env`, pull images or recreate services. A newly
 published candidate must still pass the separately authorized Prisma / backup /
-Compose / readiness gates. See
-`docs/architecture/postmod-ghcr-batch-a-release-discovery.md`.
+Compose / readiness gates. The paired-publication contract is retained at
+[Runtime publication constraints](../architecture/Runtime交付与安装约束.md#publication);
+its historical origin is indexed in
+[Runtime decisions and evidence](../architecture/Runtime历史决策与证据索引.md).
 Existing pre-Batch-A releases are not retroactively sealed.
 
 ### Historical Batch B deployment proposal
