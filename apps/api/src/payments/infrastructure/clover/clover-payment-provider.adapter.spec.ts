@@ -711,6 +711,39 @@ describe('CloverTerminalTransport', () => {
     });
   });
 
+  it('sends MANUAL methods to the private Compact LAN endpoint', async () => {
+    setEnv('NODE_ENV', 'development');
+    setEnv('DATABASE_URL', 'postgresql://test:test@127.0.0.1:5432/restaurant');
+    setEnv('CLOVER_MERCHANT_ID', 'web-production-merchant');
+    setEnv(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+      'https://apisandbox.dev.clover.com',
+    );
+    setEnv('CLOVER_TERMINAL_API_BASE', 'https://192.168.2.219:12346');
+    setEnv('CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED', 'true');
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 209 }));
+
+    await createTerminalTransport().startPayment(manualEntrySale);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://192.168.2.219:12346/connect/v1/payments',
+    );
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toMatchObject({
+      amount: 1482,
+      capture: true,
+      final: true,
+      externalPaymentId: 'external-manual-test',
+      deviceOptions: { cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'] },
+    });
+  });
+
   it('clears only an absent original 504 payment on an explicitly idle device', async () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')

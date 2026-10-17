@@ -15,6 +15,14 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-17 — C-2C7 S5-B3-C LAN Compact manual entry + POS original-Attempt readback
+
+**Baseline / status:** `feat/clover-s5b3-lan-manual-entry-pos-payment-status-fallback-20261017` from `origin/dev@22f42211`. LOCAL SOURCE / USER REVIEW PENDING; regressions authored but not executed (per `AGENTS.md`); no commit/push/PR/CI, no MacBook, provider or production execution.
+
+**Owner/boundary:** Payments Clover configuration continues to add Manual card-entry methods only to the opted-in, isolated Test Merchant Sale body. It now also recognizes strict HTTPS private IPv4 `:12346` Compact LAN endpoints while retaining loopback DB, development/test, Sandbox Platform and a configured Test Merchant distinct from any configured Web merchant. POS Web adds isolated original-Attempt readback hook for missing WS finality; Orchestration's existing Store-scoped read-only Review GET obtains order details **only when the Checkout is COMPLETED** through the existing Orders public capability. This is a backward-compatible Review response enrichment, not a new route, provider write, financial state authority or additional Sale. There is no new context import edge, ownership change, baseline/SCC, Prisma/migration, dependency, CI workflow or production Web Ecommerce delta.
+
+**Evidence and next gate:** operator-provided Mac Terminal base `https://192.168.2.219:12346` previously failed the exact sandbox-terminal hostname guard; physical manual-entry support remains unknown. Compact payment reportedly succeeded but Web POS stalled on `PROCESSING` until refresh; intermittent Socket.IO 101s were observed, not confirmed as the cause. Focused allow/deny config tests, Sale-body test, completed-vs-pending Review read projection tests and browser polling policy tests are authored. After local review, explicitly authorize dev PR/CI; then independently verify one controlled isolated MacBook Sale, unchanged order/charge count, optional manual UI and automatic POS exit when WS event is delayed/blocked. Disable manual opt-in afterward; uncertain payment forbids a new Sale. Details: `docs/payments/clover-pos-phase-plan.md` §S5-B3-C and `docs/architecture/phase-6-payments-pos-closeout.md`.
+
 ## 2026-10-16 — C-2C7 S5-B1 RELEASE-gated Terminal Fence + Retry repair (local review)
 
 **Baseline/branch:** `fix/clover-c2c7-s5b1-release-gated-terminal-retry` based on latest `origin/dev@2d539b7cf4a0af04a937139287ca171fb6d40bce`, incorporating S4 scoped closeout PR #2831, PR CI #7275 and dev CI #7276 (both seven green). **Local code/tests authored; CI not yet run on this change; no PR/push; no real MacBook API/DB/Web/Compact experiment.**

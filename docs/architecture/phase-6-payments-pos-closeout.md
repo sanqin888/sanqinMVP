@@ -4,6 +4,12 @@ Start date: 2026-09-07
 Current implementation base: `origin/dev@fcc0b7c1`  
 Current status: **MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE; TERMINAL DEVICE ACCEPTANCE + WEB CUTOVER DEFERRED**
 
+## Post-closeout C-2C7 S5-B3-C MacBook LAN and UI readback (2026-10-17; LOCAL REVIEW PENDING)
+
+This post-Phase-6 prototype repair does **not reopen Phase 6 closure**. From `origin/dev@22f42211` on `feat/clover-s5b3-lan-manual-entry-pos-payment-status-fallback-20261017`, Payments Clover infrastructure only widens the disabled-by-default Sandbox manual card-entry URL guard to strict HTTPS private IPv4 port `12346` for the physical Compact, preserving development/test runtime, loopback PostgreSQL, Sandbox Platform and non-fallback Unified Test Merchant identity checks. No production Web Ecommerce or canonical Payment/Terminal Fence changes.
+
+The POS realtime UI remains advisory. After a user-observed paid Compact Sale left the POS `PROCESSING` until reload, a feature-owned Web hook now periodically GETs the exact original, Store-scoped read-only Review Attempt. The existing Orchestration read projection obtains an already-created Order's stable identity/number/pickup code through the existing Orders public port **only for COMPLETED checkout**. This is an additive compatible shape enrichment to the existing Review GET, not a new route or finance authority, and no new context import edge. Timed reads never re-run the original Sale, reconcile provider funds, auto-release Benefits, finalize an Order or unlock uncertain payments. WebSocket remains fast path; same-Attempt monotonic merging and server-authenticated Order facts gate auto-navigation. Code and focused regressions are LOCAL / NOT RUN, PR CI and physical MacBook/Compact acceptance pending. More detail: `docs/payments/clover-pos-phase-plan.md` §S5-B3-C.
+
 ## Post-closeout C-2C7 S5-B1 safety handoff (2026-10-16; local code review pending)
 
 This is an **append-only post-Phase-6 operational safety note**, not reopening the already closed Phase 6 modularization boundary work. Latest source baseline is `origin/dev@2d539b7cf4a0af04a937139287ca171fb6d40bce` (S4 closeout PR #2831 and post-merge dev CI #7276 seven green). The existing S4 Final Closeout stays `SOFTWARE + CONTROLLED SANDBOX PAYMENT SAFETY VERIFIED / SCOPED CLOSED`, with physical-device/cross-client caveats unchanged.
