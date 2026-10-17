@@ -1193,6 +1193,105 @@ describe('TerminalPaymentService', () => {
     },
   );
 
+  it('uses exhaustive multi-FAIL proof only with original Sale 209', async () => {
+    const operations = {
+      findByAttemptId: jest.fn().mockResolvedValue(null),
+      claimDispatch: jest.fn().mockResolvedValue(true),
+    } as unknown as PaymentTerminalOperationRepository;
+    const { service, provider, transactions } =
+      createTerminalHarness(operations);
+    provider.startPayment.mockResolvedValue({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    provider.getPaymentStatus.mockImplementation((request) =>
+      Promise.resolve({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        paymentId: request.paymentId,
+        attemptId: request.attemptId,
+        idempotencyKey: request.idempotencyKey,
+        externalPaymentId: request.externalPaymentId,
+        amountCents: request.amountCents,
+        currency: request.currency,
+        failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      }),
+    );
+
+    const cancelled = await service.startSale(terminalInput);
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(cancelled.toSnapshot().resultCode).toBe('CLOVER_CANCELLED');
+    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+    expect(provider.getPaymentStatus).toHaveBeenCalledTimes(1);
+    expect(transactions.rows).toHaveLength(1);
+  });
+
+  it.each([
+    ['without Sale 209', 'EXECUTION'],
+    ['mismatched canonical identity', 'CANONICAL'],
+  ] as const)(
+    'does not unlock with an unverified multi-FAIL claim: %s',
+    async (reason, evidence) => {
+      const operations = {
+        findByAttemptId: jest.fn().mockResolvedValue(null),
+        claimDispatch: jest.fn().mockResolvedValue(true),
+      } as unknown as PaymentTerminalOperationRepository;
+      const { service, provider } = createTerminalHarness(operations);
+      provider.startPayment.mockResolvedValue({
+        status: 'CANCELLED',
+        evidence:
+          evidence === 'EXECUTION' ? 'EXECUTION' : 'TERMINAL_SALE_CANCELLED',
+        resultCode: 'CLOVER_CANCELLED',
+      });
+      provider.getPaymentStatus.mockImplementation((request) =>
+        Promise.resolve({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          paymentId: evidence === 'CANONICAL' ? 'wrong-id' : request.paymentId,
+          attemptId: request.attemptId,
+          externalPaymentId: request.externalPaymentId,
+          failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+        }),
+      );
+
+      const result = await service.startSale(terminalInput);
+      expect(result.status).not.toBe('CANCELLED');
+      expect(result.status).not.toBe('SUCCEEDED');
+      expect(provider.startPayment).toHaveBeenCalledTimes(1);
+      if (reason === 'mismatched canonical identity') {
+        expect(result.toSnapshot().failureCode).toBe(
+          'TERMINAL_SALE_CANCEL_CANONICAL_REVIEW',
+        );
+      }
+    },
+  );
+
+  it('does not infer 209 for old unresolved multi-FAIL payments', async () => {
+    const { service, provider } = createTerminalHarness();
+    provider.startPayment.mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'TERMINAL_SALE_CANCEL_CANONICAL_REVIEW',
+    });
+    const pending = await service.startSale(terminalInput);
+    provider.getPaymentStatus.mockImplementation((request) =>
+      Promise.resolve({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        paymentId: request.paymentId,
+        attemptId: request.attemptId,
+        externalPaymentId: request.externalPaymentId,
+        amountCents: request.amountCents,
+        currency: request.currency,
+        idempotencyKey: request.idempotencyKey,
+        failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      }),
+    );
+    const reviewed = await service.reconcile(pending.id);
+    expect(reviewed.status).toBe('RECONCILING');
+    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps HOLD-protecting uncertainty for an unverified cancellation response', async () => {
     const { service, provider, transactions } = createTerminalHarness();
     const pendingSale = deferred<PaymentProviderOutcome>();

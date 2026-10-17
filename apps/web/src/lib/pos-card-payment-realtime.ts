@@ -46,6 +46,26 @@ export function needsPosCardPaymentReadback(
   return false;
 }
 
+/** Dismissing an unresolved overlay only changes presentation, never payment facts. */
+export function canDismissPosCardPaymentReview(
+  status: PosCardPaymentResult["status"] | "IDLE" | "WAITING",
+  hasOriginalAttempt: boolean,
+): boolean {
+  return hasOriginalAttempt && (status === "UNKNOWN" || status === "RECONCILING");
+}
+
+/**
+ * Persisted UI dismissal is scoped to the original Attempt, never to a
+ * payment method or global Store. Recovery and readback must still run.
+ */
+export function shouldOpenRestoredPosCardDialog(
+  attemptId: string,
+  dismissedAttemptId: string | null,
+  keepCheckoutVisible: boolean,
+): boolean {
+  return !keepCheckoutVisible && dismissedAttemptId !== attemptId;
+}
+
 /** A browser pending marker is never cancellation authority. */
 export function canUnlockCancelledPosCheckout(result: PosCardPaymentResult): boolean {
   return (

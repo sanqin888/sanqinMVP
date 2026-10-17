@@ -1951,6 +1951,150 @@ describe('Clover Platform Payments Gateway', () => {
     expect(collectionUrl).toContain('filter=externalPaymentId%3Dexternal-1');
   });
 
+  it('maps complete multi-FAIL rows to non-final unpaid evidence', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        elements: [
+          platformPayment({ id: 'decline-1', result: 'FAIL' }),
+          platformPayment({ id: 'decline-2', result: 'FAIL' }),
+        ],
+      }), { status: 200 }),
+    );
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      providerPaymentId: undefined,
+    });
+  });
+
+  it('selects one canonical success after checking failed predecessors', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        elements: [
+          platformPayment({ id: 'decline-1', result: 'FAIL' }),
+          platformPayment({ id: 'approved-2', result: 'SUCCESS' }),
+        ],
+      }), { status: 200 }),
+    );
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'approved-2',
+      chargedTotalCents: 2048,
+    });
+  });
+
+  it.each([
+    ['different external identity', { externalPaymentId: 'someone-else' }],
+    ['different order', { order: { id: 'another-order', currency: 'CAD' } }],
+    ['different amount', { amount: 1999 }],
+    ['different currency', { currency: 'USD' }],
+    ['pending payment', { result: 'PENDING' }],
+    ['duplicate payment id', { id: 'decline-1' }],
+    ['missing payment id', { id: undefined }],
+  ])('rejects multiple payments containing %s', async (_label, bad) => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        elements: [
+          platformPayment({ id: 'decline-1', result: 'FAIL' }),
+          platformPayment({ id: 'decline-2', result: 'FAIL', ...bad }),
+        ],
+      }), { status: 200 }),
+    );
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('rejects two successes on the same external Sale', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        elements: [
+          platformPayment({ id: 'approved-1' }),
+          platformPayment({ id: 'approved-2' }),
+        ],
+      }), { status: 200 }),
+    );
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('reads all collection pages before concluding every attempt failed', async () => {
+    const failedPage = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        elements: failedPage,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        elements: [platformPayment({ id: 'approved-51' })],
+      }), { status: 200 }));
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'approved-51',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0]).toContain('offset=0');
+    expect(fetchSpy.mock.calls[1]?.[0]).toContain('offset=50');
+    expect(fetchSpy.mock.calls[1]?.[0]).toContain('limit=50');
+  });
+
+  it('keeps the Sale uncertain if a later collection page is unavailable', async () => {
+    const failedPage = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        elements: failedPage,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 500 }));
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_HTTP_500',
+    });
+  });
+
+  it('rejects an external Sale exceeding the collection limit', async () => {
+    const page = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ elements: page }), { status: 200 }),
+      ),
+    );
+    await expect(createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    })).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_COLLECTION_INCOMPLETE',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(10);
+  });
+
   it('does not finalize when canonical amount mismatches the prepared amount', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(platformPayment({ amount: 1999 })), {

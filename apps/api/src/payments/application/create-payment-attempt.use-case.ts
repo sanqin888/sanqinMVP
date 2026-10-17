@@ -474,11 +474,23 @@ export class TerminalPaymentService {
           amountCents: snapshot.amountCents,
           currency: snapshot.currency,
         });
+        const allAttemptsDefinitivelyFailed =
+          canonical.evidence === 'CANONICAL' &&
+          canonical.paymentId === snapshot.id &&
+          canonical.attemptId === snapshot.attemptId &&
+          canonical.idempotencyKey === snapshot.idempotencyKey &&
+          canonical.externalPaymentId === snapshot.externalPaymentId &&
+          canonical.amountCents === snapshot.amountCents &&
+          canonical.currency === snapshot.currency &&
+          ((canonical.status === 'UNKNOWN' &&
+            canonical.failureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED') ||
+            canonical.status === 'DECLINED');
         if (canonical.status === 'SUCCEEDED') {
           outcome = canonical;
         } else if (
-          canonical.status !== 'UNKNOWN' ||
-          canonical.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND'
+          !allAttemptsDefinitivelyFailed &&
+          (canonical.status !== 'UNKNOWN' ||
+            canonical.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND')
         ) {
           outcome = providerCallUnknown(
             'TERMINAL_SALE_CANCEL_CANONICAL_REVIEW',
@@ -816,6 +828,7 @@ export class TerminalPaymentService {
         this.isFinalStatus(outcome.status) &&
         !originalSaleCancelled &&
         (outcome.status === 'SUCCEEDED' ||
+          outcome.status === 'CANCELLED' ||
           currentStatus === 'UNKNOWN' ||
           currentStatus === 'RECONCILING');
       const canonicalProblems = requiresCanonicalFinal

@@ -341,6 +341,84 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
+  it('reads recent Store unresolved POS checkouts before their expiry', async () => {
+    const harness = createHarness();
+    const createdAt = new Date('2026-10-17T20:28:00.000Z');
+    const updatedAt = new Date('2026-10-17T20:29:00.000Z');
+    harness.paymentCheckoutAttempt.findMany.mockResolvedValueOnce([
+      {
+        attemptId: 'new-unknown',
+        status: 'RECONCILING',
+        externalAmountCents: 1695,
+        currency: 'CAD',
+        createdAt,
+        updatedAt,
+      },
+      {
+        attemptId: 'other-terminal',
+        status: 'PROCESSING',
+        externalAmountCents: 2260,
+        currency: 'CAD',
+        createdAt,
+        updatedAt,
+      },
+    ]);
+
+    const result =
+      await harness.service.findPosCardPaymentActiveReviewItems(storeStableId);
+
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        status: {
+          in: [
+            'PROCESSING',
+            'UNKNOWN',
+            'RECONCILING',
+            'SUCCEEDED',
+            'FINALIZING',
+          ],
+        },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { attemptId: 'asc' }],
+      take: 10,
+      select: {
+        attemptId: true,
+        status: true,
+        externalAmountCents: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(result).toEqual([
+      {
+        attemptId: 'new-unknown',
+        checkoutStatus: 'RECONCILING',
+        externalAmountCents: 1695,
+        currency: 'CAD',
+        createdAt: '2026-10-17T20:28:00.000Z',
+        updatedAt: '2026-10-17T20:29:00.000Z',
+      },
+      {
+        attemptId: 'other-terminal',
+        checkoutStatus: 'PROCESSING',
+        externalAmountCents: 2260,
+        currency: 'CAD',
+        createdAt: '2026-10-17T20:28:00.000Z',
+        updatedAt: '2026-10-17T20:29:00.000Z',
+      },
+    ]);
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).not.toHaveBeenCalled();
+  });
+
   it('builds a bounded store-scoped long-wait/release-pending review without live ledger claims', async () => {
     const harness = createHarness();
     const now = new Date('2026-10-13T18:00:00.000Z');

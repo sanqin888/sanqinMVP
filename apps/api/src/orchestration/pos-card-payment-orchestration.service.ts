@@ -138,11 +138,13 @@ export class PosCardPaymentOrchestrationService {
     };
   }
 
-  /** Read-only queue; intentionally available even if the Terminal flag is off. */
+  /** Read-only Store queues, including live unresolved and historic reviews. */
   async getBenefitsReview(storeStableId: string) {
-    return {
-      items: await this.checkouts.findPosCardPaymentReviewItems(storeStableId),
-    };
+    const [activeItems, items] = await Promise.all([
+      this.checkouts.findPosCardPaymentActiveReviewItems(storeStableId),
+      this.checkouts.findPosCardPaymentReviewItems(storeStableId),
+    ]);
+    return { activeItems, items };
   }
 
   /** Read original payment/checkout facts, without Clover calls or mutations. */

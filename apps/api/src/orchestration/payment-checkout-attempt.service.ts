@@ -54,6 +54,16 @@ export type PosCardPaymentReviewItem = {
   couponDiscountCents: number | null;
 };
 
+/** Persisted Store-scoped live queue; financial finality remains Payments-owned. */
+export type PosCardPaymentActiveReviewItem = {
+  attemptId: string;
+  checkoutStatus: PaymentCheckoutAttemptStatus;
+  externalAmountCents: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PreparedPaymentCheckout = {
   id: string;
   attemptId: string;
@@ -393,7 +403,49 @@ export class PaymentCheckoutAttemptService {
   }
 
   /**
-   * Store-scoped and bounded operational queue: a long wait is an observation,
+   * Immediately reviewable on every POS for this Store, independent of browser
+   * cache and expiry. Status is a Checkout observation, not provider finality.
+   * Do not read Clover or change financial/Benefits/Terminal state here.
+   */
+  async findPosCardPaymentActiveReviewItems(
+    storeStableId: string,
+  ): Promise<PosCardPaymentActiveReviewItem[]> {
+    const statuses: PaymentCheckoutAttemptStatus[] = [
+      'PROCESSING',
+      'UNKNOWN',
+      'RECONCILING',
+      'SUCCEEDED',
+      'FINALIZING',
+    ];
+    const rows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        status: { in: statuses },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { attemptId: 'asc' }],
+      take: 10,
+      select: {
+        attemptId: true,
+        status: true,
+        externalAmountCents: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    return rows.map((row) => ({
+      attemptId: row.attemptId,
+      checkoutStatus: row.status,
+      externalAmountCents: row.externalAmountCents,
+      currency: row.currency,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Store-scoped and bounded historic queue: a long wait is an observation,
    * never evidence that Clover failed or that owner Benefits HOLDs expired.
    * The frozen checkout tender is an allocation snapshot, not a live ledger read.
    */
