@@ -204,9 +204,9 @@ describe('CloverProviderConfig', () => {
       },
     );
     withEnvironment(isolatedSandbox, () => {
-      expect(
-        new CloverProviderConfig().terminalSandboxManualEntryEnabled,
-      ).toBe(true);
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        true,
+      );
     });
   });
 
@@ -226,15 +226,12 @@ describe('CloverProviderConfig', () => {
     ],
     ['same Web merchant', { CLOVER_MERCHANT_ID: 'sandbox-merchant' }],
     ['missing terminal', { CLOVER_TERMINAL_DEVICE_ID: undefined }],
-    [
-      'non-exact flag',
-      { CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED: 'yes' },
-    ],
+    ['non-exact flag', { CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED: 'yes' }],
   ] as const)('fails closed for manual entry with %s', (_reason, change) => {
     withEnvironment({ ...isolatedSandbox, ...change }, () => {
-      expect(
-        new CloverProviderConfig().terminalSandboxManualEntryEnabled,
-      ).toBe(false);
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        false,
+      );
     });
   });
 });

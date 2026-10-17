@@ -664,7 +664,11 @@ describe('CloverTerminalTransport', () => {
       evidence: 'TERMINAL_SALE_CANCELLED',
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
       amount: 1482,
       capture: true,
       final: true,
@@ -674,10 +678,7 @@ describe('CloverTerminalTransport', () => {
 
   it('adds MANUAL alongside existing entry methods only in opted-in isolated Sandbox', async () => {
     setEnv('NODE_ENV', 'development');
-    setEnv(
-      'DATABASE_URL',
-      'postgresql://test:test@127.0.0.1:5432/restaurant',
-    );
+    setEnv('DATABASE_URL', 'postgresql://test:test@127.0.0.1:5432/restaurant');
     setEnv('CLOVER_MERCHANT_ID', 'web-production-merchant');
     setEnv(
       'CLOVER_UNIFIED_PLATFORM_API_BASE',
@@ -695,7 +696,11 @@ describe('CloverTerminalTransport', () => {
       evidence: 'TERMINAL_SALE_CANCELLED',
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
       amount: 1482,
       capture: true,
       final: true,
