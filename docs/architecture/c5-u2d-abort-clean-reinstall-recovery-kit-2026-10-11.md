@@ -13,6 +13,8 @@
 **Read-only baseline:** `origin/dev` `ffae689ec332d0499cefd9957273f6635041780d` (PR #2785 merged).  
 **Change type:** Explicitly proposed recovery-policy and backup-contract change; no implementation or production authorization is inferred from this document.
 
+> **2026-10-17 documentation-only navigation:** prior U2D design, 2B2-B root-lab evidence and the retired 2B2-C cold plan are consolidated in [Runtime historical decisions and evidence](./Runtime历史决策与证据索引.md), including their fixed-version originals and explicit limits. [Inherited Runtime constraints](./Runtime交付与安装约束.md) preserve the surviving rules. This adds no implementation, acceptance PASS or production authority.
+
 ## 1. Decision requested and unchanged objective
 
 The operator's preferred policy is **Abort & Clean Reinstall**: if host power loss, process crash or another exceptional interruption occurs **during Runtime installation/update**, abandon that installation transaction outright. Do not resume the prior transaction, replay intermediate journal phases, auto-rollback the application/database, or require restoration of the exact prior filesystem-transaction execution point. After independent inspection and authorization, reconstruct a complete, trusted Runtime **from external GitHub/GHCR publication material and encrypted off-VM recovery configuration** in a new private location, then install and verify it as a **new transaction**.

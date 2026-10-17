@@ -13,7 +13,7 @@
 | Runtime 更新与恢复 | 当前方向为独立可信安装及 Abort & Clean Reinstall / Recovery Kit | G2 生产安装仍为 NO-GO；实验通过、声明式清单或 CI 通过都不等于取得安装权限 |
 | 旧生产 Git checkout | 目标是解除生产依赖后退役 `/home/ubuntu/sanq-app` | 未完成全部部署/回退、备份、MCP、进程及挂载依赖验证前不得删除；删除必须独立授权 |
 
-事实来源：[C4 路径切换记录](./runtime-backup-cutover-c4-prep.zh-CN.md)、[P2-D 有限范围验收](./runtime-backup-cutover-c4p2d-acceptance.zh-CN.md)、[U1 已安装 Runtime 更新基线](../architecture/c5-u1-runtime-update-contract-2026-10-09.md)、[启动竞态与 Runtime 激活门禁](../architecture/c5-startup-readiness-race-2026-10-09.md)。
+事实来源：[C4 路径切换记录](./runtime-backup-cutover-c4-prep.zh-CN.md)、[P2-D 有限范围验收](./runtime-backup-cutover-c4p2d-acceptance.zh-CN.md)、[U2C 历史现场证据](../architecture/Runtime历史决策与证据索引.md#u2c-evidence)、[启动竞态与 Runtime 激活门禁](../architecture/c5-startup-readiness-race-2026-10-09.md)。
 
 ## 应用发布合同
 
@@ -36,9 +36,12 @@
 
 ## 当前详细入口
 
+- [Runtime 交付与安装约束](../architecture/Runtime交付与安装约束.md)
+- [Runtime 历史决策与证据索引](../architecture/Runtime历史决策与证据索引.md)
+
 - [应用发布与迁移状态解析、旧 Launcher 退役记录](../architecture/postmod-ghcr-deploy-simplification-2026-10-08.md)
-- [C5-B2A 惰性 Archive staging](../architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md)
-- [C4-B 源码路径与所有权合同（历史实施记录）](../architecture/postmod-ghcr-batch-c4b-runtime-path-implementation.md)
+- [惰性 Archive staging 约束](../architecture/Runtime交付与安装约束.md#staging)
+- [固定布局与外部消费者约束](../architecture/Runtime交付与安装约束.md#layout)
 - [G2 当前可信 Runtime 合同与未完成门禁](../architecture/c5-g2-trusted-runtime-contract-2026-10-13.md)
 - [Recovery Kit 与中断后的独立重装方向](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)
 - [源码 checkout 退役依赖与独立删除门禁](../architecture/postmod-ghcr-source-retirement-phase2-2026-10-08.md)
