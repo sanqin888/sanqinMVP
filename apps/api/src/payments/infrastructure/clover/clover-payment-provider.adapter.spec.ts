@@ -1952,8 +1952,15 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   const mockCollection = (elements: unknown[]) => {
-    const response = new Response(JSON.stringify({ elements }), { status: 200 });
-    return jest.spyOn(global, 'fetch').mockResolvedValue(response);
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ elements }), {
+          status: 200,
+        }),
+      ),
+    );
+    return fetchSpy;
   };
   const readCollection = () =>
     createPlatformGateway().getCanonicalPayment({
