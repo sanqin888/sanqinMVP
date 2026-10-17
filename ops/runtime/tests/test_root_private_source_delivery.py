@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from root_private_source_fd import DIR_FLAGS, DIRECTORY, VERSION_DIRECTORY, SOURCE_FILE
+from root_private_source_fd import (DIR_FLAGS, DIRECTORY, VERSION_DIRECTORY, SOURCE_FILE,
+                                    RootPrivateSourceBlocked)
 from root_private_source_delivery import deliver_fixed_source, SourceDeliveryBlocked
 
 BYTES = b"# bounded synthetic source; NEVER execute\n"
@@ -61,7 +62,7 @@ class DeliveryTests(unittest.TestCase):
                     self.deliver(data, digest)
                 self.assertFalse(self.target.exists())
         self.version.chmod(0o777)
-        with self.assertRaises(SourceDeliveryBlocked):
+        with self.assertRaises(RootPrivateSourceBlocked):
             self.deliver()
         self.assertFalse(self.target.exists())
 
