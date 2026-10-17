@@ -1,9 +1,10 @@
 # SanQ GHCR Batch C0 — Runtime layout separation readiness
 
-**Status:** C0 merged to dev via PR #2728 (merge `96dc60be`); production
-verification and directory cutover still not authorized. **NOT AUTHORIZED FOR
-FILE MOVES.** No VM .env, Compose, systemd unit, backups, uploads, Docker
-volumes or MCP configuration was changed.
+**Historical C0 baseline:** PR #2728 (merge `96dc60be`). The inventory and
+approval statements below describe that original pre-cutover stage, not the
+current production layout. Later C4-P2-C path cutover and remaining Runtime
+gates are indexed in [GHCR 发布与 Runtime 状态](../runbooks/GHCR发布与Runtime状态.md).
+This retained historical record does not authorize any new file moves.
 
 ## Architecture and code baseline
 
@@ -68,8 +69,8 @@ validation. Stage a target tree but do not replace the active root.
 The original C2 implementation required matching main checkout bytes.
 C5-B2A later replaces that staging-only gate with the independently
 published Runtime SHA256 while retaining an inert SHA-scoped directory.
-See `docs/architecture/postmod-ghcr-batch-c2-runtime-staging.md` and
-`docs/architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md`.
+The superseded checkout-based C2 staging design has been removed from the
+active document set; see [C5-B2A staging](./postmod-ghcr-batch-c5b2a-runtime-staging.md).
 
 C3. Separately review and change backup/source/upload ownership under the
 existing narrow helper/sudoers contract. Preserve and prove offsite backups,
@@ -79,10 +80,11 @@ C4. Controlled production cutover of Compose project directory and uploaded
 assets, keeping the original named volume sanq-app_pgdata and existing data.
 C4-A source readiness audit found unresolved relative uploads mounts, the
 source-checkout-dependent release controller and implicit-directory readiness
-helper. See docs/architecture/postmod-ghcr-batch-c4a-source-readiness.md.
-C4-B option B **source changes have since been authorized** and prepared
-locally. Actual production cutover remains separately blocked; see
-`docs/architecture/postmod-ghcr-batch-c4b-runtime-path-implementation.md`.
+helper. Those historical findings were addressed by the later C4-B source
+work; see [C4-B implementation](./postmod-ghcr-batch-c4b-runtime-path-implementation.md).
+The separately authorized production path cutover is recorded in
+[C4-P2-C evidence](../runbooks/runtime-backup-cutover-c4-prep.zh-CN.md);
+this C0 baseline itself is not a new cutover approval.
 Do not create/reset a PostgreSQL volume. Observe uploads during cutover,
 reconcile counts/ownership, verify API/worker/Web/readiness and backup.
 
