@@ -21,6 +21,9 @@ from g2b4b2_disposable_guest_byte_consumer import (  # noqa: E402
 )
 
 
+_UNSET_CASE = object()
+
+
 @unittest.skipIf(os.geteuid() == 0,
                  "This synthetic CI characterization must remain unprivileged")
 class GuestOnlyByteConsumerTests(unittest.TestCase):
@@ -36,9 +39,9 @@ class GuestOnlyByteConsumerTests(unittest.TestCase):
         self.source.write_bytes(SOURCE_BYTES)
         self.source.chmod(0o600)
 
-    def capture(self, case_id=None):
+    def capture(self, case_id=_UNSET_CASE):
         return snapshot_verified_synthetic_bytes(
-            self.case_id if case_id is None else case_id,
+            self.case_id if case_id is _UNSET_CASE else case_id,
             _synthetic_uid=os.geteuid(),
         )
 
