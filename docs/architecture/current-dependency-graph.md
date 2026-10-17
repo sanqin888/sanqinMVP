@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-17 **C5-G2 B02-B4B-2 synthetic disposable guest byte-consumption harness**: local-only source and nonroot tests, UNRUN / user review pending. New external `ops/runtime/g2b4b2_disposable_guest_byte_consumer.py` compiles only exact synthetic fixed bytes from a private `/tmp/sanq-g2b4b2-lab-*` fixture. No existing production root entrypoint, business context owner, context graph/SCC, public contract, schema/Prisma, CI workflow, or frozen 17-member Runtime Bundle change. No remote guest connection; no root run. See `docs/architecture/c5-g2b4b2-disposable-guest-byte-consumption-acceptance-2026-10-17.md`.
+
+
 2026-10-16 **C5-G2 B02-B4B-1 non-executing trusted Bootstrap blueprint**: local source and synthetic tests authored; tests not run / user review pending. External `ops/runtime/trusted_root_bootstrap_blueprint.py` composes B4A source snapshot identity with caller-claimed Bootstrap/interpreter/direct-import metadata. No root execution or public surface. **No business context owner/import change, SCC or dependency-graph/architecture baseline delta, Prisma/schema/migration, external HTTP, CI workflow, or fixed 17-member Runtime Bundle change**; production C5-G2 NO-GO and S2 PAUSED.
 
 
