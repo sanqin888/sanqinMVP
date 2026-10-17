@@ -224,8 +224,21 @@ export type PosCardPaymentReviewItem = {
   couponDiscountCents: number | null;
 };
 
+export type PosCardPaymentActiveReviewItem = {
+  attemptId: string;
+  checkoutStatus: PosCardPaymentResult["status"] | "FINALIZING";
+  /** Card-eligible remainder, not the full order value or captured amount. */
+  externalAmountCents: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PosCardPaymentBenefitsReview = {
+  /** Backward-compatible historic LONG_WAIT / RELEASE_PENDING queue. */
   items: PosCardPaymentReviewItem[];
+  /** Independent recent unresolved Store queue, no preparation deadline gate. */
+  activeItems?: PosCardPaymentActiveReviewItem[];
 };
 
 export async function fetchPosCardPaymentBenefitsReview() {

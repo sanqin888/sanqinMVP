@@ -1,17 +1,25 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   fetchPosCardPaymentBenefitsReview,
   fetchPosCardPaymentReviewAttempt,
   manuallyCloseSandboxUnpaid,
   recheckPosCardPaymentReviewAttempt,
+  type PosCardPaymentActiveReviewItem,
   type PosCardPaymentReviewDetail,
   type PosCardPaymentReviewItem,
 } from "@/lib/api/pos";
+import { partitionPosCardPaymentReviewQueues } from "./pos-card-payment-review-queues";
 
-type Props = { locale: "zh" | "en" };
+type Props = {
+  locale: "zh" | "en";
+  /** Current device's original persisted Attempt, even before the queue TTL. */
+  currentPendingAttemptId?: string | null;
+  currentPendingStatus?: string | null;
+  autoInspectAttemptId?: string | null;
+};
 
 /** Warn only while the original financial outcome is not final. */
 export function shouldWarnUnresolvedCardReview(
@@ -26,9 +34,16 @@ export function shouldWarnUnresolvedCardReview(
   );
 }
 
-export function PosCardPaymentBenefitsReview({ locale }: Props) {
+export function PosCardPaymentBenefitsReview({
+  locale,
+  currentPendingAttemptId,
+  currentPendingStatus,
+  autoInspectAttemptId,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
   const [items, setItems] = useState<PosCardPaymentReviewItem[]>([]);
+  const [activeItems, setActiveItems] = useState<PosCardPaymentActiveReviewItem[]>([]);
+  const refreshingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [activeAttempt, setActiveAttempt] = useState<string | null>(null);
@@ -41,20 +56,46 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
   const [confirmation, setConfirmation] = useState("");
   const [understood, setUnderstood] = useState(false);
   const zh = locale === "zh";
+  const reviewQueues = partitionPosCardPaymentReviewQueues(
+    activeItems,
+    items,
+    currentPendingAttemptId,
+  );
+  const activeReviewItems = reviewQueues.activeItems;
+  const historicalItems = reviewQueues.historicalItems;
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(false);
+  const reload = useCallback(async (showSpinner = true) => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    if (showSpinner) setLoading(true);
     try {
       const response = await fetchPosCardPaymentBenefitsReview();
       setItems(response.items);
+      setActiveItems(response.activeItems ?? []);
+      setError(false);
     } catch {
-      // Read failure cannot imply all prior financial attempts are resolved.
+      // A read failure never proves that an outstanding charge is resolved.
       setError(true);
     } finally {
-      setLoading(false);
+      refreshingRef.current = false;
+      if (showSpinner) setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    // Store-scoped passive refresh only; no Clover query, Sale, or mutation.
+    // Keep a compact count current even while this panel is collapsed.
+    void reload();
+    const refresh = () => {
+      if (document.visibilityState === "visible") void reload(false);
+    };
+    const interval = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [reload]);
 
   const inspect = useCallback(
     async (attemptId: string, recheck: boolean) => {
@@ -82,6 +123,14 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
     },
     [reload, zh],
   );
+
+  useEffect(() => {
+    if (!autoInspectAttemptId) return;
+    // This is an ordinary read of the same saved Attempt, not a Clover recheck.
+    setExpanded(true);
+    setLookupAttemptId(autoInspectAttemptId);
+    void inspect(autoInspectAttemptId, false);
+  }, [autoInspectAttemptId, inspect]);
 
   const closeUnpaid = useCallback(async () => {
     if (
@@ -137,8 +186,9 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
         >
           <span>
             {zh
-              ? "Clover 长时间支付／权益释放待核查"
-              : "Clover long-wait / benefit release review"}
+              ? "Clover 付款核查（当前未决／历史待处理）"
+              : "Clover payment review (unresolved / historic)"}
+            {activeItems.length > 0 ? ` · ${activeItems.length}` : ""}
           </span>
           <span aria-hidden="true">{expanded ? "−" : "+"}</span>
         </button>
@@ -149,6 +199,101 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
                 ? "查看详情为只读；主动重新核对可更新已确认的资金结果，但不会发起 Sale。超时与 NOT_FOUND 不代表已取消，禁止据此解除权益占用。"
                 : "Details are read-only. Explicit recheck may save confirmed payment truth but never issues a Sale. Timeout and NOT_FOUND do not prove cancellation or allow benefit release."}
             </p>
+            {currentPendingAttemptId && (
+              <div className="space-y-2 rounded-xl border border-amber-400/70 bg-amber-500/10 p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-amber-100">
+                    {zh ? "本机当前银行卡付款 · 优先核查" : "Current device card payment · priority"}
+                  </span>
+                  <span className="font-mono text-xs text-amber-200">
+                    {currentPendingStatus ?? (zh ? "待确认" : "Pending")}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200">
+                  {zh
+                    ? "无需输入付款编号。即使尚未超过准备时限，也可以直接查看这笔原付款；查看不会重新扣款或释放权益。"
+                    : "No ID entry needed. Inspect the original payment before its deadline; this read never charges or releases benefits."}
+                </p>
+                <button
+                  type="button"
+                  disabled={checking}
+                  onClick={() => void inspect(currentPendingAttemptId, false)}
+                  className="min-h-11 rounded-lg border border-amber-300 px-4 font-semibold text-amber-100 disabled:opacity-50"
+                >
+                  {zh ? "查看本机原付款详情" : "View current payment details"}
+                </button>
+              </div>
+            )}
+            <div className="space-y-2 rounded-xl border border-slate-600 p-3">
+              <h3 className="text-sm font-semibold text-slate-100">
+                {zh ? "本门店当前未决付款（最近 10 笔）" : "Unresolved payments in this Store (latest 10)"}
+              </h3>
+              <p className="text-xs text-slate-300">
+                {zh
+                  ? "来自门店数据库，不依赖本机缓存；约每 15 秒只读刷新。显示状态不是最终扣款证明，列表未包含的旧记录仍可能需要核查。"
+                  : "Store-backed, not browser history. Read-only refresh every ~15 seconds. A status is not payment finality; older unresolved records may be outside this limit."}
+              </p>
+              {error && (
+                <p role="alert" className="text-xs text-rose-200">
+                  {zh
+                    ? "本次门店查询失败，当前显示的记录可能已过期，不能据此判断付款已结清。"
+                    : "Store query failed. Displayed records may be stale; do not infer payment finality."}
+                </p>
+              )}
+              {!error && activeReviewItems.length === 0 ? (
+                <p className="text-xs text-slate-300">
+                  {zh
+                    ? currentPendingAttemptId
+                      ? "当前列表中没有其他未决记录，本机原付款可在上方核查。"
+                      : "当前最多 10 条结果中没有未决付款；不代表历史付款全部结清。"
+                    : currentPendingAttemptId
+                      ? "No other unresolved rows listed; inspect this device's original above."
+                      : "No unresolved items in the latest 10 slots. Older attempts may still require review."}
+                </p>
+              ) : activeReviewItems.length > 0 ? (
+                <ul className="max-h-72 space-y-2 overflow-y-auto">
+                  {activeReviewItems.map((item) => (
+                    <li
+                      key={item.attemptId}
+                      className="rounded-xl border border-amber-400/40 bg-slate-900/80 p-3 text-xs text-slate-200"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-amber-200">
+                          {new Date(item.createdAt).toLocaleString(
+                            zh ? "zh-CN" : "en-CA",
+                          )}
+                        </span>
+                        <span className="font-mono">{item.checkoutStatus}</span>
+                      </div>
+                      <p className="mt-2">
+                        {zh ? "待付银行卡金额" : "Card remainder"}:{" "}
+                        {new Intl.NumberFormat(zh ? "zh-CN" : "en-CA", {
+                          style: "currency",
+                          currency: item.currency,
+                        }).format(item.externalAmountCents / 100)}
+                      </p>
+                      <p className="mt-1 text-slate-400">
+                        {zh ? "最近更新" : "Last updated"}:{" "}
+                        {new Date(item.updatedAt).toLocaleString(
+                          zh ? "zh-CN" : "en-CA",
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={checking}
+                        onClick={() => void inspect(item.attemptId, false)}
+                        className="mt-3 min-h-11 rounded-lg border border-amber-300 px-4 font-semibold text-amber-100 disabled:opacity-50"
+                      >
+                        {zh ? "查看原付款详情" : "View original payment"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <div className="text-sm font-semibold text-slate-100">
+              {zh ? "历史超时／权益待释放（最多 25 笔）" : "Historic long-wait / release pending (up to 25)"}
+            </div>
             <button
               type="button"
               onClick={() => void reload()}
@@ -160,41 +305,52 @@ export function PosCardPaymentBenefitsReview({ locale }: Props) {
                   ? "查询中…"
                   : "Loading…"
                 : zh
-                  ? "刷新待核查列表"
-                  : "Refresh review queue"}
+                  ? "刷新全部核查列表"
+                  : "Refresh both review queues"}
             </button>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                value={lookupAttemptId}
-                onChange={(event) => setLookupAttemptId(event.target.value)}
-                placeholder={zh ? "输入原付款 Attempt ID" : "Original Attempt ID"}
-                aria-label={zh ? "原付款 Attempt ID" : "Original Attempt ID"}
-                className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-500 bg-slate-900 px-3 text-xs"
-              />
-              <button
-                type="button"
-                disabled={checking || !lookupAttemptId.trim()}
-                onClick={() => void inspect(lookupAttemptId.trim(), false)}
-                className="min-h-10 rounded-lg border border-slate-500 px-3 text-xs text-slate-100 disabled:opacity-50"
-              >
-                {zh ? "按编号查看" : "Find attempt"}
-              </button>
-            </div>
+            <details className="rounded-lg border border-slate-600/60 p-2 text-xs text-slate-300">
+              <summary className="cursor-pointer py-1 font-medium">
+                {zh
+                  ? "高级核查：按付款 ID 查找（技术支持）"
+                  : "Advanced: lookup by payment ID (support)"}
+              </summary>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  value={lookupAttemptId}
+                  onChange={(event) => setLookupAttemptId(event.target.value)}
+                  placeholder={zh ? "输入原付款 Attempt ID" : "Original Attempt ID"}
+                  aria-label={zh ? "原付款 Attempt ID" : "Original Attempt ID"}
+                  className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-500 bg-slate-900 px-3 text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={checking || !lookupAttemptId.trim()}
+                  onClick={() => void inspect(lookupAttemptId.trim(), false)}
+                  className="min-h-10 rounded-lg border border-slate-500 px-3 text-xs text-slate-100 disabled:opacity-50"
+                >
+                  {zh ? "按编号查看" : "Find attempt"}
+                </button>
+              </div>
+            </details>
             {error ? (
               <p role="alert" className="text-sm text-rose-200">
                 {zh
                   ? "无法读取状态，请稍后重试；不能据此认定无待核查交易。"
                   : "Status unavailable. Retry later; do not assume the queue is empty."}
               </p>
-            ) : !loading && items.length === 0 ? (
+            ) : !loading && historicalItems.length === 0 ? (
               <p className="text-xs text-slate-300">
                 {zh
-                  ? "当前未发现符合筛选条件的记录。"
-                  : "No matching checkout records found."}
+                  ? currentPendingAttemptId
+                    ? "历史待核查列表没有其他记录，本机当前付款可以直接在上方查看。"
+                    : "当前门店没有符合长时间等待或权益释放待完成条件的记录。"
+                  : currentPendingAttemptId
+                    ? "No other historical review records. Inspect the current payment above."
+                    : "No store payment currently matches the long-wait or release-pending review filters."}
               </p>
             ) : (
               <ul className="max-h-72 space-y-2 overflow-y-auto">
-                {items.map((item) => (
+                {historicalItems.map((item) => (
                   <li
                     key={item.attemptId}
                     className="rounded-xl border border-slate-600 bg-slate-900/80 p-3 text-xs text-slate-200"

@@ -1,9 +1,11 @@
 import type { PosCardPaymentResult } from "./api/pos";
 import {
+  canDismissPosCardPaymentReview,
   canUnlockCancelledPosCheckout,
   mergePosCardPaymentSnapshot,
   needsPosCardPaymentReadback,
   parsePosCardPaymentSnapshot,
+  shouldOpenRestoredPosCardDialog,
 } from "./pos-card-payment-realtime";
 
 const complete: PosCardPaymentResult = {
@@ -24,6 +26,25 @@ const complete: PosCardPaymentResult = {
 };
 
 describe("POS card payment realtime facts", () => {
+  it("allows overlay dismissal only for unresolved original attempts", () => {
+    expect(canDismissPosCardPaymentReview("UNKNOWN", true)).toBe(true);
+    expect(canDismissPosCardPaymentReview("RECONCILING", true)).toBe(true);
+    expect(canDismissPosCardPaymentReview("PROCESSING", true)).toBe(false);
+    expect(canDismissPosCardPaymentReview("CANCELLED", true)).toBe(false);
+    expect(canDismissPosCardPaymentReview("SUCCEEDED", true)).toBe(false);
+    expect(canDismissPosCardPaymentReview("UNKNOWN", false)).toBe(false);
+  });
+
+  it("scopes review dismissal to the saved Attempt", () => {
+    expect(shouldOpenRestoredPosCardDialog("original", "original", false)).toBe(false);
+    expect(shouldOpenRestoredPosCardDialog("next", "original", false)).toBe(true);
+    expect(shouldOpenRestoredPosCardDialog("original", null, false)).toBe(true);
+    expect(shouldOpenRestoredPosCardDialog("original", null, true)).toBe(false);
+    expect(
+      needsPosCardPaymentReadback({ ...complete, status: "RECONCILING" }),
+    ).toBe(true);
+  });
+
   it("keeps readback active until the original checkout is safely resolved", () => {
     expect(needsPosCardPaymentReadback(null)).toBe(true);
     const unresolvedStatuses = [

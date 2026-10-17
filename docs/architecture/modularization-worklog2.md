@@ -15,6 +15,16 @@
 > authoritative and are not duplicated here unless a later entry needs to
 > reference or correct their status.
 
+## 2026-10-17 — C-2C7 S5-M04-D Clover multi-card canonical review and POS dismiss UX
+
+**Baseline/status:** LOCAL branch fix/clover-s5-m04-multi-attempt-canonical-and-pos-review-dismiss-20261017 from fetched origin/dev, user review pending. Operator screenshots: one CAD 16.95 Clover Order Open, two manual VISA ····2222 FAIL payments at 16:28/16:29 sharing External Payment ID. POS original Attempt remained RECONCILING, Benefits not released and Terminal Fence SALE_IN_FLIGHT after original Sale HTTP 209 and canonical multi-row conflict. Merchant UI only, not raw Platform collection or exhaustive ledger proof.
+
+**Payments owner A:** bounded Platform collection pagination (50/page, max 500); row-by-row external/payment/order/amount/currency/result validation; exactly one canonical success with failed predecessors may complete; all-FAIL remains UNKNOWN unless observed original Sale 209 is available to current execution. Incomplete/multiple SUCCESS/unknown/foreign rows remain locked. Previously persisted UNKNOWN/RECONCILING without durable 209 is never auto-closed. Production Web Ecommerce and Orders/Benefits/fence owners unchanged.
+
+**POS Web B:** only presentation becomes dismissible for UNKNOWN/RECONCILING. Session marker scoped to Attempt prevents forced overlay after refresh; pending localStorage and server lock remain. Original pending Attempt is pinned at top of the current device's review panel with one-click read-only detail, no console/UUID input; duplicate historical row hidden; manual ID lookup retained under advanced/support. The **user-authorized S5-M10 additive expansion** now returns a separate `activeItems` array from the same authenticated read-only Store GET (10 most recently updated POS_TERMINAL PROCESSING/UNKNOWN/RECONCILING/SUCCEEDED/FINALIZING rows, no expiry condition); historic `items` keeps the unchanged 25 LONG_WAIT/RELEASE_PENDING query. POS auto-refreshes read-only around every 15 seconds, shows the count while collapsed, and provides direct cross-device Store review cards with time, CARD remainder and state; UUID input is technical-only and no click is necessary to populate the Store queue. Deduplicate current-browser pin, active and historic presentation, without altering backend records. Original Socket.IO/readback and finance boundaries unchanged.
+
+**Gates:** regression tests authored but NOT RUN per AGENTS.md; local changes uncommitted, no push/PR/CI, MacBook provider or production action. No Prisma/migration/dependency/new HTTP route/architecture edge/CI change; existing review GET response is extended additively and backward-compatibly with optional activeItems. Sandbox proof and old incident forensic reconciliation remain pending. Owner evidence and rollback: docs/payments/clover-pos-phase-plan.md S5-M04-D.
+
 ## 2026-10-17 — C-2C7 S5-B3-C LAN Compact manual entry + POS original-Attempt readback
 
 **Baseline / status:** `feat/clover-s5b3-lan-manual-entry-pos-payment-status-fallback-20261017` from `origin/dev@22f42211`. LOCAL SOURCE / USER REVIEW PENDING; regressions authored but not executed (per `AGENTS.md`); no commit/push/PR/CI, no MacBook, provider or production execution.

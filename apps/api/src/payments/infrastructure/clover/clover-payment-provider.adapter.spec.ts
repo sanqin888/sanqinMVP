@@ -1951,6 +1951,129 @@ describe('Clover Platform Payments Gateway', () => {
     expect(collectionUrl).toContain('filter=externalPaymentId%3Dexternal-1');
   });
 
+  const mockCollection = (elements: unknown[]) => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ elements }), {
+          status: 200,
+        }),
+      ),
+    );
+    return fetchSpy;
+  };
+  const readCollection = () =>
+    createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    });
+
+  it('maps complete multi-FAIL rows to non-final unpaid evidence', async () => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'decline-2', result: 'FAIL' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      providerPaymentId: undefined,
+    });
+  });
+
+  it('selects one canonical success after checking failed predecessors', async () => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'approved-2', result: 'SUCCESS' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'approved-2',
+      chargedTotalCents: 2048,
+    });
+  });
+
+  it.each([
+    ['different external identity', { externalPaymentId: 'someone-else' }],
+    ['different order', { order: { id: 'another-order', currency: 'CAD' } }],
+    ['different amount', { amount: 1999 }],
+    ['different currency', { currency: 'USD' }],
+    ['pending payment', { result: 'PENDING' }],
+    ['duplicate payment id', { id: 'decline-1' }],
+    ['missing payment id', { id: undefined }],
+  ])('rejects multiple payments containing %s', async (_label, bad) => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'decline-2', result: 'FAIL', ...bad }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('rejects two successes on the same external Sale', async () => {
+    mockCollection([
+      platformPayment({ id: 'approved-1' }),
+      platformPayment({ id: 'approved-2' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('reads all collection pages before concluding every attempt failed', async () => {
+    const failedPage = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const first = new Response(JSON.stringify({ elements: failedPage }), {
+      status: 200,
+    });
+    const last = new Response(
+      JSON.stringify({ elements: [platformPayment({ id: 'approved-51' })] }),
+      { status: 200 },
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(last);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'approved-51',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0]).toContain('offset=0');
+    expect(fetchSpy.mock.calls[1]?.[0]).toContain('offset=50');
+    expect(fetchSpy.mock.calls[1]?.[0]).toContain('limit=50');
+  });
+
+  it('keeps the Sale uncertain if a later collection page is unavailable', async () => {
+    const failedPage = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const first = new Response(JSON.stringify({ elements: failedPage }), {
+      status: 200,
+    });
+    const error = new Response('{}', { status: 500 });
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(error);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_HTTP_500',
+    });
+  });
+
+  it('rejects an external Sale exceeding the collection limit', async () => {
+    const page = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const fetchSpy = mockCollection(page);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_COLLECTION_INCOMPLETE',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(10);
+  });
+
   it('does not finalize when canonical amount mismatches the prepared amount', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(platformPayment({ amount: 1999 })), {

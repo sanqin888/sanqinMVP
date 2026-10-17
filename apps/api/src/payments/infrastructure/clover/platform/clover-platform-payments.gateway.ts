@@ -31,6 +31,8 @@ type CloverPlatformCanonicalReversalRequest =
 
 const PAYMENT_EXPAND = 'additionalCharges,cardTransaction,refunds,order';
 const PLATFORM_TIMEOUT_MS = 10_000;
+const PAYMENT_COLLECTION_PAGE_SIZE = 50;
+const PAYMENT_COLLECTION_MAX_ROWS = 500;
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -366,14 +368,64 @@ const mapPlatformPaymentCollection = (
       'Clover Platform has not exposed the payment yet',
     );
   }
-  if (elements.length !== 1) {
-    return platformPaymentUnknown(
-      request,
-      'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
-      'Clover Platform returned more than one payment for externalPaymentId',
-    );
+  if (elements.length === 1) return mapPlatformPayment(elements[0], request);
+
+  // A physical Compact can create several FAIL payment rows and eventually
+  // one SUCCESS during a single external Sale. No row may be ignored, and
+  // collection completeness is established by the paginated caller.
+  const seenIds = new Set<string>();
+  let cloverOrderId: string | undefined;
+  let success: Record<string, unknown> | null = null;
+  for (const value of elements) {
+    const payment = asRecord(value);
+    const id = stringValue(payment, 'id');
+    const orderId = stringValue(asRecord(payment?.order), 'id');
+    const externalId = stringValue(payment, 'externalPaymentId');
+    const amount = integerValue(payment, 'amount');
+    const currency = (
+      stringValue(payment, 'currency') ??
+      stringValue(asRecord(payment?.order), 'currency')
+    )?.toUpperCase();
+    const result = stringValue(payment, 'result')?.toUpperCase();
+    if (
+      !id ||
+      seenIds.has(id) ||
+      !orderId ||
+      (cloverOrderId !== undefined && cloverOrderId !== orderId) ||
+      externalId !== request.externalPaymentId ||
+      amount !== request.amountCents ||
+      currency !== request.currency.toUpperCase() ||
+      (result !== 'FAIL' && result !== 'SUCCESS')
+    ) {
+      return platformPaymentUnknown(
+        request,
+        'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+        'Clover multi-attempt collection contains mismatched or unresolved records',
+      );
+    }
+    seenIds.add(id);
+    cloverOrderId = orderId;
+    if (result === 'SUCCESS') {
+      if (success) {
+        return platformPaymentUnknown(
+          request,
+          'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+          'Clover returned multiple successful payments for one external Sale',
+        );
+      }
+      success = payment;
+    }
   }
-  return mapPlatformPayment(elements[0], request);
+
+  if (success) return mapPlatformPayment(success, request);
+  // NOT a final declined Payment identity: only the original Sale's observed
+  // HTTP 209 may consume this exhaustive all-FAIL collection as cancel evidence.
+  return platformPaymentUnknown(
+    request,
+    'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    'Every payment in the complete original Sale collection is FAIL',
+    { amountCents: request.amountCents, currency: request.currency },
+  );
 };
 
 const reversalUnknown = (
@@ -584,22 +636,54 @@ export class CloverPlatformPaymentsGateway {
       );
     }
 
-    const params = new URLSearchParams({
-      filter: `externalPaymentId=${externalPaymentId}`,
-      expand: PAYMENT_EXPAND,
-    });
-    const collection = await this.request(
-      `/v3/merchants/${encodeURIComponent(merchantId)}/payments?${params.toString()}`,
-    );
-    if (!collection) {
-      return platformPaymentUnknown(
-        request,
-        'CLOVER_PLATFORM_PAYMENT_COLLECTION_QUERY_UNCERTAIN',
-        'Clover Platform externalPaymentId query did not receive a response',
+    // Explicitly page through the entire external identity, including FAIL
+    // records from prior card attempts. A full page requires another read;
+    // a failed/invalid/over-limit page must never authorize payment finality.
+    const allPayments: unknown[] = [];
+    for (
+      let offset = 0;
+      offset < PAYMENT_COLLECTION_MAX_ROWS;
+      offset += PAYMENT_COLLECTION_PAGE_SIZE
+    ) {
+      const params = new URLSearchParams({
+        filter: `externalPaymentId=${externalPaymentId}`,
+        expand: PAYMENT_EXPAND,
+        limit: String(PAYMENT_COLLECTION_PAGE_SIZE),
+        offset: String(offset),
+      });
+      const collection = await this.request(
+        `/v3/merchants/${encodeURIComponent(merchantId)}/payments?${params.toString()}`,
       );
+      if (!collection) {
+        return platformPaymentUnknown(
+          request,
+          'CLOVER_PLATFORM_PAYMENT_COLLECTION_QUERY_UNCERTAIN',
+          'Clover Platform externalPaymentId collection page was unavailable',
+        );
+      }
+      if (!collection.ok) return this.httpUnknown(request, collection);
+      const page = collection.body?.elements;
+      const pageRows =
+        Array.isArray(page) && page.length <= PAYMENT_COLLECTION_PAGE_SIZE
+          ? recordsFromArray(page)
+          : null;
+      if (!pageRows) {
+        return platformPaymentUnknown(
+          request,
+          'CLOVER_PLATFORM_PAYMENT_COLLECTION_INVALID',
+          'Clover Platform returned an invalid collection page',
+        );
+      }
+      allPayments.push(...pageRows);
+      if (pageRows.length < PAYMENT_COLLECTION_PAGE_SIZE) {
+        return mapPlatformPaymentCollection({ elements: allPayments }, request);
+      }
     }
-    if (!collection.ok) return this.httpUnknown(request, collection);
-    return mapPlatformPaymentCollection(collection.body, request);
+    return platformPaymentUnknown(
+      request,
+      'CLOVER_PLATFORM_PAYMENT_COLLECTION_INCOMPLETE',
+      'Clover external Sale exceeded the bounded exhaustive collection limit',
+    );
   }
 
   async getCanonicalReversal(

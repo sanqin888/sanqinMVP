@@ -23,9 +23,11 @@ import {
   type PosOrderPricingQuote,
 } from "@/lib/api/pos";
 import {
+  canDismissPosCardPaymentReview,
   canUnlockCancelledPosCheckout,
   mergePosCardPaymentSnapshot,
   parsePosCardPaymentSnapshot,
+  shouldOpenRestoredPosCardDialog,
   type PosCardPaymentRealtimeEvent,
 } from "@/lib/pos-card-payment-realtime";
 import {
@@ -107,6 +109,7 @@ type SocketIoBrowserGlobal = {
 
 const POS_CARD_PAYMENT_PENDING_STORAGE_KEY = "sanq.pos.cardPayment.pending.v1";
 const POS_CARD_PAYMENT_TIMEOUT_CHECKOUT_KEY = "sanq.pos.cardPayment.timeoutCheckout.v1";
+const POS_CARD_PAYMENT_REVIEW_DISMISSED_KEY = "sanq.pos.cardPayment.reviewDismissed.v1";
 const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT = "POS_CARD_PAYMENT_STATUS_UPDATED";
 
 async function loadSocketIoFromCdn(): Promise<SocketIoBrowserGlobal["io"] | null> {
@@ -481,6 +484,7 @@ export default function StorePosPaymentPage() {
   const [cardTerminalConfig, setCardTerminalConfig] =
     useState<PosCardTerminalConfig | null>(null);
   const [cardPaymentOpen, setCardPaymentOpen] = useState(false);
+  const [reviewRequestedAttemptId, setReviewRequestedAttemptId] = useState<string | null>(null);
   const [cardFlowState, setCardFlowState] = useState<CardFlowState>("IDLE");
   const [cardPaymentResult, setCardPaymentResult] =
     useState<PosCardPaymentResult | null>(null);
@@ -1179,6 +1183,20 @@ export default function StorePosPaymentPage() {
   };
 
   const clearPendingCardPayment = useCallback(() => {
+    const originalAttemptId = activeCardAttemptRef.current;
+    if (originalAttemptId && typeof window !== "undefined") {
+      try {
+        if (
+          window.sessionStorage.getItem(POS_CARD_PAYMENT_REVIEW_DISMISSED_KEY) ===
+          originalAttemptId
+        ) {
+          window.sessionStorage.removeItem(POS_CARD_PAYMENT_REVIEW_DISMISSED_KEY);
+        }
+      } catch {
+        // Session UI state cannot affect the payment lifecycle.
+      }
+    }
+    setReviewRequestedAttemptId(null);
     activeCardAttemptRef.current = null;
     timeoutCheckoutAttemptRef.current = null;
     manualOriginalResumeRef.current = null;
@@ -1320,7 +1338,25 @@ export default function StorePosPaymentPage() {
   const recoverTerminalCardPayment = useCallback(
     async (request: PosCardPaymentRequest, keepCheckoutVisible = false) => {
       activeCardAttemptRef.current = request.attemptId;
-      setCardPaymentOpen(!keepCheckoutVisible);
+      let dismissedAttemptId: string | null = null;
+      if (typeof window !== "undefined") {
+        try {
+          dismissedAttemptId = window.sessionStorage.getItem(
+            POS_CARD_PAYMENT_REVIEW_DISMISSED_KEY,
+          );
+        } catch {
+          // Fall back to visible unresolved payment notice.
+        }
+      }
+      const shouldOpen = shouldOpenRestoredPosCardDialog(
+        request.attemptId,
+        dismissedAttemptId,
+        keepCheckoutVisible,
+      );
+      setCardPaymentOpen(shouldOpen);
+      if (!shouldOpen && dismissedAttemptId === request.attemptId) {
+        setReviewRequestedAttemptId(request.attemptId);
+      }
       setCardFlowState("RECONCILING");
       setCardFlowError(null);
       setSubmitting(true);
@@ -1547,6 +1583,23 @@ export default function StorePosPaymentPage() {
     onSnapshot: applyCardPaymentResult,
   });
 
+  const handleDismissCardPaymentReview = useCallback(() => {
+    const attemptId = pendingCardRequest?.attemptId;
+    if (!attemptId || !canDismissPosCardPaymentReview(cardFlowState, true)) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        POS_CARD_PAYMENT_REVIEW_DISMISSED_KEY,
+        attemptId,
+      );
+    } catch {
+      // Dialog dismissal is in-memory only if sessionStorage is unavailable.
+    }
+    setCardPaymentOpen(false);
+    setReviewRequestedAttemptId(attemptId);
+  }, [cardFlowState, pendingCardRequest?.attemptId]);
+
   const handleConfirm = async () => {
     setError(null);
     if (pendingCardRequest) {
@@ -1711,7 +1764,26 @@ export default function StorePosPaymentPage() {
         </div>
       </header>
 
-      <PosCardPaymentBenefitsReview locale={locale} />
+      <PosCardPaymentBenefitsReview
+        locale={locale}
+        currentPendingAttemptId={pendingCardRequest?.attemptId}
+        currentPendingStatus={pendingCardRequest ? cardFlowState : null}
+        autoInspectAttemptId={reviewRequestedAttemptId}
+      />
+      {pendingCardRequest && !cardPaymentOpen && !successInfo && (
+        <div role="status" className="mx-auto mt-3 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <span>{locale === "zh"
+            ? "原银行卡付款仍待核查，订单与权益保持锁定；暂时隐藏弹窗并不代表取消成功。"
+            : "Original card payment remains unresolved. Hiding the dialog does not cancel or unlock it."}</span>
+          <button
+            type="button"
+            className="min-h-11 rounded-xl border border-amber-300 px-4 font-semibold"
+            onClick={() => setCardPaymentOpen(true)}
+          >
+            {locale === "zh" ? "重新打开原付款" : "Reopen original payment"}
+          </button>
+        </div>
+      )}
 
       <section className="p-4 max-w-5xl mx-auto flex flex-col gap-4 lg:flex-row">
         {/* 左侧：订单详情 */}
@@ -2093,6 +2165,15 @@ export default function StorePosPaymentPage() {
             </div>
 
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              {canDismissPosCardPaymentReview(cardFlowState, !!pendingCardRequest) && (
+                <button
+                  type="button"
+                  onClick={handleDismissCardPaymentReview}
+                  className="min-h-11 flex-1 rounded-xl border border-amber-300/60 px-3 text-sm font-semibold text-amber-100"
+                >
+                  {locale === "zh" ? "暂时关闭并核查原付款" : "Hide and review original payment"}
+                </button>
+              )}
               {canCancelCardPayment && (
                 <button
                   type="button"

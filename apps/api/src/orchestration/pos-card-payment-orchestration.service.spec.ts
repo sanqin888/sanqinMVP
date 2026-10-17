@@ -147,6 +147,7 @@ const createHarness = () => {
   const checkouts = {
     prepare: jest.fn().mockImplementation(async () => checkout),
     findPosCardPaymentReviewItems: jest.fn().mockResolvedValue([]),
+    findPosCardPaymentActiveReviewItems: jest.fn().mockResolvedValue([]),
     requireForInput: jest.fn().mockImplementation(async () => checkout),
     findByAttemptId: jest.fn().mockImplementation(async () => checkout),
     claimProviderStart: jest.fn().mockImplementation(async () => {
@@ -308,11 +309,37 @@ describe('PosCardPaymentOrchestrationService', () => {
     jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
     await expect(
       harness.service.getBenefitsReview(storeStableId),
-    ).resolves.toEqual({ items: [] });
+    ).resolves.toEqual({ activeItems: [], items: [] });
+    expect(
+      harness.checkouts.findPosCardPaymentActiveReviewItems,
+    ).toHaveBeenCalledWith(storeStableId);
     expect(
       harness.checkouts.findPosCardPaymentReviewItems,
     ).toHaveBeenCalledWith(storeStableId);
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+  });
+
+  it('returns active and historic Store queues without any provider operations', async () => {
+    const harness = createHarness();
+    const active = {
+      attemptId: 'other-pos-reconciling',
+      checkoutStatus: 'RECONCILING',
+      externalAmountCents: 1695,
+      currency: 'CAD',
+      createdAt: '2026-10-17T20:28:00.000Z',
+      updatedAt: '2026-10-17T20:29:00.000Z',
+    };
+    jest
+      .mocked(harness.checkouts.findPosCardPaymentActiveReviewItems)
+      .mockResolvedValueOnce([active]);
+    await expect(
+      harness.service.getBenefitsReview(storeStableId),
+    ).resolves.toEqual({ activeItems: [active], items: [] });
+    expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
+    expect(harness.terminalPayments.reconcile).not.toHaveBeenCalled();
+    expect(
+      harness.orderFinalization.finalizeConfirmedPayment,
+    ).not.toHaveBeenCalled();
   });
 
   it('reads original 504 evidence without Clover access even when Terminal is disabled', async () => {
