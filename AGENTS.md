@@ -1,40 +1,38 @@
-# Codex rules for sanqinMVP
+# sanqinMVP 的 Codex 规则
 
-This file applies to the entire repository. A more deeply nested `AGENTS.md`, if
-one is added later, may add stricter rules for its subtree but must not weaken
-the safety, architecture, validation, or delivery rules in this file.
+本文件适用于整个仓库。今后若在更深层目录中添加 `AGENTS.md`，该文件可以对其子目录增加更严格的规则，但不得削弱本文件中的安全、架构、验证或交付规则。
 
-## 1. Core principles
+## 1. 核心原则
 
-* Make the smallest correct change needed for the task.
-* Preserve existing behavior unless the task explicitly requires changing it.
-* Fix root causes rather than hiding errors or weakening validation.
-* GitHub Actions is the authoritative validation standard for this repository.
-* Before editing code, inspect the relevant files under `.github/workflows/**` so the implementation is compatible with the actual CI gates.
-* The default MCP workspace phase ends after implementation and diff/status review. Do not run local lint, build, test, or CI-reproduction commands before the user reviews the change unless the user explicitly asks for a local validation command.
-* After the user approves the change for remote delivery, GitHub Actions is the validation gate. If these instructions conflict with the actual GitHub workflow, follow the workflow for validation while continuing to respect the safety constraints below.
+* 只做完成任务所需的最小正确改动。
+* 除非任务明确要求改变现有行为，否则保持现有行为。
+* 修复根因，不要隐藏错误或削弱验证。
+* GitHub Actions 是本仓库的权威验证标准。
+* 修改代码前，先查看 `.github/workflows/**` 下的相关文件，确保实现符合实际 CI 门禁。
+* 默认使用 MCP-workspace 进行代码阅览与修改。该工作区未开放 lint、build 和 test 执行权限，因此无需在其中执行这些命令或进行依赖这些命令的 CI 复现；验证以 GitHub Actions 的实际结果为准。
+* 新增项目文档优先使用中文。正文和可自由命名的文档文件名在适用时使用中文；工具约定的文件名、现有引用路径、代码标识、命令和无法翻译的名称保留原文，不为中文化而破坏兼容性。
+* 新对话开始任务时，完整阅读本文件后，还必须读取与对话任务相关的项目文档，包括适用的当前阶段/工作包、架构边界、进度和验证记录。以主线任务为优先；如需开展支线任务，应先说明其必要性、与主线的关系及影响，不得无故偏离主线或扩大已授权范围。
+* 用户批准远端交付后，以 GitHub Actions 作为验证门禁。如果本文件与实际 GitHub 工作流存在冲突，验证方式以工作流为准，同时仍须遵守下文的安全约束。
 
 ---
 
-## 2. Dependencies
+## 2. 依赖管理
 
-Prefer the repository's existing dependencies and platform APIs. Do not add a
-package for behavior that is already implemented safely in the workspace or can
-be expressed clearly with the current stack.
+优先使用仓库已有依赖和平台 API。对于工作区中已有安全实现，或使用当前技术栈即可清晰实现的功能，不要另加依赖包。
 
-When the requested change genuinely requires adding, removing, or changing a dependency version, stop before editing any dependency manifest or lockfile. Explain why the dependency change is required, its impact, and reasonable alternatives, and obtain explicit user authorization.
+当需求确实需要新增、删除依赖或修改依赖版本时，必须在修改任何依赖清单或锁文件前停止。说明为什么必须变更依赖、影响是什么、有哪些合理替代方案，并取得用户明确授权。
 
-After authorization:
+获得授权后：
 
-* make the smallest compatible addition or version change;
-* use the repository package manager (`pnpm`) and the correct workspace filter;
-* update the owning manifest and `pnpm-lock.yaml` together;
-* do not hand-edit generated lockfile sections;
-* do not combine unrelated upgrades, deduplication, or package-manager changes;
-* inspect the final manifest and lockfile diff for unexpected transitive churn;
-* report the dependency and why it was required.
+* 只做最小且兼容的新增或版本变更；
+* 使用仓库的包管理器（`pnpm`）以及正确的工作区过滤器；
+* 同步更新所属依赖清单和 `pnpm-lock.yaml`；
+* 不得手工编辑自动生成的锁文件部分；
+* 不得夹带无关升级、依赖去重或包管理器变更；
+* 检查最终依赖清单和锁文件差异，排除意外的间接依赖变动；
+* 报告变更了哪个依赖，以及为什么需要它。
 
-Dependency manifests and lockfiles include:
+依赖清单和锁文件包括：
 
 ```text
 **/package.json
@@ -43,206 +41,176 @@ package-lock.json
 yarn.lock
 ```
 
-If the user explicitly requests local dependency or CI reproduction, use the
-committed dependency state:
+如果用户明确要求在具备执行权限的本地开发环境复现依赖环境或 CI，必须使用已提交的依赖状态。以下命令供该环境使用，不表示 MCP-workspace 已开放相关执行权限：
 
 ```bash
 pnpm install --frozen-lockfile --prefer-offline
 ```
 
-If that explicitly requested frozen install fails because the manifest and
-lockfile are inconsistent:
+如果该项明确要求执行的冻结安装因依赖清单和锁文件不一致而失败：
 
-1. Do not bypass `--frozen-lockfile` or delete the lockfile merely to make CI
-   proceed.
-2. Identify the inconsistency.
-3. If it was caused by the current task's intentional manifest change, regenerate
-   the lockfile with the repository's pinned pnpm version and inspect the diff.
-4. If it is pre-existing or unrelated, report it and do not disguise it with an
-   unrelated dependency rewrite.
+1. 不得仅为让 CI 继续运行而绕过 `--frozen-lockfile` 或删除锁文件。
+2. 找出不一致的具体原因。
+3. 如果不一致由本任务有意修改依赖清单造成，使用仓库固定的 pnpm 版本重新生成锁文件，并检查差异。
+4. 如果问题原已存在或与本任务无关，报告该问题，不得通过无关的依赖重写来掩盖它。
 
 ---
 
 ## 3. Prisma
 
-The assistant/MCP may modify `apps/api/prisma/schema.prisma` as part of an
-authorized repository task without requesting a separate migration-generation
-authorization. Migration generation is intentionally a separate user-local step.
+在已获授权的仓库任务中，助手/MCP 可以修改 `apps/api/prisma/schema.prisma`。迁移文件按以下两类处理，不再对整个 `apps/api/prisma/migrations/**` 目录一律禁止新增。
 
-The assistant/MCP must not create, generate, hand-write, edit, rename, move, or
-delete anything under:
+### 可自动生成的 schema 迁移
 
-```text
-apps/api/prisma/migrations/**
+凡是仓库所用 Prisma 版本可以根据 `schema.prisma` 改动自动生成的迁移，必须使用 Prisma 生成，不得手写等效 SQL 来替代生成，也不得因 MCP-workspace 缺少执行权限而改为手写。
+
+这类迁移继续由用户在本地开发环境生成。助手/MCP 负责修改 schema/相关源代码、报告生成命令和审阅生成 SQL，不代用户执行 `prisma migrate dev`，也不手工修改生成的迁移文件。发现生成 SQL 不安全或语义错误时，报告具体问题，交由用户在本地开发环境重新生成或修正。
+
+当 `schema.prisma` 改动需要此类数据库迁移时，允许在配套迁移尚不存在的情况下，先审阅、推送 schema/源代码改动并将其合并到 `dev`。这是对通常的 schema 与迁移历史对齐规则的有意例外，目的是让用户本地开发机上的 `dev` 检出版本成为权威迁移生成环境。
+
+每次此类改动到达 MCP/本地审阅门禁时，改动报告都必须醒目标明 `MIGRATION REQUIRED`，并包含：
+
+* 为什么需要迁移；
+* 建议使用的、能描述用途的迁移名称；
+* 用户在本地生成迁移所需的完整准确命令；
+* 必须在生成的 SQL 中检查的重命名、回填、约束、索引、枚举、破坏性变更或数据保留风险；
+* 明确说明：在配套迁移完成本地生成、审阅、提交并合并回 `dev` 之前，禁止晋级到 `main` / 生产环境。
+
+必须遵循以下流程：
+
+1. MCP/助手修改 `schema.prisma` 以及相关源代码、测试和文档，但不手写该 schema 改动对应的迁移。
+2. 经用户审阅后，schema/源代码 PR 可以通过正常的 PR + GitHub Actions 门禁进入 `dev`。
+3. 用户在本地开发机拉取更新后的 `dev`。
+4. 用户确认目标是可丢弃/本地开发数据库后，使用仓库的 Prisma 版本生成迁移；优先使用 `--create-only`，以便在应用前审阅 SQL。
+5. 用户通过后续改动/PR，将生成的迁移提交回仓库，目标分支为 `dev`。
+6. MCP/助手审阅生成的 SQL，但不修改迁移文件。如果 SQL 不安全或语义不正确，报告具体问题，并要求在用户本地开发环境重新生成或修正迁移。
+7. 配套迁移完成审阅并合并到 `dev` 之前，不得将包含该 schema 改动的状态从 `dev` 晋级到 `main`、部署到生产环境或执行生产迁移。
+
+确认目标是可丢弃/本地开发数据库后，用户在本地生成迁移的命令为：
+
+```bash
+pnpm --filter api exec prisma migrate dev --create-only --name <descriptive_name>
 ```
 
-When a `schema.prisma` change requires a persisted database migration, the
-schema/source change may be reviewed, pushed, and merged into `dev` before the
-matching migration exists. This is an intentional exception to the normal
-schema-history alignment rule so the user's local development checkout of `dev`
-can be the authoritative migration-generation environment.
+### 无法自动生成的字段属性迁移例外
 
-At the MCP/local review gate for every such change, the change report must
-prominently state `MIGRATION REQUIRED` and include:
+如果任务只涉及数据库字段属性，且该属性无法通过当前仓库 Prisma schema 表达、也无法由 Prisma Migrate 自动生成相应 SQL，允许助手/MCP 为该属性手写并新增独立的增量迁移，例如数据库字段注释。此例外不包含本可自动生成的字段类型、可空性、默认值或其他结构变更，也不扩展为任意数据库对象或数据修复脚本的手写授权。
 
-* why a migration is required;
-* a descriptive suggested migration name;
-* the exact user-local generation command;
-* any expected rename, backfill, constraint, index, enum, destructive, or data-
-  preservation risk that must be checked in the generated SQL; and
-* that promotion to `main` / production is blocked until the matching migration
-  has been generated locally, reviewed, committed, and merged back into `dev`.
+适用条件与要求：
 
-The required workflow is:
+* 改动必须属于用户已授权任务的范围；在改动报告中写明目标表/字段/属性、预期效果以及 Prisma 无法自动生成的具体原因或依据。
+* “无法自动生成”指当前 Prisma 版本不支持表达或生成该数据库属性，不包括缺少命令权限、环境未准备好、生成命令失败，或尚未核实能否生成。
+* 如果改动仅影响 Prisma Client 层行为而不需要改变数据库，不得为此编造数据库迁移。
+* 只新增具有明确名称的迁移目录和 `migration.sql`；不得借此编辑、重命名、移动、重排、压缩合并或删除已存在的迁移历史。
+* 手写 SQL 只处理该项必要属性；检查其执行顺序、事务/锁影响、数据保留和重放后的结果，并在报告中区分“SQL 已编写/审阅”与“已执行验证”。
+* 此类迁移必须纳入仓库正常的本地审阅、远端交付和 CI 流程，不得只在目标数据库上直接改属性而不保留可重放的迁移记录。
+* 涉及破坏性变更、收紧约束、数据损失风险或超出上述字段属性范围时，仍须遵守既有迁移/架构授权规则；不能确定是否属于本例外时，先说明歧义并向用户确认。
+* 同一任务同时涉及可生成的 schema 迁移时，分别处理，不得用手写属性迁移代替或掩盖缺失的 schema 迁移。仅有该项手写属性迁移且无需用户补充生成时，不套用“等待用户本地生成”的交接状态。
 
-1. MCP/assistant modifies `schema.prisma` and related source/tests/docs, but does
-   not touch `apps/api/prisma/migrations/**`.
-2. After user review, the schema/source PR may proceed to `dev` through the normal
-   PR + GitHub Actions gate.
-3. The user pulls the updated `dev` on the local development machine.
-4. The user generates the migration with the repository's Prisma version against
-   the verified disposable/local development database, preferably with
-   `--create-only` so the SQL can be reviewed before application.
-5. The user returns the generated migration to the repository in a follow-up
-   change/PR targeting `dev`.
-6. MCP/assistant reviews the generated SQL but does not modify the migration file.
-   If the SQL is unsafe or semantically wrong, report the exact issue and require
-   the migration to be regenerated or corrected in the user's local development
-   environment.
-7. Do not promote the schema-changing state from `dev` to `main`, deploy it to
-   production, or run the production migration until the matching migration has
-   been reviewed and merged into `dev`.
+### 通用迁移审阅与执行规则
 
-Migration review rules:
-
-* Never rewrite, reorder, squash, rename, or delete an existing migration that may
-  have been applied.
-* Inspect generated SQL. Prisma output is not automatically safe or semantically
-  complete, especially for renames, backfills, constraints, indexes, enum
-  changes, and relation changes.
-* Use additive expand-contract migrations for public, persisted, PWA, payment,
-  printing, and accounting contracts. A rename is not a drop-and-add when data
-  must be preserved.
-* Backfills must be deterministic and idempotent, with pre/post counts and
-  discrepancy checks appropriate to the data risk.
-* Adding `NOT NULL`, tightening a constraint, changing a type, dropping a column
-  or table, or otherwise risking loss requires staged migration and explicit
-  user approval of the destructive/contraction step.
-* After the user-generated migration is available, verify that it represents the
-  intended `schema.prisma` change and include its review status in the change
-  report.
-* The final required invariant before production promotion is:
+* 绝不重写、重排、压缩合并、重命名或删除可能已经应用过的现有迁移。
+* 必须检查所有迁移 SQL，包括 Prisma 生成的 SQL 和上述例外允许手写的 SQL。Prisma 输出并不天然安全，也不保证语义完整，尤其涉及重命名、回填、约束、索引、枚举变更和关系变更时。
+* 对公共、持久化、PWA、支付、打印和会计合同，使用先增量扩展、后收缩的 expand-contract 迁移。需要保留数据时，重命名不能用删除后新增来代替。
+* 回填必须具有确定性和幂等性，并根据数据风险提供适当的前后数量核对和差异检查。
+* 添加 `NOT NULL`、收紧约束、改变类型、删除列或表，以及其他存在数据损失风险的操作，必须分阶段迁移，并就破坏性/收缩步骤取得用户明确批准。
+* 用户生成的迁移可用后，验证其是否准确实现预期的 `schema.prisma` 改动；手写属性迁移则核对其是否准确实现已说明的数据库属性。在改动报告中分别说明来源、审阅状态和执行验证状态。
+* 晋级生产环境之前，Prisma 可表达的数据库结构必须满足以下一致性关系：
 
   ```text
   schema.prisma
-  = fresh database replaying all committed migrations
-  = local development database
-  = production database after prisma migrate deploy
+  = 重放全部已提交迁移后得到的全新数据库中的 Prisma 可表达结构
+  = 本地开发数据库中的 Prisma 可表达结构
+  = 执行 prisma migrate deploy 后的生产数据库中的 Prisma 可表达结构
   ```
 
-Allowed non-destructive commands include:
+* Prisma 无法表达的字段属性也必须通过已提交迁移在全新重放数据库、本地开发数据库和迁移后的生产数据库中保持一致，并单独检查；不得仅因 schema 对比无差异就认定这些属性正确。
+
+在具备命令执行权限的开发/CI 环境中，非破坏性命令包括：
 
 ```bash
 pnpm --filter api prisma:generate
 pnpm --filter api exec prisma validate
 ```
 
-User-local migration-generation command, after verifying the target is a
-disposable/local development database:
+上述命令示例不表示 MCP-workspace 已开放执行权限。助手/MCP 仍不得代用户执行 `prisma migrate dev`；手写新增迁移仅限本节明确规定的字段属性例外。
 
-```bash
-pnpm --filter api exec prisma migrate dev --create-only --name <descriptive_name>
-```
+绝不对包含有价值数据的数据库运行 `prisma migrate reset`、`prisma db push`、破坏性 SQL，或其他等效的绕过迁移历史/破坏性命令。
 
-The assistant/MCP must report this command when required but must not execute
-`prisma migrate dev` or otherwise generate the migration on the user's behalf.
-
-Never run `prisma migrate reset`, `prisma db push`, destructive SQL, or an
-equivalent history-bypassing/destructive command against a database containing
-valuable data.
-
-Do not run `prisma migrate deploy` against production or otherwise mutate the
-production database unless the user explicitly asks for that action and the
-exact target, backup/readiness checks, and rollout plan have been verified. The
-normal handoff is to review the user-generated migration locally, then report the
-production deployment command as a manual action.
+除非用户明确要求该操作，且已核实准确目标、备份/就绪检查以及发布计划，否则不得对生产环境运行 `prisma migrate deploy`，也不得以其他方式修改生产数据库。通常的交接方式是先审阅迁移，再将生产部署命令作为手动操作交给用户。允许编写或新增迁移文件，不等于授权执行数据库变更。
 
 ---
 
-## 3.1 Database IDs and stable business IDs
+## 3.1 数据库 ID 与稳定业务 ID
 
-Database primary keys and stable business identifiers are different identities and must not be used interchangeably.
+数据库主键和稳定业务标识是两种不同的身份，不得混用。
 
-* Prisma `id` fields backed by UUID primary keys are internal database identities unless an explicit contract says otherwise.
-* Stable identifiers such as `storeStableId`, `orderStableId`, `userStableId`, `deviceStableId`, and entity-specific `stableId` fields are the preferred business identities across API, browser, WebSocket, printing, external-provider, and cross-process boundaries.
-* Never infer identity semantics from a generic field name such as `storeId` or `orderId`. Inspect the Prisma relation and the owning contract. For example, `PosDevice.storeId` references internal `Store.id`, while `Order.storeId` references business `Store.storeStableId`.
-* When both identities are present in one flow, variables, DTOs, ports, fixtures, and tests must use explicit names such as `storeDbId` and `storeStableId`. Do not use one ambiguous value to represent both identities.
-* Internal database UUIDs must not cross an external/business boundary merely because they are available on an authenticated database record. Translate to the appropriate stable business identifier at the boundary.
-* Regression tests covering identity translation must use visibly different values for database and stable IDs, for example `storeDbId = 8a3d4c0e-4750-4f6a-9138-000000000001` and `storeStableId = 4750_Yonge_Street`.
-
----
-
-## 4. CI validation
-
-GitHub Actions is the normal validation environment for repository changes.
-
-Before editing code:
-
-1. Inspect the relevant `.github/workflows/**` files.
-2. Determine which jobs and workspaces will be affected by the intended change.
-3. Implement with those CI gates in mind, but do not run local lint, build, test,
-   or CI-reproduction commands during the default MCP workspace phase.
-
-After implementation, review the final diff and workspace status, then stop and
-provide the change report to the user. The user reviews the source change before
-remote validation begins.
-
-After the user authorizes remote delivery, push the feature branch, open a PR to
-`dev`, and track the actual GitHub Actions run. All required CI checks must be
-green before merge. Do not substitute an ad-hoc local command for a failed or
-missing GitHub check.
-
-If the user explicitly requests local validation for a particular task, use the
-exact relevant commands from `.github/workflows/ci.yml` rather than simplified
-equivalents, and report exactly what was run and what passed.
+* 除非有明确合同另作规定，以 UUID 主键为基础的 Prisma `id` 字段属于内部数据库身份。
+* 跨 API、浏览器、WebSocket、打印、外部供应商和进程边界时，优先使用 `storeStableId`、`orderStableId`、`userStableId`、`deviceStableId` 以及实体专属 `stableId` 等稳定业务标识。
+* 绝不根据 `storeId`、`orderId` 等泛化字段名推断身份语义。必须查看 Prisma 关系和所属合同。例如，`PosDevice.storeId` 引用内部的 `Store.id`，而 `Order.storeId` 引用业务标识 `Store.storeStableId`。
+* 同一流程同时涉及这两类身份时，变量、DTO、端口、测试数据和测试必须使用 `storeDbId`、`storeStableId` 等明确名称。不得用一个含义模糊的值同时代表两种身份。
+* 不得仅因已认证的数据库记录上可以取到内部 UUID，就让它跨越外部/业务边界。必须在边界处转换为正确的稳定业务标识。
+* 覆盖身份转换的回归测试必须为数据库 ID 和稳定 ID 使用明显不同的值，例如 `storeDbId = 8a3d4c0e-4750-4f6a-9138-000000000001` 和 `storeStableId = 4750_Yonge_Street`。
 
 ---
 
-## 5. Monorepo and type safety
+## 4. CI 验证
 
-This is a monorepo. Changes to shared types, API contracts, schemas, generated types, shared libraries, serialization formats, configuration, or public interfaces may affect multiple workspaces.
+GitHub Actions 是仓库改动的常规验证环境。
 
-Validate downstream consumers when relevant.
+修改代码前：
 
-This repository uses type-aware ESLint. Successful TypeScript compilation alone does not guarantee lint success.
+1. 查看相关的 `.github/workflows/**` 文件。
+2. 确定预期改动会影响哪些作业和工作区。
+3. 实现时遵循这些 CI 门禁。MCP-workspace 未开放 lint、build 和 test 执行权限，无需在其中执行这些命令；仍须编写/更新必要的测试代码，并审阅最终差异和状态。
 
-Do not fix type, lint, or test failures by weakening safety unless there is a specific justified reason.
+首次远端交付前，完成实现、审阅最终差异和工作区状态后，停止并向用户提供改动报告，由用户审阅并授权远端交付。已经获得远端交付授权的功能分支，其后续 CI 修复适用下述持续授权规则。
 
-Avoid shortcuts such as:
+用户授权远端交付后，推送功能分支、创建目标为 `dev` 的 PR，并跟踪实际 GitHub Actions 运行。合并前，所有必需的 CI 检查必须全绿。不得用临时拼凑的本地命令替代失败或缺失的 GitHub 检查。
+
+对于已获授权提交远端的功能分支，如果 CI 报错，助手/MCP 应读取实际失败日志，在 MCP-workspace 中完成解决该失败所需的最小改动，审阅差异后提交并推送到同一个功能分支，继续跟踪 CI，无需再次取得提交远端的授权。重复此流程，直到该 PR 最终 head 的全部必需 CI 检查通过，再合并到 `dev`；用户明确要求合并前再次审阅的，仍须遵守该要求。
+
+上述持续授权只覆盖原任务范围内的 CI 修复，不授权无关重构或绕过已有安全门禁。若修复必须改变架构边界、模块职责、依赖或其他原本需单独批准的事项，仍按对应规则说明原因、影响和替代方案，并取得所需授权。
+
+如果用户要求额外的本地验证，先说明 MCP-workspace 的执行权限限制，并提供 `.github/workflows/ci.yml` 中准确对应的命令，供具备执行权限的开发环境使用；不得绕过工具权限。只有确实在已授权且具备权限的环境执行后，才报告准确命令和实际结果，不能把提供命令等同于验证通过。
+
+---
+
+## 5. Monorepo 与类型安全
+
+这是一个 monorepo（单仓多工作区）。共享类型、API 合同、schema、生成类型、共享库、序列化格式、配置或公共接口的改动，可能影响多个工作区。
+
+相关时必须验证下游使用方。
+
+本仓库使用类型感知的 ESLint。仅通过 TypeScript 编译不代表 lint 一定通过。
+
+除非有具体且充分的理由，否则不得通过削弱安全性来解决类型、lint 或测试失败。
+
+避免以下捷径：
 
 ```text
 as any
 @ts-ignore
-broad eslint-disable comments
+大范围的 eslint-disable 注释
 test.skip
-weakened assertions
+削弱断言
 continue-on-error
-disabled validation
+禁用验证
 ```
 
-Prefer correct application-level types, interfaces, mocks, fixtures, and implementation changes.
+优先修正应用层类型、接口、mock、测试数据和实现。
 
-Be especially careful with inferred external types such as Jest mocks, Prisma-generated types, SDK responses, framework callbacks, and third-party libraries.
+尤其要谨慎处理外部推断类型，例如 Jest mock、Prisma 生成类型、SDK 响应、框架回调和第三方库。
 
 ---
 
-## 6. Clean-environment awareness
+## 6. 注意干净环境差异
 
-GitHub Actions runs from a clean checkout. Local or Codex environments may contain cached or generated state that CI does not have.
+GitHub Actions 从干净的仓库检出状态开始运行。本地或 Codex 环境可能包含 CI 中没有的缓存或生成状态。
 
-Do not treat existing local state as proof that CI will pass.
+不得把现有本地状态当作 CI 会通过的证据。
 
-Watch for differences involving:
+注意以下方面的差异：
 
 ```text
 node_modules/
@@ -250,46 +218,46 @@ node_modules/
 dist/
 build/
 coverage/
-generated files
-local .env files
-local credentials
-Node.js versions
-pnpm versions
-Linux vs macOS behavior
-case-sensitive paths
+生成文件
+本地 .env 文件
+本地凭据
+Node.js 版本
+pnpm 版本
+Linux 与 macOS 的行为差异
+区分大小写的路径
 ```
 
-When claiming CI-equivalent validation, prefer dependency state reproduced from the committed lockfile.
+声称完成与 CI 等效的验证时，优先使用根据已提交锁文件复现的依赖状态。
 
-If an applicable CI step requires unavailable secrets, services, credentials, Docker infrastructure, network access, or another GitHub-only resource, do not pretend it passed.
+如果相关 CI 步骤需要当前不可用的密钥、服务、凭据、Docker 基础设施、网络访问或其他仅 GitHub 环境具备的资源，不得假装该步骤已经通过。
 
-Report it explicitly as not locally verified.
+必须明确报告该项尚未在本地验证。
 
-For external integrations:
+对于外部集成：
 
-* never invent credentials;
-* never substitute production credentials for sandbox/test credentials;
-* never weaken tests because credentials are unavailable.
+* 绝不编造凭据；
+* 绝不用生产凭据替代 sandbox/test 凭据；
+* 绝不因为凭据不可用而削弱测试。
 
 ---
 
-## 7. Git and diff safety
+## 7. Git 与差异安全
 
-Before completing a coding task, review the final repository state.
+完成代码任务前，检查最终仓库状态。
 
-Run:
+运行：
 
 ```bash
 git status --short
 ```
 
-or:
+或：
 
 ```bash
 git status -sb
 ```
 
-For substantial changes, also inspect:
+对于较大的改动，还应检查：
 
 ```bash
 git diff
@@ -297,218 +265,148 @@ git diff --stat
 git diff --check
 ```
 
-Verify that:
+确认：
 
-* only intended files were changed;
-* required implementation files are not left untracked;
-* no temporary/debug artifacts remain;
-* no secrets or credentials were added;
-* dependency changes are required by the task, minimal, and synchronized with
-  the lockfile;
-* every Prisma schema change is either accompanied by its reviewed user-generated
-  migration or is explicitly marked `MIGRATION REQUIRED` and blocked from
-  `main`/production promotion;
-* existing migration history was not rewritten, and any user-generated migration
-  present in the change was reviewed rather than fabricated or edited by MCP;
-* unrelated user changes were not deleted or overwritten.
+* 只修改了预期文件；
+* 必需的实现文件没有遗漏为未跟踪状态；
+* 没有残留临时/调试产物；
+* 没有加入密钥或凭据；
+* 依赖改动确为任务所需、范围最小，且已与锁文件同步；
+* 每项需要数据库迁移的 Prisma schema 改动，都有经过审阅的用户生成迁移，或者明确标记为 `MIGRATION REQUIRED` 并禁止晋级到 `main`/生产环境；
+* 没有重写现有迁移历史；可自动生成的迁移来自用户本地 Prisma 生成并已审阅，未被 MCP 手写替代或编辑；手写新增迁移严格符合第 3 节字段属性例外，并记录了无法自动生成的原因、SQL 审阅和执行验证状态；
+* 没有删除或覆盖用户的无关改动。
 
-Do not automatically discard, reset, or delete unrelated user changes.
+不得自动丢弃、重置或删除用户的无关改动。
 
-Validation results must correspond to the final source state that will be committed or pushed.
+验证结果必须对应最终将被提交或推送的源代码状态。
 
 ---
 
-## 8. CI failure investigation
+## 8. CI 失败排查
 
-When actual GitHub CI results are available, they take precedence over assumptions based on local checks.
+实际 GitHub CI 结果可用时，其优先级高于根据本地检查作出的推测。
 
-For a CI failure:
+CI 失败时：
 
-1. Find the first meaningful failing job and step.
-2. Read the actual error.
-3. Confirm the source revision GitHub tested.
-4. Determine whether the cause is code, dependencies, generated files, environment differences, missing files/secrets, external services, or a flaky/pre-existing failure.
-5. Fix the root cause.
+1. 找到第一个有实际意义的失败作业和步骤。
+2. 阅读实际错误。
+3. 确认 GitHub 测试的是哪个源代码版本。
+4. 判断原因属于代码、依赖、生成文件、环境差异、缺失文件/密钥、外部服务，还是偶发/既有失败。
+5. 修复根因。
 
-Do not modify or weaken the CI workflow merely to make a failing code change appear green unless the workflow itself is genuinely incorrect.
+除非 CI 工作流本身确实有误，否则不得仅为让失败的代码改动看起来全绿而修改或削弱工作流。
+
+已获远端交付授权的功能分支，按第 4 节的持续授权规则，在 MCP-workspace 完成最小修复后直接追加到同一分支；不为每次 CI 修复重复申请提交远端授权。
 
 ---
 
-## 9. Completion reporting
+## 9. 完成报告
 
-Do not predict CI success. Report only the stage that has actually been reached.
+不要预测 CI 会成功。只报告实际已经达到的阶段。
 
-At the end of the MCP workspace phase, report concisely:
+首次本地改动完成、等待远端交付授权时，简明报告：
 
 ```text
-Changed:
-- <files/behavior changed>
+改动：
+- <修改的文件/行为>
 
-Local validation:
-- Not run by repository workflow; lint/build/test are deferred to GitHub Actions after user review.
+本地验证：
+- MCP-workspace 未开放 lint/build/test 执行权限，未在其中运行；以授权提交后的 GitHub Actions 结果为准。
 
-Migration status:
-- Not required, or
-- MIGRATION REQUIRED — pull the merged `dev` locally and generate `<suggested_name>` with the reported Prisma command before any promotion to `main`/production.
+迁移状态：
+- 不需要迁移；或
+- 已按第 3 节例外新增手写字段属性迁移：<文件、原因、SQL 审阅和执行验证状态>；或
+- MIGRATION REQUIRED — 存在待用户生成的 schema 迁移：在本地拉取已合并的 `dev`，使用报告中的 Prisma 命令生成 `<suggested_name>`，然后才能晋级到 `main`/生产环境。若同时存在手写属性迁移，另行列明，不得掩盖该缺失状态。
 
-Remote status:
-- Not pushed / no PR created.
+远端状态：
+- 未推送 / 未创建 PR。
 ```
 
-After the user authorizes remote delivery, report the actual PR target (`dev`),
-GitHub Actions results, and merge result. Never describe a check as passed unless
-that exact GitHub check completed successfully against the reviewed PR head.
+用户授权远端交付后，报告实际 PR 目标分支（`dev`）、GitHub Actions 结果和合并结果；如有 CI 修复，说明最小修复内容及追加到同一分支的提交。只有准确对应的 GitHub 检查针对该 PR 最终 head 成功完成，才可以描述为通过。
 
-If the user explicitly requested local validation as an exception, separately
-report the exact commands that were run and their actual results.
+如果用户要求在其他具备权限的开发环境执行额外验证，单独报告实际执行的准确命令及其真实结果；仅提供命令而未执行时，应明确标记为未验证。
 
 ---
 
-## 10. Required workflow for repository changes
+## 10. 仓库改动的必需流程
 
-Before editing code:
+修改代码前：
 
-1. Read this file completely and inspect any more specific `AGENTS.md` that
-   applies to the target path.
-2. Inspect the current implementation, its tests, the owning module's public
-   boundary, relevant architecture tests/docs, and the applicable GitHub
-   workflow.
-3. Identify the business owner of the change and every downstream consumer of
-   any contract, schema, event, shared type, or persisted field being changed.
-4. Classify the work as an internal atomic change, an expand-contract data or
-   public-contract migration, or a controlled integration/payment cutover as
-   defined in section 18.
-5. If the requested behavior requires changing an established architecture
-   boundary, module responsibility, compatibility promise, or migration
-   strategy, stop before editing. Explain the reason, impact, and alternatives,
-   and obtain explicit user authorization.
+1. 完整阅读本文件，并查看适用于目标路径的更具体的 `AGENTS.md`。新对话开始任务时，还必须读取与任务相关的当前项目文档，核实主线目标、当前进度、未完成验证和下一步工作；开展支线任务前，先说明必要性及其与主线的关系。
+2. 查看现有实现、相关测试、所属模块的公共边界、相关架构测试/文档以及适用的 GitHub 工作流。新增项目文档遵循第 1 节的中文优先规则。
+3. 明确改动的业务归属，以及所有被修改的合同、schema、事件、共享类型或持久化字段的下游使用方。
+4. 按第 18 节，将工作归类为内部原子改动、数据或公共合同的 expand-contract 迁移，或受控的集成/支付切换。
+5. 如果需求必须改变已有架构边界、模块职责、兼容性承诺或迁移策略，必须在修改前停止。说明原因、影响和替代方案，并取得用户明确授权。
 
-Default delivery workflow:
+默认交付流程：
 
-1. Make the requested source changes only inside `mcp-workspace` on a feature
-   branch created from the latest `origin/dev`.
-2. Do not run lint, build, test, or CI-reproduction checks in the default local
-   phase. For modularization code changes, complete the documentation synchronization
-   gate in section 19 before review. Then review the final diff and workspace status,
-   stop, and provide a change report for user review.
-3. Do not push a branch, create a pull request, merge, deploy, execute a
-   production mutation, or run a production database migration before that user
-   review and explicit approval for remote delivery.
-4. After the user approves remote delivery, push the feature branch and create a
-   pull request targeting `dev`. Repository-change PRs must target `dev` only.
-   Never create a direct PR to `main` and never push repository changes directly
-   to `main`.
-5. Track the actual GitHub Actions run for the PR. Merge into `dev` only after all
-   required CI checks are green. The user's approval to "push/open a PR to dev
-   and track CI" includes authorization to merge that reviewed change into `dev`
-   once CI is fully green, unless the user explicitly asks for another review
-   before merge.
-6. If the merged change modifies `schema.prisma` and requires a migration, stop
-   and hand off the `MIGRATION REQUIRED` instructions. The user pulls the latest
-   `dev`, generates the migration in the local development database, and returns
-   that generated migration in a follow-up PR to `dev`. Until that companion
-   migration is reviewed and merged, the affected `dev` state is intentionally
-   not eligible for promotion to `main` or production deployment.
-7. After a reviewed PR is merged into `dev` with all required GitHub Actions checks
-   green, if the broader user-requested task, migration phase, or work package is
-   not yet complete, conclude the handoff with a concise description of the
-   recommended next step, including its goal, scope, important prerequisites or
-   risks, and any user authorization or production verification required before
-   proceeding. If the broader task is complete, state that explicitly rather than
-   inventing additional work. Do not start the next step automatically unless it
-   has already been authorized by the user.
-8. Promotion from `dev` to `main`, if ever required, is outside the MCP/assistant
-   repository-change PR workflow. This workflow must never create a PR targeting
-   `main`; report the required release step for the user to control separately.
+1. 只在 `mcp-workspace` 中，基于最新 `origin/dev` 创建的功能分支上完成请求的源代码改动。
+2. MCP-workspace 未开放 lint、build 和 test 执行权限，无需在其中执行这些检查；必要的测试代码和架构护栏仍须完成。模块化代码改动必须在审阅前完成第 19 节的文档同步门禁。随后审阅最终差异和工作区状态；首次远端交付前，停止并提交改动报告，供用户审阅。已授权功能分支的 CI 修复按第 4 节持续推进。
+3. 首次远端交付必须先经用户审阅并明确批准，授权前不得推送分支、创建 PR 或合并。获得授权后的同一功能分支 CI 修复，无需逐次重新申请提交远端授权。部署、生产环境写操作和生产数据库迁移仍须遵守各自的明确授权规则，不能从 CI 修复授权中推导。
+4. 用户批准远端交付后，推送功能分支并创建目标为 `dev` 的 PR。仓库改动的 PR 只能以 `dev` 为目标。绝不直接创建目标为 `main` 的 PR，也绝不将仓库改动直接推送到 `main`。
+5. 跟踪该 PR 的实际 GitHub Actions 运行。CI 报错时，在 MCP-workspace 完成原任务范围内的最小修复，审阅后直接提交并推送到同一功能分支，继续跟踪 CI，无需重复申请提交远端授权。只有该 PR 最终 head 的全部必需 CI 检查全绿后，才可以合并到 `dev`。除非用户明确要求合并前再次审阅，否则用户的远端交付授权包含上述 CI 修复以及 CI 全绿后的 `dev` 合并。
+6. 如果已合并改动仍缺少须由用户生成的 schema 迁移，停止并交接 `MIGRATION REQUIRED` 说明。用户拉取最新 `dev`，在本地开发数据库中生成迁移，并通过后续 PR 将生成迁移提交回 `dev`。配套迁移完成审阅并合并前，受影响的 `dev` 状态有意不具备晋级到 `main` 或部署生产环境的资格。符合第 3 节例外且已随改动提交的手写字段属性迁移，不因“非用户生成”而触发该交接；仍须准确报告 SQL 审阅、执行验证和后续部署状态。
+7. 已审阅 PR 在全部必需 GitHub Actions 检查全绿后合并到 `dev` 时，如果用户请求的整体任务、迁移阶段或工作包尚未完成，应在交接结尾简明说明建议的下一步，包括目标、范围、重要前置条件或风险，以及继续前所需的用户授权或生产验证。如果整体任务已经完成，应明确说明，不要编造额外工作。除非用户已授权，否则不要自动开始下一步。
+8. 如需从 `dev` 晋级到 `main`，该操作不属于 MCP/助手的仓库改动 PR 流程。本流程绝不创建目标为 `main` 的 PR；应将所需发布步骤报告给用户，由用户另行控制。
 
-Keep changes small and reviewable. Do not combine unrelated cleanup, renaming,
-dependency upgrades, schema changes, formatting sweeps, or architecture moves
-with a feature or bug fix. Prefer a sequence of independently valid vertical
-slices over a long-lived, repository-wide refactor branch.
+保持改动小而可审阅。不要在功能开发或缺陷修复中夹带无关清理、重命名、依赖升级、schema 改动、全局格式调整或架构迁移。优先采用一系列各自有效的纵向切片，避免长期存在、覆盖整个仓库的重构分支。
 
-Existing violations are migration debt, not precedent. A scoped task does not
-require repairing every pre-existing violation in a touched area, but it must
-not create a new violation, broaden an allowed exception, or make the measured
-dependency graph worse. Planned modularization work must reduce and eventually
-remove those exceptions.
+已有违规是迁移债务，不能作为新增违规的先例。范围明确的任务不要求修复所触及区域内全部既有违规，但不得新增违规、扩大已允许的例外或使已度量的依赖图恶化。计划内的模块化工作必须减少并最终移除这些例外。
 
 ---
 
-## 11. Architectural direction
+## 11. 架构方向
 
-SanQ is a **modular monolith**, not a microservice migration project.
+SanQ 是**模块化单体**，不是微服务迁移项目。
 
-Preserve the current natural deployment units unless the user explicitly
-authorizes a topology change:
+除非用户明确授权改变部署拓扑，否则保留当前自然形成的部署单元：
 
-* Next.js Web/PWA/POS UI (`apps/web`)
-* NestJS API (`apps/api`)
-* dedicated UberEats worker runtime process/container
-* Windows printer agent (`tools/printer-server`)
-* PostgreSQL as the system database
+* Next.js Web/PWA/POS UI（`apps/web`）
+* NestJS API（`apps/api`）
+* 独立的 UberEats worker 运行进程/容器
+* Windows 打印代理（`tools/printer-server`）
+* 作为系统数据库的 PostgreSQL
 
-The API and UberEats worker are separate runtime processes/containers but share
-the single API image built from `Dockerfile.api`. Trusted GitHub Actions publishes
-that image to GHCR under an immutable full-commit-SHA tag; production must not
-perform a second worker image build or build application images locally. API and
-worker must reference the same published API release SHA, while Web uses the
-matching published Web release SHA. Recreate only the application containers
-required for the intended published release.
+API 和 UberEats worker 是独立运行进程/容器，但共用由 `Dockerfile.api` 构建的同一个 API 镜像。可信 GitHub Actions 使用不可变的完整提交 SHA 标签将该镜像发布到 GHCR；生产环境不得再次构建 worker 镜像，也不得在本地构建应用镜像。API 和 worker 必须引用同一个已发布 API 发布 SHA，Web 使用与其配对的已发布 Web 发布 SHA。只重建目标已发布版本所需的应用容器。
 
-Modularization means making ownership and dependency direction enforceable
-inside those deployment units. It does not mean a rewrite, creating network
-calls between internal modules, splitting databases, or adding queues and
-repositories without a concrete consistency or substitution need.
+模块化是要在这些部署单元内部，让所有权和依赖方向可强制执行。它不意味着重写、让内部模块通过网络调用、拆分数据库，或在没有具体一致性/替换需求的情况下添加队列和 repository 抽象。
 
-Use three levels of module maturity:
+采用三个模块成熟度等级：
 
-* **L1 boundary module:** simple configuration, CRUD, or read model. Requires a
-  clear owner, narrow public API, thin transport adapters, and an architecture
-  rule preventing internal imports.
-* **L2 business module:** rules or replaceable external capabilities. Adds
-  application use cases, domain/policy code where useful, infrastructure
-  adapters, ports, and focused rule tests.
-* **L3 critical workflow:** orders, payments, financial benefits, fulfillment,
-  UberEats, printing delivery, and accounting. Adds explicit transaction
-  boundaries, idempotency, durable events/outbox where required, recovery,
-  reconciliation, auditability, and contract/end-to-end tests.
+* **L1 边界模块：** 简单配置、CRUD 或读模型。要求归属明确、公共 API 狭窄、传输适配器轻薄，并通过架构规则禁止导入内部实现。
+* **L2 业务模块：** 包含业务规则或可替换的外部能力。在 L1 基础上，按需增加应用用例、领域/策略代码、基础设施适配器、端口和聚焦的规则测试。
+* **L3 关键流程：** 订单、支付、财务权益、履约、UberEats、打印投递和会计。在上述基础上，增加明确的事务边界、幂等性、必要的持久化事件/outbox、恢复、对账、可审计性以及合同/端到端测试。
 
-Do not manufacture empty layers, pass-through facades, one-implementation
-repositories, or chains of DTO-to-DTO copying merely to resemble a template.
-Add a layer or mapping only when it enforces ownership, protects an external or
-persistence boundary, contains business rules, or has a real testing value.
+不要仅为看起来符合模板，就制造空层、透传 facade、只有一个实现的 repository，或一连串 DTO 到 DTO 的复制。只有当某一层或映射能够落实所有权、保护外部或持久化边界、承载业务规则或带来实际测试价值时，才添加它。
 
 ---
 
-## 12. Business contexts and ownership
+## 12. 业务上下文与所有权
 
-Every business fact has one owner. Admin, POS, Web pages, and external providers
-are access channels or adapters; they are not alternative owners of the same
-business data.
+每项业务事实只有一个所有者。Admin、POS、Web 页面和外部供应商属于访问渠道或适配器，不是同一业务数据的其他所有者。
 
-| Context | Owns | Must not own |
+| 上下文 | 拥有的职责 | 不得拥有的职责 |
 | --- | --- | --- |
-| Architecture foundations | neutral ID/Money/Time primitives and boundary tooling | store, order, offer, customer, or provider business rules |
-| Brand / Store | brand and store profiles, hours, notices, store configuration, stable store identity | order, payment, promotion, or messaging decisions |
-| Catalog / Pricing / Offers | products, categories, modifiers, packaging, availability, pricing, daily specials, offer stacking rules | customer entitlements, order lifecycle, provider protocols |
-| Identity / Customer / Benefits | authentication and challenges; customer profile/address/consent; points, balance, coupons and their reservations | payment-provider transport, order status, message delivery implementation |
-| Commerce / Orders / Fulfillment | quote/order snapshots, order aggregate and lifecycle, amendments, fulfillment intent | Clover/Uber wire schemas, benefit ledgers, printer drivers |
-| Payments / Clover | payment attempts/transactions, tenders, refunds/voids, reconciliation, provider adapters | order rules, menu facts, kitchen state, loyalty policy |
-| Store Operations / POS / Print | store-facing interaction use cases, device operation, print jobs, delivery/ack/retry and printer agent | order aggregate, payment truth, Uber business facts |
-| External Channels | UberEats/UberDirect wire protocols, mapping, inbound idempotency, provider commands and worker behavior | canonical menu/order ownership |
-| Messaging / Notifications | templates, rendering, delivery routing, provider receipts, unsubscribe/suppression | why an order, offer, or auth challenge should be sent |
-| Accounting / Reporting / Analytics | immutable ledger facts, expenses, periods, settlements, reconciliation, read models and telemetry | mutating canonical order or payment facts |
-| Web / PWA | route composition, client state, view models, localization, caching and UI adapters | server-side business policy or provider secrets/protocols |
-| Runtime / Data / CI / Ops | typed configuration, health/readiness, deployment, backup/restore, retention and quality gates | business policy |
+| 架构基础（Architecture foundations） | 中立的 ID/Money/Time 原语和边界工具 | 门店、订单、优惠、顾客或供应商业务规则 |
+| 品牌 / 门店（Brand / Store） | 品牌和门店资料、营业时间、公告、门店配置、稳定门店身份 | 订单、支付、促销或消息决策 |
+| 商品目录 / 计价 / 优惠（Catalog / Pricing / Offers） | 商品、分类、选项、包装、可售性、计价、每日特价、优惠叠加规则 | 顾客权益、订单生命周期、供应商协议 |
+| 身份 / 顾客 / 权益（Identity / Customer / Benefits） | 认证和验证挑战；顾客资料、地址和同意授权；积分、余额、优惠券及其预占 | 支付供应商传输、订单状态、消息投递实现 |
+| 交易 / 订单 / 履约（Commerce / Orders / Fulfillment） | 报价/订单快照、订单聚合和生命周期、订单变更、履约意图 | Clover/Uber 传输 schema、权益账本、打印机驱动 |
+| 支付 / Clover（Payments / Clover） | 支付尝试/交易、支付工具、退款/撤销、对账、供应商适配器 | 订单规则、菜单事实、厨房状态、会员忠诚度策略 |
+| 门店运营 / POS / 打印（Store Operations / POS / Print） | 面向门店的交互用例、设备操作、打印任务、投递/确认/重试和打印代理 | 订单聚合、支付真实状态、Uber 业务事实 |
+| 外部渠道（External Channels） | UberEats/UberDirect 传输协议、映射、入站幂等性、供应商命令和 worker 行为 | SanQ 权威菜单/订单事实的所有权 |
+| 消息 / 通知（Messaging / Notifications） | 模板、渲染、投递路由、供应商回执、退订/抑制发送 | 为什么要发送订单、优惠或认证挑战消息的业务决策 |
+| 会计 / 报表 / 分析（Accounting / Reporting / Analytics） | 不可变账本事实、支出、期间、结算、对账、读模型和遥测 | 修改权威订单或支付事实 |
+| Web / PWA | 路由组合、客户端状态、视图模型、本地化、缓存和 UI 适配器 | 服务端业务策略或供应商密钥/协议 |
+| 运行时 / 数据 / CI / 运维（Runtime / Data / CI / Ops） | 类型化配置、健康/就绪检查、部署、备份/恢复、保留策略和质量门禁 | 业务策略 |
 
-When ownership is unclear, do not place the code in `common`, `admin`, `pos`, or
-an arbitrary existing service. Resolve and document the owner first.
+所有权不明确时，不要把代码放进 `common`、`admin`、`pos` 或任意现有服务。先明确所有者并记录。
 
 ---
 
-## 13. API module and dependency rules
+## 13. API 模块与依赖规则
 
-The target structure for a fully migrated bounded context is:
+完整迁移后的限界上下文目标结构为：
 
 ```text
 apps/api/src/contexts/<context>/
@@ -516,163 +414,85 @@ apps/api/src/contexts/<context>/
   contracts/
   api/
   application/
-  domain/             # only when business invariants justify it
+  domain/             # 仅在业务不变量确有需要时设置
   infrastructure/
   architecture.spec.ts
 ```
 
-Existing directories may migrate incrementally. Do not perform a repository-wide
-path rename merely to establish this shape.
+现有目录可以渐进迁移。不要仅为形成这个目录形状，就对整个仓库重命名路径。
 
-Dependency direction for new or migrated code:
+新代码或已迁移代码的依赖方向：
 
-* `domain` depends only on its own framework-free domain code and truly neutral
-  primitives. It must not import NestJS, Prisma, controllers, infrastructure,
-  providers, or another context.
-* `application` depends on its own domain/contracts and application-owned ports.
-  External services, databases, clocks, queues, messaging, and other contexts
-  are represented by narrow capabilities.
-* `api` is a transport adapter. Controllers/guards validate protocol and auth,
-  call application use cases, and map results. They do not contain pricing,
-  order, payment, benefit, or provider business rules.
-* `infrastructure` implements application ports and contains Prisma, provider,
-  worker, crypto, filesystem, and device adapters. Provider and database shapes
-  are mapped at this boundary and must not leak inward or sideways.
-* During modularization, progressively remove direct dependencies on Prisma
-  Client, Prisma delegates, and Prisma-generated types from domain/application
-  and other business-layer code. Prefer application-owned ports or narrow
-  persistence capabilities, and map Prisma models/types inside infrastructure so
-  a later Prisma major-version upgrade is largely infrastructure-scoped. Do not
-  manufacture repository abstractions for simple L1 read models unless they
-  protect a real persistence boundary or provide concrete substitution/testing
-  value.
-* a module/composition root wires implementations to ports. Wiring is not a
-  place for business logic.
+* `domain` 只能依赖本上下文内不依赖框架的领域代码，以及真正中立的原语。不得导入 NestJS、Prisma、控制器、基础设施、供应商或其他上下文。
+* `application` 依赖自己的 domain/contracts 和应用层拥有的端口。外部服务、数据库、时钟、队列、消息和其他上下文均通过狭窄能力表示。
+* `api` 是传输适配器。控制器/guard 验证协议和认证，调用应用用例并映射结果；不承载计价、订单、支付、权益或供应商业务规则。
+* `infrastructure` 实现应用端口，并包含 Prisma、供应商、worker、加密、文件系统和设备适配器。供应商和数据库的数据形状在此边界完成映射，不得向内层或横向泄漏。
+* 模块化期间，逐步移除 domain/application 及其他业务层代码对 Prisma Client、Prisma delegate 和 Prisma 生成类型的直接依赖。优先使用应用层拥有的端口或狭窄持久化能力，在 infrastructure 内映射 Prisma 模型/类型，使日后的 Prisma 大版本升级主要局限于基础设施层。不要为简单 L1 读模型制造 repository 抽象，除非它确实保护持久化边界，或具有具体的替换/测试价值。
+* 模块/组合根负责将实现连接到端口。依赖装配不是放置业务逻辑的地方。
 
-Cross-context rules:
+跨上下文规则：
 
-* New cross-context business imports must use the owner context's
-  `public-api.ts`, stable `contracts/`, or a narrow port. Do not deep-import its
-  controller, concrete service, repository, Prisma delegate/type, internal DTO,
-  domain entity, or infrastructure adapter.
-* Nest composition roots may import public Nest modules for wiring. This does
-  not authorize business code to import the other module's internals.
-* Do not solve a dependency cycle with `forwardRef`, a global module, a service
-  locator, duplicated logic, or a new `common` helper. Fix the ownership or add
-  explicit orchestration/ports.
-* `common` must remain framework-level or business-neutral. It must not import
-  Prisma or a business context.
-* Shared packages own their own contracts. Do not make one business package
-  re-export another package's contracts as a compatibility shortcut.
-* Public APIs should expose the smallest stable capability required by a
-  consumer. Do not export an entire service merely because one method is needed.
+* 新的跨上下文业务导入必须使用所属上下文的 `public-api.ts`、稳定的 `contracts/` 或狭窄端口。不得深层导入其控制器、具体服务、repository、Prisma delegate/类型、内部 DTO、领域实体或基础设施适配器。
+* Nest 组合根可以导入公开的 Nest 模块进行装配。这不代表业务代码获准导入其他模块内部实现。
+* 不得用 `forwardRef`、全局模块、service locator、重复逻辑或新增 `common` helper 解决依赖循环。应修正所有权，或加入明确的编排/端口。
+* `common` 必须保持在框架层或业务中立层，不得导入 Prisma 或业务上下文。
+* 共享包拥有自己的合同。不得为了兼容捷径，让一个业务包重新导出另一个包的合同。
+* 公共 API 只暴露使用方所需的最小稳定能力。不得仅因需要一个方法，就导出整个服务。
 
-Cross-context workflows belong in an explicit orchestration/application layer.
-An orchestrator may coordinate public use cases from multiple contexts, but it
-must not become a new data owner, contain provider transport, bypass a context's
-invariants, or update another context's tables directly.
+跨上下文流程应放在明确的编排/应用层。编排器可以协调多个上下文的公共用例，但不得成为新的数据所有者、承载供应商传输逻辑、绕过上下文不变量或直接更新其他上下文的表。
 
 ---
 
-## 14. Data, identity, money, and transaction boundaries
+## 14. 数据、身份、金额与事务边界
 
-In addition to section 3.1:
+除第 3.1 节外，还须遵守：
 
-* Public/browser/WebSocket/print/worker/provider boundaries use stable business
-  IDs. Internal database IDs stay inside the owning persistence boundary unless
-  a documented internal relation specifically requires them.
-* New ambiguous identity names such as `storeId`, `orderId`, or `userId` are not
-  allowed where both DB and stable identities exist. Use `storeDbId`,
-  `storeStableId`, `orderStableId`, `userStableId`, and similarly explicit names.
-* Money is represented as integer minor units with an explicit currency. Do not
-  use floating-point values for persisted or contractual financial facts.
-* Store-local time decisions require an explicit IANA timezone. Do not rely on
-  the VM, container, database, or browser default timezone.
-* Orders retain immutable menu, option, pricing, discount, tax, customer-visible
-  label, and payment-summary snapshots needed to explain historical facts.
-  Historical orders must not be re-priced or re-described from current catalog
-  or promotion state.
-* A context writes its own tables. Another context consumes a public use case,
-  port, versioned fact/event, or purpose-built read model; it does not reach into
-  the owner's Prisma delegate.
-* A database transaction is owned by the use case that protects the invariant.
-  Do not create a hidden transaction spanning unrelated contexts. Use explicit
-  orchestration, reservations, durable outbox/inbox, idempotency, and
-  reconciliation when atomic cross-context completion is impossible.
-* Financial, order, webhook, message, and print operations that may be retried
-  require stable idempotency identities. Timeout or lost response is not proof
-  of failure; preserve `UNKNOWN`/reconciling semantics where an external action
-  may have succeeded.
-* **Explicitly authorized isolated Clover Compact Sandbox exception (C-2C7 R2):**
-  a human may accept the risk of an uncollected original HTTP 504 only in an
-  explicitly enabled development/test runtime with a loopback-only database,
-  sandbox Platform/Test Merchant isolation, an authenticated POS operator,
-  original identity/CAS fencing, a fresh canonical NOT_FOUND observation,
-  verified idle Compact and immutable operator evidence. The local `FAILED`
-  result must carry a distinctive operator-attested (NOT provider-confirmed)
-  marker and Benefits RELEASE must precede the final device fence release.
-  This exception does not permit automatic NOT_FOUND failure, production
-  recovery, silent late-payment success overwrites, or any Ecommerce change.
-  All other UNKNOWN/RECONCILING cases continue to HOLD and block new Sales.
+* 公共/浏览器/WebSocket/打印/worker/供应商边界使用稳定业务 ID。除非有文档说明某项内部关系确实需要数据库 ID，否则内部数据库 ID 必须留在所属持久化边界内。
+* 同时存在数据库身份和稳定业务身份时，不得新增 `storeId`、`orderId`、`userId` 等含糊名称。使用 `storeDbId`、`storeStableId`、`orderStableId`、`userStableId` 等同样明确的名称。
+* 金额使用整数最小货币单位表示，并明确币种。持久化或合同中的财务事实不得使用浮点数。
+* 基于门店本地时间的决策必须使用明确的 IANA 时区。不得依赖 VM、容器、数据库或浏览器的默认时区。
+* 订单保留解释历史事实所需的不可变菜单、选项、计价、折扣、税、顾客可见标签和支付摘要快照。不得根据当前商品目录或促销状态重新计价或重新描述历史订单。
+* 每个上下文只写自己的表。其他上下文通过公共用例、端口、带版本的事实/事件或专用读模型消费数据，不得直接访问所有者的 Prisma delegate。
+* 数据库事务由保护相应不变量的用例拥有。不得创建隐式跨越无关上下文的事务。跨上下文无法原子完成时，使用明确编排、预占、持久化 outbox/inbox、幂等性和对账。
+* 可能被重试的财务、订单、webhook、消息和打印操作必须有稳定的幂等标识。超时或响应丢失不代表失败；外部操作可能已经成功时，必须保留 `UNKNOWN`/对账中语义。
+* **明确授权的隔离 Clover Compact Sandbox 例外（C-2C7 R2）：** 只有在显式启用的开发/测试运行时中，且同时满足仅回环地址数据库、sandbox Platform/Test Merchant 隔离、已认证 POS 操作员、原始身份/CAS 防护、最新权威 NOT_FOUND 观测、已核实空闲的 Compact 和不可变操作员证据等条件时，才允许由人工接受原始 HTTP 504 尚未采集到结果的风险。本地 `FAILED` 结果必须带有清晰可区分的“操作员确认（非供应商确认）”标记，并且 Benefits RELEASE 必须先于最终设备防护锁释放。该例外不允许自动把 NOT_FOUND 判为失败，不允许用于生产恢复，不允许静默覆盖迟到的支付成功，也不允许任何 Ecommerce 改动。所有其他 UNKNOWN/RECONCILING 情况继续 HOLD，并阻止新的 Sales。
 
-Prisma schema fields are persistence contracts, not automatically public or
-domain contracts. Map them once at the ownership boundary. Raw provider payloads
-may be retained only for a documented audit/replay need, with secrets and
-sensitive data removed and an explicit retention policy.
+Prisma schema 字段属于持久化合同，不会自动成为公共合同或领域合同。在所有权边界统一映射一次。原始供应商载荷只有在具备已记录的审计/重放需求、移除密钥和敏感数据并制定明确保留策略后，才可留存。
 
 ---
 
-## 15. Existing critical architecture boundaries
+## 15. 现有关键架构边界
 
-### 15.1 Payments and Clover
+### 15.1 Payments 与 Clover
 
-`docs/payments/clover-pos-integration-charter.md` and
-`apps/api/src/payments/payments-architecture.spec.ts` are binding for payment
-work.
+支付相关工作必须遵守 `docs/payments/clover-pos-integration-charter.md` 和 `apps/api/src/payments/payments-architecture.spec.ts`。
 
-* Payments is the only owner of payment lifecycle and provider transaction
-  truth.
-* Clover is Payments infrastructure, separated by capability: Ecommerce
-  execution, REST Pay Display terminal execution, Platform REST canonical
-  reads, OAuth/device integration, and webhooks.
-* Orders and POS must not import Clover or Payments infrastructure.
-* Payments must not own order, fulfillment, kitchen, print, customer-benefit, or
-  Uber business rules.
-* Orders + Payments + Benefits coordination belongs in explicit orchestration.
-* Do not broaden the exact legacy Clover-to-Orders exception tracked by the
-  architecture test.
-* Existing production Web Ecommerce and POS compatibility paths remain until
-  the charter's gated cutover and deletion criteria are satisfied.
+* Payments 是支付生命周期和供应商交易真实状态的唯一所有者。
+* Clover 属于 Payments 基础设施，按能力划分为：Ecommerce 执行、REST Pay Display 终端执行、Platform REST 权威读取、OAuth/设备集成以及 webhook。
+* Orders 和 POS 不得导入 Clover 或 Payments 基础设施。
+* Payments 不得拥有订单、履约、厨房、打印、顾客权益或 Uber 业务规则。
+* Orders + Payments + Benefits 的协调应放在明确的编排中。
+* 不得扩大架构测试所记录的既有 Clover-to-Orders 精确例外。
+* 在满足章程规定的分阶段切换和删除条件前，保留现有生产 Web Ecommerce 和 POS 兼容路径。
 
 ### 15.2 UberEats
 
-`apps/api/src/integrations/ubereats/ARCHITECTURE.md` and all UberEats
-architecture tests are binding for Uber work.
+Uber 工作必须遵守 `apps/api/src/integrations/ubereats/ARCHITECTURE.md` 以及所有 UberEats 架构测试。
 
-* Preserve its single `ubereats.module.ts` composition root, `worker.ts` worker
-  entry, and `public-api.ts` business boundary.
-* Code outside the bounded context must not deep-import Uber `api`,
-  `application`, `domain`, `contracts`, or `infrastructure` internals.
-* Uber wire contracts, credentials, persistence, rate limiting, retries, and
-  mapping stay within the integration boundary.
-* Uber does not own canonical SanQ menu or order facts. Provider changes are
-  translated at the boundary rather than added to Orders, Catalog, POS, or Web
-  domain contracts.
+* 保留唯一的 `ubereats.module.ts` 组合根、`worker.ts` worker 入口以及 `public-api.ts` 业务边界。
+* 限界上下文之外的代码不得深层导入 Uber 的 `api`、`application`、`domain`、`contracts` 或 `infrastructure` 内部实现。
+* Uber 传输合同、凭据、持久化、限流、重试和映射必须留在集成边界内。
+* Uber 不拥有 SanQ 权威菜单或订单事实。供应商变更应在边界处转换，不得加入 Orders、Catalog、POS 或 Web 的领域合同。
 
-Architecture tests encode permanent decisions, not incidental implementation
-details. Update a boundary assertion only when the architecture itself is
-intentionally changing and the user has explicitly approved that change. Never
-weaken it just to allow a convenient import.
+架构测试记录的是长期架构决策，不是偶然的实现细节。只有在有意改变架构本身并已取得用户明确批准时，才可以更新边界断言。绝不为方便某次导入而削弱断言。
 
 ---
 
-## 16. Web, PWA, Admin, Accounting, and POS UI rules
+## 16. Web、PWA、Admin、Accounting 与 POS UI 规则
 
-App Router pages and layouts are composition boundaries. New complex behavior
-belongs in feature-owned hooks, state machines/reducers, API adapters, and
-presentational components rather than a growing `page.tsx`.
+App Router 页面和布局是组合边界。新增复杂行为应归入功能所属的 hooks、状态机/reducer、API 适配器和展示组件，不得不断堆积到 `page.tsx`。
 
-Target Web feature ownership includes:
+Web 功能的目标归属包括：
 
 ```text
 catalog
@@ -685,346 +505,168 @@ ubereats
 payments
 ```
 
-Rules:
+规则：
 
-* Use one canonical API client and response-envelope parser. Direct `fetch` is
-  limited to the canonical client/BFF, streaming or binary transport, and
-  documented protocol adapters.
-* Shared server/Web contracts come from their owning contract package. Do not
-  redeclare public DTOs or response envelopes inside pages.
-* Provider SDK initialization and protocol handling live behind one feature
-  adapter. Secrets never enter browser bundles, URLs, logs, or public runtime
-  configuration.
-* Presentation components do not perform business mutations. Hooks/adapters do
-  not reimplement server pricing, discount, entitlement, payment, order-state,
-  or accounting rules.
-* Admin is a management adapter to owner-context use cases, not a business
-  domain. Accounting UI is an adapter to Accounting contracts. POS is a store
-  operations adapter to Orders, Payments, Benefits, Store, and Print public
-  capabilities.
-* Admin and Accounting must both support narrow and wide layouts, but their primary
-  design targets are different. Admin is **wide-screen/desktop-first**: optimize
-  information density, multi-column editing, tables, batch actions, and efficient
-  management workflows for desktop use, while keeping narrow-screen operation
-  complete and usable. Accounting is **narrow-screen/mobile-first**: optimize
-  receipt capture/upload, expense entry, review, and routine accounting workflows
-  for phone use, while using wider screens to enhance comparison, preview, tables,
-  and information density. Reuse accessible form, card, table/list, drawer,
-  dialog, upload, feedback, and navigation primitives without forcing the
-  customer-site header or customer navigation into staff consoles.
-* Preserve localization, keyboard access, visible focus, touch target size,
-  loading/empty/error states, and reduced-motion behavior when extracting UI.
-* PWA/service-worker clients may run old bundles. Removing or renaming public
-  fields, routes, assets, or print contracts requires an expand-observe-contract
-  plan, version telemetry where relevant, and an explicit cache/update path.
+* 使用唯一的标准 API 客户端和响应封装解析器。直接 `fetch` 仅限于标准客户端/BFF、流式或二进制传输，以及有文档说明的协议适配器。
+* 服务端/Web 共享合同来自其所属合同包。不得在页面内重新声明公共 DTO 或响应封装。
+* 供应商 SDK 初始化和协议处理应置于同一个功能适配器之后。密钥绝不得进入浏览器 bundle、URL、日志或公开运行时配置。
+* 展示组件不执行业务写操作。Hooks/适配器不重新实现服务端计价、折扣、权益、支付、订单状态或会计规则。
+* Admin 是所有者上下文用例的管理适配器，不是业务领域。Accounting UI 是 Accounting 合同的适配器。POS 是 Orders、Payments、Benefits、Store 和 Print 公共能力的门店运营适配器。
+* Admin 和 Accounting 都必须支持窄屏与宽屏，但主要设计目标不同。Admin **宽屏/桌面优先**：围绕桌面使用优化信息密度、多列编辑、表格、批量操作和高效管理流程，同时保持窄屏功能完整且可用。Accounting **窄屏/移动优先**：围绕手机使用优化票据拍摄/上传、支出录入、审核和日常会计流程，并利用宽屏增强对比、预览、表格和信息密度。复用具有无障碍支持的表单、卡片、表格/列表、抽屉、对话框、上传、反馈和导航原语，不要强行把顾客站点页头或顾客导航塞进员工控制台。
+* 提取 UI 时，保留本地化、键盘可操作性、可见焦点、触控目标尺寸、加载/空/错误状态和减少动画的行为。
+* PWA/service worker 客户端可能运行旧 bundle。删除或重命名公共字段、路由、资源或打印合同，需要先扩展、再观察、后收缩的计划，在相关时提供版本遥测，并明确缓存/更新路径。
 
-For hand-written production code, a new or materially expanded page/container
-over 500 lines requires an explicit decomposition review. A file over 800 lines
-must be split by cohesive responsibility or carry a documented, user-approved
-exception. Existing oversized files are migration debt rather than a reason to
-expand scope: an unrelated scoped fix does not require splitting them, but the
-change must not materially increase their responsibility. Split them when the
-task is a redesign/modularization or when the requested change would
-substantially expand the file. Generated protocol code and fixed data tables may
-be exempt.
+对于手写生产代码，新建或明显扩展的页面/容器超过 500 行时，必须进行明确的拆分评审。文件超过 800 行时，必须按内聚职责拆分，或保留有文档记录且经用户批准的例外。已有超大文件属于迁移债务，不能据此扩大任务范围：无关的局部修复不必拆分它们，但不得明显增加其职责。当任务本身是重新设计/模块化，或需求会显著扩展文件时，应进行拆分。生成的协议代码和固定数据表可以例外。
 
 ---
 
-## 17. External integrations, printing, and security
+## 17. 外部集成、打印与安全
 
-External integrations are anti-corruption layers:
+外部集成属于防腐层：
 
-* Provider request/response/webhook types remain inside the provider adapter.
-* Convert a provider wire shape once into a canonical SanQ command/event/result.
-  Do not pass provider DTOs through Orders, POS, Accounting, or Web components.
-* All externally retried commands and inbound events require explicit
-  idempotency, authentication/verification, replay handling, structured logs,
-  and actionable failure/reconciliation behavior.
-* Do not guess success from matching amount/time, invent missing provider IDs,
-  or convert unknown outcomes into failure.
-* Credentials and signing/encryption keys are server-only, validated at startup,
-  redacted in logs, and never committed. Production credentials must not be used
-  to compensate for an unavailable sandbox/test environment.
+* 供应商请求/响应/webhook 类型留在供应商适配器内部。
+* 将供应商传输数据一次性转换为 SanQ 标准命令/事件/结果。不得让供应商 DTO 穿过 Orders、POS、Accounting 或 Web 组件。
+* 所有外部重试命令和入站事件都必须具备明确的幂等性、认证/校验、重放处理、结构化日志，以及可实际处置的失败/对账行为。
+* 不得根据金额/时间相同猜测成功，不得编造缺失的供应商 ID，也不得将未知结果转为失败。
+* 凭据和签名/加密密钥仅限服务端使用，须在启动时验证、在日志中脱敏，并且绝不提交到仓库。不得用生产凭据弥补 sandbox/test 环境不可用的问题。
 
-Printing is a delivery boundary. Orders/Payments provide stable snapshots;
-Print owns job identity, template version, routing, retry and acknowledgement;
-the Windows agent owns rendering and device I/O. A reconnect or duplicate job
-must not produce an uncontrolled duplicate print. Changes to receipt, kitchen,
-or label contracts require fixture/golden coverage and backward compatibility
-with deployed agents until their versions are observed and retired.
+打印属于投递边界。Orders/Payments 提供稳定快照；Print 拥有任务身份、模板版本、路由、重试和确认；Windows 代理负责渲染和设备 I/O。重连或重复任务不得导致失控的重复打印。收据、厨房单或标签合同变更必须具备 fixture/golden 测试覆盖，并在已部署代理版本被观测并退役前保持向后兼容。
 
 ---
 
-## 18. Migration and compatibility discipline
+## 18. 迁移与兼容纪律
 
-Choose exactly one migration class before implementation:
+实现前，必须且只能选择一种迁移类别：
 
-### A. Atomic internal migration
+### A. 内部原子迁移
 
-Use only when there is no persisted or external contract and all consumers can
-be changed together. Move implementation, update all imports/tests, and delete
-the old path in one PR. Do not leave aliases, deprecated re-exports, duplicate
-directories, or speculative compatibility facades.
+仅适用于不涉及持久化或外部合同，且所有使用方可以同时修改的情况。在同一个 PR 中迁移实现、更新全部导入/测试并删除旧路径。不得留下别名、已弃用的重新导出、重复目录或推测性兼容 facade。
 
-### B. Expand-contract migration
+### B. 扩展—收缩迁移（Expand-contract）
 
-Required when persisted, public, external, or independently deployed consumers
-cannot be updated atomically, or when an existing field, route, identifier,
-meaning, protocol, or historical fact is renamed, removed, replaced, or
-semantically changed. Typical cases include Prisma data, stable IDs, PWA clients,
-print protocols, shared/public contracts, and historical accounting facts.
+持久化、公共、外部或独立部署的使用方无法原子更新，或者现有字段、路由、标识、含义、协议或历史事实被重命名、删除、替换或改变语义时，必须使用此类迁移。典型情况包括 Prisma 数据、稳定 ID、PWA 客户端、打印协议、共享/公共合同和历史会计事实。
 
-A purely additive backward-compatible field or endpoint that requires no
-persisted backfill and does not force an independently deployed consumer to
-change may remain an ordinary compatible change rather than using the full
-expand-contract sequence.
+纯新增且向后兼容的字段或端点，如果无需持久化回填，也不会强制独立部署的使用方修改，可以作为普通兼容改动处理，无需使用完整 expand-contract 流程。
 
-When expand-contract is required:
+需要 expand-contract 时：
 
-1. audit current data/consumers and define invariants;
-2. add the new field/table/contract without removing the old one;
-3. perform an idempotent backfill with counts and discrepancy reporting;
-4. dual-write only when necessary and record its owner and exit condition;
-5. shadow-read/compare rather than silently falling back;
-6. cut reads after parity is demonstrated and observe a full relevant business
-   cycle;
-7. stop old writes and prove old usage is zero;
-8. remove old data/code/config/tests/docs in a separate authorized contraction.
+1. 审计现有数据/使用方，定义不变量；
+2. 新增字段/表/合同，不删除旧内容；
+3. 执行幂等回填，提供数量和差异报告；
+4. 仅在必要时双写，并记录负责人和退出条件；
+5. 进行影子读取/对比，不得静默回退；
+6. 证明新旧一致后切换读取，并观察一个完整的相关业务周期；
+7. 停止旧写入，证明旧路径使用量为零；
+8. 在单独授权的收缩步骤中，删除旧数据/代码/配置/测试/文档。
 
-### C. Controlled critical cutover
+### C. 受控关键切换
 
-Required for payments, fulfillment, Uber/provider workflows, and other
-externally observable critical paths. In addition to class B, require feature
-flags or scoped rollout, idempotency, replay/reconciliation, dead-letter or
-operator recovery, old/new parity metrics, explicit rollback/cutback conditions,
-and no rewriting of historical facts during rollback.
+支付、履约、Uber/供应商流程及其他外部可观察的关键路径必须使用此类迁移。在 B 类要求之外，还必须具备功能开关或限定范围的发布、幂等性、重放/对账、死信或操作员恢复、新旧一致性指标、明确的回滚/切回条件，并且回滚期间不得改写历史事实。
 
-Every non-atomic compatibility path must be registered with:
+每条非原子兼容路径都必须登记以下内容：
 
 ```text
 compat_id
-old_owner / new_owner
-dual_write_or_read paths
-parity metric
-rollback/cutback plan
-exit criteria
-removal task/PR
-deadline or business milestone
+old_owner / new_owner（旧/新所有者）
+dual_write_or_read paths（双写或双读路径）
+parity metric（新旧一致性指标）
+rollback/cutback plan（回滚/切回计划）
+exit criteria（退出条件）
+removal task/PR（删除任务/PR）
+deadline or business milestone（截止日期或业务里程碑）
 ```
 
-Compatibility is temporary infrastructure, not a permanent fallback. Operational
-retry/failover is different from legacy compatibility and must be named and
-tested accordingly.
+兼容性是临时基础设施，不能成为永久回退。运行重试/故障转移与历史兼容不同，必须据此分别命名和测试。
 
 ---
 
-## 19. Current modularization sequencing and provider-change gates
+## 19. 当前模块化顺序与供应商变更门禁
 
-The user explicitly lifted the structural freeze on the UberEats integration on
-2026-09-02 so the integration can be made production-ready before real production
-traffic begins. UberEats code under `apps/api/src/integrations/ubereats/**` may now
-be refactored, contracted, renamed, or have internal/public application contracts
-changed when required by the approved modularization task, subject to the normal
-architecture-boundary rules in this file and the Uber-specific verification gate
-below.
+用户已于 2026-09-02 明确解除 UberEats 集成的结构性冻结，以便在真实生产流量开始前使其达到生产就绪状态。在已批准的模块化任务需要时，可以对 `apps/api/src/integrations/ubereats/**` 下的 UberEats 代码进行重构、收缩、重命名，或修改内部/公共应用合同，但仍须遵守本文件的一般架构边界规则，以及下述 Uber 专属验证门禁。
 
-The Clover developer/sandbox merchant identity blocker is still open, but it no
-longer freezes the whole Payments/Clover context. Apply the freeze by **production
-impact**, not by directory name:
+Clover 开发者/sandbox 商户身份阻塞仍未解决，但不再冻结整个 Payments/Clover 上下文。按**生产影响**实施冻结，而不是按目录名称：
 
-* the POS <-> Clover Terminal path is a pre-production prototype with no completed
-  real-device acceptance. It may be refactored, contracted, renamed, or have its
-  Payments/POS/provider boundaries improved during modularization, including
-  terminal communication, terminal-specific orchestration, reconciliation and
-  feature-flagged code, provided the change does not alter the live Web Ecommerce
-  payment path or rewrite production payment facts;
-* the production Web Clover Ecommerce path remains protected by default. Preserve
-  its current checkout execution, amount/currency/payment-ID validation, payment
-  status/reconciliation behavior, surcharge handling, order-finalization behavior,
-  refund behavior, and historical payment semantics unless changing that path is
-  necessary to remove a material modularization blocker;
-* if production Web Clover code becomes a **critical modularization progress
-  blocker**, it may be changed after first documenting why the blocker cannot be
-  removed safely outside the production path, the exact production behaviors and
-  contracts affected, the smallest viable change, rollback/forward-fix strategy,
-  and reasonable alternatives. This is authorization to make such a scoped
-  modularization change; it is not permission for unrelated payment redesign or
-  early Phase G traffic cutover;
-* every change that can affect the production Web Clover path must include focused
-  regression coverage plus a precise record of the payment scenarios, rollback/forward-fix
-  conditions, and sanitized payment/order/log evidence that the eventual Phase verification
-  must cover. Do **not** require a separate production deployment/active-verification cycle
-  after each modularization slice. Immediately before the owning Phase closeout, produce one
-  consolidated active verification plan from the final merged Phase state; the Phase cannot
-  be marked production-verified or closed until the user confirms those Web Clover scenarios
-  and the rest of the Phase verification plan passed;
-* shared Unified Payment Core, provider, orchestration, persistence or public
-  contract code is judged by actual production Web usage. It may be changed for
-  POS Terminal modularization only when the Web behavior is unchanged; if Web
-  behavior is affected, the guarded-Web rules above apply;
-* do not delete a live Web/payment compatibility path or widen Web payment
-  feature-flag rollout merely because the POS prototype is being modularized.
-  Compatibility contraction and traffic cutover still require their registered
-  exit criteria, parity/reconciliation evidence and explicit cutover decision;
-* a Clover support response that requires a broader architecture or external
-  protocol change still requires an impact/alternatives report before that broader
-  change is implemented.
+* POS <-> Clover Terminal 路径属于尚未完成真机验收的生产前原型。模块化期间可以重构、收缩、重命名或改进其 Payments/POS/供应商边界，包括终端通信、终端专属编排、对账及受功能开关控制的代码，前提是不改变正在运行的 Web Ecommerce 支付路径，也不重写生产支付事实；
+* 生产 Web Clover Ecommerce 路径默认继续受保护。除非为消除实质性的模块化阻塞必须修改该路径，否则保留现有结账执行、金额/币种/支付 ID 校验、支付状态/对账行为、附加费处理、订单最终确认行为、退款行为和历史支付语义；
+* 如果生产 Web Clover 代码成为**阻碍模块化进度的关键因素**，必须先记录为什么无法在生产路径之外安全消除阻塞、受影响的准确生产行为和合同、最小可行改动、回滚/向前修复策略以及合理替代方案，然后才可以修改。这一条授权的是此类限定范围的模块化改动，不是无关支付重设计或提前进行 Phase G 流量切换的许可；
+* 每项可能影响生产 Web Clover 路径的改动，必须包含聚焦的回归覆盖，并准确记录最终 Phase 验证必须覆盖的支付场景、回滚/向前修复条件以及脱敏后的支付/订单/日志证据。**不要**要求每个模块化切片结束后单独部署生产并主动验证。在所属 Phase 收尾前，根据该 Phase 最终合并状态生成一份统一主动验证计划；用户确认这些 Web Clover 场景和该 Phase 其余验证项目通过前，不得将该 Phase 标记为已完成生产验证或已关闭；
+* 共享 Unified Payment Core、供应商、编排、持久化或公共合同代码，应根据生产 Web 的实际使用情况判断。为 POS Terminal 模块化修改这些代码时，必须保持 Web 行为不变；若影响 Web 行为，则适用上述 Web 保护规则；
+* 不得仅因正在模块化 POS 原型，就删除线上 Web/支付兼容路径或扩大 Web 支付功能开关的发布范围。兼容收缩和流量切换仍需满足已登记的退出条件、新旧一致性/对账证据以及明确切换决策；
+* 如果 Clover 支持回复要求更广泛的架构或外部协议变更，在实施该更广泛变更前，仍须提交影响/替代方案报告。
 
-### UberEats modification verification gate
+### UberEats 修改验证门禁
 
-UberEats changes must still proceed as small, independently deployable slices, but
-production active verification is now **Phase-closeout based rather than slice based**.
-For each slice that changes UberEats runtime behavior, identity, persistence, transport,
-composition, menu, order, store-status, reconciliation, operations, worker, or provider
-integration behavior:
+UberEats 改动仍须以小型、可独立部署的切片推进，但生产主动验证现改为**按 Phase 收尾执行，而非逐切片执行**。
 
-1. before implementation, identify the affected UberEats capabilities and preserve
-   unrelated verified flows;
-2. after the local change, report the exact affected files/contracts, add focused
-   regression/characterization coverage, and record the concrete UI/API/provider/log/DB
-   behaviors that the owning Phase's final verification must exercise;
-3. after CI passes, the next UberEats source slice may proceed without a separate
-   deployment/active-test cycle for the just-merged slice, unless a compatibility exit,
-   destructive migration, external cutover, provider certification requirement, or an
-   observed regression creates an explicit earlier gate;
-4. immediately before the owning Phase closeout, produce one consolidated UberEats
-   active verification plan from the final merged Phase state and execute it deliberately
-   rather than relying on organic traffic;
-5. if that consolidated active test exposes a regression, stop closeout, fix the defect,
-   rerun the affected verification, and only then resume closeout;
-6. the Phase must not be marked production-verified or closed until the consolidated
-   UberEats verification and all other Phase verification items are confirmed successful.
+每个改变 UberEats 运行行为、身份、持久化、传输、组合装配、菜单、订单、门店状态、对账、运营、worker 或供应商集成行为的切片，都须：
 
-External Uber wire protocols, webhook signatures, idempotency semantics, order
-state transitions, and provider truth remain critical contracts. A task that must
-change one of those external behaviors still requires an explicit impact report,
-rollback/cutover plan, and user authorization before that specific behavior is
-changed. Lifting the structural freeze does not waive those critical-cutover rules.
+1. 实现前，识别受影响的 UberEats 能力，保留无关且已验证的流程；
+2. 本地修改后，报告受影响的准确文件/合同，添加聚焦的回归/特征测试，并记录所属 Phase 最终验证必须实际覆盖的具体 UI/API/供应商/日志/数据库行为；
+3. CI 通过后，可以继续下一个 UberEats 源代码切片，无需为刚合并的切片单独部署/主动测试；但如果兼容退出、破坏性迁移、外部切换、供应商认证要求或已观察到的回归形成了明确的提前门禁，则必须先满足该门禁；
+4. 在所属 Phase 收尾前，根据最终合并状态生成统一的 UberEats 主动验证计划，并有计划地执行，不能依赖自然流量；
+5. 如果统一主动测试暴露回归，停止收尾、修复缺陷并重新执行受影响验证，然后才可恢复收尾；
+6. UberEats 统一验证和该 Phase 所有其他验证项目确认成功前，不得将 Phase 标记为已完成生产验证或已关闭。
 
-Productive modularization work may proceed in this order:
+Uber 外部传输协议、webhook 签名、幂等语义、订单状态转换和供应商真实状态仍属于关键合同。若任务必须改变其中某项外部行为，仍须在修改该具体行为前，提供明确的影响报告、回滚/切换计划并取得用户授权。解除结构性冻结不代表免除这些关键切换规则。
 
-1. baseline and guardrails: dependency graph, architecture tests, ID inventory,
-   compatibility register, characterization tests;
-2. low-risk deduplication and public-contract cleanup;
-3. responsive Admin/Accounting shells and reusable staff UI primitives, without
-   moving business ownership into the UI;
-4. Brand/Store identity and configuration, including the now-unfrozen UberEats
-   Store-identity contraction under the verification gate above, then
-   Catalog/Pricing/Offers;
-5. Identity/Customer/Benefits and Messaging boundaries;
-6. Orders/Fulfillment after characterization coverage, with extra care around any
-   production Web payment behavior and any UberEats flows affected by the current
-   verified slice;
-7. Payments/POS Terminal modularization may proceed before Clover real-device
-   access is restored when the work is isolated from production Web Ecommerce.
-   Real-device acceptance, payment traffic cutover, settlement proof and legacy
-   deletion still wait for their explicit gates. Production Web Clover may also be
-   changed when it is a documented critical modularization blocker, subject to the
-   guarded-Web verification rules above.
+有效的模块化工作可以按以下顺序推进：
 
-### Modularization documentation synchronization gate
+1. 基线和护栏：依赖图、架构测试、ID 清单、兼容登记、特征测试；
+2. 低风险去重和公共合同清理；
+3. 响应式 Admin/Accounting 外壳和可复用员工 UI 原语，不把业务所有权移入 UI；
+4. Brand/Store 身份和配置，包括按上述验证门禁执行已解冻的 UberEats Store 身份收缩，然后推进 Catalog/Pricing/Offers；
+5. Identity/Customer/Benefits 与 Messaging 边界；
+6. 建立特征测试覆盖后推进 Orders/Fulfillment，尤其关注生产 Web 支付行为，以及受当前已验证切片影响的 UberEats 流程；
+7. 与生产 Web Ecommerce 隔离的 Payments/POS Terminal 模块化，可以在恢复 Clover 真机访问前推进。真机验收、支付流量切换、结算证明和历史实现删除仍须等待各自明确门禁。生产 Web Clover 如果构成已记录的关键模块化阻塞，也可以在遵守上述 Web 保护验证规则的前提下修改。
 
-A modularization code slice is not locally complete until its progress is recorded
-in **multiple relevant repository documents** in the same change. Do not leave the
-implementation ahead of the written migration state.
+### 模块化文档同步门禁
 
-At minimum, every modularization code change must update **at least three progress
-documents in the same change**:
+模块化代码切片只有在同一次改动中，将进展记录到**多份相关仓库文档**后，才算本地完成。不得让实现进度超前于书面的迁移状态。
 
-1. the **current phase/work-package document** under `docs/architecture/**` with
-   the slice status, exact ownership/boundary change, behavior intentionally kept
-   unchanged, verification state, and remaining/next work;
-2. `docs/architecture/current-dependency-graph.md`. If the slice changes a public
-   boundary, direct-import debt, context ownership, architecture allowance, or how
-   the graph should be interpreted, refresh those facts. If the graph/debt counts
-   are genuinely unchanged, add a concise dated/slice note explicitly recording
-   that the implementation was reviewed and produced **no graph/baseline change**.
-   Do not skip this document merely because the count is unchanged; and
-3. `docs/architecture/modularization-worklog.md` with exactly one chronological
-   entry for the batch. Record the date, Phase/Slice/work-package, PR/SHA when
-   available (otherwise local branch/state), concise ownership/boundary change,
-   measurable architecture or compatibility effect when applicable, the highest
-   status actually reached, and links to the detailed owner documents. When CI,
-   deployment, or active verification advances the same batch later, update that
-   entry's state/evidence rather than creating a duplicate implementation entry.
+每次模块化代码改动，至少必须在**同一次改动中更新三份进度文档**：
 
-Additionally update every applicable owner/source-of-truth document:
+1. `docs/architecture/**` 下的**当前 Phase/工作包文档**：记录切片状态、准确的所有权/边界变更、有意保持不变的行为、验证状态，以及剩余/下一步工作；
+2. `docs/architecture/current-dependency-graph.md`：如果切片改变公共边界、直接导入债务、上下文所有权、架构允许项或依赖图解读方式，更新相应事实。如果依赖图/债务计数确实不变，添加简明的日期/切片说明，明确记录已审阅实现且**没有依赖图/基线变化**。不得仅因计数不变就跳过该文档；
+3. `docs/architecture/worklog.md`：作为持续维护的项目工作日志，每个批次只添加一条按时间顺序排列的实施记录。包含日期、任务/工作包（模块化期间注明 Phase/Slice）、可用时的 PR/SHA（否则记录本地分支/状态）、简明的改动内容及所有权/边界影响、适用时可度量的架构或兼容影响、实际达到的最高状态，以及详细所属文档的链接。同一批次后续推进到 CI、部署或主动验证阶段时，更新原记录的状态/证据，不重复创建实施记录。
 
-* `docs/architecture/active-compatibility-register.json` **and** its Markdown view
-  whenever compatibility is added, reclassified, contracted, closed, unfrozen, or
-  its exit/verification gate changes;
-* the relevant architecture/implementation charter or phase plan (for example
-  `docs/payments/**`) when the slice changes a lasting provider, payment, rollout,
-  cutover, recovery, or verification rule;
-* ID inventory, migration/runbook, production verification, or other architecture
-  documents when their recorded facts, status, evidence, or next-step guidance are
-  changed by the implementation.
+工作日志记录要求在模块化任务完结后继续适用：后续功能开发、缺陷修复、维护和文档变更仍按批次记录；其他进度文档是否需要更新，按实际任务及对应规则判断。
 
-Documentation must describe the state actually reached. Do not mark CI, deployment,
-provider verification, active testing, parity, or production behavior as completed
-before that evidence exists. After deployment or user-operated active verification,
-update the applicable progress documents again so they distinguish source-complete,
-CI-green, deployed, and production-verified states.
+日志按同目录下的 `worklog.md`、`worklog2.md`、`worklog3.md` 等顺序分卷。每卷以 UTF-8 编码后的 1 MB（1,000,000 字节）为容量上限；当前卷已达到上限，或本次写入将超过上限时，写入已存在的下一卷，若不存在则新建，并依此递增。不得为腾出容量删除或覆盖历史记录；既有 `modularization-worklog*.md` 保留为历史资料。原记录因容量限制无法更新时，在当前可写分卷追加关联原记录的状态续记，不重复登记实施批次。
 
-Each modularization PR should establish or improve one enforceable boundary and
-remain deployable on its own, except for the deliberate schema-first `dev` handoff
-defined in section 3. A schema-first PR may be temporarily non-promotable while the
-user generates its companion migration locally; it becomes production-promotable
-only after that migration is reviewed and merged back into `dev`. Recompute or
-rerun applicable dependency/architecture checks at the end of every slice. A phase
-is not complete if it introduces a new
-cycle, new internal cross-context import, ambiguous identity, duplicate active
-implementation, or unregistered compatibility path.
+此外，更新所有适用的所有者/事实来源文档：
 
-### Phase closeout active-verification gate
+* 兼容路径被新增、重新分类、收缩、关闭、解冻，或退出/验证门禁变化时，同时更新 `docs/architecture/active-compatibility-register.json` **及其 Markdown 视图**；
+* 切片改变长期适用的供应商、支付、发布、切换、恢复或验证规则时，更新相关架构/实现章程或 Phase 计划，例如 `docs/payments/**`；
+* 实现改变 ID 清单、迁移/runbook、生产验证或其他架构文档中记录的事实、状态、证据或下一步指引时，更新这些文档。
 
-The default modularization verification cadence is **Phase-level**, not Slice-level:
+文档必须描述实际已经达到的状态。证据尚不存在时，不得把 CI、部署、供应商验证、主动测试、新旧一致性或生产行为标记为已完成。部署或用户操作的主动验证结束后，再次更新适用的进度文档，区分源代码完成、CI 全绿、已部署和生产验证通过等状态。
 
-1. individual slices must be source-complete, reviewable, independently deployable,
-   covered by focused automated tests/architecture guards, and CI-green before their
-   merge to `dev`;
-2. do not require a separate production deployment or user-operated active-test
-   checklist after every slice. While implementing each slice, record any runtime,
-   payment, provider, printing, PWA, migration, reconciliation, or compatibility behavior
-   that must be exercised later;
-3. after the planned source slices for a Phase are merged and before Phase closeout,
-   perform a closeout/readiness audit against the **final merged Phase state** and produce
-   one consolidated deployment + active verification plan covering all affected flows and
-   required sanitized UI/API/log/DB/provider evidence;
-4. deploy that Phase state and execute the consolidated verification deliberately. A
-   failed item blocks closeout and requires a forward fix plus rerun of the affected
-   verification; and
-5. only after the consolidated Phase verification passes may the Phase be marked
-   `PRODUCTION VERIFIED / CLOSED` (or the equivalent closed state).
+每个模块化 PR 应建立或改进一个可强制执行的边界，并保持可独立部署；第 3 节有意定义的 schema 先行交接到 `dev` 情况除外。schema 先行 PR 在用户本地生成配套迁移期间，可以暂时不具备发布晋级资格；只有迁移完成审阅并合并回 `dev` 后，才具备晋级生产环境的资格。每个切片结束时，重新计算或运行适用的依赖/架构检查。如果一个 Phase 引入新的依赖循环、新的跨上下文内部导入、含糊身份、重复生效的实现或未登记兼容路径，就不能算完成。
 
-An explicit earlier gate still takes precedence when required by a destructive migration,
-compatibility contraction/traffic cutover, external provider certification, settlement
-cycle, irreversible operation, or a regression already observed during development.
-Historical slices that were already individually production-verified remain valid evidence;
-do not rewrite their historical records merely to match the new cadence.
+### Phase 收尾主动验证门禁
+
+模块化的默认验证节奏是**Phase 级，而非 Slice 级**：
+
+1. 每个切片在合并到 `dev` 前，都必须源代码完整、可审阅、可独立部署，有聚焦自动化测试/架构护栏覆盖，并且 CI 全绿；
+2. 不要求每个切片结束后单独部署生产或执行一套由用户操作的主动测试清单。实现各切片时，记录后续必须实际验证的运行时、支付、供应商、打印、PWA、迁移、对账或兼容行为；
+3. 一个 Phase 计划内的源代码切片合并后、Phase 收尾前，针对**该 Phase 最终合并状态**执行收尾/就绪审计，生成一份统一的部署 + 主动验证计划，覆盖全部受影响流程以及所需的脱敏 UI/API/日志/数据库/供应商证据；
+4. 部署该 Phase 状态，有计划地执行统一验证。任一项目失败都会阻止收尾，必须向前修复并重新执行受影响验证；
+5. 只有统一 Phase 验证通过后，才可以将该 Phase 标记为 `PRODUCTION VERIFIED / CLOSED`（或等效的已关闭状态）。
+
+如果破坏性迁移、兼容收缩/流量切换、外部供应商认证、结算周期、不可逆操作或开发中已经观察到的回归要求更早的明确门禁，则优先遵守该门禁。过去已逐切片完成生产验证的历史记录仍是有效证据；不得仅为匹配新的验证节奏而改写历史记录。
 
 ---
 
-## 20. Testing requirements for modularization and refactoring
+## 20. 模块化与重构的测试要求
 
-Refactoring must prove behavior preservation; compilation alone is insufficient.
+重构必须证明行为得到保留，仅通过编译不够。
 
-* Add characterization tests before moving unclear pricing, order, benefit,
-  payment, fulfillment, notification, printing, or accounting behavior.
-* Add or update architecture tests when creating a context public API, moving an
-  owner, forbidding an import, or retiring a known exception.
-* Test domain/application rules without NestJS, Prisma, network, filesystem, or
-  provider SDK dependencies wherever the boundary permits.
-* Provider adapters require sanitized representative fixtures and mapping,
-  authentication, idempotency, retry, error, and unknown-outcome tests.
-* Contract changes require validating all API, Web, worker, printer, and shared
-  package consumers. Snapshot/golden tests must assert business-relevant content,
-  not unstable formatting noise.
-* A moved implementation is not complete while both old and new active paths
-  remain, unless an approved class B/C migration explicitly requires them.
-* For defect fixes, add a regression test that fails for the original cause when
-  practical. Do not overfit to an incidental private method call.
+* 移动尚不明确的计价、订单、权益、支付、履约、通知、打印或会计行为前，先添加特征测试。
+* 创建上下文公共 API、迁移所有者、禁止某项导入或退役已知例外时，添加或更新架构测试。
+* 边界允许时，领域/应用规则的测试应尽量不依赖 NestJS、Prisma、网络、文件系统或供应商 SDK。
+* 供应商适配器需要脱敏且有代表性的测试数据，并覆盖映射、认证、幂等性、重试、错误和未知结果。
+* 合同改动必须验证所有 API、Web、worker、打印机和共享包使用方。Snapshot/golden 测试必须断言与业务有关的内容，不要关注不稳定的格式噪声。
+* 除非已批准的 B/C 类迁移明确要求同时保留，否则旧、新生效路径同时存在时，不能认为实现迁移已经完成。
+* 修复缺陷时，在可行情况下添加能因原始根因而失败的回归测试，不要过度绑定偶然的私有方法调用。
 
-The repository's architecture tests and GitHub CI are minimum gates. Passing CI
-does not by itself prove module ownership, data parity, production cutover, or
-external-provider verification; report those separately and accurately.
+仓库架构测试和 GitHub CI 是最低门禁。仅通过 CI，并不能证明模块所有权、数据一致性、生产切换或外部供应商验证已经完成；这些状态必须分别、准确报告。
