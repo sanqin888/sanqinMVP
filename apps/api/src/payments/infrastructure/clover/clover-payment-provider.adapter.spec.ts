@@ -599,6 +599,11 @@ describe('CloverTerminalTransport', () => {
     ecommerceBase: process.env.CLOVER_BASE,
     ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
     merchantId: process.env.CLOVER_UNIFIED_MERCHANT_ID,
+    webMerchantId: process.env.CLOVER_MERCHANT_ID,
+    platformBase: process.env.CLOVER_UNIFIED_PLATFORM_API_BASE,
+    runtime: process.env.NODE_ENV,
+    databaseUrl: process.env.DATABASE_URL,
+    sandboxManual: process.env.CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED,
     base: process.env.CLOVER_TERMINAL_API_BASE,
     device: process.env.CLOVER_TERMINAL_DEVICE_ID,
     pos: process.env.CLOVER_TERMINAL_REMOTE_APP_ID,
@@ -611,6 +616,7 @@ describe('CloverTerminalTransport', () => {
     setEnv('CLOVER_TERMINAL_DEVICE_ID', 'device-1');
     setEnv('CLOVER_TERMINAL_REMOTE_APP_ID', 'raid-1');
     setEnv('CLOVER_TERMINAL_TIMEOUT_SECONDS', '10');
+    deleteEnv('CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED');
   });
 
   afterEach(() => {
@@ -622,10 +628,87 @@ describe('CloverTerminalTransport', () => {
     restore('CLOVER_BASE', original.ecommerceBase);
     restore('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
     restore('CLOVER_UNIFIED_MERCHANT_ID', original.merchantId);
+    restore('CLOVER_MERCHANT_ID', original.webMerchantId);
+    restore('CLOVER_UNIFIED_PLATFORM_API_BASE', original.platformBase);
+    restore('NODE_ENV', original.runtime);
+    restore('DATABASE_URL', original.databaseUrl);
+    restore(
+      'CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED',
+      original.sandboxManual,
+    );
     restore('CLOVER_TERMINAL_API_BASE', original.base);
     restore('CLOVER_TERMINAL_DEVICE_ID', original.device);
     restore('CLOVER_TERMINAL_REMOTE_APP_ID', original.pos);
     restore('CLOVER_TERMINAL_TIMEOUT_SECONDS', original.timeout);
+  });
+
+  const manualEntrySale = {
+    paymentId: 'payment-manual-test',
+    attemptId: 'attempt-manual-test',
+    amountCents: 1482,
+    currency: 'CAD',
+    paymentMethod: 'CARD' as const,
+    source: 'POS_TERMINAL' as const,
+    idempotencyKey: 'attempt-manual-test-key',
+    externalPaymentId: 'external-manual-test',
+  };
+
+  it('preserves the original Sale body by default (no manual card entry)', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 209 }));
+    await expect(
+      createTerminalTransport().startPayment(manualEntrySale),
+    ).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
+      amount: 1482,
+      capture: true,
+      final: true,
+      externalPaymentId: 'external-manual-test',
+    });
+  });
+
+  it('adds MANUAL alongside existing entry methods only in opted-in isolated Sandbox', async () => {
+    setEnv('NODE_ENV', 'development');
+    setEnv('DATABASE_URL', 'postgresql://test:test@127.0.0.1:5432/restaurant');
+    setEnv('CLOVER_MERCHANT_ID', 'web-production-merchant');
+    setEnv(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+      'https://apisandbox.dev.clover.com',
+    );
+    setEnv('CLOVER_TERMINAL_API_BASE', 'https://apisandbox.dev.clover.com');
+    setEnv('CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED', 'true');
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 209 }));
+    await expect(
+      createTerminalTransport().startPayment(manualEntrySale),
+    ).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
+      amount: 1482,
+      capture: true,
+      final: true,
+      externalPaymentId: 'external-manual-test',
+      deviceOptions: {
+        cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'],
+      },
+    });
   });
 
   it('clears only an absent original 504 payment on an explicitly idle device', async () => {

@@ -35,6 +35,9 @@ type CloverTerminalPaymentRequest = {
   capture: true;
   final: true;
   externalPaymentId: string;
+  deviceOptions?: {
+    cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'];
+  };
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -729,6 +732,11 @@ export class CloverTerminalTransport {
       final: true,
       externalPaymentId,
     };
+    if (this.config.terminalSandboxManualEntryEnabled) {
+      body.deviceOptions = {
+        cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'],
+      };
+    }
     const attempt = await this.request('/connect/v1/payments', {
       method: 'POST',
       idempotencyKey: request.idempotencyKey,
