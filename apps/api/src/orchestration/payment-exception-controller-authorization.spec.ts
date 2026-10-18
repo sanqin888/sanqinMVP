@@ -5,8 +5,10 @@ import { ROLES_KEY } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PosDeviceGuard } from '../pos/public-api';
-import { AdminPaymentExceptionController } from './admin-payment-exception.controller';
-import { PosPaymentExceptionController } from './pos-payment-exception.controller';
+import {
+  AdminPaymentExceptionController,
+  PosPaymentExceptionController,
+} from './pos-card-payment.controller';
 
 describe('PEM authentication and workflow authorization boundary', () => {
   it('allows authenticated enrolled POS STAFF to request and execute only sandbox-eligible cases', () => {

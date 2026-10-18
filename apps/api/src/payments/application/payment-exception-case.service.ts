@@ -1,6 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
 import {
-  PAYMENT_EXCEPTION_CASE_REPOSITORY,
   type PaymentExceptionCase,
   type PaymentExceptionCaseRepository,
   type PaymentExceptionDecisionInput,
@@ -8,12 +6,8 @@ import {
 } from './payment-exception-case.repository';
 
 /** Payments owns case and approval facts; no external provider call here. */
-@Injectable()
 export class PaymentExceptionCaseService {
-  constructor(
-    @Inject(PAYMENT_EXCEPTION_CASE_REPOSITORY)
-    private readonly repository: PaymentExceptionCaseRepository,
-  ) {}
+  constructor(private readonly repository: PaymentExceptionCaseRepository) {}
 
   open(input: PaymentExceptionOpenInput): Promise<PaymentExceptionCase> {
     return this.repository.open(input);

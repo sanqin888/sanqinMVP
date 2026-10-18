@@ -1,5 +1,5 @@
 import type { PrismaService } from '../../../prisma/prisma.service';
-import { PrismaPaymentExceptionCaseRepository } from './prisma-payment-exception-case.repository';
+import { PrismaPaymentExceptionCaseRepository } from './prisma-payment-transaction.repository';
 
 const existing = {
   caseStableId: 'case-20261017-1',

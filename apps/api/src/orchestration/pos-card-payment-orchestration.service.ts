@@ -332,15 +332,17 @@ export class PosCardPaymentOrchestrationService {
     }
     let terminalReady = false;
     if (savedCheckout.benefitsReleasedAt) {
-      await this.sandboxRecovery.checkpointSandboxBenefitsReleased(
-        attemptId,
-        approvedExceptionCase,
-      );
+      if (approvedExceptionCase) {
+        await this.sandboxRecovery.checkpointSandboxBenefitsReleased(attemptId, true);
+      } else {
+        await this.sandboxRecovery.checkpointSandboxBenefitsReleased(attemptId);
+      }
       // Fresh canonical NOT_FOUND + verified idle/Welcome are separately
       // required before clearing this durable terminal fence.
-      terminalReady = await this.sandboxRecovery
-        .finishSandboxManualUnpaid(attemptId, storeStableId, approvedExceptionCase)
-        .catch(() => false);
+      terminalReady = await (approvedExceptionCase
+        ? this.sandboxRecovery.finishSandboxManualUnpaid(attemptId, storeStableId, true)
+        : this.sandboxRecovery.finishSandboxManualUnpaid(attemptId, storeStableId)
+      ).catch(() => false);
     }
     const view = this.toView(savedCheckout, decided, undefined, {
       terminalReadyForNextSale: terminalReady,
