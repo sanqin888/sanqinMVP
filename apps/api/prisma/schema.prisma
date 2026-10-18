@@ -1402,6 +1402,68 @@ model PaymentTerminalSandboxRecovery {
   @@index([terminalId, acceptedAt])
 }
 
+// Payments-owned exception workflow. A case is operational authority to invoke
+// existing owner recovery capabilities, never canonical provider financial truth.
+// No relations to other contexts: stable IDs are matched through owner contracts.
+model PaymentExceptionCase {
+  caseStableId         String    @id @default(cuid())
+  attemptId            String    @unique
+  storeStableId        String
+  paymentTransactionId String    @db.Uuid
+  externalPaymentId    String
+  amountCents          Int
+  currency             String
+  action               String
+  mode                 String
+  status               String
+  requestedByStableId  String
+  operatorNote         String
+  cloverOrderId        String?
+  approvedByStableId   String?
+  approvedAt           DateTime?
+  decidedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([storeStableId, status, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model PaymentExceptionEvidence {
+  id           String   @id @default(uuid()) @db.Uuid
+  caseStableId String
+  source       String
+  resultCode   String
+  description  String
+  observedAt   DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([caseStableId, createdAt])
+}
+
+model PaymentExceptionApproval {
+  id             String   @id @default(uuid()) @db.Uuid
+  caseStableId   String   @unique
+  actorStableId  String
+  decision       String
+  note           String
+  decidedAt      DateTime @default(now())
+
+  @@index([actorStableId, decidedAt])
+}
+
+model PaymentExceptionExecution {
+  caseStableId   String   @id
+  action         String
+  startedAt      DateTime @default(now())
+  lastAttemptAt  DateTime @default(now())
+  attempts       Int      @default(1)
+  finishedAt     DateTime?
+  failureCode    String?
+
+  @@index([finishedAt, lastAttemptAt])
+}
+
 // Channel-neutral checkout/payment preparation record. It freezes the server-
 // approved order/pricing/tender facts before any external provider action.
 model PaymentCheckoutAttempt {

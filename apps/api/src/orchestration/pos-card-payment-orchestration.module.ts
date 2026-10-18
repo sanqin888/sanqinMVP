@@ -10,8 +10,13 @@ import { PaymentBenefitsReleaseRecoveryProcessor } from './payment-benefits-rele
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 import { PaymentProviderWebhookController } from './payment-provider-webhook.controller';
 import { PaymentReverseSyncOrchestrationService } from './payment-reverse-sync-orchestration.service';
-import { PosCardPaymentController } from './pos-card-payment.controller';
+import {
+  PosCardPaymentController,
+  PosPaymentExceptionController,
+  AdminPaymentExceptionController,
+} from './pos-card-payment.controller';
 import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
+import { PaymentExceptionOrchestrationService } from './payment-exception-orchestration.service';
 import { PosCardRefundController } from './pos-card-refund.controller';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 import { PosFullRefundController } from './pos-full-refund.controller';
@@ -37,6 +42,8 @@ import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestrati
   ],
   controllers: [
     PosCardPaymentController,
+    PosPaymentExceptionController,
+    AdminPaymentExceptionController,
     PosCardRefundController,
     PosFullRefundController,
     PaymentProviderWebhookController,
@@ -46,6 +53,7 @@ import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestrati
     PaymentBenefitsReleaseRecoveryProcessor,
     PaymentReverseSyncOrchestrationService,
     PosCardPaymentOrchestrationService,
+    PaymentExceptionOrchestrationService,
     PosCardRefundOrchestrationService,
     PosFullRefundOrchestrationService,
   ],

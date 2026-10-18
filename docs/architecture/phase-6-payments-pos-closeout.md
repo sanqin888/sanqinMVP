@@ -4,6 +4,10 @@ Start date: 2026-09-07
 Current implementation base: `origin/dev@fcc0b7c1`  
 Current status: **MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE; TERMINAL DEVICE ACCEPTANCE + WEB CUTOVER DEFERRED**
 
+## Post-closeout PEM — 通用付款异常案件、审批与受控恢复（2026-10-17；LOCAL / MIGRATION REQUIRED）
+
+用户正式授权在 Payments 现有所有权内扩展通用案件、证据、Approval、Execution 四个 additive-only Prisma 模型，并同步调整 AGENTS.md 第 14 节隔离 Sandbox 的精确允许项。STAFF 在 POS 的 Store 范围内申请；Sandbox 免 ADMIN 审批但保留完整开发/Test Merchant/回环 DB/原 Compact/Canonical/CAS 安全门禁，Production 默认关闭，按 STAFF 申请 + ADMIN/MFA 审批，只对已有最终失败的原付款 RELEASE，未知资金保持调查状态。旧 R2 flag/504 资格不变；历史 ALL_ATTEMPTS_FAILED 仅能经已记录的 Sandbox PEM 案件进入操作员确认未收款，不能伪造原始 209，也不能对生产开启此例外。案件写入由 Payments 负责，Orchestration 复用 Checkout/Benefits/Terminal Owners，POS/Admin 只提供入口。共享金融事实仍不可人为改写、生产 Web Ecommerce 不切换。源代码和测试已写/未运行、无 PR/CI/实测；用户需本地生成 additive-only Prisma migration，配套迁移合入 dev 前禁止进 main/生产。详细门禁、工作流及历史 CAD $16.95 验收：docs/payments/支付异常管理-PEM.md。
+
 ## Post-closeout C-2C7 S5-M04-D multi-card finality and review UX (2026-10-17; LOCAL / REVIEW PENDING)
 
 Owner evidence: docs/payments/clover-pos-phase-plan.md S5-M04-D. A real Compact Sandbox 209 after two manual card FAIL records under one External ID exposed the prior Platform v3 collection length==1 assumption: RECONCILING, HOLD retained, Terminal Fence SALE_IN_FLIGHT. The Payments-owned Clover gateway now pages the external identity collection to a bounded end, validates every returned row and refuses ambiguous/multiple-success collections. One canonical SUCCESS with failed predecessors may finalize by the existing validator; exhaustive all-FAIL evidence is not final by itself, but may corroborate a *currently observed* original Sale HTTP 209 for CANCELLED. Historical records without durable Sale 209 remain blocked. This is an explicitly scoped POS Terminal finality repair, not a new finality owner, a production Web cutover or historical data rewrite.

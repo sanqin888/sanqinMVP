@@ -71,6 +71,7 @@ export type PosCardPaymentView = {
 
 /** Operational review only; never includes raw provider payloads or tokens. */
 export type PosCardPaymentReviewDetail = PosCardPaymentView & {
+  currency: string;
   paymentStatus: PosCardPaymentStatus | null;
   resultCode: string | null;
   externalPaymentId: string | null;
@@ -161,7 +162,7 @@ export class PosCardPaymentOrchestrationService {
       checkout.attemptId,
       storeStableId,
     );
-    const decision = this.sandboxRecovery.isEnabled()
+    const decision = this.sandboxRecovery.isIsolatedSandbox()
       ? await this.sandboxRecovery.getSandboxManualUnpaidDecision(
           checkout.attemptId,
         )
@@ -178,6 +179,7 @@ export class PosCardPaymentOrchestrationService {
         : undefined;
     return {
       ...this.toView(checkout, payment ?? undefined, completedOrder),
+      currency: checkout.currency ?? '',
       sandboxManualRecoveryEnabled: this.sandboxRecovery.isEnabled(),
       sandboxOperatorUnpaidAccepted: decision !== null,
       sandboxRecoveryTerminalFinalized: decision?.terminalFinalizedAt != null,
@@ -221,7 +223,7 @@ export class PosCardPaymentOrchestrationService {
       payment.status === 'FAILED' &&
       payment.toSnapshot().resultCode ===
         'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID' &&
-      this.sandboxRecovery.isEnabled()
+      this.sandboxRecovery.isIsolatedSandbox()
     ) {
       const conflict =
         await this.sandboxRecovery.inspectSandboxLateCanonicalSuccess(
@@ -258,9 +260,14 @@ export class PosCardPaymentOrchestrationService {
     actorUserStableId: string,
     cloverOrderId: string,
     operatorNote: string,
+    approvedExceptionCase = false,
   ): Promise<PosCardPaymentView> {
     this.requireEnabled();
-    if (!this.sandboxRecovery.isEnabled()) {
+    if (
+      !(approvedExceptionCase
+        ? this.sandboxRecovery.isIsolatedSandbox()
+        : this.sandboxRecovery.isEnabled())
+    ) {
       throw new ConflictException({
         code: 'POS_SANDBOX_MANUAL_RECOVERY_DISABLED',
         message: 'Manual unpaid recovery is disabled outside isolated Sandbox.',
@@ -298,6 +305,7 @@ export class PosCardPaymentOrchestrationService {
         actorUserStableId,
         cloverOrderId,
         operatorNote,
+        ...(approvedExceptionCase ? { approvedExceptionCase: true } : {}),
       });
     } catch (error) {
       if (
@@ -326,12 +334,28 @@ export class PosCardPaymentOrchestrationService {
     }
     let terminalReady = false;
     if (savedCheckout.benefitsReleasedAt) {
-      await this.sandboxRecovery.checkpointSandboxBenefitsReleased(attemptId);
+      if (approvedExceptionCase) {
+        await this.sandboxRecovery.checkpointSandboxBenefitsReleased(
+          attemptId,
+          true,
+        );
+      } else {
+        await this.sandboxRecovery.checkpointSandboxBenefitsReleased(attemptId);
+      }
       // Fresh canonical NOT_FOUND + verified idle/Welcome are separately
       // required before clearing this durable terminal fence.
-      terminalReady = await this.sandboxRecovery
-        .finishSandboxManualUnpaid(attemptId, storeStableId)
-        .catch(() => false);
+      terminalReady = await (
+        approvedExceptionCase
+          ? this.sandboxRecovery.finishSandboxManualUnpaid(
+              attemptId,
+              storeStableId,
+              true,
+            )
+          : this.sandboxRecovery.finishSandboxManualUnpaid(
+              attemptId,
+              storeStableId,
+            )
+      ).catch(() => false);
     }
     const view = this.toView(savedCheckout, decided, undefined, {
       terminalReadyForNextSale: terminalReady,

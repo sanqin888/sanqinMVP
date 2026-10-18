@@ -231,6 +231,7 @@ const createHarness = () => {
 
   const sandboxRecovery = {
     isEnabled: jest.fn().mockReturnValue(false),
+    isIsolatedSandbox: jest.fn().mockReturnValue(false),
     getSandboxManualUnpaidDecision: jest.fn().mockResolvedValue(null),
     acceptSandboxManualUnpaid: jest
       .fn()

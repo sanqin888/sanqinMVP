@@ -12,6 +12,7 @@ import {
   type PosCardPaymentReviewItem,
 } from "@/lib/api/pos";
 import { partitionPosCardPaymentReviewQueues } from "./pos-card-payment-review-queues";
+import { PosPaymentExceptionPanel } from "./PosPaymentExceptionPanel";
 
 type Props = {
   locale: "zh" | "en";
@@ -464,6 +465,12 @@ export function PosCardPaymentBenefitsReview({
                           : "Do not initiate another card Sale while payment truth is unknown."}
                       </p>
                     )}
+                    <PosPaymentExceptionPanel
+                      key={detail.attemptId}
+                      locale={locale}
+                      detail={detail}
+                      onUpdated={() => inspect(detail.attemptId, false)}
+                    />
                     {detail.sandboxLateCanonicalPayment && (
                       <p role="alert" className="rounded-lg border border-rose-400 bg-rose-950/80 p-3 font-semibold text-rose-100">
                         {zh

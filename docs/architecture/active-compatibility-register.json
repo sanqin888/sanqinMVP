@@ -15,6 +15,29 @@
   ],
   "active": [
     {
+      "compat_id": "payments.sandbox-r2-recovery-to-pem.v1",
+      "status": "active_sandbox_transitional",
+      "old_owner": "Payments original Sandbox R2 Terminal HTTP 504 plus NOT_FOUND manual recovery opt-in endpoint and audit",
+      "new_owner": "Payments-owned PEM exception cases, immutable evidence/approval/execution audit and guarded original recovery operation",
+      "dual_write_or_read": [
+        "No duplicate payment or new provider Sale. The legacy R2 endpoint remains opt-in and eligible only for 504+NOT_FOUND; PEM is the separate recorded case workflow for Sandbox complete ALL_ATTEMPTS_FAILED and existing R2 eligibility.",
+        "PEM invokes the same Payments-owned atomic sandbox recovery claim and terminal fence, plus existing Checkout/Benefits RELEASE and idempotent checkpoints. An accepted PEM case additionally records independent evidence/execution history; old R2 rows remain readable without backfill.",
+        "Production PEM is separately opt-in and only allows STAFF request plus ADMIN/MFA approval for already-final payment recovery or investigation. It never enables operator-assessed unpaid in production."
+      ],
+      "parity_metric": "For eligible existing 504 cases, compare PaymentTransaction FAILED operational marker, PaymentTerminalSandboxRecovery immutable evidence, Checkout Benefits RELEASE checkpoint and Terminal FINALIZED under legacy R2 versus PEM. For ALL_ATTEMPTS_FAILED, require exact original payment identity and complete canonical verification, no duplicate Checkout or Sale, approved Sandbox case audit, Benefits RELEASE and Terminal fence ready. No production Web Ecommerce effects.",
+      "rollback": "Leave legacy R2 disabled by default and preserve existing immutable decisions. If PEM recovery fails, stop new Sales and retain the original fence, original Payment, and PEM case for controlled forward repair; disable PEM API admission without rewriting or dropping case/audit history.",
+      "exit_criteria": "Local generated additive schema migration reviewed and merged, controlled isolated Sandbox exercises both legacy R2 and PEM recovery to identical owner checkpoints, restart and concurrent case execution verified, zero legacy entrypoint consumers after an agreed acceptance window, and separate authorization for old endpoint retirement.",
+      "remove_pr": "Future explicitly authorized retirement of legacy R2 manual endpoint and corresponding old feature flag after PEM equivalence and migration proof",
+      "deadline": "After full Sandbox PEM device/Benefits acceptance and future explicit contraction approval; not date-based",
+      "governance_note": "PEM does not add a separate financial authority or a second recovery writer. Both paths use Payments atomic CAS and the existing Checkout/Benefits orchestration, with Sandbox evidence/risk exception under the user-authorized AGENTS.md section 14 update. Production UNKNOWN remains in investigation.",
+      "evidence": [
+        "docs/payments/支付异常管理-PEM.md",
+        "apps/api/src/payments/application/sandbox-terminal-manual-recovery.service.ts",
+        "apps/api/src/orchestration/payment-exception-orchestration.service.ts",
+        "docs/architecture/worklog.md"
+      ]
+    },
+    {
       "compat_id": "accounting.provider-correction-structural-v2.v1",
       "status": "active_read_compatibility_post_gated",
       "old_owner": "Accounting Provider Settlement correction target v1 immutable source-line edits and persisted POSTED v1 authorities",

@@ -455,7 +455,7 @@ apps/api/src/contexts/<context>/
 * 每个上下文只写自己的表。其他上下文通过公共用例、端口、带版本的事实/事件或专用读模型消费数据，不得直接访问所有者的 Prisma delegate。
 * 数据库事务由保护相应不变量的用例拥有。不得创建隐式跨越无关上下文的事务。跨上下文无法原子完成时，使用明确编排、预占、持久化 outbox/inbox、幂等性和对账。
 * 可能被重试的财务、订单、webhook、消息和打印操作必须有稳定的幂等标识。超时或响应丢失不代表失败；外部操作可能已经成功时，必须保留 `UNKNOWN`/对账中语义。
-* **明确授权的隔离 Clover Compact Sandbox 例外（C-2C7 R2）：** 只有在显式启用的开发/测试运行时中，且同时满足仅回环地址数据库、sandbox Platform/Test Merchant 隔离、已认证 POS 操作员、原始身份/CAS 防护、最新权威 NOT_FOUND 观测、已核实空闲的 Compact 和不可变操作员证据等条件时，才允许由人工接受原始 HTTP 504 尚未采集到结果的风险。本地 `FAILED` 结果必须带有清晰可区分的“操作员确认（非供应商确认）”标记，并且 Benefits RELEASE 必须先于最终设备防护锁释放。该例外不允许自动把 NOT_FOUND 判为失败，不允许用于生产恢复，不允许静默覆盖迟到的支付成功，也不允许任何 Ecommerce 改动。所有其他 UNKNOWN/RECONCILING 情况继续 HOLD，并阻止新的 Sales。
+* **明确授权的隔离 Clover Compact Sandbox 例外（C-2C7 R2 / PEM）：** 既有 R2 手动入口继续要求显式开关及原始 HTTP 504 + 最新权威 NOT_FOUND；新增 PEM 经持久化案件、操作员确认及严格环境核验，可在开发/测试运行时的隔离 Sandbox 中，针对完整且身份/金额一致的 Canonical `ALL_ATTEMPTS_FAILED`，由操作员审计确认未收款。两种途径均必须使用仅回环地址数据库、sandbox Platform/Test Merchant 隔离、已认证 POS 操作员、原始身份/CAS 防护、已核实原 Compact 明确空闲及 Welcome、不可变审计证据。PEM Sandbox 不要求额外 ADMIN 审批；Production 必须由 STAFF 发起、ADMIN 经认证/MFA 审批，且审批不能绕过 Provider 资金真实性或授权未证实的未收款终态。本地 `FAILED` 必须明确标识“操作员确认（非供应商确认）”，Benefits RELEASE 必须先于最终设备防护锁释放。不允许自动把 NOT_FOUND 或 ALL_ATTEMPTS_FAILED 单独判为失败，不允许伪造原始 209，不允许静默覆盖迟到的支付成功，不允许任何 Ecommerce 改动。所有其他 UNKNOWN/RECONCILING 情况继续 HOLD 并阻止新的 Sales。
 
 Prisma schema 字段属于持久化合同，不会自动成为公共合同或领域合同。在所有权边界统一映射一次。原始供应商载荷只有在具备已记录的审计/重放需求、移除密钥和敏感数据并制定明确保留策略后，才可留存。
 

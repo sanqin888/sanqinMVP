@@ -172,6 +172,128 @@ describe('SandboxTerminalManualRecoveryService', () => {
     ]);
   });
 
+  it('accepts historical exhaustive ALL_FAIL only via an isolated approved PEM case', async () => {
+    const { service, operations, terminalPayments, setPayment } =
+      createHarness();
+    jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
+    setPayment(
+      originalPayment().recordProviderObservation({
+        status: 'UNKNOWN',
+        resultCode: 'CLOVER_CANCELLED',
+        failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      }),
+    );
+    await expect(
+      service.acceptSandboxManualUnpaid({
+        ...input,
+        approvedExceptionCase: true,
+      }),
+    ).resolves.toMatchObject({ status: 'FAILED' });
+    expect(terminalPayments.reconcile.mock.calls).toEqual([[paymentId]]);
+    expect(
+      operations.claimSandboxManualUnpaid.mock.calls[0]?.[0],
+    ).toMatchObject({
+      originalResultCode: 'CLOVER_CANCELLED',
+      originalFailureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    });
+  });
+
+  it('does not accept ALL_FAIL through the legacy R2 entry', async () => {
+    const { service, operations, setPayment } = createHarness();
+    jest.spyOn(service, 'isEnabled').mockReturnValue(true);
+    setPayment(
+      originalPayment().recordProviderObservation({
+        status: 'UNKNOWN',
+        resultCode: 'CLOVER_CANCELLED',
+        failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      }),
+    );
+    await expect(service.acceptSandboxManualUnpaid(input)).rejects.toThrow(
+      'POS_SANDBOX_MANUAL_RECOVERY_NOT_ELIGIBLE',
+    );
+    expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
+  });
+
+  it('rechecks exact canonical identity before finalizing an ALL_FAIL recovery', async () => {
+    const { service, operations, provider, setPayment } = createHarness();
+    jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      }),
+    );
+    operations.getSandboxManualUnpaidDecision.mockResolvedValue({
+      ...input,
+      paymentTransactionId: paymentId,
+      terminalId: 'compact-test-1',
+      externalPaymentId,
+      originalResultCode: 'CLOVER_CANCELLED',
+      originalFailureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      canonicalCheckedAt: new Date(),
+      benefitsReleasedAt: new Date(),
+      terminalFinalizedAt: null,
+      lateCanonicalAt: null,
+      lateProviderPaymentId: null,
+    });
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      paymentId,
+      attemptId,
+      idempotencyKey: 'original-idempotency',
+      externalPaymentId,
+      amountCents: 565,
+      currency: 'CAD',
+      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    });
+    await expect(
+      service.finishSandboxManualUnpaid(attemptId, storeStableId, true),
+    ).resolves.toBe(true);
+    expect(operations.finalizeSandboxManualUnpaid.mock.calls).toEqual([
+      [attemptId],
+    ]);
+  });
+
+  it('keeps the terminal fenced if the ALL_FAIL canonical amount conflicts', async () => {
+    const { service, operations, provider, setPayment } = createHarness();
+    jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      }),
+    );
+    operations.getSandboxManualUnpaidDecision.mockResolvedValue({
+      ...input,
+      paymentTransactionId: paymentId,
+      terminalId: 'compact-test-1',
+      externalPaymentId,
+      originalResultCode: 'CLOVER_CANCELLED',
+      originalFailureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      canonicalCheckedAt: new Date(),
+      benefitsReleasedAt: new Date(),
+      terminalFinalizedAt: null,
+      lateCanonicalAt: null,
+      lateProviderPaymentId: null,
+    });
+    provider.getPaymentStatus.mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      paymentId,
+      attemptId,
+      idempotencyKey: 'original-idempotency',
+      externalPaymentId,
+      amountCents: 9999,
+      currency: 'CAD',
+      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    });
+    await expect(
+      service.finishSandboxManualUnpaid(attemptId, storeStableId, true),
+    ).rejects.toThrow('POS_SANDBOX_MANUAL_LATE_CANONICAL_CONFLICT');
+    expect(operations.finalizeSandboxManualUnpaid.mock.calls).toHaveLength(0);
+  });
+
   const unsafeAvailabilities: Array<[string, PaymentTerminalAvailability]> = [
     [
       'HTTP 200 with no explicit state (synthetic AVAILABLE)',

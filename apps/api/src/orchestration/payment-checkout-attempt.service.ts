@@ -74,6 +74,7 @@ export type PreparedPaymentCheckout = {
   storeId: string;
   status: PaymentCheckoutAttemptStatus;
   externalAmountCents: number;
+  currency?: string;
   paymentTransactionId: string | null;
   orderStableId: string;
   expiresAt: Date;
@@ -686,6 +687,7 @@ export class PaymentCheckoutAttemptService {
       storeId: record.storeId,
       status: record.status,
       externalAmountCents: record.externalAmountCents,
+      currency: record.currency,
       paymentTransactionId: record.paymentTransactionId,
       orderStableId: record.orderStableId,
       expiresAt: record.expiresAt,
