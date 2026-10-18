@@ -911,6 +911,7 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 - [x] C2-1A–D 合成新实例替换与 Google Drive 取回校验（2026-10-18 操作员报告）
 - [ ] **C2-02 N-01–N-07 A/B 现有材料充分性评审：**先只读复核原 Snapshot/clone/独立 VDI、C2-0 与 C2-1 Guest 22 项、HTTP 原件及两个完整归档的 SHA；每项单列 VERIFIED/LIMITED/BLOCKED。Marker A/B 不再强制，不以补造快照为默认方案；若关键 Host 来源仍不可信，再单独裁定最小必要补证。
 - [x] C2-0/C2-1 上传原件 SHA-256 与包内 manifest 直接复算、Guest 22 项 A/B 有限比对（独立读取归档）
+- [x] **2026-10-18 最终 A/B Host 只读复核（限定范围）：**`snapshot showvminfo` rc=0，Test-02 准确 Snapshot 引用 base VDI `66ad835f-…`；恢复 VM `162701f1-…` 的 base VDI `39381cc9-…`、`Parent UUID: base`，`showmediuminfo` rc=0；恢复机 Host-only、独立 MAC、clipboard disabled，快照原始 clipboard Bidirectional。N-01/N-02/N-04/N-06 的已观察能力 VERIFIED、N-03/N-05 有范围限制、N-07 LIMITED；本轮 Host 终端查询尚无新离机 hash/完整 rc，仍不关闭 C2。详见 [B2B2 §9.5](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。**不代表 RUNTIME-SNAPSHOT-01/MAINT-RESTART-01 实测或真实 AWS 同平台 S01–S12 验收。**
 - [ ] 关键 Host 来源身份的独立见证与 C2 整体验收结论审阅（**不能由已验 SHA 自动推导**）
 - [ ] B2B2-B2 实际 root-anchor/别名 FD、外部发行 pins/消费见证（另审、另授权）
 - [ ] 真正 Lightsail 实例创建、应用/DB/Uploads 恢复、Static IP/Cloudflare、供应商与生产切换的独立 DR 验收（另立任务，不属于本次模拟）

@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — C2 最终 A/B Host 配置只读复核（基于 PR #2864 后的 dev）
+
+**状态：C2-02 VIRTUALBOX SYNTHETIC RECOVERY VERIFIED（有限范围） / N-07 LIMITED / C2 OPEN / C5-G2 NO-GO。** 在 `origin/dev@4f34c6f86bfc0650d900da9696497c0cc9508188`（#2864 已合并、AWS 快照与维护冻结为现行设计）上只补录本次操作员提供的最终 A/B 核验：Mac 原件审阅脚本确认 C2-0（237 files、6 manifests、231 hashes，SHA `5503b6f9…`）及 C2-1（60 files、3 manifests、50 hashes，SHA `29257b27…`）完整，Guest 22 项中 19 同值、3 项 time/IP/mountinfo 预期不同，既有 clone rc=0 与合成 HTTP 切换/停止通过。**新 Host 只读核对**：源 Test-02 `4b1bd5e7-…` 的 Snapshot `028a681b-…` 指向原 base VDI `66ad835f-…`，`snapshot showvminfo` rc=0；Snapshot Host-only、剪贴板 **Bidirectional**。恢复 VM `162701f1-…` running，独立 MAC `08002703FDC2`、Host-only、clipboard disabled；VDI `39381cc9-…`、`Parent UUID: base`，normal/base 25600 MB、占用 4345 MB，`showmediuminfo` rc=0。**限制**：Host 查询这轮仅对话终端原文，未附新的离机 stdout/stderr/hash；管道 `grep` 的 VBoxManage 上游 rc 未单独记录；归档不能独立见证最初 Mac Host 身份，部分历史 SSH 外层 rc 缺失。将精确对象与 N-01–N-07 限定验收登记于 [B2B2 §9.5](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，不宣称整盘快照逐字节证明、不重测 Marker A/B、不关闭 C2。**范围严格仅 docs；PR #2864 的 AWS RUNTIME-SNAPSHOT-01、MAINT-RESTART-01 仍仅批准设计、没有真实同平台 AWS S01–S12 验收；无 VM/Guest/root/生产操作**。该批由独立最新 dev 分支审阅，不再次提交已被 #2864 纳入的 C2-CHANGE-02 合同。
+
 ## 2026-10-18 — Runtime AWS 整机快照与维护冻结方案（同批持续更新）
 
 - **批准与基线：**用户明确采用“AWS 整机快照 + 更新前容器不自动重启再生成快照”；从 `origin/dev@a76d526592b7a46e4659f485a3089d753e267b3c` 审阅。只做文档；用户在审阅 47 份文档报告后已明确授权本批远端交付，包含保留的 C2-CHANGE-02 文档规则/有限复核登记；没有云/生产操作授权。

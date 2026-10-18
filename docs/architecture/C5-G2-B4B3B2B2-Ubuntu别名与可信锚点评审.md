@@ -288,3 +288,44 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 每条命令保存真实 stdout/stderr/rc 后核对：Snapshot 是否仍属于 source、恢复实例 SATA VDI 是否等于 `RECOVERED_DISK`、其 `Parent UUID` 是否为 `base`，是否存在共享磁盘引用或危险网络/剪贴板变化。对既有 C2-0 `guest.stdout` 和 C2-1 `guest.stdout` 按 §9.3 的 22 项命令名+rc+输出复核；当前 19 项相同、3 项动态差异的审核结论不等于将所有运行时字段视为不可变。可增加只读已有 Guest hash 证据；**不对正在运行的两个磁盘直接运行整盘 SHA 比对，也不为了形式上产生新的 Snapshot 做任何 VM 写操作**。
 
+### 9.5 2026-10-18 — 最终 A/B Host 实时只读复核与 C2-02 分项结论
+
+**证据口径：**用户在 Mac Terminal 对已保存的 C2-0、C2-1 原件重新执行只读审阅脚本，并展示原 Snapshot 和现有恢复 VM 的实时 `VBoxManage` 查询输出。这是 **VirtualBox 合成新实例恢复** 的证据，不是实际 AWS Lightsail 控制面、持续维护冻结或业务 DB/Uploads 的验收。以下 Host 实时查询目前仅有对话原始终端输出，**未见本轮命令另行封存 stdout/stderr、完整 rc、离机 hash 与独立 Host 签认**；仅在所观察范围下判定，不补造更高等级证明。
+
+**A — Test-02 现存 Snapshot（`snapshot showvminfo`，查询 rc=0）：**
+
+| 字段 | 观测值 |
+| --- | --- |
+| Source VM | `SanQ-Linux-Test-02` / `4b1bd5e7-54c5-45c4-9cc3-dba2ed48a033`；查询显示 `powered off` |
+| Snapshot | `SanQ-Runtime-B4B2-Clean-Baseline-20261017` / `028a681b-18b9-4dc7-a67f-69257e7cf85b` |
+| 快照 SATA 盘 | Port 0 / Unit 0，base VDI UUID `66ad835f-8e92-4e9f-96e0-5907f6296169` |
+| 快照 NIC | MAC `08002797C9EA`，唯一 Host Only Network `HostNetwork`，NIC 2–8 disabled |
+| 快照其它隔离参数 | Shared folders `<none>`、Drag and drop disabled、VRDE disabled；**快照中的 Clipboard Mode = Bidirectional**（不能写成快照内已 disabled） |
+
+**B — 已创建的恢复实例（非重新克隆）：**
+
+| 字段 | 观测值 |
+| --- | --- |
+| VM / 运行状态 | `SanQ-C2-1-Recovered-20261018` / `162701f1-bf68-413d-9f2d-76c513554881` / `running` |
+| NIC / MAC | `hostonlynetwork` / `08002703FDC2`；`clipboard=disabled`、`draganddrop=disabled` |
+| SATA VDI | `39381cc9-f526-4e35-8a09-3a265cfe79f4`，仅被该恢复 VM 使用，位于其独立目录 |
+| VDI 独立性 | `Parent UUID: base`、`Type: normal (base)`、VDI dynamic、容量 25600 MBytes、实际 4345 MBytes |
+| VDI 查询状态 | `locked write`（与运行中 VM 相符，不当作磁盘损坏）；`Disk query exit: 0` |
+
+**历史归档的本次复核输出：**C2-0 SHA-256 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`（237 regular files、6 manifests、231 file-hashes）；C2-1 SHA-256 `29257b278195725002754d8925edec5b7328526df5afe8da7f6d2872fe43f3cd`（60 regular files、3 manifests、50 file-hashes）；均 PASS。22/22 Guest 命令名相符，19 组输出/rc 完全一致，3 组为已解释的时间、Host-only IP `.2 → .3`、mountinfo 临时 `pipe_ino` 差异。已保存的 clone rc=0；合成 HTTP 旧目标 rc=28/HTTP 000、恢复目标 rc=0/HTTP 200、停止重试 rc=0/HTTP 200、停止后 rc=7/HTTP 000；首次停止 HTTP 404 与 `STOPPED` 日志一并保留。
+
+**N-01–N-07 分项裁定：**
+
+| 项目 | 当前判断 | 有限边界 |
+| --- | --- | --- |
+| N-01 身份/隔离 | **VERIFIED（已观察范围）**：两 VM 与快照 UUID、Host-only/独立 MAC、恢复后关闭剪贴板一致 | A 快照保留双向剪贴板；未认证整个 Host 上所有隔离通道/命名空间 |
+| N-02 A Snapshot 锚定 | **VERIFIED**：Snapshot UUID 与原 base VDI 的 `showvminfo` 读回一致，查询 rc=0 | 不是快照创建瞬间全盘字节证明 |
+| N-03 A→B 来源因果 | **VERIFIED / LIMITED**：对话中的精确 `clonevm --snapshot` 操作与原 clone rc=0、新 VM/base VDI 交叉一致 | `clone.stdout` 不含命令全文；不能证明未观察的任意快照后变更被排除 |
+| N-04 新实例 | **VERIFIED**：独立 VM、MAC、base VDI、成功启动运行 | 非真实 AWS / 业务恢复 |
+| N-05 选定 Guest 内容 | **VERIFIED（22 项） / LIMITED（未观测数据）**：19 同值、3 项合理动态差异 | A 的 Guest 观察采于快照之后，非快照时刻整盘 hash |
+| N-06 合成接管 | **VERIFIED**：Host-only HTTP 身份、非空 run ID、停止和故障探针通过 | 不涵盖生产 Web/API/DB、Cloudflare、Clover、Uber 或 Static IP |
+| N-07 原始证据与见证 | **LIMITED**：两份归档字节/内部清单独立复算、历史失败与缺项如实保留 | 原始 Mac Host 的采集真实性没有独立见证；Guest/server 外层 SSH rc 缺失；本轮 Host 查询未另行离机封存 |
+
+**总判定：**`C2-02 NEW-INSTANCE SYNTHETIC RECOVERY VERIFIED (DEFINED SCOPE) / N-07 LIMITED / C2 OPEN / C1 OPEN / C5-G2 NO-GO`。**不因已验证的来源链与合成接管重复创建快照/VM，也不恢复 Marker A/B 为必选项。** C2 关闭前仍需对 N-07 的 Host 来源认证与证据保管边界进行单独书面风险裁定；只有关键不可替代的证据缺口才提出具体最小补证（任何 Host/Guest 写入需另授权）。PR #2864 新批准的 AWS 快照/维护冻结及其同平台 S01–S12 属于**后续独立验收**，不得用本次 VirtualBox 结果宣布其 PASS。
+
+
