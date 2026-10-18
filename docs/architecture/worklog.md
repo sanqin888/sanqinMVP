@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-17 — R1 / B4B-3B-2A 静态 Python / ELF 依赖线索（本地）
+
+**最高状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR**，本地分支 `feat/c5-g2-b4b3b2a-static-dependency-evidence-20261017` 基于 PR #2854 合并后的 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`。B4B-3B-1 已合并：PR #2854，CI #7336 全绿，merge SHA `2bab5fe6`。本批新建独立外置 `ops/runtime/root_python_elf_static_hints.py` 和只用内存源代码/ELF64 人工字节的合成负向测试，提取 Python AST import、ELF PT_DYNAMIC / DT_NEEDED 有限静态依赖线索，记录相对/from/动态导入、ELF 搜索/loader/标签歧义。不是 FD→真实路径认证、完整运行时 import/ELF/dlopen 闭包或来源可信认证；永久拒绝生产 authority。未改 B4B-1/2/3A/3B-1、Runtime 17、业务模块 owner/dependency、CI/依赖/Prisma/部署。文档：[B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md)。MCP-workspace 未运行 lint/build/test，本地 diff/status 审阅后停下等待用户批准远端。后续 3B-2B 真实开链/依赖发现及 3C C2 后实测，均须独立审阅。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+
 ## 2026-10-17 — R1 / B4B-3B-1：只读 FD 依赖证据及离机比对
 
 **最高状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR。** 基于最新 `origin/dev@1bc1381c` 在 `feat/c5-g2-b4b3b1-readonly-dependency-evidence-20261017` 开展。Runtime 在 B4B-3A 有界声明清单外新增两个非授权外置模块（预打开只读 FD 摘要/metadata 收集、离机 manifest/pins/原始记录摘要一致性比对）及合成负向测试，实际 FD→路径独立真实性、外部 pin 保管链、Python/ELF/dlopen 传递依赖发现均保持未认证，不引入 Host/Guest/root 调用或生产入口。D1–D5 R0 冻结设计及原 B4B-1/B4B-2/B4B-3A 不改；17 文件 Runtime Bundle、CI、所有者/依赖边、schema/迁移/依赖锁与运行状态不变。本地工作区未运行 lint/build/test，待用户授权远端后通过 GitHub Actions 检验。详见 [B4B-3B-1 合同](C5-G2-B4B3B1-只读FD证据与离机比对.md)。下一步 B4B-3B-2 真实路径/独立来源与模块发现须单独审阅，B4B-3C 先满足 C2 并另授实际 Guest 命令。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
