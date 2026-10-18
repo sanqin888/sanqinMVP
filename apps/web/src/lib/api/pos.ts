@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
+import type { PaymentExceptionCase } from "@/lib/contracts/payment-exceptions";
 import type { CreateOrderInput, OrderDiscountDisplayEntry } from "@shared/order";
 
 /**
@@ -247,7 +248,37 @@ export async function fetchPosCardPaymentBenefitsReview() {
   );
 }
 
+export type { PaymentExceptionCase } from "@/lib/contracts/payment-exceptions";
+
+export function fetchPosPaymentExceptionCase(attemptId: string) {
+  return apiFetch<PaymentExceptionCase | null>(
+    `/pos/payments/exceptions/attempt/${enc(attemptId)}`,
+  );
+}
+
+export function createPosPaymentExceptionCase(
+  attemptId: string,
+  input: { operatorNote: string; cloverOrderId?: string },
+) {
+  return apiFetch<PaymentExceptionCase>(
+    `/pos/payments/exceptions/attempt/${enc(attemptId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...input, confirmation: "CONFIRM REVIEW" }),
+    },
+  );
+}
+
+export function executePosPaymentExceptionCase(caseStableId: string) {
+  return apiFetch<PaymentExceptionCase>(
+    `/pos/payments/exceptions/case/${enc(caseStableId)}/execute`,
+    { method: "POST" },
+  );
+}
+
 export type PosCardPaymentReviewDetail = PosCardPaymentResult & {
+  currency?: string;
   paymentStatus: PosCardPaymentResult["status"] | null;
   resultCode: string | null;
   externalPaymentId: string | null;

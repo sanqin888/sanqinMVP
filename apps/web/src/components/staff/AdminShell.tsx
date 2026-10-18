@@ -13,6 +13,7 @@ import {
   Menu,
   MonitorSmartphone,
   PackageSearch,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   Store,
@@ -111,6 +112,20 @@ function buildCategories(
           labelZh: 'POS 设备',
           labelEn: 'POS devices',
           icon: MonitorSmartphone,
+        },
+      ],
+    },
+    {
+      id: 'payments',
+      href: `${adminRoot}/payments/exceptions`,
+      labelZh: '支付管理',
+      labelEn: 'Payments',
+      items: [
+        {
+          href: `${adminRoot}/payments/exceptions`,
+          labelZh: '异常处理审批',
+          labelEn: 'Payment exceptions',
+          icon: ShieldAlert,
         },
       ],
     },

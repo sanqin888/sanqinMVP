@@ -1356,6 +1356,11 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
   async claimSandboxManualUnpaid(
     input: SandboxManualUnpaidInput,
   ): Promise<'CLAIMED' | 'ALREADY_CLAIMED' | 'CONFLICT'> {
+    const eligible =
+      (input.originalResultCode === 'CLOVER_TERMINAL_SALE_HTTP_504' &&
+        input.originalFailureCode === 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND') ||
+      input.originalFailureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED';
+    if (!eligible) return 'CONFLICT';
     return this.prisma.$transaction(
       async (tx): Promise<'CLAIMED' | 'ALREADY_CLAIMED' | 'CONFLICT'> => {
         const existing = await tx.paymentTerminalSandboxRecovery.findUnique({
@@ -1389,8 +1394,10 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
             operation: 'SALE',
             provider: 'CLOVER',
             status: 'RECONCILING',
-            resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
-            failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+            resultCode: input.originalResultCode === 'UNRECORDED'
+              ? null
+              : input.originalResultCode,
+            failureCode: input.originalFailureCode,
             providerPaymentId: null,
             externalPaymentId: input.externalPaymentId,
           },

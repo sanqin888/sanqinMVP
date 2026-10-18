@@ -6,6 +6,12 @@ import {
   TerminalPaymentService,
 } from './application/create-payment-attempt.use-case';
 import { RefundPaymentService } from './application/refund-payment.service';
+import { PaymentExceptionCaseService } from './application/payment-exception-case.service';
+import { PaymentExceptionPaymentGuardService } from './application/payment-exception-payment-guard.service';
+import {
+  PAYMENT_EXCEPTION_CASE_REPOSITORY,
+} from './application/payment-exception-case.repository';
+import { PrismaPaymentExceptionCaseRepository } from './infrastructure/prisma/prisma-payment-exception-case.repository';
 import { SandboxTerminalManualRecoveryService } from './application/sandbox-terminal-manual-recovery.service';
 import {
   PAYMENT_PROVIDER_TRANSACTION_LOOKUP,
@@ -48,6 +54,13 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
     PrismaPaymentTransactionRepository,
     PrismaPaymentTerminalOperationRepository,
     PrismaPaymentWebhookEventRepository,
+    PrismaPaymentExceptionCaseRepository,
+    PaymentExceptionCaseService,
+    PaymentExceptionPaymentGuardService,
+    {
+      provide: PAYMENT_EXCEPTION_CASE_REPOSITORY,
+      useExisting: PrismaPaymentExceptionCaseRepository,
+    },
     {
       provide: PAYMENT_TERMINAL_OPERATION_REPOSITORY,
       useExisting: PrismaPaymentTerminalOperationRepository,
@@ -185,6 +198,8 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
     PAYMENT_WEBHOOK_EVENT_REPOSITORY,
     TerminalPaymentService,
     SandboxTerminalManualRecoveryService,
+    PaymentExceptionCaseService,
+    PaymentExceptionPaymentGuardService,
     RefundPaymentService,
     PaymentReverseSyncService,
   ],
