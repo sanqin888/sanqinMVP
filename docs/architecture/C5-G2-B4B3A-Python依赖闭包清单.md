@@ -60,6 +60,8 @@ Linux vDSO 不是常规的可哈希磁盘文件；libcrypto 和其路径别名�
 
 该批已获远端交付批准并由 GitHub Actions 的 api-checks 按既有 Runtime unittest discover 步骤通过；没有执行本地 lint/build/test，也没有 Guest/root 真实采集或执行。当前 R0 文档批已获远端交付授权；交付/CI/合并以该批 PR 最终记录为准。
 
+**B4B-3B-1 当前源码进度（本地待审 / 未运行）：**已经开始有限预打开 FD 字节候选读取与离机哈希比对接口，详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md)。该组件**未**实现完整动态依赖来源发现、第三方信任根或 Guest 真实见证，不得改变本文件非授权语义。
+
 **B4B-3B（后续单独审阅）：**独立可信源/文件哈希采集、真实 Python 传递 import 和 ELF DT_NEEDED/dlopen 发现、真实路径/inode 映射、内核 vDSO、系统包来源与动态环境影响；未知时 fail closed。若需要增加第三方 wheel、zip 导入或其他 ABI 的支持，必须另外审阅新边界。
 
 **B4B-3C（后续单独授权）：**在隔离 VirtualBox Guest 验证，经审阅的精确 root 命令、源码哈希、独立见证与 off-Guest 原始证据保全。此前明确跳过的快照实际恢复仍不满足正式 Gate 0；不可自动豁免。C5-G2 NO-GO、S2 BACKUP PAUSED 始终保持。

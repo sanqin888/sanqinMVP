@@ -57,7 +57,7 @@ D1 不是认证任意当前 root 用户的说法。实验声明 Python 3.12.3 �
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
 | R0 | D1–D5、接口边界、C1–C8、矩阵及全仓现行文档一次收口 | **设计与文档完成；远端交付已授权**，不等待重复批准 D1–D5 |
-| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | NEXT；接口/源码审阅可先做，privileged Guest 试验须 C2 和精确命令批准 |
+| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | IN PROGRESS（B4B-3B-1 只读 FD 候选观察 + 离机摘要比对的本地源码/合成测试已撰写，未执行；仍无真实 Guest 采集、Python/ELF 完整依赖发现、独立来源证明或消费见证）；privileged Guest 试验须先满足 C2 和精确命令批准；参见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md) |
 | R2 | B2B9-N/A：真实有限维护窗口、namespace 与新消费者禁入、原状态恢复 | PLANNED；按冻结接口可与 R1 准备并行；真实试验同样先满足 C2，不启动全消费者协议重构 |
 | R3 | 首先证明真实 crypt/Drive create-only 适配，再组合 S1、实际 app/state 和 mandatory preinstall Kit | PLANNED；独立适配验证可准备，安装用 Kit 必须绑定 C1/C3/C4 与本次持续窗口 |
 | R4 | 实际 root-private install + 新事务 clean reinstall；持久化/交接/不改业务数据 | PLANNED；组合 R1–R3 证据，保留旧 lab fixture 和 guard；不隐藏更换外部 helper |
