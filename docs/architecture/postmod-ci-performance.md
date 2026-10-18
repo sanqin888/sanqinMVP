@@ -1,5 +1,11 @@
 # Post-Modularization CI and Image Build Performance — Batches 1–6
 
+## 2026-10-18 — 全 CI 按影响范围启动（本地待审）
+
+**状态：REMOTE DELIVERY / GITHUB ACTIONS PENDING。** 本批按用户补充要求从 E2E-only 扩展到 Ops 安全、API 静态/Jest、Web、E2E、printer、Windows 和 PR 两镜像检查。完整范围表、真实交叉依赖、汇总成功/跳过门禁与验证计划以 [CI 按变更范围执行](CI按变更范围执行.md) 为准。
+
+保留原检查名、完整测试/迁移重放、静态/镜像 smoke 命令及 main 完整验收；拆开原静态矩阵与混合 Ops 步骤，只有确认无关的 job/step 才跳过。范围失败或未知路径默认全量，汇总不接受必需前置被误跳过。PR 镜像保留原 paths 并加入选择器路径，不扩大普通应用源码触发；main 成对发布/proof/seal 不变。无依赖/锁、schema/迁移、业务 owner/图/基线、生产与权限变更；本地和远端均未执行验证。下文六批历史验收保留。
+
 Date: 2026-10-04  
 Baseline: `origin/dev@6e7b4fbd2067892bf4cf990d2a193dd92e366957`  
 Batch 1: **MERGED / PR #2694 / MERGE `d1fdac78` / PR CI #6902 GREEN / DEV PUSH CI #6903 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
