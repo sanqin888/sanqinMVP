@@ -1,6 +1,6 @@
 # CI 按变更范围执行
 
-**状态：REMOTE DELIVERY / GITHUB ACTIONS PENDING。** 本批从仅条件化 Browser E2E 扩展到全部普通 CI lane 与 PR 镜像检查，用户于 2026-10-18 Toronto 明确要求“其他进程也修改为无关的不启动”。源码基线 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`；在交付分支 `ci/dependency-aware-check-scope-20261018` 完成同批增量，用户已授权远端交付；交付基线为最新 `origin/dev@2db85d32541f05e7e3268e7f5a2013812d59690e`，CI/合并以 PR 最终 head Checks 与事件为权威。
+**状态：REMOTE DELIVERY / [PR #2856](https://github.com/sanqin888/sanqinMVP/pull/2856) / CI+MERGE: SEE PR FINAL HEAD。** 本批从仅条件化 Browser E2E 扩展到全部普通 CI lane 与 PR 镜像检查，用户于 2026-10-18 Toronto 明确要求“其他进程也修改为无关的不启动”。源码基线 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`；在交付分支 `ci/dependency-aware-check-scope-20261018` 完成同批增量，用户已授权远端交付；交付基线为最新 `origin/dev@2db85d32541f05e7e3268e7f5a2013812d59690e`，CI/合并以 PR 最终 head Checks 与事件为权威。
 
 ## 当前规则
 
