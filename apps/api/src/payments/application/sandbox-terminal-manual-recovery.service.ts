@@ -102,7 +102,7 @@ export class SandboxTerminalManualRecoveryService {
     if (
       original.status !== 'RECONCILING' ||
       (!historicalAllFailed &&
-        original.resultCode !== 'CLOVER_TERMINAL_SALE_HTTP_504' ||
+        (original.resultCode !== 'CLOVER_TERMINAL_SALE_HTTP_504' ||
           original.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND')) ||
       original.providerPaymentId !== null ||
       !original.externalPaymentId ||
@@ -129,7 +129,8 @@ export class SandboxTerminalManualRecoveryService {
     const latest = checked.toSnapshot();
     if (
       checked.status !== 'RECONCILING' ||
-      (!historicalAllFailed && latest.resultCode !== 'CLOVER_TERMINAL_SALE_HTTP_504') ||
+      (!historicalAllFailed &&
+        latest.resultCode !== 'CLOVER_TERMINAL_SALE_HTTP_504') ||
       latest.failureCode !== (historicalAllFailed
         ? 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'
         : 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND') ||
@@ -198,13 +199,13 @@ export class SandboxTerminalManualRecoveryService {
       canonical.status !== 'UNKNOWN' ||
       canonical.failureCode !== expectedCode ||
       (expectedCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED' &&
-        canonical.evidence !== 'CANONICAL' ||
+        (canonical.evidence !== 'CANONICAL' ||
           canonical.paymentId !== identity.id ||
-        canonical.attemptId !== identity.attemptId ||
-        canonical.idempotencyKey !== identity.idempotencyKey ||
-        canonical.providerPaymentId != null ||
-        canonical.externalPaymentId !== identity.externalPaymentId ||
-        canonical.amountCents !== identity.amountCents ||
+          canonical.attemptId !== identity.attemptId ||
+          canonical.idempotencyKey !== identity.idempotencyKey ||
+          canonical.providerPaymentId != null ||
+          canonical.externalPaymentId !== identity.externalPaymentId ||
+          canonical.amountCents !== identity.amountCents ||
           canonical.currency !== identity.currency))
     ) {
       if (canonical.status === 'SUCCEEDED') {

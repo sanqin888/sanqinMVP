@@ -1401,9 +1401,10 @@ export class PrismaPaymentTerminalOperationRepository implements PaymentTerminal
             operation: 'SALE',
             provider: 'CLOVER',
             status: 'RECONCILING',
-            resultCode: input.originalResultCode === 'UNRECORDED'
-              ? null
-              : input.originalResultCode,
+            resultCode:
+              input.originalResultCode === 'UNRECORDED'
+                ? null
+                : input.originalResultCode,
             failureCode: input.originalFailureCode,
             providerPaymentId: null,
             externalPaymentId: input.externalPaymentId,
@@ -1719,32 +1720,33 @@ export class PrismaPaymentExceptionCaseRepository implements PaymentExceptionCas
     complete: boolean,
     failureCode?: string,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.paymentExceptionCase.updateMany({
+    await this.prisma.$transaction(
+      async (tx) => {
+        const updated = await tx.paymentExceptionCase.updateMany({
           where: { caseStableId, status: 'EXECUTING' },
-        data: { status: complete ? 'COMPLETED' : 'NEEDS_REVIEW' },
-      });
-      if (updated.count !== 1) return;
-      await tx.paymentExceptionExecution.update({
+          data: { status: complete ? 'COMPLETED' : 'NEEDS_REVIEW' },
+        });
+        if (updated.count !== 1) return;
+        await tx.paymentExceptionExecution.update({
           where: { caseStableId },
-        data: {
-          finishedAt: complete ? new Date() : null,
+          data: {
+            finishedAt: complete ? new Date() : null,
             failureCode: complete
               ? null
               : (failureCode ?? 'RECOVERY_INCOMPLETE'),
-        },
-      });
+          },
+        });
         await tx.paymentExceptionEvidence.create({
-        data: {
-          caseStableId,
-          source: 'SANQ_RECOVERY_CHECKPOINT',
+          data: {
+            caseStableId,
+            source: 'SANQ_RECOVERY_CHECKPOINT',
             resultCode: complete
               ? 'RECOVERY_COMPLETED'
               : 'RECOVERY_NEEDS_REVIEW',
-          description: failureCode ?? 'Owner checkpoints evaluated',
+            description: failureCode ?? 'Owner checkpoints evaluated',
             observedAt: new Date(),
-        },
-      });
+          },
+        });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );

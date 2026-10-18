@@ -216,7 +216,8 @@ export class PosPaymentExceptionController {
   async submit(
     @Req() req: PosDeviceRequest,
     @Param('attemptId') attemptId: string,
-    @Body(new ZodValidationPipe(CreateSchema)) body: z.infer<typeof CreateSchema>,
+    @Body(new ZodValidationPipe(CreateSchema))
+    body: z.infer<typeof CreateSchema>,
   ) {
     const { actor, store } = this.identity(req);
     const row = await this.exceptions.submit(
@@ -287,7 +288,9 @@ export class AdminPaymentExceptionController {
     const actor = req.user?.userStableId?.trim();
     if (!actor) throw new UnauthorizedException('Admin identity required');
     const target = await this.exceptions.getForAdmin(caseStableId);
-    if (!target) throw new UnauthorizedException('Case not in admin review scope');
+    if (!target) {
+      throw new UnauthorizedException('Case not in admin review scope');
+    }
     const row = await this.exceptions.execute(
       caseStableId,
       target.storeStableId,

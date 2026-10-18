@@ -263,7 +263,8 @@ export class PosCardPaymentOrchestrationService {
     approvedExceptionCase = false,
   ): Promise<PosCardPaymentView> {
     this.requireEnabled();
-    if (!(approvedExceptionCase
+    if (
+      !(approvedExceptionCase
         ? this.sandboxRecovery.isIsolatedSandbox()
         : this.sandboxRecovery.isEnabled())
     ) {
@@ -343,7 +344,8 @@ export class PosCardPaymentOrchestrationService {
       }
       // Fresh canonical NOT_FOUND + verified idle/Welcome are separately
       // required before clearing this durable terminal fence.
-      terminalReady = await (approvedExceptionCase
+      terminalReady = await (
+        approvedExceptionCase
           ? this.sandboxRecovery.finishSandboxManualUnpaid(
               attemptId,
               storeStableId,

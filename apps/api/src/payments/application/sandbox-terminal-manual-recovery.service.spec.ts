@@ -173,17 +173,20 @@ describe('SandboxTerminalManualRecoveryService', () => {
   });
 
   it('accepts historical exhaustive ALL_FAIL only via an isolated approved PEM case', async () => {
-    const { service, operations, terminalPayments, setPayment } = createHarness();
+    const { service, operations, terminalPayments, setPayment } =
+      createHarness();
     jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
-    setPayment(originalPayment().recordProviderObservation({
-      status: 'UNKNOWN',
-      resultCode: 'CLOVER_CANCELLED',
-      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    setPayment(
+      originalPayment().recordProviderObservation({
+        status: 'UNKNOWN',
+        resultCode: 'CLOVER_CANCELLED',
+        failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
       }),
     );
-    await expect(service.acceptSandboxManualUnpaid({
-      ...input,
-      approvedExceptionCase: true,
+    await expect(
+      service.acceptSandboxManualUnpaid({
+        ...input,
+        approvedExceptionCase: true,
       }),
     ).resolves.toMatchObject({ status: 'FAILED' });
     expect(terminalPayments.reconcile.mock.calls).toEqual([[paymentId]]);
@@ -198,10 +201,11 @@ describe('SandboxTerminalManualRecoveryService', () => {
   it('does not accept ALL_FAIL through the legacy R2 entry', async () => {
     const { service, operations, setPayment } = createHarness();
     jest.spyOn(service, 'isEnabled').mockReturnValue(true);
-    setPayment(originalPayment().recordProviderObservation({
-      status: 'UNKNOWN',
-      resultCode: 'CLOVER_CANCELLED',
-      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    setPayment(
+      originalPayment().recordProviderObservation({
+        status: 'UNKNOWN',
+        resultCode: 'CLOVER_CANCELLED',
+        failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
       }),
     );
     await expect(service.acceptSandboxManualUnpaid(input)).rejects.toThrow(
@@ -213,9 +217,10 @@ describe('SandboxTerminalManualRecoveryService', () => {
   it('rechecks exact canonical identity before finalizing an ALL_FAIL recovery', async () => {
     const { service, operations, provider, setPayment } = createHarness();
     jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
-    setPayment(originalPayment().applyProviderOutcome({
-      status: 'FAILED',
-      resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
       }),
     );
     operations.getSandboxManualUnpaidDecision.mockResolvedValue({
@@ -253,8 +258,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
   it('keeps the terminal fenced if the ALL_FAIL canonical amount conflicts', async () => {
     const { service, operations, provider, setPayment } = createHarness();
     jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
-    setPayment(originalPayment().applyProviderOutcome({
-      status: 'FAILED',
+    setPayment(
+      originalPayment().applyProviderOutcome({
+        status: 'FAILED',
         resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
       }),
     );

@@ -207,14 +207,9 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
       ],
     ]);
     expect(tx.paymentExceptionExecution.update.mock.calls).toHaveLength(1);
-    expect(tx.paymentExceptionEvidence.create.mock.calls).toEqual([
-      [
-        expect.objectContaining({
-          data: expect.objectContaining({
-            resultCode: 'RECOVERY_COMPLETED',
-          }),
-        }),
-      ],
-    ]);
+    expect(tx.paymentExceptionEvidence.create.mock.calls).toHaveLength(1);
+    expect(
+      JSON.stringify(tx.paymentExceptionEvidence.create.mock.calls),
+    ).toContain('"resultCode":"RECOVERY_COMPLETED"');
   });
 });

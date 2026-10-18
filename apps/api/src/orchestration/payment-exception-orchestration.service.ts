@@ -83,7 +83,8 @@ export class PaymentExceptionOrchestrationService {
     if (mode === 'SANDBOX' && action === 'INVESTIGATE_ONLY') {
       throw new ConflictException({
         code: 'PAYMENT_EXCEPTION_NO_SAFE_SANDBOX_ACTION',
-        message: 'The payment remains unresolved without eligible manual evidence.',
+        message:
+          'The payment remains unresolved without eligible manual evidence.',
       });
     }
     if (action === 'SANDBOX_CONFIRM_UNPAID' && !cloverOrderId?.trim()) {

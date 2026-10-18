@@ -138,13 +138,14 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
         terminalOperationState: 'FINALIZED',
       });
     await service.execute(baseCase.caseStableId, storeStableId);
-    expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toEqual([[
-      storeStableId,
+    expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toEqual([
+      [
+        storeStableId,
         attemptId,
-      'staff-one',
-      '2YJK1ED5GTZZG',
-      baseCase.operatorNote,
-      true,
+        'staff-one',
+        '2YJK1ED5GTZZG',
+        baseCase.operatorNote,
+        true,
       ],
     ]);
     expect(cases.finish.mock.calls).toEqual([
@@ -172,7 +173,11 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
     ).rejects.toThrow('PAYMENT_EXCEPTION_FROZEN_IDENTITY_CONFLICT');
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
     expect(cases.finish.mock.calls).toEqual([
-      [baseCase.caseStableId, false, 'PAYMENT_EXCEPTION_FROZEN_IDENTITY_CONFLICT'],
+      [
+        baseCase.caseStableId,
+        false,
+        'PAYMENT_EXCEPTION_FROZEN_IDENTITY_CONFLICT',
+      ],
     ]);
   });
 
