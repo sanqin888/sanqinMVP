@@ -209,6 +209,10 @@ Daily S2 配置扩充/接线按已批准 D4 **on hold until v1/C5 is accepted**�
 
 B4B-3B-1 的 FD 候选观察与离机比对已通过 PR #2854 / CI #7336 / merge `2bab5fe6` 进入 dev，但它不证明路径来源或完整依赖。下一本地切片 B4B-3B-2A 新建外置 `ops/runtime/root_python_elf_static_hints.py`，只对调用方传入的不可变字节执行 AST 解析和 ELF64 x86-64 小端 PT_DYNAMIC / DT_NEEDED 静态提取，记录不明确的 from/relative/dynamic import、RPATH/RUNPATH、ELF interpreter/未知标签。该线索**不是实际运行进程加载闭包或独立可信哈希**，不打开路径、不调用真实 root、ld.so/动态加载器，也不执行任何代码；测试仅为非 root 人工字节 fixture，尚未运行。所有 receipt 永远 `decision=BLOCKED`、`transitiveDependencyClosureVerified=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。已有 3A/3B-1 不修改；R0 D1/C1/C2、17 文件 Bundle 与 S2 gate 不变。详见 [B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md)。实际可信文件安全开链、真实动态 import/ELF 来源与独立见证留待 3B-2B/3C 单独审阅。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
 
+## 2026-10-18 — R1 B4B-3B-2B1 受控目录 FD 候选路径开启（本地，未运行）
+
+PR #2855 的 B4B-3B-2A 已经在 dev 合并为 `2db85d32`。本批独立新建 `ops/runtime/root_python_dependency_path_fds.py`，基于**调用方先前打开但尚未独立认证来源**的根目录 FD，对 B4B-3A manifest 中的候选文件逐级使用 `dir_fd` + `O_NOFOLLOW` + 目录项/FD 元数据一致性检查，借出只读 FD 给已合并的 B4B-3B-1；上下文结束后复核并关闭 FD。只使用 CI 临时树合成测试，不执行任何真实 Python/ELF 或 Guest/root 命令；并不替代独立 `/` root anchor、软件包来源、usrmerge symlink 别名、动态 import/ELF/dlopen 传递闭包或独立执行见证。为避免静默降低安全语义，Ubuntu `/lib64` 等 symlink 路径目前**有意 fail-closed**，后续必须另审可信别名策略与真正运行态证据。旧 B4B-1/2/3A/3B-1/3B-2A 和 17 文件 Bundle 均不修改；当前 `C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED`。详见 [B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。本地代码/测试已编写，CI 未运行。
+
 ## 6. Validation and exit
 
 G2-A tests under existing CI `api-checks`:

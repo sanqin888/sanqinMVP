@@ -1,6 +1,6 @@
 # C5-G2 / R1 B4B-3B-2A — Python / ELF 静态依赖线索提取
 
-**当前状态：** LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING。  
+**当前状态：**已合并 `dev`（PR #2855；merge `2db85d32`；原 PR 经过一次合成 ELF fixture 重叠修复）；仅 CI 合成分析完成，未进行真实 Guest/ELF 执行。下阶段本地独立候选路径 FD 开启见 [B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。  
 **工作分支：** `feat/c5-g2-b4b3b2a-static-dependency-evidence-20261017`，基线为 PR #2854 合并后的 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`。  
 **归属：** Runtime/Ops 边界内的离线审阅组件；不属于冻结的 Runtime 17 文件 Bundle。
 

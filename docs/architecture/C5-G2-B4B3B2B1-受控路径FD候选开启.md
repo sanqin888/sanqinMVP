@@ -1,0 +1,29 @@
+# C5-G2 / R1 B4B-3B-2B1 — 受控路径 FD 候选开启
+
+**日期：**2026-10-18（America/Toronto）。**状态：**本地源码和合成测试已编写；未运行 lint / build / test；待用户审阅。**生产：**C5-G2 NO-GO；S2 DAILY CONFIG EXPANSION PAUSED（现役备份 timer 不受影响）。
+
+**基线：**最新 `origin/dev`；PR #2855 已在 `dev` 形成 merge `2db85d32`；本地分支 `feat/c5-g2-b4b3b2b1-fd-anchored-paths-20261018`。**归属：**Runtime / Ops 的外置、非授权组件；不属于冻结的 17 文件 Runtime Bundle。
+
+## 1. 第一批范围与现有合同
+
+B4B-3A 只审查调用方提出的依赖清单，B4B-3B-1 从**预打开 FD** 读出哈希与元数据，B4B-3B-2A 只静态解析内存 Python/ELF 字节。至此仍缺少安全的路径分段开启与目录项/FD 身份一致性检查。本批新增 `ops/runtime/root_python_dependency_path_fds.py`，以已打开、但**独立信任来源未认证**的根目录 FD 为锚点，逐段以 `openat(dir_fd=...)` 和 `O_NOFOLLOW` 打开 B4B-3A 白名单中的文件；通过上下文管理器把有界只读 FD 暂借给现有 B4B-3B-1 观察器，并在进入、退出时重新对照目录项和已经持有的 FD。测试中可使用可丢弃的私有目录作为**模拟根**；绝不声称这是 host `/`。
+
+与仓库既有 `root_private_source_fd.py` 的固定目录 FD、`O_NOFOLLOW`、`fstat`、`stat(follow_symlinks=False)` 和元数据比对策略保持一致；不变更或复用其真实 Operator root-private 源路径职责。**没有 CLI、sudo/VM/root 执行入口、安装器、任意 `/root` 或 `/opt/sanq/runtime` 访问、真实 Guest 数据采集、候选 Python/ELF 执行、权限变更、网络访问、子进程、生产状态写入或新依赖。**
+
+## 2. 严格检查
+
+- 只接受结构与哈希声明符合 B4B-3A 的 manifest 中**恰好声明**的文件型路径；最多 64 个候选文件，单文件最多 32 MiB，路径最多 12 段；不以被篡改的相对路径或 `..` 退出锚点。超过预算直接拒绝；不静默跳过。
+- 调用方预交付一个只读目录 FD，要求锚点、后续目录、文件的 owner 为 root:root（非 root 临时测试另以明确的 fixture UID/GID 提供）。验证类型、同一 device、无 group/other write、无 setuid/setgid、文件硬链接计数 1、大小有界；通过目录项与 FD 的 dev/inode/mode/metadata 绑定阻止已检测的替换。
+- 对路径**每一段**使用目录 FD 相对寻址、`O_DIRECTORY`（目录）、`O_NOFOLLOW`、`O_CLOEXEC`；最终文件使用 `O_NONBLOCK`，避免在遇到 FIFO 等非普通文件时阻塞。父目录和文件的身份在交出只读 FD 前及结束后重新检查；检测到变化则 fail-closed，最后始终关闭内部 FD。
+- **有意不接受**软链接、挂载设备变化和路径别名。Ubuntu `/lib64`、`/lib` 可能通过 usrmerge 符号链接映射到 `/usr/lib`；当前 v1 会拒绝，不能简单放宽 `O_NOFOLLOW` 或手工调用 `realpath` 当作安全旁路。真实 Ubuntu 的别名解析、可信实体身份与 B4B-3A manifest 路径语义必须作为后续架构/证据门槛单独审阅。
+- `_fixture_owner_uid` / `_fixture_owner_gid` 仅用于合成测试，绝不是生产授权入口。调用方输入的 anchor 甚至可能根本不对应主机 `/`；FD 检查**不能独立认证** anchor 信任根、父 namespace、外部 SHA pin 的来源、软件包来源、加载前后的全部竞态窗口或整机隔离。
+
+## 3. 测试、CI 与未完成门禁
+
+新增 `ops/runtime/tests/test_root_python_dependency_path_fds.py`，只在 CI 临时私有目录构造虚假的 `/usr/bin/python3.12` 与 `/lib64/ld-linux-x86-64.so.2` 相对路径（**不是**真正的 Python 或 ELF 程序），检查稳定 FD 交接到 B4B-3B-1、使用结束关闭、符号链接、权限、硬链接、缺失文件、错误 hash、未受信任锚点模式及确定性的捕获后替换拒绝。真实系统没有执行、加载或读取。
+
+当前最新 CI 是依赖范围选择工作流：`.github/workflows/ci.yml` `ops-checks` 的 Runtime 步骤将运行 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`；当前本地无法执行，须在用户批准远端提交后的 PR CI 才能标记验证。不得用之前 `api-checks` 的旧工作流名称声称此次已通过。
+
+**尚未实现 / 不因本批 PASS：**真正主机 `/` 锚点的独立认证、Ubuntu usrmerge 别名的可信解析、所有文件/软件包的外部来源 pin、完整 CPython 动态 import 和 ELF/dlopen 依赖图、运行中 namespace/替换攻击的连续阻断、离机证据与独立 root 消费见证。B4B-3C 新 root/Guest 实测仍先受 R0 C2 约束，历史跳过 snapshot restore 的例外不豁免恢复门禁。
+
+**结果语义：**本组件仅提供候选 FD；B4B-3B-1 观察 receipt 仍是 `decision=BLOCKED`、`preopenedFDAndPathProvenanceAuthenticated=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。不自动扩展 B4B-3A/B4B-3B-1 的公共合同，也不增加正式 C1–C8 任何 PASS。

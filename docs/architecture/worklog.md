@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 / B4B-3B-2B1：受控路径 FD 候选开启
+
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NO CI / USER REVIEW PENDING / NO PR。** 基于最新 `origin/dev@b309c1bb` 的独立分支 `feat/c5-g2-b4b3b2b1-fd-anchored-paths-20261018`。承接 PR #2855 已合并 `dev@2db85d32` 的 Python AST / ELF 静态线索，按照 R0 D1 最小增量新增 `root_python_dependency_path_fds.py` 与纯临时文件合成测试：由调用方传入不自证的 root-anchor FD，基于 B4B-3A 的候选白名单逐段只读、nofollow 开启，保留入口/FD/owner/device/inode/permissions 身份、预借出/结束后复核，供 B4B-3B-1 候选摘要读取。会严格拒绝真实 Ubuntu `/lib64` 等 usrmerge symlink（不能擅自放宽），不证明 `/` 根锚与外部来源，也不执行真实系统/Guest/root。未改旧组件公共合同、17 文件 Runtime Bundle、模块归属/架构基线、CI/依赖/数据库/生产状态。根据最新 CI 范围选择机制，Runtime 测试应在 `ops-checks` 运行；MCP-workspace 不开放测试权限，本批未验证。见 [B4B-3B-2B1 文档](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。下一步需独立评审真实 usrmerge 路径解析、可信锚点与离机来源、Python/ELF 动态闭包及 B4B-3C C2 真实恢复演练；**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+
 ## 2026-10-18 — CI：全部作业按变更范围启动（同批扩展）
 
 **最高状态：REMOTE DELIVERY / [PR #2856](https://github.com/sanqin888/sanqinMVP/pull/2856) / CI+MERGE: SEE PR FINAL HEAD。** 交付分支 `ci/dependency-aware-check-scope-20261018` ，源码审阅基线 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`。按用户补充要求，将本批 E2E-only 选择器原子替换为通用 CI 范围与汇总合同；Ops 安全/API 静态/Jest/Web/E2E/printer/Windows 与两镜像仅在有关时启动。保留 API Jest 对 Web 源码的真实架构依赖、Runtime/Release 相互导入、workspace manifests 对两端的影响；原检查名、汇总失败语义、main 完整验收、成对发布/证明不变。不新增依赖/Action/权限，不改业务代码、owner/依赖图/架构基线、schema/migration、17 文件 Bundle 或生产。已编写合成 Git/汇总边界测试，但未在本地或远端执行；用户已授权远端交付；交付基线为最新 `origin/dev@2db85d32541f05e7e3268e7f5a2013812d59690e`，CI/合并以 PR 最终 head Checks 与事件为权威。详见 [CI 范围合同](CI按变更范围执行.md) 与 [CI 工作包](postmod-ci-performance.md)。本条替换同批原 E2E-only 记录，不重复登记批次。
