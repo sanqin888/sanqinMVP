@@ -201,6 +201,10 @@ Daily S2 配置扩充/接线按已批准 D4 **on hold until v1/C5 is accepted**�
 
 **MERGED / SYNTHETIC CI GREEN：PR #2848，merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061`，CI #7315 / run `39077195858`。** 按用户授权新增独立 `ops/runtime/root_python_dependency_manifest.py`，对 Python 3.12.3、固定 `-I -S -B`、stdlib .py/package、native extension、ELF loader、native shared objects、builtin/frozen/vDSO 构建**仅基于调用方声明**的有限依赖图与 SHA-256 清单结构检查。要求规范绝对路径、文件 pin 一一对应、manifest digest 声明一致、缺失/额外/未知边拒绝以及无游离节点的有界图遍历；循环允许，不能把静态图视为真实完整 Runtime 闭包。对应合成测试已随该 PR 的 GitHub CI 通过；没有 Guest/root 执行或真实文件清单采集。旧 B4B-1 direct-only 原型与 B4B-2 固定字节消费者保持不变，不增加根启动器、真实验证器、执行能力、Bundle 17 成员或生产权限。所有结构符合也仍返回 `decision=BLOCKED`、`pythonRuntimeDependencyClosureVerified=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。架构文档：[B4B-3A Python 依赖闭包清单](./C5-G2-B4B3A-Python依赖闭包清单.md)。后续 B4B-3B 需独立可信的文件/传递导入与 ELF 来源采集；B4B-3C 须另行授权隔离 Guest 命令、独立见证与证据链。**C5-G2 NO-GO；S2 BACKUP PAUSED。**
 
+## 2026-10-17 — R1 B4B-3B-1 FD 候选证据与离机校验第一批（LOCAL / NOT RUN）
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / USER REVIEW PENDING / CI NOT RUN / NO ROOT OR GUEST TEST.** 根据 R0 冻结 D1，在既有 B4B-3A 声明清单外增加两个独立非授权组件：`root_python_dependency_fd_observer.py` 只读取受外部调用方预先打开的有界、只读普通 FD，记录真实读到的字节 digest 和 fstat 元数据；`root_python_dependency_offline_review.py` 用独立参数传入的 manifest、文件哈希、观察记录 canonical hash 进行严格离机候选比对。**输入 pin/receipt 的外部保管/可信来源和 FD→真实路径开链均未被该代码认证；Python import/ELF DT_NEEDED/dlopen 真实依赖自动发现亦未完成**，不能从两个同源参数得到独立信任。成功时仍 `decision=BLOCKED`、所有独立来源/完整闭包/安装权威字段为 false；旧 B4B-1/B4B-2/B4B-3A、冻结 Bundle 17 不改，无生产或 Guest 命令。测试覆盖负向污染、缺失/额外 FD、metadata 和 pins 漂移、伪造权限和 off-Guest 记录异常。详情见 [B4B-3B-1 文档](./C5-G2-B4B3B1-只读FD证据与离机比对.md)。后续 B4B-3B-2 独立审阅路径可信打开与完整导入发现，B4B-3C 先按 R0 C2 满足 Guest 恢复证据再另行申请实际 root 操作。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+
 ## 6. Validation and exit
 
 G2-A tests under existing CI `api-checks`:
