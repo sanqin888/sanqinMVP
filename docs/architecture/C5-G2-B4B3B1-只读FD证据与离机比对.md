@@ -1,7 +1,7 @@
 # C5-G2 / R1 B4B-3B-1 — 只读 FD 依赖证据与离机比对
 
 **日期：**2026-10-17（America/Toronto）  
-**状态：**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING。  
+**状态（现行）：**MERGED / SYNTHETIC CI GREEN：PR #2854、head `b0bca85a46c067ed0c42fcd34e5746523dc6c78d`、CI #7336 7/7、dev merge `2bab5fe653babb89092f5c102a159d23edc81988`。原本地审阅已结束；仍 **NOT REAL GUEST/ROOT VERIFIED**，外部 pin 保管链、FD→路径身份和动态依赖闭包均未独立认证。后续纯内存静态提取见 [B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md)。  
 **权威设计：**[R0 冻结设计](Runtime更新-R0冻结设计.md) D1 / C1 / R1；[B4B-3A](C5-G2-B4B3A-Python依赖闭包清单.md)。  
 **安全门槛：**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED；不改变现役备份 timer。
 

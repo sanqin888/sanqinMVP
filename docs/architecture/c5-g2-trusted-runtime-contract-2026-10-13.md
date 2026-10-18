@@ -205,6 +205,10 @@ Daily S2 配置扩充/接线按已批准 D4 **on hold until v1/C5 is accepted**�
 
 **LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / USER REVIEW PENDING / CI NOT RUN / NO ROOT OR GUEST TEST.** 根据 R0 冻结 D1，在既有 B4B-3A 声明清单外增加两个独立非授权组件：`root_python_dependency_fd_observer.py` 只读取受外部调用方预先打开的有界、只读普通 FD，记录真实读到的字节 digest 和 fstat 元数据；`root_python_dependency_offline_review.py` 用独立参数传入的 manifest、文件哈希、观察记录 canonical hash 进行严格离机候选比对。**输入 pin/receipt 的外部保管/可信来源和 FD→真实路径开链均未被该代码认证；Python import/ELF DT_NEEDED/dlopen 真实依赖自动发现亦未完成**，不能从两个同源参数得到独立信任。成功时仍 `decision=BLOCKED`、所有独立来源/完整闭包/安装权威字段为 false；旧 B4B-1/B4B-2/B4B-3A、冻结 Bundle 17 不改，无生产或 Guest 命令。测试覆盖负向污染、缺失/额外 FD、metadata 和 pins 漂移、伪造权限和 off-Guest 记录异常。详情见 [B4B-3B-1 文档](./C5-G2-B4B3B1-只读FD证据与离机比对.md)。后续 B4B-3B-2 独立审阅路径可信打开与完整导入发现，B4B-3C 先按 R0 C2 满足 Guest 恢复证据再另行申请实际 root 操作。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
 
+## 2026-10-17 — R1 B4B-3B-2A 有界 Python/ELF 静态线索解析（LOCAL / NOT RUN）
+
+B4B-3B-1 的 FD 候选观察与离机比对已通过 PR #2854 / CI #7336 / merge `2bab5fe6` 进入 dev，但它不证明路径来源或完整依赖。下一本地切片 B4B-3B-2A 新建外置 `ops/runtime/root_python_elf_static_hints.py`，只对调用方传入的不可变字节执行 AST 解析和 ELF64 x86-64 小端 PT_DYNAMIC / DT_NEEDED 静态提取，记录不明确的 from/relative/dynamic import、RPATH/RUNPATH、ELF interpreter/未知标签。该线索**不是实际运行进程加载闭包或独立可信哈希**，不打开路径、不调用真实 root、ld.so/动态加载器，也不执行任何代码；测试仅为非 root 人工字节 fixture，尚未运行。所有 receipt 永远 `decision=BLOCKED`、`transitiveDependencyClosureVerified=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。已有 3A/3B-1 不修改；R0 D1/C1/C2、17 文件 Bundle 与 S2 gate 不变。详见 [B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md)。实际可信文件安全开链、真实动态 import/ELF 来源与独立见证留待 3B-2B/3C 单独审阅。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+
 ## 6. Validation and exit
 
 G2-A tests under existing CI `api-checks`:
