@@ -33,6 +33,7 @@ D1 不是认证任意当前 root 用户的说法。实验声明 Python 3.12.3 �
 | B4B-3A 依赖清单 | PR #2848 已合并；merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061`；final head `d4d5513f5dc734e0f9b9321e99e49582073cd263`；CI #7315 / run `39077195858` 通过 | 仅合成声明图校验；没有真实文件采集、独立来源认证或真实 Operator 执行 |
 | B4B-2 Guest 实验 | 操作员报告固定合成字节机制 8/8；hash/原证据定位见对应验收文档 | 不是真实解释器完整闭包、独立见证或安装资格；曾跳过实际 snapshot restore，不豁免 C2 |
 | B2B8 / H-01–H-08 | B2B8 仅 S1/S2/S11；H 系列为有限负向证据（H08 4/4） | 未形成可阻止新消费者的真实整机屏障，namespace/观察完整性仍需 R2 |
+| C2-0 / C2-1A–D 生产式恢复模拟（2026-10-18） | 用户报告 VirtualBox Host/Guest 普通用户观察、来源快照克隆新 VM、Host-only HTTP 合成接管及两组原件 Google Drive 下载 SHA 校验；详见 [B2B2 §9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) | 未执行原 C2-02 `snapshot restore`、未认证完整外部见证；无真实 SanQ 数据/服务/生产 DR 认证，不关闭 C2 |
 | 正式更新与独立恢复 | 仍缺真实执行闭包、维护禁入、真实 Kit 适配、正式安装/重装组合及同候选矩阵 | C1–C8 均无整门禁 PASS；生产 NO-GO |
 
 上述是源码/已有证据核对，不是重新检查任何生产主机、Guest、快照、凭据或远端对象当前存在。已安装 Runtime 的历史身份仍见[发布与 Runtime 状态](../runbooks/GHCR发布与Runtime状态.md)，不能用 dev SHA 替代 installed source 或 app image SHA。
@@ -42,7 +43,7 @@ D1 不是认证任意当前 root 用户的说法。实验声明 Python 3.12.3 �
 | 门禁 | 关闭条件 | 当前状态及主要后续 |
 | --- | --- | --- |
 | C1 来源与可信执行 | 旧/新原始 Archive、发布 proof、Bootstrap/Operator 外部 pins；实际解释器/loader/完整传递依赖；FD 材料确实被受限执行，未知拒绝 | OPEN：B4B-3A 仅声明，R1 完成真实采集/执行/独立见证 |
-| C2 可恢复的隔离环境 | Guest/磁盘/隔离/无生产资产/FS/UID/平台已独立检查，批准的恢复基线实际演练成功，原始证据离机保全 | OPEN：历史跳过 restore 不豁免；任何新 privileged Guest 试验前先满足 |
+| C2 可恢复的隔离环境 | Guest/磁盘/隔离/无生产资产/FS/UID/平台已独立检查，批准的恢复基线实际演练成功，原始证据离机保全 | **OPEN**：2026-10-18 操作员完成 C2-0 Host/Guest 有限观察与云端取回校验，并完成 C2-1A–D 从指定 snapshot 克隆新 VM、启动、合成 HTTP 切换及证据取回校验；但原 C2-02 要求的实际 `snapshot restore`、受控 pre/post 差异标记、独立外部见证及缺失 SSH rc 尚未补齐，不可据此进行 privileged Guest 实测。详见 [B2B2 §9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) |
 | C3 应用与存储一致性 | 本次 current/previous/env/running image、17+Manifest、C4、project/DB/Uploads 及外部安装副本相容，无 pending/未明事故 | OPEN：R3/R4，生产前另做当前主机核对 |
 | C4 维护排他与禁入 | 精确入口控制、排空、PID/FD/inode/namespace 及完整持续观察；未知/预算不足拒绝；原触发状态恢复 | OPEN：R2 真实有限窗口，负向样本不代替正向禁入 |
 | C5 可恢复的离机 Kit | 真实 create-only、冲突/重试无覆盖；完整独立取回解密读回；旧/新原 Archive 与 live config、长期 proof/保留/escrow 可用 | OPEN：R3；S2 daily 扩充不是前置 |
@@ -57,7 +58,7 @@ D1 不是认证任意当前 root 用户的说法。实验声明 Python 3.12.3 �
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
 | R0 | D1–D5、接口边界、C1–C8、矩阵及全仓现行文档一次收口 | **设计与文档完成；远端交付已授权**，不等待重复批准 D1–D5 |
-| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 已合并 PR #2855（dev `2db85d32`），提供仅内存 AST/ELF 静态线索；B4B-3B-2B1 已合并 PR #2857 / CI #7344（run `39098295751`）/ dev `1a82caff`，仅实现严格 no-follow 的候选目录 FD 逐段开启与合成测试；B4B-3B-2B2 设计已由 PR #2858 / CI #7346 合并（dev `c9db47b7`），其 2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`；CI #7348 / run `39101080529` 选中作业成功，Runtime 281 / Release 45 合成 tests OK；dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`），仅纯内存 alias 声明、不放宽已有 `O_NOFOLLOW`；2B2-B 受限真实路径/FD 解析及 C2 可恢复隔离 Guest 就绪已形成[专项评审和操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，**B2B2-B1 独立受限 nofollow alias FD 解析器及合成测试已在本地实现、尚未运行/提交远端；B2B2-B2 Guest 采集未实施、C2 恢复未执行**，真实可信 alias/root-anchor 仍另审，仍无真实 Guest / `/'` 锚点证明、系统 symlink/realpath 认证、完整动态 Python/ELF/dlopen 闭包、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md)、[B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md) 与 [B4B-3B-2B2 设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) |
+| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 已合并 PR #2855（dev `2db85d32`），提供仅内存 AST/ELF 静态线索；B4B-3B-2B1 已合并 PR #2857 / CI #7344（run `39098295751`）/ dev `1a82caff`，仅实现严格 no-follow 的候选目录 FD 逐段开启与合成测试；B4B-3B-2B2 设计已由 PR #2858 / CI #7346 合并（dev `c9db47b7`），其 2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`；CI #7348 / run `39101080529` 选中作业成功，Runtime 281 / Release 45 合成 tests OK；dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`），仅纯内存 alias 声明、不放宽已有 `O_NOFOLLOW`；2B2-B 受限真实路径/FD 解析及 C2 可恢复隔离 Guest 就绪已形成[专项评审和操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，**B2B2-B1 独立受限 nofollow alias FD 候选解析器及合成测试已由 PR #2861 / CI #7352 (run `39103592288`) 合并 dev `5d69eb81`；B2B2-B2 真实可信 root-anchor / Guest FD、独立外部 pin 未实施；C2-0 实际 Host/Guest 只读观察与 C2-1A–D 新实例恢复合成演练由操作员报告已完成，但原 C2-02 原地 `snapshot restore` 未执行、C2 未关闭**，真实可信 alias/root-anchor 仍另审，仍无真实 Guest / `/'` 锚点证明、系统 symlink/realpath 认证、完整动态 Python/ELF/dlopen 闭包、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md)、[B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md) 与 [B4B-3B-2B2 设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) |
 | R2 | B2B9-N/A：真实有限维护窗口、namespace 与新消费者禁入、原状态恢复 | PLANNED；按冻结接口可与 R1 准备并行；真实试验同样先满足 C2，不启动全消费者协议重构 |
 | R3 | 首先证明真实 crypt/Drive create-only 适配，再组合 S1、实际 app/state 和 mandatory preinstall Kit | PLANNED；独立适配验证可准备，安装用 Kit 必须绑定 C1/C3/C4 与本次持续窗口 |
 | R4 | 实际 root-private install + 新事务 clean reinstall；持久化/交接/不改业务数据 | PLANNED；组合 R1–R3 证据，保留旧 lab fixture 和 guard；不隐藏更换外部 helper |
