@@ -57,7 +57,7 @@ D1 不是认证任意当前 root 用户的说法。实验声明 Python 3.12.3 �
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
 | R0 | D1–D5、接口边界、C1–C8、矩阵及全仓现行文档一次收口 | **设计与文档完成；远端交付已授权**，不等待重复批准 D1–D5 |
-| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 在独立本地分支编写 AST/ELF64 内存字节静态依赖线索提取（测试未运行），仍无真实 Guest 文件打开链、完整 Python/ELF/dlopen 闭包发现、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md) 与 [B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md) |
+| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 已合并 PR #2855（dev `2db85d32`），提供仅内存 AST/ELF 静态线索；B4B-3B-2B1 正在本地编写严格 no-follow 的候选目录 FD 逐段开启与合成测试（尚无 CI），仍无真实 Guest / `/'` 锚点证明、系统 symlink/realpath 认证、完整动态 Python/ELF/dlopen 闭包、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md) 与 [B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md) |
 | R2 | B2B9-N/A：真实有限维护窗口、namespace 与新消费者禁入、原状态恢复 | PLANNED；按冻结接口可与 R1 准备并行；真实试验同样先满足 C2，不启动全消费者协议重构 |
 | R3 | 首先证明真实 crypt/Drive create-only 适配，再组合 S1、实际 app/state 和 mandatory preinstall Kit | PLANNED；独立适配验证可准备，安装用 Kit 必须绑定 C1/C3/C4 与本次持续窗口 |
 | R4 | 实际 root-private install + 新事务 clean reinstall；持久化/交接/不改业务数据 | PLANNED；组合 R1–R3 证据，保留旧 lab fixture 和 guard；不隐藏更换外部 helper |

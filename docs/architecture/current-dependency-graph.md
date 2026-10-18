@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 B4B-3B-2B1 候选路径安全 FD 打开（本地、未运行）**：新增外置 `ops/runtime/root_python_dependency_path_fds.py` 与非 root 合成临时树测试，借助独立预开 root-anchor FD 与既有 B4B-3A manifest 对路径每段采用 `O_NOFOLLOW`、入口身份/权限和完成后复核；真实根锚、usrmerge 符号链接、外部 pin 和完整执行闭包均尚未认证。不增加安装能力。**无业务 owner、上下文跨界 import、SCC/架构 scanner baseline/allowance、公共 HTTP contract、Runtime 冻结 17 成员、CI/依赖/Schema/Prisma/生产部署变化**。R0 D1–D5、C1/C2 仍开放。详见 `docs/architecture/C5-G2-B4B3B2B1-受控路径FD候选开启.md`。G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
+
 2026-10-17 **R1 B4B-3B-2A 静态依赖线索（本地待审 / 未运行）**：新增外置 Runtime `ops/runtime/root_python_elf_static_hints.py` 与非 root 人工字节测试，仅内存解析 Python AST import 和 ELF64 x86-64 DT_NEEDED，永不提供生产授权，不打开真实文件、执行 Python/native 模块或验证外部来源。**无任何业务上下文 owner、跨上下文 import/依赖边、SCC/scanner、公共合同、冻结 Runtime 17 成员、CI、Prisma/schema/migration、依赖锁或生产部署变化。** R0 D1–D5 不变，真正 Guest FD→路径与动态闭包仍未证明。详情：`docs/architecture/C5-G2-B4B3B2A-Python与ELF静态依赖线索.md`。G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
 
 2026-10-17 **R1 B4B-3B-1 只读 FD 候选证据 + 离机摘要比对（MCP-workspace LOCAL，未运行）**：新增 Runtime 外置非授权 `root_python_dependency_fd_observer.py`、`root_python_dependency_offline_review.py` 与非 root 合成测试；延续 R0 D1 单平台有限可信路线，仅对预打开 FD 字节/metadata、分别提出的 pin 做候选一致性检查，明确 FD→路径/系统发行来源/动态 Python/ELF 依赖尚未独立认证。**没有业务上下文 ownership、公共 contract、直接 import debt、跨上下文依赖边、SCC/scanner baseline、Bundle 17 成员、CI、Prisma、锁文件、部署/运行态变化；C1/C2 不因此关闭。** 详见 `docs/architecture/C5-G2-B4B3B1-只读FD证据与离机比对.md`。C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
