@@ -3,6 +3,7 @@
 ## 2026-10-18 — Runtime AWS 整机快照与维护冻结方案（同批持续更新）
 
 - **批准与基线：**用户明确采用“AWS 整机快照 + 更新前容器不自动重启再生成快照”；从 `origin/dev@a76d526592b7a46e4659f485a3089d753e267b3c` 审阅。只做文档；用户在审阅 47 份文档报告后已明确授权本批远端交付，包含保留的 C2-CHANGE-02 文档规则/有限复核登记；没有云/生产操作授权。
+- **远端交付：**[PR #2864](https://github.com/sanqin888/sanqinMVP/pull/2864) → `dev`，功能分支 `docs/runtime-aws-snapshot-recovery-20261018`。47 份文件均已显式暂存，包括新主方案；远端 PR 文件清单/最终 head 的 GitHub Checks 与合并事件为权威，不预先声明通过。未执行本地项目测试或生产操作。
 - **并行记录保留：**保留共享工作区另一 C2 文档任务已提交的 `4eabfa2b16d0306e6c43bfc4e8ca0f586fb0b44b` 中的 C2-CHANGE-02 规则、原件复核和有限范围登记；其分支/提交原样保留，未 reset/覆盖未提交工作，不将其验收当本批执行。
 - **合同：**新增 [AWS 快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md)，修订 R0 D2–D5/C4–C7/R2–R5、G2 A–F、安装约束、备份/恢复、索引与总队列。代码创建唯一 Lightsail 手动快照→核对 available/源/盘/txid；先记录原策略并离机保存，再准确容器 no/正常停服与启动入口禁入；快照和新实例首启保持维护，成功验证后按原状态恢复，故障不自动放行。
 - **替代与保留：**旧 mandatory crypt/Drive preinstall Kit、双 Archive 解密取回与故障机自举 clean reinstall 退出本次强制范围；每日独立备份/escrow、正常更新执行器和目标来源保持。C2 既有证据规则与独立复核不覆盖，本批不伪造 PASS、不默认重建历史 VM/marker。放行后/外部 UNKNOWN 转独立 DR/向前修复及权威对账。

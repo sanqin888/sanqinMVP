@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-18 两项修订交付：**[PR #2864](https://github.com/sanqin888/sanqinMVP/pull/2864) → `dev`；CI/合并以此 PR 最终 head 的 Checks/事件为准，原 PR #2853 仅为初始 R0 历史交付。
+
 **原 R0 交付记录（历史）：**[PR #2853](https://github.com/sanqin888/sanqinMVP/pull/2853) → `dev`；本批提交、最终 head 的 CI 与合并状态以该 PR 检查和事件为权威。
 
 **原 R0 / C2 冻结记录（历史；本次修订见下文 §2）：D1–D5 APPROVED / R0 DESIGN FROZEN。C2-CHANGE-01 已将 C2 恢复模式唯一确定为「指定 Snapshot → 独立新实例」，并废止原机 `snapshot restore` 验收。2026-10-18 **C2-CHANGE-02 用户明确授权调整证据充分性规则**：现有 A/B Snapshot 来源、克隆操作与 rc、独立 VDI、Host/Guest 有限基线、合成服务及离机归档可被直接独立审查；Marker A/B **不再是强制前置**，而是仅在关键来源/时点证据不足且另获授权时才可能补充。不得把来源链等同整盘内容不变或全部快照后变化不存在。D1–D5 及 C1/C3–C8/G2 授权不变。** 用户明确要求“五项都按照推荐方案进行 R0 一次冻结设计”，本记录据此生效，不再等待重复架构批准。冻结日为 2026-10-17（America/Toronto）；源码核对基线为 `origin/dev@592c534896d18ca51082b708b8ab677402fabe4a`，文档分支为 `docs/runtime-r0-design-freeze-20261017`。

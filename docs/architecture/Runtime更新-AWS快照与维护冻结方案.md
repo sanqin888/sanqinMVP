@@ -1,6 +1,7 @@
 # Runtime 更新：AWS 整机快照与维护冻结方案
 
 **状态：DESIGN APPROVED / DOCUMENTATION DELIVERY AUTHORIZED / IMPLEMENTATION NOT STARTED / AWS ACCEPTANCE NOT RUN / C5-G2 NO-GO。**
+**文档交付：**[PR #2864](https://github.com/sanqin888/sanqinMVP/pull/2864) → `dev`；最终 head 的 GitHub Checks 与合并事件为权威，本文不预先声明 CI 或实际 AWS 验收通过。
 **批准日期：**2026-10-18（America/Toronto）；用户明确批准“采用这两个方式（AWS整机快照+docker容器在更新前改为不自动重启并生成快照），更新现有文档”。
 **本批基线：**`origin/dev@a76d526592b7a46e4659f485a3089d753e267b3c`；分支 `docs/runtime-aws-snapshot-recovery-20261018`。本批只更新文档；用户于 2026-10-18 明确授权提交远端，按功能分支→dev PR→最终 head CI 全绿→合并交付。没有 AWS/IAM/Guest/root/生产执行授权。同步保留共享工作区已提交的 C2-CHANGE-02 文档 `4eabfa2b16d0306e6c43bfc4e8ca0f586fb0b44b` 的既有规则/复核登记；这不是本批新实测，也不宣称该提交已合并远端。
 
