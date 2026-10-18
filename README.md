@@ -1,6 +1,8 @@
 # sanqinMVP
 
-> Runtime 更新当前路线：[R0 冻结设计](docs/architecture/Runtime更新-R0冻结设计.md)。D1–D5 已批准，R0 文档完成；下一批 R1 真实执行闭包，随后 R2–R5 补维护、Kit、安装/恢复与同候选验收。**C5-G2 NO-GO**，S2 指后续 daily 扩充暂缓，不是停止现役备份。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](docs/architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
+
+当前决策/进度：[R0 冻结设计](docs/architecture/Runtime更新-R0冻结设计.md)。下一批先收真实生产清单、受限 AWS 协调接口/权限与可跨重启维护合同，再实现快照、安装与替代恢复。
 
 Monorepo (pnpm workspace) for **Sanqin Roujiamo** web + API, deployed with Docker Compose.
 

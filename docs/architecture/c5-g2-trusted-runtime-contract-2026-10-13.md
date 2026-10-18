@@ -1,129 +1,59 @@
 # C5-G2 — Trusted Runtime independent acceptance and installation authority contract
 
-> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
-**2026-10-18 当前交付补记：**R1 B4B-3B-2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`，CI #7348 / run `39101080529` 选中作业成功，dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`）；仅合成声明与测试。B2B2-B 的[受控解析专项评审/C2 恢复就绪包](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)已由 PR #2860 / CI #7350 合并。后续仅 B2B2-B1 外置受限 symlink FD 候选解析器及合成测试**已通过 PR #2861 / CI #7352（run `39103592288`）合并 dev `5d69eb81`，仍仅合成/非授权**，不修改 B2B1、17 项 Bundle、真实 Runtime；实际 Guest/root 的可信 root-anchor、独立外部 pin/消费见证仍没有。2026-10-18 操作员报告 C2-0 Host/Guest 只读观察和 C2-1A–D 从指定 snapshot 创建独立新 VM/合成 HTTP 切换及 Google Drive 下载比对；**按照 2026-10-18 用户批准的 C2-CHANGE-01，C2-02 现改为唯一强制的生产式「指定快照→独立新实例」N-01–N-07 认证，不再要求原机 `snapshot restore`**；既有 clone 观察缺快照前后唯一 marker 恢复点证明、完整 rc 与独立 witness，C1/C2 仍不关闭。详情见 [B2B2 §9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**，现役备份 timer 不受影响。
+**当前基线：**本次文档从 `origin/dev@a76d526592b7a46e4659f485a3089d753e267b3c` 审阅；R0 初始冻结与下文日期条目是各自历史状态。当前进度见 [R0 §3](Runtime更新-R0冻结设计.md)，C2 来源链/有限 A/B 证据按 [B2B2 §7.3/§9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 最新合同审查，不因本次变更自动通过或要求重做旧实验。
 
-本合同后部带日期的 B02/B4B 条目是各批撰写/取证时记录；其 LOCAL、NOT RUN 和下一步按当时范围保留。当前源码/CI 总进度与 C1–C8 映射以 R0 为准，A–F 授权层级继续有效。
+## 1. 当前设计与所有权
 
-**Date:** 2026-10-13 America/Toronto  
-**Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
-**当前状态（R0，2026-10-17 Toronto）：**D1–D5 已按用户批准冻结；R0 设计与文档完成，C1–C8 整门禁尚未通过。S1、G2-A/B 已有源码与有限证据；B4B-3A PR #2848 已合并，CI #7315 / run `39077195858` 通过。真实执行闭包、维护禁入、crypt/Drive Kit、安装/独立重装和同候选矩阵仍缺。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**；现役备份 timer 不因此停止。
+[AWS 快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 是 RUNTIME-SNAPSHOT-01 / MAINT-RESTART-01 详细合同：正常更新执行器验证来源，在持续维护停写中先生成合格快照，更新失败 ABORT，保持冻结，人工确认从准确快照创建替代实例。禁止 replay 旧 journal；旧 Recovery Kit/故障机 Python 自举 clean reinstall 不再是本次更新前置。
 
-> **2026-10-17 documentation consolidation:** inherited GHCR/U1–U2D constraints are now indexed in [Runtime delivery/install constraints](./Runtime交付与安装约束.md), with the 27 original dated decisions and bounded lab evidence at [historical evidence index](./Runtime历史决策与证据索引.md). This changes no G2 authority, acceptance requirement, experiment result or source implementation.
+- Runtime 发布来源：`build_bundle.py` / `runtime_trust.py`；准确 17 成员、Manifest `productionActivationAuthorized=false`、配对 GHCR digest 不变。
+- `historical_runtime_publication.py` 是外置只读辅助 verifier；保留其准确 SHA/Archive/CI/publish/seal 验证行为，不因恢复路线改变而弱化；云快照恢复不强制先取回旧 tar.gz。
+- 应用 deploy/rollback：现役 `deploy_release.py`；应用 SHA/current/previous 与 Runtime 版本分开。正常 Runtime 更新不触发 rollout、迁移或改业务数据。
+- 日常备份：现役 ubuntu backup service、脚本、Nginx helper/sudoers 和独立 escrow；S2 新扩充继续后置，不放宽 root state 0600。
+- 待实现协调器：受限 AWS API、准确快照及故障 VM 外清单；推荐在故障 VM 外运行，认证位置/最小 IAM 实现前独立审阅，不在本批布置凭据。
+- 待实现生产执行器：一次性受信任 root-private 正常 installer，及准确清单内容器 restart policy/停服/任务/入口维护控制；不得扩为通用 Docker/DB writer、任意 MCP sudo、长期 Root Launcher 或第 18 Bundle 成员。不得修改已认证 Compose 来设置 no。
+- **仅设计批准、无实际主机或云写授权。**既有组件 `readyToInstall=false` / `authorizedToMutateProduction=false` 的 guard 原样保留。
 
-## 1. Frozen design and ownership
+## 2. 目标发布与恢复点证明
 
-R0 已批准 D1 有限独立平台基线、D2-A 操作员维护窗口、D3 crypt/Drive create-only 实证优先、D4 preinstall 先于 S2 扩充、D5 Abort & Clean Reinstall。实际值和关闭条件见 R0；这是已批准现行合同，后续精确执行授权不替代也不重复本次决策。
+| 对象 | 当前要求 |
+| --- | --- |
+| 正常目标发布 | 普通 latest published paired release 策略保持；准确原 Archive SHA256、main/CI/publish/seals/digests、17+Manifest 与实际执行来源均验证 |
+| 指定历史 Archive（如另有用途） | 使用原历史 verifier 完整规则，不能换 SHA/repack/改 status 或用较弱 verifier 让失败 PASS |
+| 当前安装与 AWS 恢复点 | 维护冻结前确认安装/应用/存储完整健康；准确账户/Region/fromInstanceArn、唯一手动快照、覆盖盘/txid、available、离机恢复清单与真实恢复验收共同成立 |
 
-Primary recovery remains **ABORT the interrupted transaction → isolate incident →
-download/decrypt an externally retained original Runtime Recovery Kit → start a
-brand-new, separately authorized clean reinstall**. A crashed Runtime install
-must **never** replay its old journal or infer authority from the old active tree.
+GitHub proof 是仓库/可信 workflow 边界下的来源证明，不是独立数字签名；AWS 快照 ARN 不是原 Archive hash。Artifact 90 天保留不保证长期旧字节可用，本次整机恢复不再把“双旧/新 Archive 的 crypt/Drive 取回”作为并列必做；目标新代码来源与每日独立备份仍分别保留。
 
-- Runtime trust/publication owner: `ops/runtime/build_bundle.py` and existing
-  `runtime_trust.py`; 17 exact source members, artifact-side
-  `productionActivationAuthorized=false`, paired GHCR api/web digests.
-- New **external offline verifier**:
-  `ops/runtime/historical_runtime_publication.py`, deliberately **not** one
-  of the 17 Runtime source members. It verifies a caller-pinned original
-  archive against historical GitHub main ancestry, matching successful main
-  push CI/publish run identities, both most-recent matching GitHub seals and
-  exact archive byte SHA-256. This is not a Runtime production component.
-- App deploy/rollback owner: existing installed
-  `ops/release/deploy_release.py` and independent per-app
-  `SANQ_IMAGE_SHA` / root `.sanq-release-state.json`. G2 shall not
-  rewrite app state, launch an app rollout, or skip its fixed compatibility
-  validation to make a Runtime upgrade seem possible.
-- Backup owner: `/home/ubuntu/backup-db.sh`, existing
-  `sanq-backup.service` (ubuntu), installed Nginx protected helper and
-  sudoers. **S2 still paused**; G2 shall not install a new daily backup helper,
-  change current backup retention, or make root-only state readable to ubuntu.
-- Root Runtime one-shot operator: **not yet implemented**. Later source must be
-  independently reviewed and copied to a root-only location outside
-  `/opt/sanq/runtime`, with no permanent Root Launcher, MCP sudo tool,
-  arbitrary arguments/paths, symlink Runtime, expanded 17-member allowlist,
-  Docker/DB writer, or unstated production authority.
-- Production VM: **NO WRITE AUTHORITY** from any of the above source contracts.
-  All verified receipts explicitly return
-  `readyToInstall=false` and `authorizedToMutateProduction=false`.
+## 3. 当前强制门禁（均未完成整体验收）
 
-## 2. Two different GitHub publication checks (do not conflate)
-
-| Purpose | Verifier | Contract |
+| 门禁 | 必须独立核对 | 失败 |
 | --- | --- | --- |
-| Ordinary current release | `runtime_trust.verify_runtime_publication()` | Existing **latest successful published paired release** policy unchanged; current `stage_bundle.py` consumer unchanged |
-| C5 recovery old/current original bytes | `historical_runtime_publication.verify_historical_runtime_publication()` | Exact user/operator-approved source SHA, original Archive bytes, `main` ancestry, successful exact CI/publish runs, matching trusted paired-image and runtime SHA256 commit statuses; NEVER auto-select another release |
+| 执行来源 | 正常更新程序准确 source/hash、root-private 路径/权限、实际解释器与依赖/输入及独立来源 | BLOCKED |
+| 目标版本 | 准确 main SHA、原 Archive/hash、CI/publish/seals、17+Manifest 与 paired digests | BLOCKED |
+| 应用与存储 | env/state/current/previous/running images 一致、向后兼容、sanq-app/pgdata/uploads 与外部安装副本准确 | BLOCKED |
+| 权限与动态状态 | root state 0600、ubuntu env 0600、原 C4 marker、正常安装 bytes/UID/GID/mode 和独立 inode 复制 | BLOCKED |
+| 持续维护 | 先保存原状态并离机记录，准确容器 no/正常停止；禁入所有启动/写入入口与 namespace/持有者，快照首启跨重启仍维护 | BLOCKED |
+| 本次快照 | 代码唯一创建→准确 API 对象 available→源/盘/txid 与一致性确认→离机清单；错误/冲突/超时/未知拒绝安装 | BLOCKED |
+| 正常交接 | 私有候选/preimage、fsync/受支持同设备交接、完整复验、不覆盖旧槽；不自动续 journal | INCIDENT / STOP |
+| 替代恢复 | 精确快照创建独立 AWS 实例，首启冻结、旧机防双写；数据/版本/身份/外部事件核对后人工确认切流 | BLOCKED |
+| 退出 | 独立完整核对成功后按原 restart/task enabled-active 状态恢复并最后放行业务；失败继续维护 | NOT VERIFIED |
 
-Offline invocation for a separately obtained original archive (read-only **example**, not an
-installation command):
+单独 flock、一次 stop 或两次空扫描不构成屏障；重建容器可能带回 always，必须禁止并复查。保护窗口从快照点到最终放行；发生新业务写入/外部未知态后不能盲目恢复旧整盘覆盖订单。API 超时先查准确操作/对象，不自动选 latest 或覆盖重试。不能把调用方 boolean、自报 hash 或路径作为唯一权限。
 
-```sh
-python3 ops/runtime/historical_runtime_publication.py \
-  --archive /trusted/offline/private/original-runtime.tar.gz \
-  --source-sha <exact-approved-40-hex-main-sha>
-```
+## 4. A–F 授权层级（按现行恢复路线解释）
 
-Use only reviewed code and an operator-protected archive in a trusted verification
-environment; do not elevate or run a user-writable checkout with `sudo`. The
-status creator identity `github-actions[bot]` and successful workflow are a
-**GitHub repository-scoped proof**, not an independent cryptographic signature.
-Do not make a failed historical verifier PASS by falling back to
-`verify_runtime_publication()`, changing SHA, repacking, or rewriting a status.
+- **A 架构：**两项设计已批准；源码评审/开发权限不等于实际 AWS 或 root 操作权限。
+- **B 隔离验收：**准确可丢弃、无生产资产的同平台环境；C2 先审既有来源链/有限 A/B 原件，只补关键缺口，不自动重建 VM/Marker。真实 AWS 控制面与 no/维护首启须按准确对象另行演练。
+- **C 独立组合验收：**最终候选 CI 与 R0 A01–A18 / 快照方案 S01–S12，同平台正常更新、拒绝/中断、准确快照恢复、再次失败、原策略恢复和放行后事故边界；旧合成 PASS 不能代替。
+- **D 生产就绪审阅：**当前主机/备份/消费者/外部副本/平台与准确目标；Runtime source 不等于 app SHA。兼容不明则停止成组发布审阅，不隐含上线 S2。
+- **E 精确执行授权：**明确旧/目标主机、账户/Region/实例/盘、Runtime/Archive/执行器身份、快照创建/恢复对象与 API 权限、txid/离机清单、应用/原策略、停机窗口/执行人/停止规则。D 通过不授予 E；恢复新实例及切流按事故准确确认。
+- **F 执行后独立复验：**准确 Runtime/应用/动态状态/DB/Uploads/C4、维护与单写者、外部事件对账、恢复原策略和最终放行；保留快照/旧资产/证据，未知不关闭。
 
-`publish-images.yml` retains Runtime and release-proof artifacts for **90 days**.
-This slice does **not** solve long-term Archive availability or remote create-only
-integrity. The C5 preinstall gate must separately prove BOTH original versions
-are independently retrievable, have matching off-VM bytes and provenance, and
-can be decrypted/read back even after GitHub Artifact expiry. An external receipt
-cannot rely only on a Google Drive object name or self-declared Manifest hash.
+## 历史分批原文与有限证据
 
-## 3. Mandatory G2 production-relevant gates (not yet implemented)
-
-| Gate | Required independently checked evidence | Failure |
-| --- | --- | --- |
-| Operator source | reviewed installer source SHA-256 and root-only installed path + uid/gid/mode + trusted ancestor FDs | BLOCKED |
-| Intended release | old/new complete main SHA, original Archives, independent external SHA256/CI/publish seals, 17/17 manifest and file checks | BLOCKED |
-| Current running app | `.env` / state settled, exact current/previous app SHA, actual api/web/worker image tags and digests, approved target Runtime/app backward compatibility | BLOCKED |
-| Storage | actual Compose project `sanq-app`, named DB volume `sanq-app_pgdata`, bind `/srv/sanq/uploads`, no DB/Uploads mutation | BLOCKED |
-| Privileged state | root `0600` Release State, ubuntu `0600` env, root C4 marker and original bytes/UID/GID/mode; inode may change but not hardlinked | BLOCKED |
-| External Kit | **before any active Runtime mutation**, unique txid, create-only encrypted off-VM Archive + live config and provenance, full independent remote decrypt/readback/hash, proven crypt-key escrow and retention | BLOCKED |
-| Quiescence | D2-A 持续有限维护：先验证管理通道，再按精确清单控制 Backup/Deploy/MCP/SSH/调度与新消费者禁入，排空并覆盖 PID/FD/inode/mmap/namespace；未知/不可读/预算不足拒绝。记录原状态、持续观察并在 Kit 读回后复查；lock/双扫描不足 | BLOCKED |
-| Handoff | private candidate and separate prior-tree evidence, fsync/atomic directory operation, non-overwrite journal, all resulting dirs verified; no automatic journal resume | INCIDENT / STOP |
-| Clean reinstall | source and executable independent of damaged Runtime, separately verified Kit and fresh txid, **same-version reinstall allowed only via a distinct recovery entry**, never changing normal upgrade same-SHA rejection | BLOCKED |
-| Exit | active Runtime file inventory and dynamic bytes rechecked, storage/container health, backup/MCP timer restored to **original** state, incident sealed, independent operator acceptance | NOT VERIFIED |
-
-**No root executable is permitted to accept a generic path, URL, shell fragment,
-raw archive from a caller-writable location, or boolean `authorized=true` as its
-sole permission.** A standalone flock is not quiescence: existing backup,
-`deploy_release.py`, MCP and SSH sessions do not automatically honor it.
-
-## 4. Approval tiers and freeze
-
-- **A — Architecture:** choose one-shot operator-owned installer and dynamic
-  logical path identity. Previously authorized for source/offline development;
-  not a production shell/VM privilege grant.
-- **B — Isolated acceptance:** independent disposable Linux ext4 VM, synthetic
-  credentials, actual root/ubuntu UID/GID and source pin, no production network
-  mounts/secrets. The 2026-10-10 2B2-B root lab and SIGKILL results are
-  evidence **for the old lab implementation only**.
-- **C — G2 independent acceptance:** CI green plus independently executed
-  complete fresh install and repeated-abort clean reinstall using only original
-  remote bytes/proof and disposable synthetic data, including readback failures,
-  stale state, occupied old journal, injected faults, mount/cwd contention.
-- **D — Production readiness review:** fresh dated host/consumer/backup
-  evidence and exact target. Explicitly distinguish Runtime source SHA
-  from App image SHA; if required external backup script/service/helper or app
-  controller compatibility is not demonstrated, stop for **grouped-release
-  architecture review**, not hidden S2 implementation.
-- **E — Production execution authorization:** a **new specific operator
-  approval** identifies VM, old/target Runtime full SHAs, original Archive hashes,
-  installed installer source hash, Kit txid/readback proof, current app and
-  previous app SHA, downtime window, initial systemd state, operator, abort rule.
-  D passing does not grant E.
-- **F — Post-install independent verification:** verify original storage
-  and active services, C4 marker/layout revalidation, no hidden app rollout,
-  retain prior slot/archives, close journal/incident only after evidence.
+以下 §5 及后续日期条目保留原实现/实验/当时待办。涉及旧 Kit、双 Archive 或故障主机 clean reinstall 的设计不再是当前路线；其 LOCAL/NOT RUN/下一批不覆盖上面现行合同，也不因本次改文档升级结果。
 
 ## 5. Small, independently reviewed G2 slices
 

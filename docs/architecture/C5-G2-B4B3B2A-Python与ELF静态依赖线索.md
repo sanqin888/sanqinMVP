@@ -1,5 +1,7 @@
 # C5-G2 / R1 B4B-3B-2A — Python / ELF 静态依赖线索提取
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
 **当前状态：**已合并 `dev`（PR #2855；merge `2db85d32`；原 PR 经过一次合成 ELF fixture 重叠修复）；仅 CI 合成分析完成，未进行真实 Guest/ELF 执行。下阶段本地独立候选路径 FD 开启见 [B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。  
 **工作分支：** `feat/c5-g2-b4b3b2a-static-dependency-evidence-20261017`，基线为 PR #2854 合并后的 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`。  
 **归属：** Runtime/Ops 边界内的离线审阅组件；不属于冻结的 Runtime 17 文件 Bundle。

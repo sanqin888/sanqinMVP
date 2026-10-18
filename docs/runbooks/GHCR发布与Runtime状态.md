@@ -1,8 +1,8 @@
 # GHCR 发布与 Runtime 状态
 
-R0 进度补充：B4B-3A PR #2848 / merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061` / CI #7315 已通过，仅合成依赖声明图。真实闭包、有限维护禁入、真实 crypt/Drive Kit、安装/独立重装、同候选矩阵仍在 R1–R5；没有新的 installed/production 事实。
+R0 进度补充：已有源码/合成证据按各 PR 原范围保留；当前仍缺正常执行基线、持续维护、代码快照及真实 AWS 替代恢复组合。当前工作按修订 R1–R5，功能尚未实现/部署，C5-G2 NO-GO。
 
-> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
 本文汇总截至 2026-10-17 已提交仓库中的发布合同和历史现场证据，不替代操作前对真实主机、已安装源码版本及备份状态的重新核实，也不构成生产变更授权。
 
@@ -14,7 +14,7 @@ R0 进度补充：B4B-3A PR #2848 / merge `dda7698e00effc37e1e8a76aba7c43e50f8f4
 | 已安装 Runtime | U1 记录已安装 root-owned Runtime source `a84b72007e6b4e82c981101e56c897355757c0ff`，当时应用镜像已前进到 `ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8` | 这是历史现场证据，本文未重新读取主机；Runtime source SHA 与应用 image SHA 是不同身份，不能互换 |
 | 应用发布 | 已记录 checkout-independent GHCR 发布与人工 `PENDING → ACTIVE` 对账 | 曾出现启动 readiness 竞态；其源码修复不等于已更新受保护的生产 Runtime |
 | 惰性 staging | C5-B2A 使用外部发布的原始 Archive SHA256 验证及暂存，不要求本地 main 源码逐字节比较 | staging 不安装、不执行、不授权生产写入；其 newest-release 规则不能替代历史版本真实性验证 |
-| Runtime 更新与恢复 | 当前方向为独立可信安装及 Abort & Clean Reinstall / Recovery Kit | G2 生产安装仍为 NO-GO；实验通过、声明式清单或 CI 通过都不等于取得安装权限 |
+| Runtime 更新与恢复 | 已批准代码生成 AWS 手动快照 + 拍快照前容器 no/停服/持续禁入，失败由本次准确快照创建新实例 | 尚未实现/验收；成功按原策略恢复，事故保持冻结。旧 Kit 自举退出必做；设计/CI 不等于生产权限 |
 | 旧生产 Git checkout | 目标是解除生产依赖后退役 `/home/ubuntu/sanq-app` | 未完成全部部署/回退、备份、MCP、进程及挂载依赖验证前不得删除；删除必须独立授权 |
 
 事实来源：[C4 路径切换记录](./runtime-backup-cutover-c4-prep.zh-CN.md)、[P2-D 有限范围验收](./runtime-backup-cutover-c4p2d-acceptance.zh-CN.md)、[U2C 历史现场证据](../architecture/Runtime历史决策与证据索引.md#u2c-evidence)、[启动竞态与 Runtime 激活门禁](../architecture/c5-startup-readiness-race-2026-10-09.md)。
@@ -35,7 +35,7 @@ R0 进度补充：B4B-3A PR #2848 / merge `dda7698e00effc37e1e8a76aba7c43e50f8f4
 - `--apply-migrations` 不负责判断 SQL 是否具有破坏性，不适用于 plan/rollback。授权 pending 路径先持久化 PENDING，再停止应用写入者（不停止 DB）、执行候选迁移、确认 parity 后推进应用状态；无 pending 时不为该标记额外停写或迁移。
 - 发布或 readiness 失败保留 PENDING，先保存证据并人工处置；不自动回滚数据库、推断财务结果或把迟到成功改成失败。
 - 手动 rollback 仍需明确批准、受信任且可用的 previous 本地镜像、备份及 previous-image migration parity。历史 digest/无 checkout 回退验收尚未完成时不得声称回退闭环；不自动拉取未知历史镜像或反向执行 schema 迁移。
-- Runtime 安装中断适用独立的 Abort & Clean Reinstall / Recovery Kit 方向，不得借用应用 rollback 作为 Runtime 原事务续跑。普通重启不是强制重装触发条件。
+- Runtime 更新使用 [AWS 快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md)：拍快照前准确容器 no/停服/禁入，代码等本次准确快照 available 才安装；故障保持维护，人工确认快照→新实例。成功按原策略恢复；业务放行后的新写入/支付未知转独立 DR/向前修复。普通重启不是强制恢复触发条件。
 - 不执行 `migrate reset`、`db push`，不删除数据卷、备份、Uploads、VM 快照或历史迁移。
 
 ## 当前详细入口
@@ -47,7 +47,7 @@ R0 进度补充：B4B-3A PR #2848 / merge `dda7698e00effc37e1e8a76aba7c43e50f8f4
 - [惰性 Archive staging 约束](../architecture/Runtime交付与安装约束.md#staging)
 - [固定布局与外部消费者约束](../architecture/Runtime交付与安装约束.md#layout)
 - [G2 当前可信 Runtime 合同与未完成门禁](../architecture/c5-g2-trusted-runtime-contract-2026-10-13.md)
-- [Recovery Kit 与中断后的独立重装方向](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)
+- [旧 Recovery Kit 的替代关系与历史证据](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)
 - [源码 checkout 退役依赖与独立删除门禁](../architecture/postmod-ghcr-source-retirement-phase2-2026-10-08.md)
 - [备份恢复手册](./backup-recovery.zh-CN.md)
 

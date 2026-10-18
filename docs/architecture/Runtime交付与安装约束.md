@@ -1,12 +1,12 @@
 # Runtime 交付与安装约束
 
-本次批准的现行补充：D1 有限独立平台/执行闭包；D2-A 真实有限维护/禁入；D3 crypt/Drive create-only 实证和完整独立读回；D4 mandatory preinstall/现役备份健康先行，S2 扩充在 v1 后；D5 中断即 ABORT、新事务独立重装，冷掉电持久性仍 NOT VERIFIED。旧 A–F 精确操作许可保留；具体条件、矩阵和进度统一见下方 R0 入口。
+本次已批准补充以 [AWS 快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 为准：正常更新来源/平台保持验证；更新前冻结并生成准确 AWS 手动快照，失败保持维护并走新实例恢复；不重复强制旧 preinstall Kit/故障主机自举。
 
-> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
 本文承接已整合的 GHCR A/C0–C5-B2B3、U1/U2A–U2D-2B2-C 中仍有效的规则。整理基线为 `origin/dev@94bc7be6`（2026-10-17），只调整文档归属，不改变代码、模块职责、发布权限或既有验收门禁。
 
-当前进度和生产安装的具体门禁仍以 [G2 合同](./c5-g2-trusted-runtime-contract-2026-10-13.md)、[Recovery Kit 方向](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 和 [S1 边界](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md) 为所有者文档。旧设计、实验与替代关系见 [历史决策与证据索引](./Runtime历史决策与证据索引.md)。本文没有重新验证生产主机；已安装版本与源码能力分开查阅 [GHCR 发布与 Runtime 状态](../runbooks/GHCR发布与Runtime状态.md)。
+当前进度和生产安装的具体门禁仍以 [G2 合同](./c5-g2-trusted-runtime-contract-2026-10-13.md)、[旧 Recovery Kit 替代关系](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 和 [S1 边界](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md) 为所有者文档。旧设计、实验与替代关系见 [历史决策与证据索引](./Runtime历史决策与证据索引.md)。本文没有重新验证生产主机；已安装版本与源码能力分开查阅 [GHCR 发布与 Runtime 状态](../runbooks/GHCR发布与Runtime状态.md)。
 
 ## publication
 
@@ -53,7 +53,7 @@
 | --- | --- | --- |
 | 普通最新发布 | [runtime_trust.verify_runtime_publication](../../ops/runtime/runtime_trust.py) | 既有 newest published paired-release 策略；不能擅自改用任意旧 SHA |
 | 早期 B2B1 精确历史发布证明 | [versioned_release_contract.verify_historical_release](../../ops/runtime/versioned_release_contract.py) | exact SHA 的 main ancestry、同一 run 的最新配对/Archive seals、实际原始 Archive 与镜像 digest；返回只读证明，不恢复已过期字节 |
-| 当前 G2 原始旧/新版本恢复证明 | [historical_runtime_publication](../../ops/runtime/historical_runtime_publication.py) 与 [G2 §2](./c5-g2-trusted-runtime-contract-2026-10-13.md) | exact approved SHA、原字节、匹配的成功 main push CI/publish 身份和最新 seals；不得以较弱旧检查或改选最新版本来让失败项 PASS |
+| 原 G2 历史 Archive 辅助证明（云恢复非强制前置） | [historical_runtime_publication](../../ops/runtime/historical_runtime_publication.py) 与 [G2 §2](./c5-g2-trusted-runtime-contract-2026-10-13.md) | exact approved SHA、原字节、匹配的成功 main push CI/publish 身份和最新 seals；不得以较弱旧检查或改选最新版本来让失败项 PASS |
 
 早期 pure `version_transition_contract` 检查 deploy 的 settled current/严格后继关系，rollback 仅绑定已记录 previous 及其历史证明；拒绝相同版本、缺失 digest、未知状态和历史分叉。`plan_install` 仅检查这些调用方输入和拟议 journal，阻止未处置的 pending/failed，不写 journal、不授予 install/deploy/rollback 权限。**这些是惰性模型的行为，不能套用成现役应用控制器或 G2 恢复入口的权限。**
 
@@ -97,22 +97,23 @@ Runtime source SHA 可以不同于应用 current image SHA。更新 Manifest/源
 
 ### 7. Runtime 安装的既有隔离与事务约束
 
-- 独立一次性 root-private operator 的开发授权不等于生产执行授权；不得恢复永久 Root Launcher、任意 MCP shell/sudo、开放任意路径/URL/命令输入，或把 installer 作为 Bundle 第 18 项。现役应用 deploy/rollback 与 Runtime 安装属于不同职责和审批；不自动改镜像、应用状态、DB/Uploads 或服务。
-- 操作员源码、Bootstrap、解释器、传递 Python/native/ELF 依赖与执行字节要按当前 G2/B4B 要求独立认证。源码回读、一个声明式闭包、相同内容或 caller `authorized=true` 都不能替代独立见证或防止验证后重新打开/被改写。
+- 独立一次性 root-private operator 的开发授权不等于生产执行授权；不得恢复永久 Root Launcher、任意 MCP shell/sudo、开放任意路径/URL/命令输入，或把 installer 作为 Bundle 第 18 项。现役应用 deploy/rollback 与 Runtime 安装属于不同职责和审批；正常更新不自动改镜像、应用状态、DB/Uploads；准确容器/服务停启与 restart policy 属已批准维护设计，实际操作仍另行授权。
+- 正常更新操作员源码、实际解释器、传递 Python/native/ELF 依赖与执行字节按当前 G2/B4B 要求独立认证；仅服务于旧故障机自举的 Bootstrap/依赖重建不再是云恢复门禁。源码回读、一个声明式闭包、相同内容或 caller `authorized=true` 都不能替代独立见证或防止验证后重新打开/被改写。
 - `.env`、state、marker 来自维护屏障冻结后的现役状态，按已批准的 logical-path 策略独立复制并保留 bytes/UID/GID/mode；允许 active-path inode 更换，不用 hardlink/symlink、不共享旧新 inode。验证 current/env/running image 一致、状态 settled，并保留 previous；不用历史旧配置覆盖更新后的密钥或状态。
 - 候选、完整独立 preimage、原始 Archive、journal、lock、operator 源码与证据位于 active Runtime 外，版本/txid 不可覆盖。旧 `/opt/sanq/releases/<sha>` 等只是历史拟议命名，不是现在已部署的通用版本目录或可任意创建路径。
 - 已有实验采用可信目录 FD、no-follow 相对遍历、regular/single-link/owner/mode/size/device/entry 重验。重复 pathname stat、源内自述 hash、跨设备或可替换祖先不能作为真实信任锚；read-only FD helper 仍不等于完整写路径防竞态或 ABA/new-consumer 排除。
 - 正常交接须先完成全部可信候选、preimage、三份动态副本及证据的文件/目录 fsync，再持久化 PENDING；使用单次受支持的 `renameat2(RENAME_EXCHANGE)`，正确处理两个 parent FD、同步两父目录、复验完整文件集，并以不可覆盖的旧版保留槽保存历史。两个普通 rename、单文件原子 replace、syscall 原子可见都不能直接证明整个事务的断电持久性。
 - 应用 release-state 与实验 journal 不能混用。旧实验阶段 `PENDING_EXCHANGE`、`EXCHANGED_UNCONFIRMED`、`PREVIOUS_RETAINED`、`VERIFIED_RETAINED` 只说明当时模型；观察必须核对磁盘文件、inode/slots 与证据，不能只信 phase。当前恢复遵循下节，不能用旧阶段自动续跑/回滚。
 
-### 8. 维护屏障与故障处置
+### 8. 持续维护、AWS 快照与故障处置
 
-- `flock` 只约束合作参与者。独立批准的维护窗口须排除 backup timer 触发以及运行中的 service/helper/rclone/tar/dump、deploy/rollback/Compose/readiness、MCP 生产子进程、Shell cwd/fd、别名 inode/mmap、namespace 和新非合作消费者；不能从一次空 `/proc`、一个锁或旧实验 PASS 推断全主机静止。暂停/恢复生产服务本身也需另行批准。
-- 屏障内复查当前 app、实际挂载/DB volume、动态 state、可信源与读回后的一致性；不确定即 BLOCKED。恢复 timer/service/MCP 需按原 active/enabled 状态，不能一律 enable/start。容器数据挂载独立也不代表无其他消费者。
-- 当前方向是 **ABORT 中断安装 → 隔离留证 → 从独立原始 Archive 与已读回/解密核验的离机 Recovery Kit 开始全新、另行授权的重装事务**；重复中断再次放弃。旧 journal/preimage 仅保留取证，不续跑、不自动二次 exchange、不按旧相位恢复原事务。普通 VM 重启不是强制重装触发条件。
-- Recovery Kit 必须在 active mutation 前完成 create-only 加密离机保存、真实解密读回、哈希/成员/身份/时效/来源与密钥 escrow 验证；上传退出 0、remote list 或模拟 roundtrip 不足。正常 upgrade 的 same-SHA 拒绝不放宽；同版本恢复只可走独立 recovery entry。
-- 旧 daily snapshot 可能早于密钥、支付配置或应用状态变化；不猜 current/previous/C4 authority，不盲目回填旧 `.env`。磁盘/业务数据损坏转既有完整 DR 方案，不因 Runtime 事件默认 restore DB/Uploads。
-- 未关闭/不明事故、新旧源不完整、旧 Archive 失效、健康或兼容不明确时，保持 BLOCKED 并保留两版本/原字节/快照；不清锁、auto-clean、删除 VM 快照、备份、旧 checkout 或磁盘来伪造成功。安装后独立重验 exact 17+Manifest、动态状态、DB/Uploads、健康和原维护状态，才可登记实际验收范围。
+- 详细状态/矩阵见 [AWS 快照方案](Runtime更新-AWS快照与维护冻结方案.md)。先保留管理通道，记录准确容器原 restart policy、units/task 原 enabled-active 与挂载身份并离机保存；设实际 policy=no、正常停止业务/DB 至一致点，禁止 systemd/cron/Compose/deploy/MCP/SSH 等重新启动或写入。不得修改受 Manifest 校验的 Compose 文件；重建容器可能恢复 always，必须禁入/观察。
+- flock/一次 stop/空扫描不足；持续屏障覆盖 service/helper/后代、cwd/FD/mmap/别名、namespace、新消费者与真实启动入口。停用状态进入快照且跨 Docker/VM 重启及恢复首启有效，不能以未绑定 Static IP 或公网 firewall 当全部副作用隔离。
+- 受限代码调用 Lightsail CreateInstanceSnapshot 创建本次唯一手动快照，等待 GetInstanceSnapshot 的准确对象 available，核对来源账户/Region/实例 ARN、txid/时间/覆盖盘和一致性，离机恢复清单完整后才开始 Runtime 活跃写。超时未知先查准确对象，错误/碰撞/无覆盖拒绝安装，不选 latest。
+- 正常安装保持上一节 FD/候选/动态状态/原子持久化约束；快照之后到最后放行业务持续停写。受控健康启动仍须入口/后台副作用屏障；成功独立复验后恢复记录中的原 policy/任务状态，最后开放业务，不一律 enable/start。
+- 安装中断/写入未知或验证失败：ABORT 旧事务、保持维护并留证。人工确认准确快照→独立新 AWS 实例；先 fence 原机，验证新实例首启 no/任务禁用、Runtime/应用/DB/Uploads/权限/机器身份/外部资源，完成外部支付订单权威对账后受控恢复/切流。整盘恢复包含业务数据，不能谎称只恢复 Runtime；不续旧 journal、不在受损机自举 clean reinstall。
+- 日常备份/凭据 escrow 保留；原 mandatory crypt/Drive preinstall Kit、双 Archive 解密取回不再重复作为本次更新前置。目标新 Runtime 发布/Archive 来源不省略。
+- 若快照后发生意外写入、外部 UNKNOWN 或重新营业后故障，不能直接回退整盘丢弃新订单，转独立 DR/向前修复/事件保留回放与对账。无条件 finally 恢复业务或删旧快照/事故对象均禁止；普通正常重启不是强制恢复触发条件。
 
 ## evidence-limits
 

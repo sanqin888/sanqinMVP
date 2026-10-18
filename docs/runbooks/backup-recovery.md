@@ -1,6 +1,6 @@
 # SanQ backup and recovery runbook
 
-> **R0 已批准设计 / 尚未部署（2026-10-17 Toronto）：**[R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) 与 [Recovery Kit 合同](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 已冻结 D1–D5。首次 Runtime 更新前必须有完整独立解密读回的 mandatory preinstall Kit、现役日常备份健康和独立 DR 可用性；新增 S2 daily protected-state helper/扩充/接线/sudoers 在 v1/C5 验收后，不能形成循环前置。现役 timer 不因 S2 PAUSED 停止。历史已记录 daily 配置包仅含 `.env` + `docker-compose.yml`，本次未重新检查主机；S1 五文件 snapshot 不代表已上线。C5-G2 NO-GO；新权限/安装/生产操作仍需精确审阅和授权。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
 > **Production C4-P2-C status (2026-10-09 UTC):** The separately authorized
 > runtime/data cutover is complete. Active layout: `/opt/sanq/runtime`,

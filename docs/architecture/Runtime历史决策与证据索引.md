@@ -1,10 +1,10 @@
 # Runtime 历史决策与证据索引
 
-> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
 整理基线：`origin/dev@94bc7be6e6e7e40157af1fae42c79a488e7a85b8`，2026-10-17。本文承接 27 份旧篇的结论、替代关系、现场/实验范围、固定原文与原始证据定位。**不是新的安装手册，不重新确认任何 VM/文件仍存在，也不授予旧命令执行、snapshot restore、资源清理或生产权限。**
 
-现行规则见 [Runtime 交付与安装约束](./Runtime交付与安装约束.md)。生产门禁及 G2 后续进展继续见 [G2 合同](./c5-g2-trusted-runtime-contract-2026-10-13.md)、[Recovery Kit](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)、[S1](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md)。本文不重写既有工作日志、G2 负面验收或原始 JSON 收据。
+现行规则见 [Runtime 交付与安装约束](./Runtime交付与安装约束.md)。当前两项变更详见 [AWS 快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md)。本索引后面的旧方案摘要只保留历史替代链，不能继续把 Kit 重装当现行恢复。生产门禁及 G2 后续进展继续见 [G2 合同](./c5-g2-trusted-runtime-contract-2026-10-13.md)、[Recovery Kit](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)、[S1](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md)。本文不重写既有工作日志、G2 负面验收或原始 JSON 收据。
 
 ## retirements
 
@@ -13,7 +13,7 @@
 | C4 旧 checkout 路径 → 独立 Runtime/数据路径 | 旧基线发现的挂载、DB project、备份/helper与MCP依赖；后继切换按P2-C/P2-D各自范围验收 | C0/C3/C4旧“未切换”标题，不作为现在仍未安装的证明 |
 | C2 checkout字节比对 → B2A外部原始Archive证明 | staging去除checkout依赖只覆盖staging，后续控制器/MCP需单独核实 | 仅因stage完成就删除生产checkout |
 | C5-B3长期Root Launcher/Ed25519/ledger路线 | [2026-10-08退役记录](./postmod-ghcr-deploy-simplification-2026-10-08.md) 保留取消事实，旧B2B3设计仍有有用约束 | 常驻launcher、自动激活、签名实验作为现行必做路线 |
-| 旧U2D inspect/journal恢复原事务 → Abort & Clean Reinstall | 旧root/lab/SIGKILL证据仍有限有效，现行独立Kit/全新事务/不复用旧journal | 按原事务相位续跑、默认恢复旧树、自动二次exchange |
+| 旧 journal 续跑 → 旧 Kit clean reinstall → 现 AWS 快照替代恢复 | 旧 root/lab/SIGKILL/Archive/S1 的有限源码/证据保留；当前失败 ABORT、维护保持、人工确认本次准确快照→新实例 | 原事务续跑/自动 exchange，以及强制完成旧 crypt/Drive preinstall Kit/双 Archive 自举重装 |
 | 2B2-C三检查点断电计划退役 | NOT EXECUTED；原始归档/VM快照需保留，掉电仍NOT VERIFIED | 继续执行已删helper或把“退役”登记为PASS |
 
 ## 承接总表

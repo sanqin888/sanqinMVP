@@ -1,5 +1,17 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — Runtime AWS 整机快照与维护冻结方案（同批持续更新）
+
+- **批准与基线：**用户明确采用“AWS 整机快照 + 更新前容器不自动重启再生成快照”；从 `origin/dev@a76d526592b7a46e4659f485a3089d753e267b3c` 审阅。只做文档；用户在审阅 47 份文档报告后已明确授权本批远端交付，包含保留的 C2-CHANGE-02 文档规则/有限复核登记；没有云/生产操作授权。
+- **并行记录保留：**保留共享工作区另一 C2 文档任务已提交的 `4eabfa2b16d0306e6c43bfc4e8ca0f586fb0b44b` 中的 C2-CHANGE-02 规则、原件复核和有限范围登记；其分支/提交原样保留，未 reset/覆盖未提交工作，不将其验收当本批执行。
+- **合同：**新增 [AWS 快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md)，修订 R0 D2–D5/C4–C7/R2–R5、G2 A–F、安装约束、备份/恢复、索引与总队列。代码创建唯一 Lightsail 手动快照→核对 available/源/盘/txid；先记录原策略并离机保存，再准确容器 no/正常停服与启动入口禁入；快照和新实例首启保持维护，成功验证后按原状态恢复，故障不自动放行。
+- **替代与保留：**旧 mandatory crypt/Drive preinstall Kit、双 Archive 解密取回与故障机自举 clean reinstall 退出本次强制范围；每日独立备份/escrow、正常更新执行器和目标来源保持。C2 既有证据规则与独立复核不覆盖，本批不伪造 PASS、不默认重建历史 VM/marker。放行后/外部 UNKNOWN 转独立 DR/向前修复及权威对账。
+- **验证与状态：**47 份 Markdown（新增主方案 1 份、修改现有 46 份）逐份回读一致；91 个新增相对链接目标有效；历史正文/17 成员发布清单保留，新增 diff 无尾部空白或冲突标记。只做源文本/引用/历史边界和 diff/readback 审阅；本批无本地项目测试、Guest/root、实际快照、Docker policy/Compose、IAM/凭据、17 Bundle、依赖或 Prisma 变更。DOCUMENTATION DELIVERY AUTHORIZED / IMPLEMENTATION NOT STARTED / AWS ACCEPTANCE NOT RUN / C5-G2 NO-GO。本批提交/推送/dev PR/CI/合并已获用户授权；最终 head 的 Checks 和合并事件为交付权威，不提前宣称通过；后续状态更新本条，不另起同批日志。
+
+## 2026-10-18 — Runtime C2-CHANGE-02：归档原件复核与 A/B 充分性合同
+
+**状态：用户已明确授权修改恢复验收证据方法；LOCAL DOCS COMMIT / REMOTE PR NOT YET AUTHORIZED。** 基线 `origin/dev@a76d5265`（C2-CHANGE-01 PR #2863 / CI #7356 已通过并合并），分支 `docs/runtime-c2-ab-evidence-reuse-contract-20261018`。本次首次**直接读取**用户上传 C2-0/C2-1 两份原始 `.tar.gz`，复算 C2-0 SHA-256 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea` 与 C2-1 `29257b278195725002754d8925edec5b7328526df5afe8da7f6d2872fe43f3cd`；可解析的 archive 内部 manifest 全部匹配；两轮 `guest.stdout` 各 22 命令，19 个输出/rc 完全一致，其余为 UTC、IP `.2`→`.3`、mountinfo 运行时 `pipe_ino` 的预期差异；clone 原始 rc=0、目标 VDI `Parent UUID: base`、HTTP 合成切流/停止结果均在原始文件中可复核。**来源界限：**clone stdout 仅报告成功，未包含完整 clone 命令；归档本身无法独立认证原始 Mac Host 在采集时的真实性，且 Guest A 不是创建 snapshot 瞬间的逐字节映像；外层 SSH rc 缺失及首次停止 404 保留。用户本轮明确取消强制 Marker A/B 与默认重新创建 VM/snapshot，N-02/N-03/N-05 改为从 Snapshot/source/medium → clone → 独立 VM/VDI → 已有 Guest 选定状态的只读 A/B 充分性核查。明确区分 VERIFIED/LIMITED/BLOCKED；只有关键不可替代的证据缺口才单独提补证方案和审批。同步 [R0](Runtime更新-R0冻结设计.md)、[B2B2 §7/§9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)、[G2](c5-g2-trusted-runtime-contract-2026-10-13.md)、[依赖图](current-dependency-graph.md) 和 [备份恢复手册附录 A](../runbooks/backup-recovery.zh-CN.md)。**C1/C2 OPEN、C5-G2 NO-GO、S2 DAILY CONFIG EXPANSION PAUSED**；无任何 Guest/VM/snapshot/生产操作，无 Runtime 源码、CI、业务 owner、模块依赖、schema/依赖/17 项 Bundle 变更；MCP-workspace 无本地 lint/build/test 权限，待本地审阅后再远端授权。
+
 ## 2026-10-18 — Runtime C2-CHANGE-01：生产模式新实例恢复验收合同直接替换
 
 **状态：用户明确批准 C2 验收合同调整 / MCP-WORKSPACE LOCAL DOCUMENTATION / USER REVIEW PENDING / NO REMOTE PR。** 工作分支 `docs/runtime-c2-production-style-recovery-contract-20261018`，基于 `origin/dev@b18fb0e3`（前批 C2 文档 PR #2862 / CI #7354 已合并）。按用户本轮授权**直接替换**旧 C2-02 强制 VirtualBox 原机 `snapshot restore` 验收，不保留原 C2-02I 备选或另一个需审核的合同方向；唯一当前 C2-02 N-01–N-07 为受控 disposable source 的 Snapshot → 独立新实例、快照前基线 marker / 快照后差异 marker / 恢复目标的正负读回、Host/Guest/介质/隔离身份、合成端点接管、完整 rc、离机跨主体见证。旧 C2-0/C2-1 实测只在已记录范围内复用，不能因合同修改追认 PASS；新一轮 marker、退出码、独立 witness 未补齐，**C2 OPEN / C1 OPEN / C5-G2 NO-GO / S2 PAUSED**。同步 [R0](Runtime更新-R0冻结设计.md)、[B2B2 §7.3/§7.4/§9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)、[G2](c5-g2-trusted-runtime-contract-2026-10-13.md)、[备份恢复手册附录 A](../runbooks/backup-recovery.zh-CN.md) 与 [依赖图](current-dependency-graph.md)；不改变 D1–D5、C1/C3–C8/G2、业务 owner、依赖/SCC/scanner、Bundle 17、Prisma/CI/依赖、Guest/root/生产。未运行本地 lint/build/test；远端交付须经审阅授权。

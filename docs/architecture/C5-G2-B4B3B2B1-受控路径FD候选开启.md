@@ -1,5 +1,7 @@
 # C5-G2 / R1 B4B-3B-2B1 — 受控路径 FD 候选开启
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
 **日期：**2026-10-18（America/Toronto）。**状态：**MERGED / SYNTHETIC CI GREEN：PR #2857，final head `9ad184a350189d58b557419434d50efd062c3361`，CI #7344 / run `39098295751`（按变更范围选中作业全部成功），dev merge `1a82caff22b49881aad2893ae1c9374c03c97ffb`；未做真实 Guest/root 验证。**生产：**C5-G2 NO-GO；S2 DAILY CONFIG EXPANSION PAUSED（现役备份 timer 不受影响）。
 
 **基线：**最新 `origin/dev`；PR #2855 已在 `dev` 形成 merge `2db85d32`；本地分支 `feat/c5-g2-b4b3b2b1-fd-anchored-paths-20261018`。**归属：**Runtime / Ops 的外置、非授权组件；不属于冻结的 17 文件 Runtime Bundle。

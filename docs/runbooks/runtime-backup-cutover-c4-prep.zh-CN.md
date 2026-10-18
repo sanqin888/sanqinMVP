@@ -1,6 +1,8 @@
 # C3-B / C4 Runtime 与备份路径切换：历史门禁及 P2-C 验收记录
 
-> **适用范围更新（R0）：**当前 Runtime 更新/恢复路线见 [R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md)。本文 C4 首次安装/切换或 Post-A5 readiness 的历史阶段编号不等于 R0–R5 更新批次；原事实/有限关闭与未执行项保持原结论，不能用旧 pending 文档状态否定 R0 已批准设计，也不能用旧命令重新切换生产。D5 的冷掉电默认范围调整仅适用首版 Runtime 更新，不关闭完整 DR 未验项目。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
+> 本篇 C4 首次安装/切换与独立 DR 是各日期的历史合同/有限证据，不等于当前 Runtime R0–R5。旧服务停启/回退命令不得用于绕过新快照维护合同，不重新执行已完成的生产切换。
 
 **状态（2026-10-09 UTC / 2026-10-08 Toronto）：C4-P2-C `PRODUCTION CUTOVER COMPLETED`；C4-P2-D `PENDING`；整个 C4 尚非 `PRODUCTION VERIFIED / CLOSED`。**
 
