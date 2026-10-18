@@ -130,3 +130,11 @@ C2 installs only the one current-user interactive Scheduled Task described above
 - write browser/session/device credentials.
 
 A4-D owns the deliberate store-workstation operational verification and final runbook closeout.
+
+## A4 关闭后的真实运行观察
+
+2026-09-28 A4 源码/切换与真实门店安装已完成；完整历史见 [A4 归档](../../docs/archive/architecture/postmod-a4-windows-pos-workstation.md)。当时已记录登录启动、POS/Display 缺失窗口恢复及 Chromium 原生全屏，不把这些扩大为所有故障场景已通过。
+
+遇到相应真实条件时，继续记录：冷启动、浏览器/应用重启、断网与恢复、会话过期、设备重新注册、PWA 更新/缓存恢复、第二显示器恢复、打印代理重连、手动启动回退。记录日期、工作站/浏览器/代理版本、触发条件、预期与实际结果及脱敏日志；未观察项保持未验证。发现可复现缺陷再开启聚焦修复，不为保持 A4 CLOSED 造生产实验或自动重启健康进程。
+
+当前 PWA 仅 manifest 身份与 standalone launch，不注册 service worker；“更新/缓存恢复”不代表离线业务承诺。会话/设备/打印权威仍归各原 owner，不能通过 launcher 清 cookie、接管鉴权、重放支付或重复打印来恢复窗口。

@@ -13,3 +13,7 @@
 ## 2026-10-17 — 文档清理第二批：Runtime 旧方案整合
 
 **状态：本地改动已审阅并获远端交付授权，现通过 [PR #2850](https://github.com/sanqin888/sanqinMVP/pull/2850) 交付。CI 与合并的权威证据以该 PR 最终 head 的 Checks 和合并记录为准；本文不预先声明 CI 通过。未执行本地 lint/build/test。** 分支 `docs/runtime-history-consolidation-batch2-20261017`，基线 `origin/dev@94bc7be6`。逐篇承接并删除 27 份旧 GHCR/Runtime 方案，新增中文 [交付与安装约束](./Runtime交付与安装约束.md) 与 [历史决策/证据索引](./Runtime历史决策与证据索引.md)；保留 exact Bundle、发布/历史来源、staging、动态状态、备份/消费者、维护屏障和新独立重装约束，并索引原文/blob身份、U2C/2B2-B有限范围PASS、SIGKILL边界与退役冷断电NOT EXECUTED/归档哈希。同步 GHCR 状态入口、R5、项目索引、G2/Recovery Kit/S1 导航，不重写历史日志或原始JSON，不修改代码/测试、17项Bundle、owner/依赖图/架构基线、权限/CI、Prisma/schema/migration、生产主机和VM/离机资产。G2 NO-GO、S2扩充接线暂停及各阶段授权门禁保持原意；本批不构成新实验或生产验收。后续CI/交付更新本条，不重复登记批次。
+
+## 2026-10-17 — 文档清理第三批：已完结工作包全文归档
+
+**状态：本地文档改动已审阅并获远端交付授权；CI 与合并以本分支 PR 最终 head 的 Checks 和合并记录为准，不预先声明通过。未执行本地 lint/build/test。** 分支 `docs/archive-completed-work-batch3-20261017`，基线 `origin/dev@b3179ff4`（第二批 PR #2850 已合并，最终 PR CI #7321 七项成功）。将 17 份已完结记录迁入 `docs/archive/`，保留全部原文字节/Git blob 身份及旧路径映射；新增 [归档索引](../archive/README.md)、[长期约束](./已完结工作长期约束.md) 和 [浏览器 E2E 说明](../../apps/web/e2e/README.md)，将 A4 真实运行观察承接到现行工作站手册。同步项目入口、Backlog/Roadmap、依赖图中的文档引用与兼容登记证据路径；只有定位改变，compat_id/状态/owner/退出条件、依赖边/计数/架构基线均不变。Phase 7 保持源码/架构关闭的限定范围，Phase 9/Payroll/provider 及设备的递延证据仍显式保留，不宣称重新完成生产验证。历史 modularization 日志、原始 JSON 收据、Phase 6/8、Payroll、现役 Runtime、代码/测试、schema/migration、依赖/CI 和生产/VM/离机资产不变。详见归档索引；后续交付状态更新本条，不重复登记批次。
