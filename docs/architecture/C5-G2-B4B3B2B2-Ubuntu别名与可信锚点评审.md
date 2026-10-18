@@ -211,3 +211,45 @@ systemctl list-unit-files --no-pager 'sanq-*'
 **合成测试：**`ops/runtime/tests/test_root_python_dependency_alias_fds.py` 仅在 Linux 使用临时私有模拟目录：`/lib64 → /usr/lib64`、`/usr/lib64/ld-linux... → ../lib/...` 的目录+leaf symlink、可选 `/lib → /usr/lib`、真实借出的只读 FD 交现有 observer 获取依旧 `BLOCKED` receipt；同时覆盖 B2B1 原 strict opener 继续拒绝链接，未登记/错误/冗余 link、root 越界、循环/跳数、owner/mode、FIFO、hardlink、借出后 inode 替换、mount ID/namespace 漂移、pin 不一致与 FD 清理。所有内容为人工字节，**没有真实 Python/ELF 执行，也没有 root/Guest 操作**；workspace 无 test/lint/build 权限，当前尚无测试成功证据。
 
 **权限/架构：**B2B1、B3A、FD observer/offline reviewer 保持原样，原 17 项 Runtime Bundle 与入口无变化；不改变任何业务 owner、模块边、HTTP/DB/API/Prisma、CI workflow、lockfile/sudoers、真实配置或备份服务。返回结果始终 `decision=BLOCKED`、`readyToInstall=false`、`authorizedToMutateProduction=false`、root/外部 pin/动态依赖来源未认证。下一步经用户审阅才允许提交远端跑 `.github/workflows/ci.yml` 的 `ops-checks`；最终仍须 **C2-0/1** 真恢复证据后单独批准 **B2B2-B2** 的准确 Guest/root/witness 操作，**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+
+## 9. 2026-10-18 — C2-0 / C2-1 生产式新实例恢复演练：操作员实测续记（不改变 §7 的审批合同）
+
+**记录口径：**下表来自操作者在 Mac Terminal / VirtualBox / Ubuntu Guest 的原始输出和对话内 SHA-256 校验反馈；MCP-workspace **没有直接访问、下载、重算或独立鉴证其 Mac / Google Drive 原件**。Git 仓库只保存脱敏的证据**索引和可复核结论**，不收录原始系统配置、密钥、压缩包或个人路径。§7 原「未执行」代表当时设计交付状态；本节记录后续有限真实观察，**不能把 C2-02 的原地 restore 偷换为克隆 PASS**。
+
+### 9.1 准确资产与 C2-0 观察
+
+| 资产/对象 | 操作员核对的值 | 结果与边界 |
+| --- | --- | --- |
+| Host | macOS + VirtualBox `7.0.26r168464`，独立 Host/Guest 命令输出 | Host IPv4/IPv6 forwarding 均为 0；未读取 Host 全局其它通道的形式化认证 |
+| 源 VM | `SanQ-Linux-Test-02` / `4b1bd5e7-54c5-45c4-9cc3-dba2ed48a033` | C2-0 后正常关机，演练期间保留；Test-01 未操作 |
+| 源恢复点 | `SanQ-Runtime-B4B2-Clean-Baseline-20261017` / `028a681b-18b9-4dc7-a67f-69257e7cf85b` | snapshot 名称/UUID 经 Host 只读取得；`CurrentSnapshotUUID` 本身不证明发生 restore |
+| 源磁盘链 | base `66ad835f-8e92-4e9f-96e0-5907f6296169` → differencing `dec27e4f-b4ef-4e0f-9cfb-612931fd2aca` | VirtualBox medium parent/child 与 source VM 引用吻合；未执行原地恢复 |
+| C2-0 隔离 | 只有网卡 1 Host-only，其余 none；Guest `192.168.56.2/24`、无 IPv4/IPv6 default route；共享文件夹 none、drag&drop/clipboard disabled、VRDE off；录屏全局 disabled | 第一次 Host 观察曾显示 clipboard bidirectional，**操作者已更改并由后续查询复核 disabled**；不将 Host-only 当作无限的整机隔离证明 |
+| C2-0 Guest | `ubuntu` UID 1000；Ubuntu 24.04.5 / Linux `6.8.0-146-generic`、Python 3.12.3、`/dev/sda2` ext4 / UUID `24895113-d19d-4b65-84ea-ca5098f95ae5` | 普通用户读取，rootfs `rw`；启动本身允许系统写日志，不是只读磁盘 |
+| usrmerge/loader | `/lib -> usr/lib`；`/lib64 -> usr/lib64`；`/lib64/ld-linux-x86-64.so.2 -> ../lib/x86_64-linux-gnu/ld-linux-x86-64.so.2`；`readlink -f` 得 `/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2` | 是实际 Guest 的路径观察；`readlink -f` **不构成**经可信 root FD 持有的安全开链/独立软件发行源证明 |
+| C2-0 mount | `mnt:[4026531841]`；根挂载 mountinfo `8:2 /dev/sda2`；无观测到 `vboxsf`、NFS/CIFS 或外部 mount | 仅该次普通用户 namespace 观测，不代表全系统所有 namespace 完整覆盖 |
+| 缺失项 | `tmp-mount exit=1`：/tmp 未独立挂载；`sanq-unitfiles exit=1`：未找到匹配 unit；其他 20/22 项返回 0 | 属有限观测范围的预期缺失；**C2-0 SSH 外层退出码未捕获**，有独立缺失说明而非补造值 |
+
+**C2-0 证据索引（Host 私有／离机、非 Git）**：原始 5 个 Host 采集目录 `host-20261018T195002Z.SjFMbO`、`host-20261018T195155Z.hwxNSq`、`host-20261018T195200Z.4lYrOt`、`host-20261018T195701Z.HMdSPt`、`host-20261018T195901Z.fOvkOJ`；Guest `guest-20261018T200644Z.Odwu7P`。打包 `SanQ-C2-0-evidence-20261018.tar.gz`，**操作员报告的 archive SHA-256** `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`；Mac 原包及从私人 Google Drive 下载的副本均 `shasum -a 256 -c ...portable.sha256` 为 `OK`。这证明所校验的字节相等，**不是** Google 对象不可篡改、密码学来源签章或第三方独立 witness。云端是否以客户端 crypt 加密未证明；不能把普通 Google Drive 文件说成已 crypt 加密。
+
+### 9.2 C2-1A–D：从快照创建独立新实例（生产式模拟）
+
+| 阶段 | 操作/结果 | 真实状态 |
+| --- | --- | --- |
+| C2-1 preflight | 6 个 Host 查询均 rc=0；源 VM `poweroff`、指定快照/磁盘链匹配；Mac 当时可用 59 GiB；snapshot 内 clipboard 为 **Bidirectional** | 恢复后配置可能回退，禁止启动前跳过隔离核查 |
+| C2-1A 创建 | 源关机；`VBoxManage clonevm SOURCE --snapshot=SanQ-Runtime-B4B2-Clean-Baseline-20261017 --mode=machine --name=SanQ-C2-1-Recovered-20261018 --register`；clone rc=0 | **不是** `VBoxManage snapshot restore`；原源机/快照未回退、未删除 |
+| 新实例身份 | VM `162701f1-bf68-413d-9f2d-76c513554881`；新 base VDI `39381cc9-f526-4e35-8a09-3a265cfe79f4`（Parent=base，独立目录）；MAC `08002703FDC2` | 新 VM 无历史 snapshots（`--mode=machine` 预期）；不是差异磁盘依赖原 source |
+| C2-1B 启动 | 新实例 `192.168.56.3/24`，原 source 保持关机；启动前禁用新 VM clipboard，Host 查询复核 disabled、Host-only 及无共享目录；Ubuntu 24.04.5/Kernel/Python 与原观察相同 | 文件系统 UUID 继承（`24895113-d19d-4b65-84ea-ca5098f95ae5`），并不与新 VDI UUID 独立矛盾；SSH keys/machine-id 是否重复仍未对照 |
+| C2-1B Guest | 22 项同组采集，20 项 rc=0，`tmp-mount`、`sanq-unitfiles` 为 1；7 组选定 rootfs/stat/loader 观测 `diff -u` rc=0；采集文件清单 SHA 均 OK | 只是选定属性和路径一致，**没有整盘逐字节核验**；此次 Guest SSH 外层 rc 仍未捕获并如实记录 |
+| C2-1C 端点接管 | 源 `192.168.56.2:18081` curl rc=28 / HTTP 000；恢复机 `192.168.56.3:18081` HTTP 200，JSON 为 `service=sanq-c2-1c-synthetic`、`instance=recovered`、`uid=1000` 与非空运行 ID | 证明 Host-only 上**合成客户端改用新目标**，不证明真正 DNS/Static IP/Cloudflare 流量切换、Web/API/DB 或 provider |
+| C2-1C 停止 | 第一次 `/__stop` 返回 404（窗口 B 未设置正确 RUN_ID），该失败留证；改用记录在 `run-id.txt` 的精确 ID 重试得 HTTP 200/rc=0、服务打印 `STOPPED`；后续 `/healthz` HTTP 000/curl rc=7 | 故障检测通过；原自动 `grep` 对空 ID 可误判，**以实际非空 ID 与两次 JSON 显式对照为准**；`server.exitcode` 缺失，外层 SSH rc 不得补造 |
+| C2-1D 归档 | preflight/clone/recovered Guest/HTTP/final Host 五组文件校验与 `tar -tzf` OK；`SanQ-C2-1-evidence-20261018.tar.gz` 原本机与 Google Drive 下载回来的副本 `portable.sha256` 均报告 `OK` | **C2-1 压缩包的具体 64 位摘要未在对话中提供，仓库不得猜写**；尚未由 MCP/外部 witness 直接读取原件 |
+
+**C2-1 证据索引（仅文件夹 basename）：**`c2-1-preflight-20261018T202134Z.gbChJv`、`c2-1-recovery-20261018T203356Z.IyFAre`、`c2-1-recovered-20261018T204616Z.e2yM2t`、`c2-1c-20261018T205243Z.q4e9R1`、`c2-1d-final-20261018T210512Z.PjjytD`。C2-1C 合成运行 ID `c2-1c-20261018T205243Z-FD359935-33A1-481E-808F-F6E173538607`；其不是 Operator/Runtime 源 pin。证据包在私人 Google Drive 上用户报告已上传/下载并校验；**尚缺独立第三方保管链、Host witness 的签认和 SHA 完整值回填**。
+
+### 9.3 关闭口径与剩余门禁（本批不改变 R0 合同）
+
+- **可记录：**`C2-0 HOST/GUEST READ-ONLY OBSERVATION REVIEWED`；`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`。上述后者证明 VirtualBox 新实例从指定 snapshot 的有限恢复、启动和合成 endpoint 读回；原 Guest/Host 离机证据经操作者自行核验，不是跨主体签认。两次 Guest SSH、HTTP Server SSH 退出码缺失以及早先 404 均为正式已知限制。
+- **不能关闭：**R0 原 C2 / 本文件 C2-02 所要求的**批准对象的真实 `snapshot restore`、pre/post 独特差异标记恢复确认、完整独立 witness/快照介质保全**仍未通过；新实例 `clonevm --snapshot` 不是 `restore` 的同义词。更不能归入 C1 的可信 root-anchor、动态依赖消费、独立来源。**C1/C2 = OPEN，C5-G2 = NO-GO，S2 DAILY CONFIG EXPANSION = PAUSED**；现役 timer 不变。
+- **后续分批审批：**① 独立离机/Host witness 核验并取回 C2-1 archive 实际 SHA；② 另审另授权在**可丢弃且明确保护旧资产**的对象上实际 `snapshot restore`，记录原生差异标记、pre/post、rc、完整磁盘链；③ 如想把“新实例 DR”替换 R0 C2-02 原 restore 验收，**这是冻结验收合同变更，必须先提交必要性、影响与备选方案并取得用户明确批准**，不能在文档收口中直接修改；④ C2 正式达标后仍单独批准 C2-2 / B2B2-B2 的真实 Guest/root、外部源 pin 与独立消费见证。参考 [Lightsail DR 流程草案（备份恢复手册附录 A）](../runbooks/backup-recovery.zh-CN.md)；生产 VM、Static IP、Cloudflare、数据库恢复和外部支付核对均未执行。
+
