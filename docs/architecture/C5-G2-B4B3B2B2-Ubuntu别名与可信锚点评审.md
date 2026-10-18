@@ -1,6 +1,6 @@
 # C5-G2 / R1 B4B-3B-2B2 — Ubuntu usrmerge 别名与可信根锚设计评审
 
-**日期：**2026-10-18（America/Toronto）。**状态：**READ-ONLY DESIGN REVIEW / NO IMPLEMENTATION / ARCHITECTURE DECISION REQUIRED。  
+**日期：**2026-10-18（America/Toronto）。**设计交付：**PR #2858 / CI #7346 / dev merge `c9db47b74854c96e71879b38a69a1e2fe8e8d91a`。**后续 B4B-3B-2B2-A：**本地纯内存原型已编写，未运行 CI，待本地审阅；下一批 B2B2-B 实际路径/FD 解析仍需独立架构评审。  
 **基线：**`origin/dev@1a82caff22b49881aad2893ae1c9374c03c97ffb`；B4B-3B-2B1 已经 PR #2857 / CI #7344（run `39098295751`）全部选中检查成功并合并；原 PR head `9ad184a350189d58b557419434d50efd062c3361`。  
 **权威边界：**[R0 冻结设计](Runtime更新-R0冻结设计.md) D1 / R1 / C1 / C2，以及 [B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**；不影响现役备份 timer。
 
@@ -37,4 +37,14 @@ B4B-3A 把 loader 模型路径固定为 `/lib64/ld-linux-x86-64.so.2`，native �
 - **B4B-3B-2B2-B（另行审阅）：**对已独立认证的 Guest 平台布局设计 nofollow 别名采集/FD 解析合同和外部 pin 对照；将 A 与 B2B1 组合前，必须解决重复 inode、anchor、命名空间和竞态的策略。无需、不得在此次设计工作中实现。
 - **B4B-3B-2B3 / B4B-3C（后续）：**真实 Python/ELF/dlopen 完整依赖发现与消费见证；任何新的 privileged Guest/root 命令之前，**先满足 R0 C2 的快照恢复实测与原始证据离机保全**，再按准确脚本 SHA/Guest/命令/权限单独申请批准。
 
-**截至本文：**B4B-3B-2B1 为 MERGED / SYNTHETIC CI GREEN；B4B-3B-2B2 为 DESIGN REVIEW ONLY。D1–D5 既定设计不重开，C1–C8 全部门禁仍未关闭；生产 Runtime 更新、S2 扩充及新的 Guest/root 实测一律未授权。
+**截至设计评审：**B4B-3B-2B1 为 MERGED / SYNTHETIC CI GREEN；B4B-3B-2B2-D 仅设计审核。D1–D5 既定设计不重开，C1–C8 全部门禁仍未关闭；生产 Runtime 更新、S2 扩充及新的 Guest/root 实测一律未授权。
+
+## 5. 2026-10-18 — B4B-3B-2B2-A 本地纯内存模型（未验证）
+
+从 `origin/dev@c9db47b74854c96e71879b38a69a1e2fe8e8d91a` 新建 `feat/c5-g2-b4b3b2b2a-inert-alias-contract-20261018`。根据继续下一阶段的要求，**只实现 B2B2-A 合成声明的范围**：新增 `ops/runtime/root_python_usrmerge_alias_claims.py`，复用原 B4B-3A 的 manifest/pin 结构核对，仅接受最多 2 项、完全匹配既定合成形状的前缀关系 `/lib`→`/usr/lib` 与 `/lib64`→`/usr/lib64`；最多 64 个候选文件、2 次声明替换，拒绝额外字段、重复、非法目标、未使用的别名、目标碰撞。输出保留逻辑路径与**仅由调用方声称的**替换结果，永远 `decision=BLOCKED`。这两个路径映射是**合成示例而非实际 Ubuntu/发行包证据**；不会解析更深层 loader 文件 symlink、相对目标、真实 inode 或运行时 namespace。
+
+新增 `ops/runtime/tests/test_root_python_usrmerge_alias_claims.py`，用纯内存人工 manifest 测试声明一致、双前缀、非法路径/伪造权限、pin 漂移、超过预算、Bundle 排除以及不变更输入。MCP-workspace 无 lint/build/test 执行权限，**测试源码已写但本地/CI 均未运行**；今后经审阅授权远端交付，由 `.github/workflows/ci.yml` 选中的 `ops-checks` 执行 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`。
+
+**归属及安全不变量：**外置 Runtime/Ops 候选声明组件；未修改 B4B-3A、B4B-3B-1、B4B-3B-2A、B4B-3B-2B1 的实现或入口，没有文件系统打开/`readlink`/`realpath`、网络/子进程/root/Guest/写操作，不修改 Runtime 17 文件、公共 API、CI、依赖、数据库或权限。不可把提出的替换路径交给现有严格 no-follow 开启器作为已认证输入，所有信任/安装状态继续 false。
+
+**后续 B2B2-B 需独立审阅：**真实 Guest/发行版路径布局和 root-anchor 的非自证来源、有限 `readlinkat` 风格的 FD 对照、loader 内层 symlink、同 inode 别名冲突、mount/namespace/竞态约束及独立外部 hash pin；首次真实 privileged Guest 命令仍需先通过 C2 快照恢复并获得精确操作授权。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
