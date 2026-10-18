@@ -183,7 +183,8 @@ export class PaymentExceptionOrchestrationService {
       !['SANDBOX_CONFIRM_UNPAID', 'RELEASE_CONFIRMED_FAILURE'].includes(
         current.action,
       ) ||
-      (current.action === 'SANDBOX_CONFIRM_UNPAID' && current.mode !== 'SANDBOX')
+      (current.action === 'SANDBOX_CONFIRM_UNPAID' &&
+        current.mode !== 'SANDBOX')
     ) {
       throw new ConflictException('Payment exception action is not eligible');
     }

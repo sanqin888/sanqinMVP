@@ -149,6 +149,7 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
       [
         expect.objectContaining({
           data: {
+            caseStableId: existing.caseStableId,
             actorStableId: 'admin-two',
             decision: 'APPROVED',
             note: 'Evidence verified for release only',

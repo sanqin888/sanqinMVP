@@ -24,8 +24,10 @@ export class SandboxTerminalManualRecoveryService {
 
   /** Legacy R2 requires its opt-in flag; PEM uses its own audited case gate. */
   isEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-    return env.POS_CLOVER_SANDBOX_MANUAL_RECOVERY_ENABLED === 'true' &&
-      this.isIsolatedSandbox(env);
+    return (
+      env.POS_CLOVER_SANDBOX_MANUAL_RECOVERY_ENABLED === 'true' &&
+      this.isIsolatedSandbox(env)
+    );
   }
 
   /** Never treat NODE_ENV alone as proof of an isolated Sandbox. */
@@ -68,7 +70,8 @@ export class SandboxTerminalManualRecoveryService {
     operatorNote: string;
     approvedExceptionCase?: boolean;
   }): Promise<PaymentTransaction> {
-    if (!(input.approvedExceptionCase
+    if (
+      !(input.approvedExceptionCase
         ? this.isIsolatedSandbox()
         : this.isEnabled())
     ) {
@@ -131,9 +134,10 @@ export class SandboxTerminalManualRecoveryService {
       checked.status !== 'RECONCILING' ||
       (!historicalAllFailed &&
         latest.resultCode !== 'CLOVER_TERMINAL_SALE_HTTP_504') ||
-      latest.failureCode !== (historicalAllFailed
-        ? 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'
-        : 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND') ||
+      latest.failureCode !==
+        (historicalAllFailed
+          ? 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'
+          : 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND') ||
       latest.providerPaymentId !== null ||
       latest.externalPaymentId !== original.externalPaymentId
     )
@@ -265,7 +269,8 @@ export class SandboxTerminalManualRecoveryService {
     if (
       canonical.status === 'UNKNOWN' &&
       (canonical.failureCode === 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND' ||
-        (decision.originalFailureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED' &&
+        (decision.originalFailureCode ===
+          'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED' &&
           canonical.failureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'))
     )
       return false;
