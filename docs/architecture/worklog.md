@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 / B4B-3B-2B2-B1：受限 symlink FD 合成候选解析器
+
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NO PR / USER REVIEW PENDING。** 最新源 `origin/dev@c9bfa566`（#2860 设计评审/CI #7350 已合并），工作分支 `feat/c5-g2-b4b3b2b2b1-controlled-alias-fds-20261018`。新增 `root_python_dependency_alias_fds.py` 与 `test_root_python_dependency_alias_fds.py`，精确声明的目录/leaf 链接由 Linux `O_PATH | O_NOFOLLOW` 持有并从链接 FD 读取 link text，限定相对/绝对目标归一、owner/权限/inode、mount ID/namespace、预算与前后验证；对原 B2B1 旧 no-follow 行为作独立回归，合成借出 FD 可送已有 observer 但任何结果仍为 `BLOCKED`，绝不升级权限。无业务 owner、跨模块导入依赖边、SCC/baseline、Runtime 17、HTTP、schema/迁移、CI、依赖、权限/生产写入变化。本地 MCP-workspace 不执行 test/lint/build；真实 Guest、C2 restore、root-anchor/外部 pin/动态消费证据未执行。详见 [B2B2 §8](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。仅获源码和合成测试授权，首次远端推送需另审。**C1/C2 OPEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+
 ## 2026-10-18 — R1 / B4B-3B-2B2-B 受控解析专项评审与 C2 Guest 就绪准备
 
 **状态：MCP-WORKSPACE LOCAL DESIGN/READINESS / USER REVIEW PENDING / NO PR / NO GUEST OR ROOT EXECUTION。** 基于 `origin/dev@d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386` 独立分支 `docs/runtime-b2b2b-c2-readiness-20261018`，审阅 AGENTS/CI、R0/G2、B2B2-D/2B1、实际 manifest/alias/path-FD/observer/offline 实现；更新**原有** #2859 同批记录为 MERGED / SYNTHETIC CI GREEN，不重复开发纯声明模型。新增 [受控解析/C2 就绪评审与准确操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)：根锚/别名/loader/FD/独立 pins 与重复 inode、mount/竞态 fail-closed 语义，C2 只读取证、经新授权才可执行的快照恢复演练、矩阵及分批审批。未实施 B2B2-B 源码、未运行 Guest/快照/云操作或 MCP-workspace 测试；未改 Runtime 17 项、B2B1 no-follow、CI/依赖/Prisma、业务 owner 或依赖边/架构基线/生产状态；R0 D1–D5 不重开，C1/C2 和 C5-G2 仍 NO-GO，S2 daily 扩充继续暂停（现役 timer 不变）。首次远端交付另需用户审阅授权。

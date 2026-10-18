@@ -198,4 +198,16 @@ systemctl list-unit-files --no-pager 'sanq-*'
 5. **C2-2 / B4B-3C Guest root：**满足 C2 后，另交精确脚本 SHA、命令、root-owned 安全路径、独立 pin/witness 和失败保全清单，经新的许可才执行。
 6. **生产 G2-E：**R1–R5 同候选证据及 C1–C8 门禁全部满足后独立审批；当前始终 **NO-GO**。
 
-**本批不修改：**任何 `ops/runtime/*.py` 源码/测试、17 项 Bundle、业务代码或 Prisma、依赖、`sudoers`、现役备份 timer、生产 VM/runtime、Guest/root/快照、远端 Kit/Cloud 权限或真实凭据。生产 installed Runtime / app SHA 本轮未重读，不能使用 `dev` SHA 代替。
+**原 §7 仅设计评审批不修改：**任何 `ops/runtime/*.py` 源码/测试、17 项 Bundle、业务代码或 Prisma、依赖、`sudoers`、现役备份 timer、生产 VM/runtime、Guest/root/快照、远端 Kit/Cloud 权限或真实凭据。生产 installed Runtime / app SHA 本轮未重读，不能使用 `dev` SHA 代替。
+
+## 8. 2026-10-18 — B4B-3B-2B2-B1 合成受限 FD 开链本地实施（待审阅）
+
+**基线：**PR #2860 / CI #7350 已合并的 `origin/dev@c9bfa566d7892042b23508889c95a11334159f5b`；本地分支 `feat/c5-g2-b4b3b2b2b1-controlled-alias-fds-20261018`。**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NO PR / NO GUEST / C1/C2 OPEN**。用户只授权 B2B2-B1 独立解析器与合成测试，**未授权 B2B2-B2 的 Guest/独立来源采集、C2 快照恢复或生产执行**。§7 的待批准状态是设计批历史，不应冒充本批当前进度。
+
+**新增源码：**`ops/runtime/root_python_dependency_alias_fds.py`。仍从调用方提供的**未经认证** root directory FD、B4B-3A manifest/digest 和提出的 file pins 出发，读取逐路径的**精确声明** `proposed_exact_links`（仅作为输入约束，不接受其为外部认证）。目录和普通文件使用 `O_PATH | O_NOFOLLOW` 固定当前条目并逐段核对，symlink 使用 `O_PATH | O_NOFOLLOW` 持有链接 FD，调用 `os.readlink("", dir_fd=link_fd)` 读取**持有的同一个链接对象**，不对路径执行 `realpath` 或调用普通 `os.readlink(name)`。校验链接文本完全一致、类型/owner/权限/FD metadata，展开绝对目标相对于 root FD、相对 `..` 仅在当前 root-FD 内归一，未知/越界/循环/超限拒绝。最终普通文件再次用只读 `O_NOFOLLOW` 打开且与 O_PATH entry FD 同 inode，持有到借出上下文结束；路径字串仅为非授权轨迹，不允许调用方重开。
+
+**限定预算（B1 合成候选合同）：**最多 64 个逻辑文件、每条解析路径 12 段、单文件 32 MiB、总声明字节 64 MiB、每文件最多 8 跳 symlink、单跳文本和路径最多 256 ASCII bytes、最多 8 条精确 link 声明，所有借出路径合计最多 768 个 held FDs；全部受限且不按真实 Guest 失败自动扩大。**Mount 判定：**严格要求 `st_dev` 与 root 一致，另要求 Linux `/proc/self/fdinfo/<fd>` 的真实 `mnt_id` 在 anchor/每个链接/目录/最终文件一致，且 `/proc/self/ns/mnt` 在借出前后不漂移；缺失 mount ID、procfs 不可观测、同设备 bind mount/不同 mount、任何 metadata/path link 改动均 fail-closed。这里的 mount ID 只提供合成路径观察约束，**不是外部 witness，也不证明整段借出期间完全无竞态**；无需引入 `openat2`/`statx` 原始 syscall/ctypes 或额外依赖，此决定不声称内核机制比设计基线更强。未来 Guest 如需可靠独立唯一 mount 标识，另审实现。
+
+**合成测试：**`ops/runtime/tests/test_root_python_dependency_alias_fds.py` 仅在 Linux 使用临时私有模拟目录：`/lib64 → /usr/lib64`、`/usr/lib64/ld-linux... → ../lib/...` 的目录+leaf symlink、可选 `/lib → /usr/lib`、真实借出的只读 FD 交现有 observer 获取依旧 `BLOCKED` receipt；同时覆盖 B2B1 原 strict opener 继续拒绝链接，未登记/错误/冗余 link、root 越界、循环/跳数、owner/mode、FIFO、hardlink、借出后 inode 替换、mount ID/namespace 漂移、pin 不一致与 FD 清理。所有内容为人工字节，**没有真实 Python/ELF 执行，也没有 root/Guest 操作**；workspace 无 test/lint/build 权限，当前尚无测试成功证据。
+
+**权限/架构：**B2B1、B3A、FD observer/offline reviewer 保持原样，原 17 项 Runtime Bundle 与入口无变化；不改变任何业务 owner、模块边、HTTP/DB/API/Prisma、CI workflow、lockfile/sudoers、真实配置或备份服务。返回结果始终 `decision=BLOCKED`、`readyToInstall=false`、`authorizedToMutateProduction=false`、root/外部 pin/动态依赖来源未认证。下一步经用户审阅才允许提交远端跑 `.github/workflows/ci.yml` 的 `ops-checks`；最终仍须 **C2-0/1** 真恢复证据后单独批准 **B2B2-B2** 的准确 Guest/root/witness 操作，**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
