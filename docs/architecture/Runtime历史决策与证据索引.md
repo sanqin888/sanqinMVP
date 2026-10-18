@@ -1,5 +1,7 @@
 # Runtime 历史决策与证据索引
 
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
 整理基线：`origin/dev@94bc7be6e6e7e40157af1fae42c79a488e7a85b8`，2026-10-17。本文承接 27 份旧篇的结论、替代关系、现场/实验范围、固定原文与原始证据定位。**不是新的安装手册，不重新确认任何 VM/文件仍存在，也不授予旧命令执行、snapshot restore、资源清理或生产权限。**
 
 现行规则见 [Runtime 交付与安装约束](./Runtime交付与安装约束.md)。生产门禁及 G2 后续进展继续见 [G2 合同](./c5-g2-trusted-runtime-contract-2026-10-13.md)、[Recovery Kit](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md)、[S1](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md)。本文不重写既有工作日志、G2 负面验收或原始 JSON 收据。

@@ -1,5 +1,7 @@
 # sanqinMVP
 
+> Runtime 更新当前路线：[R0 冻结设计](docs/architecture/Runtime更新-R0冻结设计.md)。D1–D5 已批准，R0 文档完成；下一批 R1 真实执行闭包，随后 R2–R5 补维护、Kit、安装/恢复与同候选验收。**C5-G2 NO-GO**，S2 指后续 daily 扩充暂缓，不是停止现役备份。
+
 Monorepo (pnpm workspace) for **Sanqin Roujiamo** web + API, deployed with Docker Compose.
 
 ## Stack

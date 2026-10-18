@@ -1,5 +1,9 @@
 # GHCR 发布与 Runtime 状态
 
+R0 进度补充：B4B-3A PR #2848 / merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061` / CI #7315 已通过，仅合成依赖声明图。真实闭包、有限维护禁入、真实 crypt/Drive Kit、安装/独立重装、同候选矩阵仍在 R1–R5；没有新的 installed/production 事实。
+
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
 本文汇总截至 2026-10-17 已提交仓库中的发布合同和历史现场证据，不替代操作前对真实主机、已安装源码版本及备份状态的重新核实，也不构成生产变更授权。
 
 ## 已记录的现场事实与尚未完成的工作

@@ -1,6 +1,6 @@
 # SanQ backup and recovery runbook
 
-> **2026-10-11 PROPOSAL ONLY / NOT DEPLOYED:** [C5-U2D Abort & Clean Reinstall / Recovery Kit](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) proposes a mandatory encrypted, remotely read-back pre-install Runtime Recovery Kit plus supplementary daily snapshots of root-only release state and the C4 marker. **Current production daily config archives still contain only `.env` and `docker-compose.yml`.** No new root helper, sudoers scope, backup service or production cloud change is authorized by this design note.
+> **R0 已批准设计 / 尚未部署（2026-10-17 Toronto）：**[R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) 与 [Recovery Kit 合同](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 已冻结 D1–D5。首次 Runtime 更新前必须有完整独立解密读回的 mandatory preinstall Kit、现役日常备份健康和独立 DR 可用性；新增 S2 daily protected-state helper/扩充/接线/sudoers 在 v1/C5 验收后，不能形成循环前置。现役 timer 不因 S2 PAUSED 停止。历史已记录 daily 配置包仅含 `.env` + `docker-compose.yml`，本次未重新检查主机；S1 五文件 snapshot 不代表已上线。C5-G2 NO-GO；新权限/安装/生产操作仍需精确审阅和授权。
 
 > **Production C4-P2-C status (2026-10-09 UTC):** The separately authorized
 > runtime/data cutover is complete. Active layout: `/opt/sanq/runtime`,

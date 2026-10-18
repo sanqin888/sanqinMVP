@@ -1,6 +1,6 @@
 # SanQ 备份恢复手册
 
-> **2026-10-11 未来方案（尚未实施）：** [C5-U2D Abort & Clean Reinstall / Recovery Kit](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 提议在每次 Runtime 安装/更新前强制上传并远端读回一份加密 Recovery Kit，同时扩充每日定时配置备份至 root-only Release State 与 C4 marker。**当前生产每日配置包仍只有 `.env` + `docker-compose.yml`；不可按新方案已上线来操作。** 修改 root 辅助程序、sudoers、备份服务或生产备份目标均需单独审阅和授权。
+> **R0 已批准设计 / 尚未部署（2026-10-17 Toronto）：**[R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) 与 [Recovery Kit 合同](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 已冻结 D1–D5。首次 Runtime 更新前必须有完整独立解密读回的 mandatory preinstall Kit、现役日常备份健康和独立 DR 可用性；新增 S2 daily protected-state helper/扩充/接线/sudoers 在 v1/C5 验收后，不能形成循环前置。现役 timer 不因 S2 PAUSED 停止。历史已记录 daily 配置包仅含 `.env` + `docker-compose.yml`，本次未重新检查主机；S1 五文件 snapshot 不代表已上线。C5-G2 NO-GO；新权限/安装/生产操作仍需精确审阅和授权。
 
 > **C4-P2-C 生产状态（2026-10-09 UTC）：**已按独立授权完成方案 B 路径切换：
 > Runtime = `/opt/sanq/runtime`，Uploads = `/srv/sanq/uploads`，

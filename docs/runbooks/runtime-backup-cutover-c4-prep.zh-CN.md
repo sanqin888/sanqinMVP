@@ -1,5 +1,7 @@
 # C3-B / C4 Runtime 与备份路径切换：历史门禁及 P2-C 验收记录
 
+> **适用范围更新（R0）：**当前 Runtime 更新/恢复路线见 [R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md)。本文 C4 首次安装/切换或 Post-A5 readiness 的历史阶段编号不等于 R0–R5 更新批次；原事实/有限关闭与未执行项保持原结论，不能用旧 pending 文档状态否定 R0 已批准设计，也不能用旧命令重新切换生产。D5 的冷掉电默认范围调整仅适用首版 Runtime 更新，不关闭完整 DR 未验项目。
+
 **状态（2026-10-09 UTC / 2026-10-08 Toronto）：C4-P2-C `PRODUCTION CUTOVER COMPLETED`；C4-P2-D `PENDING`；整个 C4 尚非 `PRODUCTION VERIFIED / CLOSED`。**
 
 本文第 1–4 节保留的是已执行切换的**原始审批与回退合同**，不可作为重新执行生产切换的授权或命令手册。C3-B 源码与 C4-P2-A 可信 Runtime Archive 预安装均已按独立授权完成；`build_bundle.py::SOURCE_FILES` 的 17 文件严格白名单不变。P2-A 原始准备与失败恢复规则见 `docs/runbooks/runtime-trusted-manual-install-c4p2a.zh-CN.md`。

@@ -1,5 +1,21 @@
 # SanQ Post-Modularization Backlog
 
+## Runtime 更新专项队列（R0 已冻结）
+
+用户已批准 D1–D5，当前唯一决策/进度入口为 [Runtime 更新 R0 冻结设计](docs/architecture/Runtime更新-R0冻结设计.md)；本专项不改其他产品队列优先级。
+
+| 批次 | 范围 | 状态 |
+| --- | --- | --- |
+| R0 | 批准决策、C1–C8、固定矩阵及全仓文档收口 | DESIGN FROZEN / 文档完成、远端交付已授权 |
+| R1 | 实际平台/执行完整闭包、独立来源与见证 | NEXT；真实 Guest 前先 C2/精确命令批准 |
+| R2 | D2-A 有限维护、namespace、禁入与原状态恢复 | PLANNED |
+| R3 | crypt/Drive create-only 真适配、mandatory preinstall Kit | PLANNED |
+| R4 | root-private 正式安装/新事务独立重装 | PLANNED |
+| R5 | 同候选端到端/故障矩阵、再独立 C8 交付 | PLANNED |
+
+**C5-G2 NO-GO**；S2 新 daily helper/扩充/接线/sudoers 在 v1/C5 后独立推进，不阻塞首次 Kit，亦不停止现役 timer。现役 daily 健康和独立 DR 可用仍是首次更新前置。历史 backup drill 已关闭范围不等于新的完整 Runtime 更新/重装验收；下文旧 readiness R1–R5 名称与本专项不同。
+
+
 Status: **ACTIVE / PRIORITIZED POST-MODULARIZATION ROADMAP — DO NOT REOPEN THE CLOSED MODULARIZATION PROGRAM**  
 Created: 2026-09-19  
 Priority audit: 2026-09-19  

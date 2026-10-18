@@ -1,5 +1,7 @@
 # Runtime readiness production verification
 
+> **适用范围更新（R0）：**当前 Runtime 更新/恢复路线见 [R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md)。本文 C4 首次安装/切换或 Post-A5 readiness 的历史阶段编号不等于 R0–R5 更新批次；原事实/有限关闭与未执行项保持原结论，不能用旧 pending 文档状态否定 R0 已批准设计，也不能用旧命令重新切换生产。D5 的冷掉电默认范围调整仅适用首版 Runtime 更新，不关闭完整 DR 未验项目。
+
 ## Scope and gate
 
 This runbook closes Post-A5 Runtime Readiness R5 after R1-R4 are promoted to
