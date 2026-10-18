@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 / B4B-3B-2B2-B 受控解析专项评审与 C2 Guest 就绪准备
+
+**状态：MCP-WORKSPACE LOCAL DESIGN/READINESS / USER REVIEW PENDING / NO PR / NO GUEST OR ROOT EXECUTION。** 基于 `origin/dev@d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386` 独立分支 `docs/runtime-b2b2b-c2-readiness-20261018`，审阅 AGENTS/CI、R0/G2、B2B2-D/2B1、实际 manifest/alias/path-FD/observer/offline 实现；更新**原有** #2859 同批记录为 MERGED / SYNTHETIC CI GREEN，不重复开发纯声明模型。新增 [受控解析/C2 就绪评审与准确操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)：根锚/别名/loader/FD/独立 pins 与重复 inode、mount/竞态 fail-closed 语义，C2 只读取证、经新授权才可执行的快照恢复演练、矩阵及分批审批。未实施 B2B2-B 源码、未运行 Guest/快照/云操作或 MCP-workspace 测试；未改 Runtime 17 项、B2B1 no-follow、CI/依赖/Prisma、业务 owner 或依赖边/架构基线/生产状态；R0 D1–D5 不重开，C1/C2 和 C5-G2 仍 NO-GO，S2 daily 扩充继续暂停（现役 timer 不变）。首次远端交付另需用户审阅授权。
+
 ## 2026-10-18 — R1 / B4B-3B-2B2-A：有限纯内存 usrmerge 别名声明模型
 
-**状态：MCP-WORKSPACE LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR。** 已合并的设计评审 PR #2858、CI #7346、dev `c9db47b7` 是本批源代码基线；新分支 `feat/c5-g2-b4b3b2b2a-inert-alias-contract-20261018`。新增 `ops/runtime/root_python_usrmerge_alias_claims.py` 和 `ops/runtime/tests/test_root_python_usrmerge_alias_claims.py`，仅使用调用方提出的 B4B-3A manifest/pins 和固定两类**合成** `/lib`、`/lib64` 前缀关系，在内存中严格拒绝额外/错误/冗余路径与超预算；所有模型输出仍是 `decision=BLOCKED`。不会验证真实 Ubuntu 布局、根锚、FD→路径、外部独立来源或 Python/ELF/dlopen 动态闭包，不允许接入现有 B2B1 严格 no-follow 开启器或执行候选代码。无业务 owner / 依赖图基线 / Runtime 17 / 新依赖 / CI / Prisma / 权限 / Guest/root/生产写入变化。MCP-workspace 未开放测试执行权限；后续经审阅授权推送，GitHub CI `ops-checks` 才有权威合成结果；B2B2-B 实际可信别名证据链另行评审。详细见 [B2B2 评审/实施记录](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
+**状态：MERGED / SYNTHETIC CI GREEN：PR #2859，final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`，CI #7348 / run `39101080529` 成功（选中 `ci-change-scope`、`ops-checks`、`api-checks`、`build-test (api)`；Runtime 281 tests OK、Release 45 tests OK；其余按范围跳过），dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`。** 已合并的设计评审 PR #2858、CI #7346、dev `c9db47b7` 是本批源代码基线；实施分支 `feat/c5-g2-b4b3b2b2a-inert-alias-contract-20261018`。新增 `ops/runtime/root_python_usrmerge_alias_claims.py` 和 `ops/runtime/tests/test_root_python_usrmerge_alias_claims.py`，仅使用调用方提出的 B4B-3A manifest/pins 和固定两类**合成** `/lib`、`/lib64` 前缀关系，在内存中严格拒绝额外/错误/冗余路径与超预算；所有模型输出仍是 `decision=BLOCKED`。不会验证真实 Ubuntu 布局、根锚、FD→路径、外部独立来源或 Python/ELF/dlopen 动态闭包，不允许接入现有 B2B1 严格 no-follow 开启器或执行候选代码。无业务 owner / 依赖图基线 / Runtime 17 / 新依赖 / CI / Prisma / 权限 / Guest/root/生产写入变化。MCP-workspace 未运行测试；#2859 的 GitHub Actions `ops-checks` 已有权威**合成**结果，并非全站 E2E、真实 Guest、路径/FD 来源或 C1/C2 通过；B2B2-B 实际可信别名证据链仍单独评审。详细见 [B2B2 评审/实施记录](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
 
 ## 2026-10-18 — R1 / B4B-3B-2B2-D：Ubuntu usrmerge 别名与可信根锚设计评审
 

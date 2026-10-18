@@ -2,6 +2,8 @@
 
 > **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
 
+**2026-10-18 当前交付补记：**R1 B4B-3B-2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`，CI #7348 / run `39101080529` 选中作业成功，dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`）；仅合成声明与测试。B2B2-B 的[受控解析专项评审/C2 恢复就绪包](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)现为本地设计，尚无真实源码解析、Guest restore、外部 pin/消费见证，C1/C2 不关闭。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**，现役备份 timer 不受影响。
+
 本合同后部带日期的 B02/B4B 条目是各批撰写/取证时记录；其 LOCAL、NOT RUN 和下一步按当时范围保留。当前源码/CI 总进度与 C1–C8 映射以 R0 为准，A–F 授权层级继续有效。
 
 **Date:** 2026-10-13 America/Toronto  
