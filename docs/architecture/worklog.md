@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — CI：全部作业按变更范围启动（同批扩展）
+
+**最高状态：REMOTE DELIVERY / [PR #2856](https://github.com/sanqin888/sanqinMVP/pull/2856) / CI+MERGE: SEE PR FINAL HEAD。** 交付分支 `ci/dependency-aware-check-scope-20261018` ，源码审阅基线 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`。按用户补充要求，将本批 E2E-only 选择器原子替换为通用 CI 范围与汇总合同；Ops 安全/API 静态/Jest/Web/E2E/printer/Windows 与两镜像仅在有关时启动。保留 API Jest 对 Web 源码的真实架构依赖、Runtime/Release 相互导入、workspace manifests 对两端的影响；原检查名、汇总失败语义、main 完整验收、成对发布/证明不变。不新增依赖/Action/权限，不改业务代码、owner/依赖图/架构基线、schema/migration、17 文件 Bundle 或生产。已编写合成 Git/汇总边界测试，但未在本地或远端执行；用户已授权远端交付；交付基线为最新 `origin/dev@2db85d32541f05e7e3268e7f5a2013812d59690e`，CI/合并以 PR 最终 head Checks 与事件为权威。详见 [CI 范围合同](CI按变更范围执行.md) 与 [CI 工作包](postmod-ci-performance.md)。本条替换同批原 E2E-only 记录，不重复登记批次。
+
 ## 2026-10-17 — R1 / B4B-3B-2A 静态 Python / ELF 依赖线索（本地）
 
 **最高状态：PR #2855 OPEN / FIRST CI #7338 FAILED (synthetic fixture overlap) / LOCAL FIX AUTHORED / RERUN PENDING**，本地分支 `feat/c5-g2-b4b3b2a-static-dependency-evidence-20261017` 基于 PR #2854 合并后的 `origin/dev@2bab5fe653babb89092f5c102a159d23edc81988`。B4B-3B-1 已合并：PR #2854，CI #7336 全绿，merge SHA `2bab5fe6`。本批新建独立外置 `ops/runtime/root_python_elf_static_hints.py` 和只用内存源代码/ELF64 人工字节的合成负向测试，提取 Python AST import、ELF PT_DYNAMIC / DT_NEEDED 有限静态依赖线索，记录相对/from/动态导入、ELF 搜索/loader/标签歧义。不是 FD→真实路径认证、完整运行时 import/ELF/dlopen 闭包或来源可信认证；永久拒绝生产 authority。未改 B4B-1/2/3A/3B-1、Runtime 17、业务模块 owner/dependency、CI/依赖/Prisma/部署。文档：[B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md)。首次 PR #2855 / CI #7338 的 `api-checks` 因合成 ELF fixture 中 PT_DYNAMIC（含 RUNPATH）覆盖 PT_INTERP 导致 1 个测试报错；本批在同一 PR 内将 fixture 的 PT_INTERP 调整至不重叠偏移，保留解析器严格拒绝畸形 PT_INTERP 的行为；修复后的 CI 仍需重新运行并全部成功，不预先宣称通过。MCP-workspace 未运行 lint/build/test。后续 3B-2B 真实开链/依赖发现及 3C C2 后实测，均须独立审阅。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。

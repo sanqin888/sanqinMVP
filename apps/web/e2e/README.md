@@ -1,5 +1,11 @@
 # 浏览器端到端测试
 
+## CI 变更范围（2026-10-18，本地待审）
+
+已将本批 E2E-only 方案扩展为所有 CI 作业按实际输入选择，统一规则见 [CI 按变更范围执行](../../../docs/architecture/CI按变更范围执行.md)。纯文档/独立 Ops 不启动 Browser E2E；应用、共享库、数据库、依赖及 CI/未知变化仍运行；main push 完整验收。使用 job 级条件，跳过时不会拉取 PostgreSQL 或准备浏览器。保留原检查名与完整 migration replay/seed/BFF/13 条旅程；其他作业也按自身输入判断。选择器/历史异常默认全量，ECR Public 限额不由本批消除。
+
+实现与边界测试已编写，未运行本地 lint/build/test、用户已授权远端交付；交付基线为最新 `origin/dev@2db85d32541f05e7e3268e7f5a2013812d59690e`，CI/合并以 PR 最终 head Checks 与事件为权威或创建 PR。
+
 本目录承接已关闭 A5 的日常测试说明；施工/PR/CI 记录见 [A5 归档](../../../docs/archive/architecture/postmod-a5-browser-e2e.md)。配置与命令的权威来源为 [Playwright 配置](../playwright.config.ts)、[Web package](../package.json)、[实际 CI](../../../.github/workflows/ci.yml) 的 `browser-e2e` 作业及 [fixture seed](../../api/test/e2e/seed.ts)，变化时同步本说明。
 
 ## 安全运行前提

@@ -9,6 +9,7 @@ on:
       - '.dockerignore'
       - '.github/workflows/image-build-checks.yml'
       - '.github/workflows/publish-images.yml'
+      - 'tools/ci/**'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - 'package.json'
@@ -25,20 +26,49 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
-    name: image-build (${{ matrix.image }})
+  ci_scope:
+    name: image-change-scope
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      ops_mcp: ${{ steps.scope.outputs.ops_mcp }}
+      ops_backup: ${{ steps.scope.outputs.ops_backup }}
+      ops_release: ${{ steps.scope.outputs.ops_release }}
+      ops_runtime: ${{ steps.scope.outputs.ops_runtime }}
+      api_static: ${{ steps.scope.outputs.api_static }}
+      api_tests: ${{ steps.scope.outputs.api_tests }}
+      web: ${{ steps.scope.outputs.web }}
+      browser_e2e: ${{ steps.scope.outputs.browser_e2e }}
+      printer: ${{ steps.scope.outputs.printer }}
+      windows: ${{ steps.scope.outputs.windows }}
+      image_api: ${{ steps.scope.outputs.image_api }}
+      image_web: ${{ steps.scope.outputs.image_web }}
+      ops_checks: ${{ steps.scope.outputs.ops_checks }}
+      api_checks: ${{ steps.scope.outputs.api_checks }}
+      api_validation: ${{ steps.scope.outputs.api_validation }}
+    steps:
+      - name: Checkout complete change history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Test CI selection and aggregate boundaries
+        run: python3 -m unittest discover -s tools/ci/tests -p 'test_*.py'
+
+      - name: Select affected CI lanes
+        id: scope
+        run: python3 tools/ci/change_scope.py
+
+  image_api:
+    name: image-build (sanq-api)
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.image_api != 'false') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: sanq-api
-            dockerfile: Dockerfile.api
-          - image: sanq-web
-            dockerfile: Dockerfile.web
+
     env:
-      IMAGE: ${{ matrix.image }}:ci
+      IMAGE: sanq-api:ci
+
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v6
@@ -55,7 +85,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile.api
           platforms: linux/amd64
           push: false
           load: true
@@ -63,7 +93,7 @@ jobs:
           # PR validation consumes the last published image cache but does not
           # export a second full builder cache. The export previously dominated
           # the job after the image and smoke-test inputs were already complete.
-          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=sanq-api
 
       - name: Record image build data
         if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
@@ -112,7 +142,6 @@ jobs:
           NODE
 
       - name: Verify API runtime packaging
-        if: matrix.image == 'sanq-api'
         run: |
           docker run --rm --workdir /app/apps/api "$IMAGE" node -e '
             const assert = require("node:assert/strict");
@@ -132,8 +161,98 @@ jobs:
             execFileSync("pdftotext", ["-v"], { stdio: "inherit" });
           '
 
+      - name: Upload image build data
+        if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-build-data-sanq-api
+          path: ${{ runner.temp }}/sanq-image-build.json
+          if-no-files-found: error
+          retention-days: 7
+
+  image_web:
+    name: image-build (sanq-web)
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.image_web != 'false') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+
+    env:
+      IMAGE: sanq-web:ci
+
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Record build start
+        id: clock
+        run: echo "started_ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and load image
+        id: image_build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.web
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}
+          # PR validation consumes the last published image cache but does not
+          # export a second full builder cache. The export previously dominated
+          # the job after the image and smoke-test inputs were already complete.
+          cache-from: type=gha,scope=sanq-web
+
+      - name: Record image build data
+        if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
+        env:
+          STARTED_MS: ${{ steps.clock.outputs.started_ms }}
+          BUILD_OUTCOME: ${{ steps.image_build.outcome }}
+          BUILD_DIGEST: ${{ steps.image_build.outputs.digest }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const { execFileSync } = require('node:child_process');
+          const endedMs = Date.now();
+          let image = null;
+          if (process.env.BUILD_OUTCOME === 'success') {
+            [image] = JSON.parse(execFileSync('docker', ['image', 'inspect', process.env.IMAGE], { encoding: 'utf8' }));
+          }
+          const report = {
+            image: process.env.IMAGE,
+            checkoutSha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            prHeadSha: process.env.PR_HEAD_SHA || null,
+            buildOutcome: process.env.BUILD_OUTCOME,
+            buildActionSeconds: (endedMs - Number(process.env.STARTED_MS)) / 1000,
+            digest: process.env.BUILD_DIGEST || null,
+            localImageId: image?.Id || null,
+            uncompressedImageBytes: image?.Size ?? null,
+            platform: image ? `${image.Os}/${image.Architecture}` : null,
+            runnerImage: process.env.ImageOS || null,
+            runnerImageVersion: process.env.ImageVersion || null,
+            cpuModel: os.cpus()[0]?.model || null,
+            logicalCpus: os.cpus().length,
+            cacheImportScopes: [process.env.IMAGE.split(':')[0]],
+            cacheExportScope: null,
+          };
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/sanq-image-build.json`, JSON.stringify(report, null, 2) + '\n');
+          console.log('IMAGE_BUILD_REPORT ' + JSON.stringify(report));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            `### ${report.image} build`,
+            `- Outcome: ${report.buildOutcome}; tested SHA: ${report.checkoutSha}; PR head: ${report.prHeadSha || 'n/a'}`,
+            `- Build action elapsed: ${report.buildActionSeconds.toFixed(2)}s (includes cache import/export and local image load; excludes setup and smoke checks).`,
+            `- Local uncompressed image bytes: ${report.uncompressedImageBytes ?? 'unavailable'}; platform: ${report.platform || 'unavailable'}.`,
+            '- Cache hits and per-stage durations: see the native Buildx summary/build record and job log. PR validation imports the published-image cache and intentionally skips cache export.',
+            '',
+          ].join('\n'));
+          NODE
+
       - name: Verify Web standalone health
-        if: matrix.image == 'sanq-web'
         run: |
           docker run --rm "$IMAGE" node -e '
             const assert = require("node:assert/strict");
@@ -164,7 +283,8 @@ jobs:
         if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
-          name: image-build-data-${{ matrix.image }}
+          name: image-build-data-sanq-web
           path: ${{ runner.temp }}/sanq-image-build.json
           if-no-files-found: error
           retention-days: 7
+
