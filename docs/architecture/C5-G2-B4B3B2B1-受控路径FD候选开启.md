@@ -1,6 +1,6 @@
 # C5-G2 / R1 B4B-3B-2B1 — 受控路径 FD 候选开启
 
-**日期：**2026-10-18（America/Toronto）。**状态：**本地源码和合成测试已编写；未运行 lint / build / test；待用户审阅。**生产：**C5-G2 NO-GO；S2 DAILY CONFIG EXPANSION PAUSED（现役备份 timer 不受影响）。
+**日期：**2026-10-18（America/Toronto）。**状态：**MERGED / SYNTHETIC CI GREEN：PR #2857，final head `9ad184a350189d58b557419434d50efd062c3361`，CI #7344 / run `39098295751`（按变更范围选中作业全部成功），dev merge `1a82caff22b49881aad2893ae1c9374c03c97ffb`；未做真实 Guest/root 验证。**生产：**C5-G2 NO-GO；S2 DAILY CONFIG EXPANSION PAUSED（现役备份 timer 不受影响）。
 
 **基线：**最新 `origin/dev`；PR #2855 已在 `dev` 形成 merge `2db85d32`；本地分支 `feat/c5-g2-b4b3b2b1-fd-anchored-paths-20261018`。**归属：**Runtime / Ops 的外置、非授权组件；不属于冻结的 17 文件 Runtime Bundle。
 
@@ -22,8 +22,8 @@ B4B-3A 只审查调用方提出的依赖清单，B4B-3B-1 从**预打开 FD** �
 
 新增 `ops/runtime/tests/test_root_python_dependency_path_fds.py`，只在 CI 临时私有目录构造虚假的 `/usr/bin/python3.12` 与 `/lib64/ld-linux-x86-64.so.2` 相对路径（**不是**真正的 Python 或 ELF 程序），检查稳定 FD 交接到 B4B-3B-1、使用结束关闭、符号链接、权限、硬链接、缺失文件、错误 hash、未受信任锚点模式及确定性的捕获后替换拒绝。真实系统没有执行、加载或读取。
 
-当前最新 CI 是依赖范围选择工作流：`.github/workflows/ci.yml` `ops-checks` 的 Runtime 步骤将运行 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`；当前本地无法执行，须在用户批准远端提交后的 PR CI 才能标记验证。不得用之前 `api-checks` 的旧工作流名称声称此次已通过。
+本批已通过按依赖范围选择的 CI #7344：`.github/workflows/ci.yml` 的 `ops-checks` Runtime 步骤已运行 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`，包括本批合成测试；`ci-change-scope`、`api-checks` 与 `build-test (api)` 均成功，其余无关作业按范围跳过。MCP-workspace 本地未执行。此结果不是实机/Guest 或生产验证，也不能用旧工作流的 `api-checks` 代替真实 Runtime 测试证据。
 
 **尚未实现 / 不因本批 PASS：**真正主机 `/` 锚点的独立认证、Ubuntu usrmerge 别名的可信解析、所有文件/软件包的外部来源 pin、完整 CPython 动态 import 和 ELF/dlopen 依赖图、运行中 namespace/替换攻击的连续阻断、离机证据与独立 root 消费见证。B4B-3C 新 root/Guest 实测仍先受 R0 C2 约束，历史跳过 snapshot restore 的例外不豁免恢复门禁。
 
-**结果语义：**本组件仅提供候选 FD；B4B-3B-1 观察 receipt 仍是 `decision=BLOCKED`、`preopenedFDAndPathProvenanceAuthenticated=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。不自动扩展 B4B-3A/B4B-3B-1 的公共合同，也不增加正式 C1–C8 任何 PASS。
+**结果语义：**本组件仅提供候选 FD；B4B-3B-1 观察 receipt 仍是 `decision=BLOCKED`、`preopenedFDAndPathProvenanceAuthenticated=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。不自动扩展 B4B-3A/B4B-3B-1 的公共合同，也不增加正式 C1–C8 任何 PASS。下一阶段先做 [B4B-3B-2B2 Ubuntu 别名与可信锚点设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，未经审批不放宽现有 `O_NOFOLLOW`。

@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 / B4B-3B-2B2-D：Ubuntu usrmerge 别名与可信根锚设计评审
+
+**状态：LOCAL DESIGN REVIEW / USER REVIEW PENDING / NO PR / NO IMPLEMENTATION。** 以 `origin/dev@1a82caff` 和已合并 PR #2857 / CI #7344 为基线，审阅 B4B-3B-2B1 的严格 `O_NOFOLLOW` FD 开启、B4B-3A 固定 `/lib64` loader 路径与 Ubuntu usrmerge symlink 的不兼容处。对比保持严格 no-follow、另建经外部认证的有限 alias 策略、以及不安全的 `realpath`/任意 symlink 直开三种方案；推荐独立审核 B 方案，**未经用户专项批准不得放宽现有代码的 fail-closed 路径规则**。本批仅新增 [B4B-3B-2B2 评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 并按真实 PR/CI 更新 B2B1、R0、G2 和依赖图，不修改业务 owner、依赖图边、Runtime 17 文件 Bundle、接口/CI/依赖/Prisma、Guest/root/生产状态；未运行本地测试。C1/C2 和 C5-G2 NO-GO 未关闭；S2 DAILY CONFIG EXPANSION PAUSED，现役备份 timer 不变。
+
 ## 2026-10-18 — R1 / B4B-3B-2B1：受控路径 FD 候选开启
 
-**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NO CI / USER REVIEW PENDING / NO PR。** 基于最新 `origin/dev@b309c1bb` 的独立分支 `feat/c5-g2-b4b3b2b1-fd-anchored-paths-20261018`。承接 PR #2855 已合并 `dev@2db85d32` 的 Python AST / ELF 静态线索，按照 R0 D1 最小增量新增 `root_python_dependency_path_fds.py` 与纯临时文件合成测试：由调用方传入不自证的 root-anchor FD，基于 B4B-3A 的候选白名单逐段只读、nofollow 开启，保留入口/FD/owner/device/inode/permissions 身份、预借出/结束后复核，供 B4B-3B-1 候选摘要读取。会严格拒绝真实 Ubuntu `/lib64` 等 usrmerge symlink（不能擅自放宽），不证明 `/` 根锚与外部来源，也不执行真实系统/Guest/root。未改旧组件公共合同、17 文件 Runtime Bundle、模块归属/架构基线、CI/依赖/数据库/生产状态。根据最新 CI 范围选择机制，Runtime 测试应在 `ops-checks` 运行；MCP-workspace 不开放测试权限，本批未验证。见 [B4B-3B-2B1 文档](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。下一步需独立评审真实 usrmerge 路径解析、可信锚点与离机来源、Python/ELF 动态闭包及 B4B-3C C2 真实恢复演练；**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
+**状态：MERGED / SYNTHETIC CI GREEN：PR #2857，head `9ad184a350189d58b557419434d50efd062c3361`，CI #7344（run `39098295751`；选中检查均通过），dev merge `1a82caff22b49881aad2893ae1c9374c03c97ffb`。** 基于最新 `origin/dev@b309c1bb` 的独立分支 `feat/c5-g2-b4b3b2b1-fd-anchored-paths-20261018`。承接 PR #2855 已合并 `dev@2db85d32` 的 Python AST / ELF 静态线索，按照 R0 D1 最小增量新增 `root_python_dependency_path_fds.py` 与纯临时文件合成测试：由调用方传入不自证的 root-anchor FD，基于 B4B-3A 的候选白名单逐段只读、nofollow 开启，保留入口/FD/owner/device/inode/permissions 身份、预借出/结束后复核，供 B4B-3B-1 候选摘要读取。会严格拒绝真实 Ubuntu `/lib64` 等 usrmerge symlink（不能擅自放宽），不证明 `/` 根锚与外部来源，也不执行真实系统/Guest/root。未改旧组件公共合同、17 文件 Runtime Bundle、模块归属/架构基线、CI/依赖/数据库/生产状态。根据最新 CI 范围选择机制，Runtime 测试已在 PR #2857 的 `ops-checks` 运行并通过；MCP-workspace 本地未运行；此 CI 仅证明合成测试。见 [B4B-3B-2B1 文档](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。下一步需独立评审真实 usrmerge 路径解析、可信锚点与离机来源、Python/ELF 动态闭包及 B4B-3C C2 真实恢复演练；**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
 
 ## 2026-10-18 — CI：全部作业按变更范围启动（同批扩展）
 
