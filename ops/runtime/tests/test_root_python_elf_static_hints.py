@@ -27,10 +27,12 @@ def synthetic_elf(*, needed=b"libcrypto.so.3", interp=b"/lib64/ld-linux-x86-64.s
     struct.pack_into("<IIQQQQQQ", image, 120,
                      2, 4, 256, 0x400100, 0, dyn_size, dyn_size, 8)
     interpreter = interp + b"\0"
+    # PT_DYNAMIC may occupy [256, 336) when DT_RUNPATH is present.
+    # Keep PT_INTERP at a disjoint offset so the fixture is valid ELF.
     struct.pack_into("<IIQQQQQQ", image, 176,
-                     3, 4, 320, 0x400140, 0, len(interpreter),
+                     3, 4, 352, 0x400160, 0, len(interpreter),
                      len(interpreter), 1)
-    image[320:320 + len(interpreter)] = interpreter
+    image[352:352 + len(interpreter)] = interpreter
     table = b"\0" + needed + b"\0"
     image[384:384 + len(table)] = table
     dynamics = [(5, 0x400000 + 384), (10, len(table)), (1, 1)]
