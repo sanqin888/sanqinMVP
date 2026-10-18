@@ -1,6 +1,6 @@
 # SanQ 备份恢复手册
 
-> **R0 已批准设计 / 尚未部署（2026-10-17 Toronto）：**[R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) 与 [Recovery Kit 合同](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 已冻结 D1–D5。首次 Runtime 更新前必须有完整独立解密读回的 mandatory preinstall Kit、现役日常备份健康和独立 DR 可用性；新增 S2 daily protected-state helper/扩充/接线/sudoers 在 v1/C5 验收后，不能形成循环前置。现役 timer 不因 S2 PAUSED 停止。历史已记录 daily 配置包仅含 `.env` + `docker-compose.yml`，本次未重新检查主机；S1 五文件 snapshot 不代表已上线。C5-G2 NO-GO；新权限/安装/生产操作仍需精确审阅和授权。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
 > **C4-P2-C 生产状态（2026-10-09 UTC）：**已按独立授权完成方案 B 路径切换：
 > Runtime = `/opt/sanq/runtime`，Uploads = `/srv/sanq/uploads`，
@@ -11,7 +11,7 @@
 > `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`；独立恢复及业务实测仍在
 > `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`（P2-D 有限范围证据验收完成；离机 roles 已捕获在加密 DMG，正式关闭待文档审阅、dev PR/CI 合并）。
 
-> **2026-10-18 Runtime C2 生产式恢复验收合同已调整：**用户明确批准 C2-CHANGE-01，将 C2-02 **唯一强制路径**改为指定 Snapshot → 独立新实例（N-01–N-07，包括恢复点差异和独立见证）；旧原机 `snapshot restore` 不再是验收要求或备选方案。详见本文附录 A 与 [B2B2 §7.3](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。本轮 VirtualBox 克隆/Ubuntu/Host-only 合成接管/下载 SHA 校验为有限实测，缺预后 marker/部分 rc/独立 witness，C2 仍 OPEN。真实 Lightsail/DB/Cloudflare/供应商未测，C5-G2 NO-GO。
+> **C2 当前证据规则：**指定 Snapshot→独立新实例为唯一恢复机制；N-01–N-07 的证据充分性按 [B2B2 §7.3/§9](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 最新合同与独立审阅解释。先复用现有原件，不因缺旧 marker/rc 自动重演，不用有限 VirtualBox 结果冒充真实 AWS 验收；C2 仍 OPEN / C5-G2 NO-GO。
 >
 > 对应英文运维合同：`docs/runbooks/backup-recovery.md`  
 > 当前状态：Post-Modularization §3.2 Backup / Recovery Drill 已于 2026-10-02 **PRODUCTION VERIFIED / CLOSED**。  
@@ -646,6 +646,8 @@ sudo stat /etc/nginx/certs/cf-origin.key
 
 ## 13. 服务启动顺序
 
+**Runtime 更新/快照恢复补充：**以下通用 DR 服务顺序不能绕过 [快照维护合同](../architecture/Runtime更新-AWS快照与维护冻结方案.md)。恢复实例首启 no/维护；健康启动保持业务/外部副作用屏障，按原策略与任务状态精确恢复，最后放行。失败保持冻结，禁止 finally 启动全部服务。
+
 恢复后的推荐顺序：
 
 ```text
@@ -828,19 +830,25 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 
 ## 附录 A — Lightsail 灾难恢复：新实例替换演练与生产门禁（草案）
 
-> **2026-10-18 / C2-CHANGE-01 APPROVED（仅验收合同、非操作授权）。** 用户已将原 C2-02 的 VirtualBox 原机快照回退验收**直接替换**为与 AWS Lightsail 一致的「指定 Snapshot → 独立新实例 → 恢复点因果标记/隔离/合成端点/独立证据」**唯一强制恢复路径**；不设置旧 restore 备选。下面仅将已有 VirtualBox 有限合成演练与生产 DR 作映射，不代表 AWS 实测或自动关闭 C2。R0 D1–D5、C1/C3–C8、[G2 权限层级](../architecture/c5-g2-trusted-runtime-contract-2026-10-13.md) 均保持不变；C2 精确 N-01–N-07 见 [B2B2 §7.3](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。本文件不授权新 VM/root/Cloudflare/生产执行。
+> **C2 与本次修订（2026-10-18）：**C2-CHANGE-01 的指定 Snapshot→独立新实例恢复机制保留；C2-CHANGE-02 的证据规则以 B2B2 最新 N-01–N-07 为准，先审既有 A/B 原件，不因缺 marker 自动重演。本次另批准代码快照/维护冻结，更新 R0 D2–D5/C4–C7；[G2 A–F](../architecture/c5-g2-trusted-runtime-contract-2026-10-13.md) 精确执行许可继续有效。无具体 VM/root/AWS/切流操作授权。
 
-### A.1 为什么要分成两种恢复
+### A.0 Runtime 更新前专用快照（已批准设计，尚未实现/验收）
+
+按 [AWS 快照方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 执行合同：保留管理通道/原策略离机记录→准确容器 no、正常停服和启动入口禁入→一致恢复点→代码创建本次手动快照并核对 available/来源/覆盖盘→活跃安装→独立验证→按原策略恢复、最后放行业务。快照保存维护态，新实例首启仍禁止业务自启。不得手改 Manifest Compose 或依赖单次 stop。
+
+本次主要更新恢复材料是准确 AWS 快照与故障 VM 外轻量清单，不重复 mandatory crypt/Drive Kit；每日备份/roles/escrow 不取消。失败保持冻结，人工确认精确快照创建独立替代实例、fence 旧机并对账再切流；外部 UNKNOWN/意外写入或业务放行后不可直接丢弃新订单回盘。真实 AWS API/维护首启与数据恢复仍待验收，VirtualBox 有限实测不代替。
+
+### A.1 按事故与保护窗口选择恢复
 
 | 触发条件 | 目标动作 | 不可混用的边界 |
 | --- | --- | --- |
-| 仅 Runtime 安装中断、业务数据与宿主机未损坏 | R0 D5 `Abort & Clean Reinstall`：用完整可信外部 Archive/Kit、独立执行材料与全新 txid 重装 Runtime | **不**自行回退 PostgreSQL、Uploads，不恢复旧 journal，不假冒整机 DR |
+| 维护停写窗口内 Runtime 更新中断/失败，尚未重新放行业务 | ABORT 旧更新、维持维护；人工确认本次准确手动快照→独立 AWS 新实例，首启冻结、验证后受控切流 | 不续旧 journal、不强制故障机 Kit clean reinstall；必须证明快照后持续停写，外部付款订单仍需权威对账 |
 | 应用发布失败，但 Runtime/持久化健康 | 采用现有 `deploy_release.py` 发布/回退与配对镜像合同 | 不能用旧 VM snapshot 覆盖实时订单和支付 |
 | 主机丢失、OS/文件系统损坏、业务数据完整性不可证或恢复需要替代服务器 | **全 DR 新实例恢复**：从审核的 Lightsail snapshot 新建实例，恢复/对齐数据库与文件，受控切流 | 不在未经证实的旧 VM 上原地覆盖运行中业务，不让旧新实例同时产生有效 provider/DB 写入 |
 
 **生产原则：**在故障对象与恢复对象身份、数据恢复点、隔离、访问控制、应用镜像发布 SHA、外部事件与写入者互斥未确认前，目标实例只准隔离核查，不得开放真实业务处理。RPO/RTO 必须由具体快照/备份时间和回放证据计算，不编造“零损失”或固定恢复时间。
 
-### A.2 2026-10-18 已执行的 VirtualBox 合成映射
+### A.2 2026-10-18 已执行的 VirtualBox 合成映射（表内缺口为当时状态，当前复核见 B2B2 §9）
 
 | Lightsail 应做的恢复活动 | 本次可核实的 VirtualBox 演练 | 仍未验证 |
 | --- | --- | --- |
@@ -852,7 +860,7 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 | 健康失败阻断使用 | `/__stop` 首次 404 已留证；第二次精确 ID 返回 200，日志 STOPPED；停止后健康检查 curl rc=7 | 正式流量切换、回滚、重复 webhook/支付防护 |
 | 离机保全 | C2-0、C2-1 压缩包由操作者在私有 Google Drive 上传、下载，均 `shasum -a 256 -c` OK | 独立第三方见证、不可变存储与真实恢复所需原凭据源 |
 
-**准确验收口径：**`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`；**新的 C2-02 N-01–N-07 仍不齐备，R0 C2 OPEN / C5-G2 NO-GO**。已执行的 clone 不需补做原机 restore，但缺快照创建前 baseline 与快照后 marker 的因果验证、部分 Guest/Server SSH 外层 rc 与独立见证；只有新一轮同恢复点演练全项通过才能申请 C2 PASS。C2-1 压缩包的完整 SHA-256 尚未在对话中提供，不能补造；C2-0 操作员报告 SHA-256 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`。详情在所属架构文档 §9；原始证据**不提交 Git**。
+**准确验收口径（C2-CHANGE-02）：**`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`，关键 snapshot 来源/clone=0/独立 VDI/Ubuntu/合成 HTTP 可复用；**不因缺人为 Marker A/B 自动重做或 FAIL**。两份历史包已在独立审阅环境中直接重算 SHA：C2-0 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`；C2-1 `29257b278195725002754d8925edec5b7328526df5afe8da7f6d2872fe43f3cd`。22 项 Guest 对照 19 完全一致、3 项为明确动态差异。历史 Guest/Server SSH 外层 rc 缺失照实登记；来源 Host 独立真伪认证、快照时点整盘 byte-level 一致性未证明，不因归档 SHA 一致而宣称已证明。**C2 OPEN / C5-G2 NO-GO**，详细核查见架构合同 §7.3/§9，原件不进 Git。
 
 ### A.3 生产 Lightsail DR 审批与执行清单（未执行、非自动授权）
 
@@ -865,7 +873,7 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 
 #### Gate P1 — 确定可恢复资产和恢复点
 
-- 分别审阅 Lightsail **实例/系统盘** snapshot、可能存在的附加磁盘 snapshot、PostgreSQL 独立逻辑备份、Uploads 当前/历史、加密配置、Nginx/TLS、Runtime 旧/目标原 Archive 与 proof。
+- 按事故选择准确 Lightsail 实例快照及覆盖盘、可能未覆盖的外置数据、PostgreSQL 独立逻辑备份、Uploads/配置/TLS/escrow。Runtime 更新停写窗口优先本次快照与轻量清单；目标新包仍验来源，旧/新双 Archive 不再是每次云恢复强制前置。跨资源 DR 按实际选用备份分别验来源和时点。
 - 精确列出每个快照和 DB dump 的时间、区域、身份、hash/来源、可用性、预计数据缺口与冲突时间段。整机快照**不等于**各异步备份与业务数据库的原子恢复点。
 - 在隔离环境核查 `gdrive_secure:` 的 crypt 恢复资料和下载/解密读回；Google Drive 文件可取回的 SHA 检查**不是**创建语义 WORM、发行来源证明或密钥 escrow 自动达标。
 - 明确是否需要将数据库恢复到特定时间点：仅有逻辑 dump 的场景不能凭空承诺 PITR；外部支付与订单必须与恢复时间点对账。
@@ -901,10 +909,11 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 
 - [x] C2-0 Host/Guest 普通用户有限观察（2026-10-18 操作员报告）
 - [x] C2-1A–D 合成新实例替换与 Google Drive 取回校验（2026-10-18 操作员报告）
-- [ ] **新 C2-02（N-01–N-07）：**在单独批准的 disposable source 上于快照创建**前**保存基线 marker，快照**后**写入不同 marker，真实新建独立 VM 并验证恢复 VM「前者存在/后者不存在」；加上源介质链、隔离合成接管、完整 rc 和独立离机 witness；当前有限实测不可追认全项 PASS
-- [ ] 独立 Host/Guest witness 与 C2-1 完整 SHA-256 值来源审阅
+- [ ] **C2-02 N-01–N-07 A/B 现有材料充分性评审：**先只读复核原 Snapshot/clone/独立 VDI、C2-0 与 C2-1 Guest 22 项、HTTP 原件及两个完整归档的 SHA；每项单列 VERIFIED/LIMITED/BLOCKED。Marker A/B 不再强制，不以补造快照为默认方案；若关键 Host 来源仍不可信，再单独裁定最小必要补证。
+- [x] C2-0/C2-1 上传原件 SHA-256 与包内 manifest 直接复算、Guest 22 项 A/B 有限比对（独立读取归档）
+- [ ] 关键 Host 来源身份的独立见证与 C2 整体验收结论审阅（**不能由已验 SHA 自动推导**）
 - [ ] B2B2-B2 实际 root-anchor/别名 FD、外部发行 pins/消费见证（另审、另授权）
 - [ ] 真正 Lightsail 实例创建、应用/DB/Uploads 恢复、Static IP/Cloudflare、供应商与生产切换的独立 DR 验收（另立任务，不属于本次模拟）
 
-**C2-CHANGE-01 已获用户明确合同授权：新实例恢复现在是唯一正式验收标准，旧原机 `snapshot restore` 的强制验收已废止，不再列为待评审选项。** 本次文档修改仍不授权任何具体 Guest/Host/snapshot/生产操作；如需执行 N-01–N-07，请先明确可丢弃源 VM、快照与证据范围、写入影响及安全保全，再另行取得精确操作许可。
+**C2-CHANGE-01 已获用户明确合同授权：新实例恢复现在是唯一正式验收标准，旧原机 `snapshot restore` 的强制验收已废止，不再列为待评审选项。** **C2-CHANGE-02 已获用户授权取消强制 Marker A/B；现阶段优先只读复核已有 A/B。** 本次文档修改不授权 Guest/Host/snapshot/生产写操作；只有关键来源或恢复能力确实无法从现有证据验证时，才提出精确范围与最小副作用的补证审批。
 

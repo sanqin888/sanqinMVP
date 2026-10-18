@@ -1,14 +1,16 @@
 # C5-U2D S1 — Protected Config Snapshot / old-plan retirement
 
-> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
 
-**D4 已冻结次序：**S1 独立库供 R3 mandatory preinstall Kit 复用；现役 daily backup 健康/独立 DR 可用性先行，新增 S2 daily helper/扩充/接线/sudoers 在 v1/C5 验收后。下面按原 S2/S3 编号描述职责，不代表必须先 S2 后 S3。D3 真适配未完成前，fake/synthetic remote 不构成可安装 Kit。
+**当前适用性：**S1 是已合并但未部署的五文件独立库；本次不再强制 R3 preinstall Kit/真实 crypt 适配。未来 daily 扩充可按独立审阅复用，S2 仍后置，现役备份与 escrow 不变。下文保留 2026-10-11 库契约及旧路线原文，不是现行更新门禁。
 
 **State:** MERGED dev PR #2789 / PR CI #7164 AND post-merge #7165 GREEN / NOT INSTALLED / NO PRODUCTION AUTHORIZATION  
 **Baseline:** latest `origin/dev` at `48915a59f9262347a37c74e6339f496fc20567ad` (2026-10-11).  
-**Decision:** pre-install encrypted Runtime Recovery Kit is primary, daily config backup is supplementary; interrupted Runtime installation is abandoned, never resumed.
+**Historical decision (superseded for this update):** pre-install encrypted Runtime Recovery Kit was primary; the current AWS snapshot route above replaces it. The S1 library remains unchanged.
 
-## Ownership and current S1 boundary
+## 历史 S1 库契约与原路线（保留实现边界）
+
+### Ownership and S1 boundary
 
 `ops/backup/protected_config_snapshot.py` is a **library-only, inert** shared component. It cannot execute a backup by itself and has no CLI, shell, sudo, network calls, Docker calls, root service, production installation or deployment authority. No change is made to installed `/home/ubuntu/backup-db.sh`, systemd, rclone, sudoers, `/opt/sanq/runtime`, `ops/release/deploy_release.py`, the strict 17-member Runtime Archive or database.
 

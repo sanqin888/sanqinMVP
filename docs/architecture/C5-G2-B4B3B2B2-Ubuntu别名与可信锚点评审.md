@@ -1,5 +1,7 @@
 # C5-G2 / R1 B4B-3B-2B2 — Ubuntu usrmerge 别名与可信根锚设计评审
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
 **日期：**2026-10-18（America/Toronto）。**设计交付：**PR #2858 / CI #7346 / dev merge `c9db47b74854c96e71879b38a69a1e2fe8e8d91a`。**后续 B4B-3B-2B2-A：**已由 PR #2859 合并至 dev `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`；final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`，CI #7348 / run `39101080529` 合成检查通过。B2B2-B 实际路径/FD 解析仍需独立专项评审。  
 **基线：**`origin/dev@1a82caff22b49881aad2893ae1c9374c03c97ffb`；B4B-3B-2B1 已经 PR #2857 / CI #7344（run `39098295751`）全部选中检查成功并合并；原 PR head `9ad184a350189d58b557419434d50efd062c3361`。  
 **权威边界：**[R0 冻结设计](Runtime更新-R0冻结设计.md) D1 / R1 / C1 / C2，以及 [B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**；不影响现役备份 timer。
@@ -155,21 +157,23 @@ systemctl list-unit-files --no-pager 'sanq-*'
 
 **证据：**Host/Guest 的原始终端输出分别采集原样 stdout/stderr/rc、执行日期/顺序、命令文本与观察身份；只向 Host 私有、非 Guest、非 Repo/Drive 公共目录保存，不上传密钥或原始环境变量。为每份原始文件在 Host 计算 `shasum -a 256 <实际文件>`，保留原件+manifest，另由独立核对人读取并复算；报告用文件名+hash+保管责任人引用，不从聊天记录重建原始 JSON。
 
-### C2-1：Snapshot → New Instance 实际恢复演练（**对象与副作用逐项另授权后**才做）
+### C2-1：Snapshot → New Instance 实际恢复演练（对象与副作用逐项另授权）
 
-**唯一支持的 C2 恢复方式：**按照目标生产 Lightsail 的「从指定快照新建替代实例」机制，在完全隔离、可丢弃的 VirtualBox Guest 中构造等效的**独立新实例**恢复实验。实际生产 Lightsail 切流/数据库恢复不属于 C2 实验权限。`clonevm --snapshot=... --mode=machine` 是此类 VirtualBox 演练的候选机制；其返回 0 或 Guest 能启动不能单独构成 PASS。**不再执行、不要求原 VM 的 `snapshot restore`；不建立待选的原地恢复验收路径。**
+**唯一 C2 恢复机制不变：**按照生产 Lightsail「指定 Snapshot → 独立替代实例」的模式，使用隔离 VirtualBox 合成环境证明恢复能力。`clonevm --snapshot=... --mode=machine` 是现有实验的实际机制，但创建成功并不等于整盘或业务恢复已验证；真实 Lightsail/DB/Uploads/支付流量不在本轮范围。不要求、不执行原机 `snapshot restore`。
 
-**唯一强制操作合同（C2-02 / N-01–N-07，全项 PASS 才能提交 C2 关闭评审）：**
+**C2-CHANGE-02（2026-10-18 用户批准）：N-02、N-03、N-05 改用既有 A/B 原始证据的充分性比对。** 预先植入 Marker A、快照后写入 Marker B、另建一轮快照/新实例，都不再是强制验收条件。先核对原始 Host 记录、准确快照及介质来源链、clone 操作与 rc、独立 VDI、恢复 Guest 的有限稳定基线、合成 HTTP 与离机 hash。不得把该链条说成整盘逐字节一致、任意未观测的快照后变更不存在，或第三方对 Host 原生状态签名。关键证据存在不可解释的矛盾则 fail-closed。
 
-1. **N-01 来源与隔离身份：**离机、跨侧核实确切的源 Guest VM UUID、Snapshot UUID/时点、来源 medium/父子链、发行版/UID/GID、网络/挂载/共享目录/剪贴板及管理身份。只有经过批准的**可丢弃合成 Guest** 能成为源对象。原 Test-02/旧快照/旧原始证据默认不可删除、覆盖或回退。
-2. **N-02 快照内基线标记：**在**经过单独批准的可丢弃源对象**上，于快照创建**之前**以非敏感合成材料建立随机唯一 baseline marker（内容/元数据/摘要），并由 Host 离机记录预期值、来源、时间和身份；证据在新实例创建前完成保全。如果旧快照无法独立证明预置标记，必须在新批准的 disposable source 上重新建立恢复点，不能事后把已有文件称作预置标记。
-3. **N-03 快照后差异标记：**快照创建之后、从快照新建实例之前，在同一受控 disposable 源对象上建立**不同**的随机合成 marker 与可核对的 post-snapshot 值，记录操作 rc/时间和离机摘要。源对象保持独立保全，不能把差异标记写进将恢复的快照；有生产数据或身份不明立即 STOP。
-4. **N-04 实际新实例创建：**明确批准且记录开关机/新 VDI 等副作用后，从**精确指定**的 snapshot 创建不同 UUID、不同 MAC、独立普通 base VDI/介质链的替代 VM。原来源及其证据原样保留；记录原始 stdout/stderr、**立即捕获**的操作退出码、Snapshot→new VDI 映射、快照分支来源。任何错误目标/隐含 linked clone/意外磁盘依赖拒绝。
-5. **N-05 恢复点真实对照：**在恢复实例的隔离 Guest 中检查 N-02 baseline marker 精确存在且内容/hash/metadata 一致，同时 N-03 的快照后 marker **明确不存在**；并复核 ext4 rootfs、平台身份、Python/loader、mount、只读基线候选信息。缺任一项即 BLOCKED；`diff=0` 的有限系统元数据不替代这两项因果区分。
-6. **N-06 隔离及合成接管：**在启动前核实恢复配置（包括快照可能继承的危险剪贴板/网卡设置）；源 VM 保持关机或已批准的失效隔离；在 Host-only 链路验证可丢弃合成 HTTP 端点旧目标失败、新目标身份/非空 run ID 匹配和健康 200，并验证停止后健康失败。不得连真实 SanQ Web/API、DB、Clover/Uber/Fantuan 或生产 Cloudflare/DNS/Static IP。
-7. **N-07 独立证据闭环：**保留每步授权、执行者、UTC、脚本源/hash、Host/Guest 原始 stdout/stderr/实际 rc、来源/目标 identity、前后 marker 与实际读取值、失败和清理状态；先保存 Host 私有，再离机备份并下载/复核 SHA，最后由**不同于执行者的独立复核主体或能独立核验原件及权威 Host 身份的隔离见证环境**核对。自生成摘要与自己下载只能证明字节一致，不能自证来源。缺原始退出码不得填假值；需在新完整演练中重新取得。
+**现行 C2-02 / N-01–N-07 核查合同：**
 
-**副作用与审批：**新建 disposable VM/snapshot、写入合成标记、Guest power 操作、复制 medium 都有实际副作用，须在执行前再获精确 VM/Snapshot/目录/时间窗与保全方案批准。未经单独授权不执行，不修改真实生产系统。任一身份、快照时点、marker、离机证据、隔离或独立见证不符，一律 `C2 OPEN / BLOCKED`，不进入新 privileged Guest/root 实测。该验收模拟生产**恢复机制**，**不认证真实业务 DB/Uploads/外部供应商恢复**。
+1. **N-01 身份/隔离：**记录并交叉核对真实 Host、源 VM UUID、Snapshot UUID/名称、源介质链、恢复 VM UUID、Guest UID/GID、Host-only 网络/共享目录/剪贴板/挂载。源 Test-02、旧 Snapshot 与历史证据一律保留。
+2. **N-02 A（Snapshot）锚定：**直接用历史 Host `snapshot list`、Snapshot 配置、源 VM/介质信息、归档时间与 hash 确认本次克隆选择的**确切恢复点**。没有预置 Marker A 不构成自动失败；只有 snapshot 名称或一次自行报告的值而缺身份链，不能 PASS。
+3. **N-03 A→B 来源因果：**核对 `clonevm --snapshot=<准确名称/UUID>` 原始执行材料、成功退出码、新 VM/VDI、独立 base medium/Parent UUID 与源 VM/快照关联；排除从 source 当前态误克隆或 linked clone。无 Marker B 不构成自动失败，但该链条只能证明操作与来源，**不能断言未观察到的任意快照后文件均被排除**。
+4. **N-04 实际新实例：**确认 clone 真实成功、恢复实例独立 UUID/MAC/VDI、正确容量和来源绑定、成功启动；保留原始 stdout/stderr/rc。不能只因 `VBoxManage` 返回 0 就判定业务完全恢复。
+5. **N-05 A/B 选定内容一致性：**按采集脚本的 22 个命令名、原始 rc 与输出逐项对照；对 OS/kernel/Python、rootfs UUID、stat、usrmerge/loader、mount 和 isolation 等稳定字段进行严格比较，UTC、Guest IP 与 mountinfo 中临时内核标识作为**明确列出的预期差异**，不能隐去。须注明源 Guest 观测发生于快照之后，**不能冒充快照创建时的逐字节内容**；可以增加已有的快照时点固定文件摘要，但并非必需 Marker A/B 或整盘 hash。
+6. **N-06 合成服务：**在隔离 Host-only 环境核对旧目标不可用、新目标 HTTP 200 且身份/run_id 准确、受控停止与随后探针失败，连同失败/重试证据一起保存；不测试真实 Web/API/DB/外部 provider 或公网切换。
+7. **N-07 独立原件审阅：**逐归档及内部 manifest 复算 SHA；复核 snapshot、clone、Guest、HTTP 原始文件，留存执行时间、身份、成功/失败及缺失项。若外层 SSH rc 当时未捕获，原样标注 `MISSING`，不补造，也不为该单项重做全部演练。独立审核用户上传包只能证明收到的**字节完整性和内部一致性**，不能仅此认证原始 Mac Host 身份或不可篡改的采集链。
+
+**验收决策：**每项记录 `VERIFIED / LIMITED / BLOCKED` 与受影响的具体结论。关键来源身份、恢复机制或所依赖的系统状态出现不能解释的冲突时 C2 保持 OPEN；仅补最小的必要证据。先使用现有档案及只读 `VBoxManage` 查询，不要求再造 Snapshot 或 VM；后者及 Guest/Host 操作有副作用时仍须单独提供对象、影响和审批。C2 不是生产 Lightsail 全业务恢复认证，C1 与 C5-G2 始终独立。
 
 ### C2-2：独立源/消费取证（只计划，不随 C2-0/1 自动执行）
 
@@ -188,8 +192,8 @@ systemctl list-unit-files --no-pager 'sanq-*'
 | SRC-07 | 不同设备、同设备 bind mount、mount ID/namespace 漂移、不可读取 | BLOCKED；不以 dev 相等自动准入 | Linux fixture/Guest 专项，缺 mount 覆盖时不 PASS |
 | SRC-08 | 正确 FD bytes 但外部 pin 错、pin 仅自报或 receipt 丢失 | BLOCKED，来源/保管链不认证 | 独立核对与错误来源负例 |
 | C2-01 | 新鲜 Host/Guest/源磁盘与网络/挂载/凭据隔离身份 | 准确跨侧核对；未知 STOP | N-01 Host/Guest 原始记录、rc、独立证据 |
-| C2-02 / N-01–N-04 | 指定恢复点与真实 Snapshot → New Instance | 快照前基线/快照后差异标记分别保全，独立新实例及 VDI 身份实证，源资产不变 | 准确 source/snapshot/new VM/medium、原始 hash、rc；未验证即 BLOCKED |
-| C2-02 / N-05–N-07 | 新实例恢复点与服务、隔离、外部见证 | baseline 存在、post-marker 不存在；合成流量接管/停止；完整离机原件及独立见证 | 同一轮演练全链、缺一即 BLOCKED |
+| C2-02 / N-01–N-04 | A Snapshot 身份与 B 新实例的来源链 | 指定 Snapshot、source/medium、克隆成功和独立 base VDI 交叉核查；**不强制 Marker A/B** | Snapshot/source/clone/target 原件；来源不明则 BLOCKED |
+| C2-02 / N-05–N-07 | A/B 已有 Guest 基线、合成 HTTP 与证据完整性 | 22 项逐项对照稳定值和预期差异、身份与 rc；合成接管/停止；离机 SHA 与独立包内审阅 | 必须区分被核实的字节/功能与尚未独立认证的 Host 来源，关键矛盾 BLOCKED |
 | 历史 B4B-2 8/8 | 2026-10-17 当时的实验原件 | 保留历史观察和当时缺失项；**非 C2 现行关闭条件** | 历史记录不重写，不把旧实验升级为 PASS |
 | LIVE-01 | 真实 Guest alias / loader / 发行包与独立外部 pin | 每条 logical→FD→bytes→source pin 可复核 | C2 通过后另批准采集；仍非 C1 PASS |
 | LIVE-02 | 动态 import、ELF/dlopen 完整消费及独立 witness | 同候选完整一致；缺口 BLOCKED | 后续 B4B-3C，不在 B2B2-B 源码范围 |
@@ -207,7 +211,7 @@ systemctl list-unit-files --no-pager 'sanq-*'
 1. **本轮文档交付：**审阅本文件及 #2859 同批记录校正；授权前不推送/PR/合并。
 2. **B2B2-B 源码边界：**仅批准受限新模块及合成测试；如无法接受提议预算/相对目标语义，则保持严格 no-follow BLOCKED、不得先写代码。
 3. **C2-0 只读取证：**核准实际 Host/VM/Guest 与逐条命令和原始日志保管位置；不授权 snapshot/Guest root。
-4. **C2-1 生产式新实例恢复：**在 C2-0 身份核查基础上，对 disposable source、新建快照、pre/post marker、独立 new VM/VDI、Host-only 合成服务和 N-01–N-07 离机 witness 逐项另批授权；不要求或执行原机 `snapshot restore`，不删除旧 VM/snapshot/日志。
+4. **C2-1 生产式新实例恢复：**先复核现有 C2-0/C2-1 原始归档、A/B Snapshot/clone/VDI 来源链、Guest 22 项结果与合成 HTTP。已证明部分直接认可；只针对关键不可替代的证据缺口另行审批最小补测，不默认新建 Snapshot/VM、不要求 Marker A/B，不回退或删除旧资产。
 5. **C2-2 / B4B-3C Guest root：**满足 C2 后，另交精确脚本 SHA、命令、root-owned 安全路径、独立 pin/witness 和失败保全清单，经新的许可才执行。
 6. **生产 G2-E：**R1–R5 同候选证据及 C1–C8 门禁全部满足后独立审批；当前始终 **NO-GO**。
 
@@ -256,13 +260,31 @@ systemctl list-unit-files --no-pager 'sanq-*'
 | C2-1B Guest | 22 项同组采集，20 项 rc=0，`tmp-mount`、`sanq-unitfiles` 为 1；7 组选定 rootfs/stat/loader 观测 `diff -u` rc=0；采集文件清单 SHA 均 OK | 只是选定属性和路径一致，**没有整盘逐字节核验**；此次 Guest SSH 外层 rc 仍未捕获并如实记录 |
 | C2-1C 端点接管 | 源 `192.168.56.2:18081` curl rc=28 / HTTP 000；恢复机 `192.168.56.3:18081` HTTP 200，JSON 为 `service=sanq-c2-1c-synthetic`、`instance=recovered`、`uid=1000` 与非空运行 ID | 证明 Host-only 上**合成客户端改用新目标**，不证明真正 DNS/Static IP/Cloudflare 流量切换、Web/API/DB 或 provider |
 | C2-1C 停止 | 第一次 `/__stop` 返回 404（窗口 B 未设置正确 RUN_ID），该失败留证；改用记录在 `run-id.txt` 的精确 ID 重试得 HTTP 200/rc=0、服务打印 `STOPPED`；后续 `/healthz` HTTP 000/curl rc=7 | 故障检测通过；原自动 `grep` 对空 ID 可误判，**以实际非空 ID 与两次 JSON 显式对照为准**；`server.exitcode` 缺失，外层 SSH rc 不得补造 |
-| C2-1D 归档 | preflight/clone/recovered Guest/HTTP/final Host 五组文件校验与 `tar -tzf` OK；`SanQ-C2-1-evidence-20261018.tar.gz` 原本机与 Google Drive 下载回来的副本 `portable.sha256` 均报告 `OK` | **C2-1 压缩包的具体 64 位摘要未在对话中提供，仓库不得猜写**；尚未由 MCP/外部 witness 直接读取原件 |
+| C2-1D 归档 | preflight/clone/recovered Guest/HTTP/final Host 五组文件校验与 `tar -tzf` OK；`SanQ-C2-1-evidence-20261018.tar.gz` 原本机与 Google Drive 下载回来的副本 `portable.sha256` 均报告 `OK` | **C2-1 压缩包的具体 64 位摘要在最初验收时未提供（本节为历史观察；后来上传归档并于 §9.3 由独立环境计算）**；此历史阶段尚未由 MCP/外部 witness 直接读取原件 |
 
-**C2-1 证据索引（仅文件夹 basename）：**`c2-1-preflight-20261018T202134Z.gbChJv`、`c2-1-recovery-20261018T203356Z.IyFAre`、`c2-1-recovered-20261018T204616Z.e2yM2t`、`c2-1c-20261018T205243Z.q4e9R1`、`c2-1d-final-20261018T210512Z.PjjytD`。C2-1C 合成运行 ID `c2-1c-20261018T205243Z-FD359935-33A1-481E-808F-F6E173538607`；其不是 Operator/Runtime 源 pin。证据包在私人 Google Drive 上用户报告已上传/下载并校验；**尚缺独立第三方保管链、Host witness 的签认和 SHA 完整值回填**。
+**C2-1 证据索引（仅文件夹 basename）：**`c2-1-preflight-20261018T202134Z.gbChJv`、`c2-1-recovery-20261018T203356Z.IyFAre`、`c2-1-recovered-20261018T204616Z.e2yM2t`、`c2-1c-20261018T205243Z.q4e9R1`、`c2-1d-final-20261018T210512Z.PjjytD`。C2-1C 合成运行 ID `c2-1c-20261018T205243Z-FD359935-33A1-481E-808F-F6E173538607`；其不是 Operator/Runtime 源 pin。证据包在私人 Google Drive 上用户报告已上传/下载并校验；**Host witness 对原始 Mac 状态的独立签认仍缺失；C2-1 SHA 完整值已在后续 §9.3 独立回填**。
 
-### 9.3 现行 C2-CHANGE-01 下的历史证据复用与剩余门禁
+### 9.3 C2-CHANGE-02 下的现有 A/B 原件复核（不追认未知内容）
 
-- **可记录：**`C2-0 HOST/GUEST READ-ONLY OBSERVATION REVIEWED`；`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`。上述后者证明 VirtualBox 新实例从指定 snapshot 的有限恢复、启动和合成 endpoint 读回；原 Guest/Host 离机证据经操作者自行核验，不是跨主体签认。两次 Guest SSH、HTTP Server SSH 退出码缺失以及早先 404 均为正式已知限制。
-- **仍未完成的新 C2-02：**现有 clone 的源/目标 UUID、独立 VDI、Guest 基础布局、合成流量和离机取回已经观察，但缺少**在快照创建前预置并离机封存的唯一 baseline marker（N-02）**、快照后不同 marker（N-03）、恢复 VM 对两个 marker 的正/负完整读回（N-05）、本次 SSH rc 和独立外部 witness（N-07），隔离范围也尚非 N-06 完整独立审核。现有 2026-10-17 snapshot 不能事后补造其创建前 marker；若证据确实缺失，须在**另经批准的新 disposable source/新 snapshot**上完整重演。**不要求、不计划以原机 `snapshot restore` 补验。** C1 可信 root-anchor、实际加载依赖、独立来源继续 OPEN。**C1/C2 = OPEN，C5-G2 = NO-GO，S2 DAILY CONFIG EXPANSION = PAUSED**；现役 timer 不变。
-- **下一步审批：**① 审阅已保全 C2-0/C2-1 原始日志与实际 SHA（缺值明确列缺）并安排独立 witness；② 单独提交新 disposable source、预/后 marker、snapshot、新实例、隔离与清理的精确操作方案与授权；③ 按 N-01–N-07 实测/独立验收后再评审 C2 关闭；④ C2 正式通过后另行批准 C2-2/B2B2-B2 真实 Guest/root、外部 source pin 与消费取证。参考 [备份恢复手册附录 A](../runbooks/backup-recovery.zh-CN.md)；真实 Lightsail/Static IP/Cloudflare/业务 DB 和外部支付恢复均未执行。
+- **可记录：**`C2-0 HOST/GUEST READ-ONLY OBSERVATION REVIEWED`；`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`。上述后者证明 VirtualBox 新实例从指定 snapshot 的有限恢复、启动和合成 endpoint 读回；原 Guest/Host 离机证据最初经操作者自行核验，随后本次 §9.3 的**上传归档字节**已在独立环境验证，但仍不代表 Host 身份的独立签认。两次 Guest SSH、HTTP Server SSH 退出码缺失以及早先 404 均为正式已知限制。
+- **已独立读取两份上传的归档：**C2-0 SHA-256 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`；C2-1 SHA-256 `29257b278195725002754d8925edec5b7328526df5afe8da7f6d2872fe43f3cd`。本次独立复算所解析的内层摘要清单均匹配；两份 `guest.stdout` 的 22 项记录中 **19 项输出与 rc 完全一致**，其余仅 `time`、`mountinfo`（运行时 `pipe_ino`）、`ipv4-routes`（源 `.2` / 恢复 `.3`）存在预期差异。克隆 rc=0、目标独立 base VDI parent=base、合成 HTTP 成功/受控终止等已有事实可直接复用。**留存限制：**仅凭归档无法独立认证原始 Host 身份及最初采集过程的不可篡改性；`clone.stdout` 未保存完整命令字符串，虽然对话记录了 `--snapshot` 精确操作，但不能把它称作已封存在该 stdout 中；C2-0/C2-1 Guest 和 HTTP server 外层 SSH rc 未捕获。上述 Guest 对照系快照之后的有限观察，不是快照时刻整盘或未知快照后更改不存在的证明。N-02/N-03/N-05 **不再因缺 Marker A/B 自动失败**，但关键来源证明若复查失败仍 BLOCKED。未补足独立 Host 来源见证和准确验收签署前 **C1/C2 OPEN、C5-G2 NO-GO、S2 PAUSED**；不因本轮变更自动开展 Guest/root 或生产执行。
+- **下一步审批：**① 用**现有** Host 归档和 `VBoxManage snapshot SOURCE showvminfo SNAP` / `showvminfo RECOVERED` / `showmediuminfo disk` 作只读 A/B 复核，重点补上真实 Snapshot 配置与恢复目标绑定，逐项签出 `VERIFIED/LIMITED/BLOCKED`；② 如果关键内容确实无法证实，只针对最小缺口提出补证及相应操作授权，不以缺 marker、缺外层 SSH rc 作为自动重做理由；③ C2 满足现行合同且经独立验收后，另批 C2-2/B2B2-B2 Guest/root/pins/消费取证。参见 [备份恢复手册附录 A](../runbooks/backup-recovery.zh-CN.md)。生产 Lightsail、Static IP、Cloudflare、业务 DB 与支付恢复未执行。
+
+### 9.4 只读 A/B 比对命令（本条不授权创建 Snapshot/VM）
+
+在操作者 Mac 上使用**现有**两份已离机归档和准确的 VM/介质 UUID；首先核对离机摘要和 `tar -tzf` 的完整性，再执行以下 `VBoxManage` **只读**命令（无需关停现有恢复实例）：
+
+```sh
+SOURCE_VM='4b1bd5e7-54c5-45c4-9cc3-dba2ed48a033'
+SNAP_UUID='028a681b-18b9-4dc7-a67f-69257e7cf85b'
+RECOVERED_VM='162701f1-bf68-413d-9f2d-76c513554881'
+RECOVERED_DISK='39381cc9-f526-4e35-8a09-3a265cfe79f4'
+VBoxManage snapshot "$SOURCE_VM" list --machinereadable
+VBoxManage snapshot "$SOURCE_VM" showvminfo "$SNAP_UUID"
+VBoxManage showvminfo "$SOURCE_VM" --machinereadable
+VBoxManage showvminfo "$RECOVERED_VM" --machinereadable
+VBoxManage showmediuminfo disk "$RECOVERED_DISK"
+```
+
+每条命令保存真实 stdout/stderr/rc 后核对：Snapshot 是否仍属于 source、恢复实例 SATA VDI 是否等于 `RECOVERED_DISK`、其 `Parent UUID` 是否为 `base`，是否存在共享磁盘引用或危险网络/剪贴板变化。对既有 C2-0 `guest.stdout` 和 C2-1 `guest.stdout` 按 §9.3 的 22 项命令名+rc+输出复核；当前 19 项相同、3 项动态差异的审核结论不等于将所有运行时字段视为不可变。可增加只读已有 Guest hash 证据；**不对正在运行的两个磁盘直接运行整盘 SHA 比对，也不为了形式上产生新的 Snapshot 做任何 VM 写操作**。
 

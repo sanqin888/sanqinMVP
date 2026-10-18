@@ -1,20 +1,19 @@
 # SanQ Post-Modularization Backlog
 
-## Runtime 更新专项队列（R0 已冻结）
+## Runtime 更新专项队列（R0 已冻结，2026-10-18 两项修订已批准）
 
-用户已批准 D1–D5，当前唯一决策/进度入口为 [Runtime 更新 R0 冻结设计](docs/architecture/Runtime更新-R0冻结设计.md)；本专项不改其他产品队列优先级。
+当前决策/进度见 [R0](docs/architecture/Runtime更新-R0冻结设计.md)；详细操作合同见 [AWS 快照与维护冻结方案](docs/architecture/Runtime更新-AWS快照与维护冻结方案.md)。本专项不改变其他产品队列优先级。
 
 | 批次 | 范围 | 状态 |
 | --- | --- | --- |
-| R0 | 批准决策、C1–C8、固定矩阵及全仓文档收口 | DESIGN FROZEN / 文档完成、远端交付已授权 |
-| R1 | 实际平台/执行完整闭包、独立来源与见证 | NEXT；真实 Guest 前先 C2/精确命令批准 |
-| R2 | D2-A 有限维护、namespace、禁入与原状态恢复 | PLANNED |
-| R3 | crypt/Drive create-only 真适配、mandatory preinstall Kit | PLANNED |
-| R4 | root-private 正式安装/新事务独立重装 | PLANNED |
-| R5 | 同候选端到端/故障矩阵、再独立 C8 交付 | PLANNED |
+| R0 | 已批准代码快照、拍快照前 no/停服/禁入及全仓文档对齐 | 本批文档已审阅、远端交付已明确授权；最终 head CI/合并以本批 PR 为准 |
+| R1 | 实际正常更新执行器/平台与目标发布来源；复用已有有限证据 | IN PROGRESS；恢复专用旧自举链退出必做 |
+| R2 | 原策略记录、no/停服、跨重启冻结与禁入、精确恢复 | PLANNED |
+| R3 | 受限 API 创建/等待/核对本次手动快照、故障 VM 外轻量清单 | PLANNED；替代 crypt/Drive mandatory Kit |
+| R4 | 正常正式安装与准确快照→独立 AWS 实例，首启维护、单写者/切流 | PLANNED；替代故障机 clean reinstall |
+| R5 | 同候选端到端/故障/真实 AWS 恢复矩阵，再独立 C8 交付 | PLANNED；不重复旧默认路线实测 |
 
-**C5-G2 NO-GO**；S2 新 daily helper/扩充/接线/sudoers 在 v1/C5 后独立推进，不阻塞首次 Kit，亦不停止现役 timer。现役 daily 健康和独立 DR 可用仍是首次更新前置。历史 backup drill 已关闭范围不等于新的完整 Runtime 更新/重装验收；下文旧 readiness R1–R5 名称与本专项不同。
-
+下一批先对齐真实生产资产、外部协调器/生产执行器接口、最小 IAM、策略持久化与恢复清单，再实施。**C5-G2 NO-GO**；S2 新 daily 扩充在 v1/C5 后独立推进；现役 daily 健康/独立 DR/escrow 继续前置。旧 backup drill 的有限关闭不等于新 Runtime/AWS 恢复验收；下文旧 readiness R1–R5 与本专项不同。仅本批文档，无代码/云/生产执行。
 
 Status: **ACTIVE / PRIORITIZED POST-MODULARIZATION ROADMAP — DO NOT REOPEN THE CLOSED MODULARIZATION PROGRAM**  
 Created: 2026-09-19  

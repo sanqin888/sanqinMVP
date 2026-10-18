@@ -1,5 +1,7 @@
 # C5-G2 / R1 B4B-3B-1 — 只读 FD 依赖证据与离机比对
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
 **日期：**2026-10-17（America/Toronto）  
 **状态（现行）：**MERGED / SYNTHETIC CI GREEN：PR #2854、head `b0bca85a46c067ed0c42fcd34e5746523dc6c78d`、CI #7336 7/7、dev merge `2bab5fe653babb89092f5c102a159d23edc81988`。原本地审阅已结束；仍 **NOT REAL GUEST/ROOT VERIFIED**，外部 pin 保管链、FD→路径身份和动态依赖闭包均未独立认证。后续纯内存静态提取见 [B4B-3B-2A](C5-G2-B4B3B2A-Python与ELF静态依赖线索.md)。  
 **权威设计：**[R0 冻结设计](Runtime更新-R0冻结设计.md) D1 / C1 / R1；[B4B-3A](C5-G2-B4B3A-Python依赖闭包清单.md)。  
