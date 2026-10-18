@@ -11,7 +11,7 @@
 > `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`；独立恢复及业务实测仍在
 > `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`（P2-D 有限范围证据验收完成；离机 roles 已捕获在加密 DMG，正式关闭待文档审阅、dev PR/CI 合并）。
 
-> **C2 当前证据规则：**指定 Snapshot→独立新实例为唯一恢复机制；N-01–N-07 的证据充分性按 [B2B2 §7.3/§9](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 最新合同与独立审阅解释。先复用现有原件，不因缺旧 marker/rc 自动重演，不用有限 VirtualBox 结果冒充真实 AWS 验收；C2 仍 OPEN / C5-G2 NO-GO。
+> **C2 当前证据规则：**指定 Snapshot→独立新实例为唯一恢复机制；N-01–N-07 的证据充分性按 [B2B2 §7.3/§9](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 最新合同与独立审阅解释。既有原件与 A/B 已按 [B2B2 §9.6](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 完成 N-07 限定风险裁定：**C2 在可丢弃 VirtualBox 合成恢复范围 CLOSED（N-07 LIMITED-ACCEPTED）**；不因旧 marker/rc 自动重演，**真实 AWS / 维护冻结与生产恢复未验收，C5-G2 NO-GO**。
 >
 > 对应英文运维合同：`docs/runbooks/backup-recovery.md`  
 > 当前状态：Post-Modularization §3.2 Backup / Recovery Drill 已于 2026-10-02 **PRODUCTION VERIFIED / CLOSED**。  
@@ -860,7 +860,7 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 | 健康失败阻断使用 | `/__stop` 首次 404 已留证；第二次精确 ID 返回 200，日志 STOPPED；停止后健康检查 curl rc=7 | 正式流量切换、回滚、重复 webhook/支付防护 |
 | 离机保全 | C2-0、C2-1 压缩包由操作者在私有 Google Drive 上传、下载，均 `shasum -a 256 -c` OK | 独立第三方见证、不可变存储与真实恢复所需原凭据源 |
 
-**准确验收口径（C2-CHANGE-02）：**`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`，关键 snapshot 来源/clone=0/独立 VDI/Ubuntu/合成 HTTP 可复用；**不因缺人为 Marker A/B 自动重做或 FAIL**。两份历史包已在独立审阅环境中直接重算 SHA：C2-0 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`；C2-1 `29257b278195725002754d8925edec5b7328526df5afe8da7f6d2872fe43f3cd`。22 项 Guest 对照 19 完全一致、3 项为明确动态差异。历史 Guest/Server SSH 外层 rc 缺失照实登记；来源 Host 独立真伪认证、快照时点整盘 byte-level 一致性未证明，不因归档 SHA 一致而宣称已证明。**C2 OPEN / C5-G2 NO-GO**，详细核查见架构合同 §7.3/§9，原件不进 Git。
+**准确验收口径（C2-CHANGE-02）：**`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`，关键 snapshot 来源/clone=0/独立 VDI/Ubuntu/合成 HTTP 可复用；**不因缺人为 Marker A/B 自动重做或 FAIL**。两份历史包已在独立审阅环境中直接重算 SHA：C2-0 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`；C2-1 `29257b278195725002754d8925edec5b7328526df5afe8da7f6d2872fe43f3cd`。22 项 Guest 对照 19 完全一致、3 项为明确动态差异。历史 Guest/Server SSH 外层 rc 缺失照实登记；来源 Host 独立真伪认证、快照时点整盘 byte-level 一致性未证明，不因归档 SHA 一致而宣称已证明。**本段为 C2-CHANGE-02 执行时历史结论；2026-10-18 N-07 最终风险裁定已在 [B2B2 §9.6](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 将隔离合成 C2 有界 CLOSED / LIMITED-ACCEPTED，C5-G2 仍 NO-GO**，原件不进 Git。
 
 ### A.3 生产 Lightsail DR 审批与执行清单（未执行、非自动授权）
 
@@ -909,12 +909,12 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 
 - [x] C2-0 Host/Guest 普通用户有限观察（2026-10-18 操作员报告）
 - [x] C2-1A–D 合成新实例替换与 Google Drive 取回校验（2026-10-18 操作员报告）
-- [ ] **C2-02 N-01–N-07 A/B 现有材料充分性评审：**先只读复核原 Snapshot/clone/独立 VDI、C2-0 与 C2-1 Guest 22 项、HTTP 原件及两个完整归档的 SHA；每项单列 VERIFIED/LIMITED/BLOCKED。Marker A/B 不再强制，不以补造快照为默认方案；若关键 Host 来源仍不可信，再单独裁定最小必要补证。
+- [x] **C2-02 N-01–N-07 A/B 现有材料充分性评审（仅可丢弃合成实验）：**Snapshot/clone/独立 VDI、22 项 Guest、HTTP、两份归档 SHA 与实时 Host 只读取证已交叉核对；N-01/02/04/06 VERIFIED、N-03/05 有定义范围限制、N-07 LIMITED-ACCEPTED，精确理由见 [B2B2 §9.6](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。旧 Marker A/B、新快照及重复 VM 恢复非关闭前置，真实 AWS 仍单独验收。
 - [x] C2-0/C2-1 上传原件 SHA-256 与包内 manifest 直接复算、Guest 22 项 A/B 有限比对（独立读取归档）
-- [x] **2026-10-18 最终 A/B Host 只读复核（限定范围）：**`snapshot showvminfo` rc=0，Test-02 准确 Snapshot 引用 base VDI `66ad835f-…`；恢复 VM `162701f1-…` 的 base VDI `39381cc9-…`、`Parent UUID: base`，`showmediuminfo` rc=0；恢复机 Host-only、独立 MAC、clipboard disabled，快照原始 clipboard Bidirectional。N-01/N-02/N-04/N-06 的已观察能力 VERIFIED、N-03/N-05 有范围限制、N-07 LIMITED；本轮 Host 终端查询尚无新离机 hash/完整 rc，仍不关闭 C2。详见 [B2B2 §9.5](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。**不代表 RUNTIME-SNAPSHOT-01/MAINT-RESTART-01 实测或真实 AWS 同平台 S01–S12 验收。**
-- [ ] 关键 Host 来源身份的独立见证与 C2 整体验收结论审阅（**不能由已验 SHA 自动推导**）
+- [x] **2026-10-18 最终 A/B Host 只读复核（限定范围）：**`snapshot showvminfo` rc=0，Test-02 准确 Snapshot 引用 base VDI `66ad835f-…`；恢复 VM `162701f1-…` 的 base VDI `39381cc9-…`、`Parent UUID: base`，`showmediuminfo` rc=0；恢复机 Host-only、独立 MAC、clipboard disabled，快照原始 clipboard Bidirectional。N-01/N-02/N-04/N-06 的已观察能力 VERIFIED、N-03/N-05 有范围限制、N-07 LIMITED；**此处记录 §9.5 当时尚未作最终风险裁定的阶段结论，后续已按 §9.6 LIMITED-ACCEPTED 有界关闭 C2**。本轮 Host 终端查询仍无新离机 hash/完整 rc；详见 [B2B2 §9.5](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。**不代表 RUNTIME-SNAPSHOT-01/MAINT-RESTART-01 实测或真实 AWS 同平台 S01–S12 验收。**
+- [x] **N-07 C2 最终风险裁定：**既有归档独立字节复核 + 多侧 Host/Guest 观察支持隔离合成恢复，原始 Mac Host 独立见证及少量外层 SSH rc 缺失是**明确接受的限定残余风险**；仅对本次准确 Test-02 恢复资产关闭 C2，不能将其转作生产 Host/AWS 身份认证。
 - [ ] B2B2-B2 实际 root-anchor/别名 FD、外部发行 pins/消费见证（另审、另授权）
 - [ ] 真正 Lightsail 实例创建、应用/DB/Uploads 恢复、Static IP/Cloudflare、供应商与生产切换的独立 DR 验收（另立任务，不属于本次模拟）
 
-**C2-CHANGE-01 已获用户明确合同授权：新实例恢复现在是唯一正式验收标准，旧原机 `snapshot restore` 的强制验收已废止，不再列为待评审选项。** **C2-CHANGE-02 已获用户授权取消强制 Marker A/B；现阶段优先只读复核已有 A/B。** 本次文档修改不授权 Guest/Host/snapshot/生产写操作；只有关键来源或恢复能力确实无法从现有证据验证时，才提出精确范围与最小副作用的补证审批。
+**C2-CHANGE-01 已获用户明确合同授权：新实例恢复现在是唯一正式验收标准，旧原机 `snapshot restore` 的强制验收已废止，不再列为待评审选项。** **C2-CHANGE-02 已获用户授权取消强制 Marker A/B；2026-10-18 已完成 A/B 只读复核与 N-07 限定风险裁定，C2 在 VirtualBox 可丢弃隔离实验范围 CLOSED（非 AWS/生产恢复验收）。** 本次文档修改不授权 Guest/Host/snapshot/生产写操作；只有关键来源或恢复能力确实无法从现有证据验证时，才提出精确范围与最小副作用的补证审批。
 

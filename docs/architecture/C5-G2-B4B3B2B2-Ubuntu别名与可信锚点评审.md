@@ -104,7 +104,7 @@ B2B2-A 已由 [PR #2859](https://github.com/sanqin888/sanqinMVP/pull/2859) 合�
 
 ### 7.3 C2 生产模式新实例恢复验收：现行合同与准确操作批次（本文件不执行）
 
-**C2-CHANGE-01：用户于 2026-10-18 明确授权将 C2 恢复验收直接替换为方案 B。唯一现行恢复路径为「从明确指定的 Snapshot 创建独立新实例 → 恢复点一致性/隔离/合成服务验证 → 原始证据离机独立核查」。不再要求 VirtualBox 原机 `snapshot restore`，不设置 C2-02I 可选分支；旧 §7/§9 的原机回退描述仅为 2026-10-18 变更前的历史记录，不得再作为关闭门禁、后续操作指令或待决替代方案。** 本条为文档合同授权，**不是** VM、Snapshot、root、生产执行授权。R0 D1–D5、C1/C3–C8 及 G2 A–F 原边界不变。
+**C2-CHANGE-01：用户于 2026-10-18 明确授权将 C2 恢复验收直接替换为方案 B。唯一现行恢复路径为「从明确指定的 Snapshot 创建独立新实例 → 恢复点一致性/隔离/合成服务验证 → 原始证据离机独立核查」。不再要求 VirtualBox 原机 `snapshot restore`，不设置 C2-02I 可选分支；旧 §7/§9 的原机回退描述仅为 2026-10-18 变更前的历史记录，不得再作为关闭门禁、后续操作指令或待决替代方案。** 本条为文档合同授权，**不是** VM、Snapshot、root、生产执行授权。R0 D1–D5、C1/C3–C8 及 G2 A–F 原边界不变。**C2 的现行实际结果以后续 §9.6 为准：隔离合成恢复有界 CLOSED、N-07 LIMITED-ACCEPTED，其他真实 AWS/Guest/root/生产门禁不变。**
 
 ### C2-0：只读材料/身份（可以先独立取得，仍须人类执行授权）
 
@@ -179,7 +179,7 @@ systemctl list-unit-files --no-pager 'sanq-*'
 
 待 C2 可恢复性实证后，另行认证软件包外部发行材料及解释器/loader 和实际 Guest 的路径链接映射，并批准只读 Guest root-anchor 预开与观察脚本的**精确源 SHA、root-private 目录、命令、身份/权限、输出位置、负例和清理**。B2B2-B 解析结果仍只是候选；**真实** Operator/Bootstrap、CPython import hook、`sys.path`、ELF `PT_INTERP`/`DT_NEEDED`/`RUNPATH` 与 `dlopen` 的实际消费和传递闭包由后续 B4B-3B-2B3 / 3C 独立见证，不能借 C2 恢复验收把 C1 关掉。
 
-### 7.4 验收矩阵（待执行，不是测试结果）
+### 7.4 验收矩阵（SRC/LIVE 仍为拟验收合同；C2-01/02 本次结果见 §9.6）
 
 | ID | 范围 / 输入 | 预期 | 证据 / 门禁 |
 | --- | --- | --- | --- |
@@ -327,5 +327,20 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 | N-07 原始证据与见证 | **LIMITED**：两份归档字节/内部清单独立复算、历史失败与缺项如实保留 | 原始 Mac Host 的采集真实性没有独立见证；Guest/server 外层 SSH rc 缺失；本轮 Host 查询未另行离机封存 |
 
 **总判定：**`C2-02 NEW-INSTANCE SYNTHETIC RECOVERY VERIFIED (DEFINED SCOPE) / N-07 LIMITED / C2 OPEN / C1 OPEN / C5-G2 NO-GO`。**不因已验证的来源链与合成接管重复创建快照/VM，也不恢复 Marker A/B 为必选项。** C2 关闭前仍需对 N-07 的 Host 来源认证与证据保管边界进行单独书面风险裁定；只有关键不可替代的证据缺口才提出具体最小补证（任何 Host/Guest 写入需另授权）。PR #2864 新批准的 AWS 快照/维护冻结及其同平台 S01–S12 属于**后续独立验收**，不得用本次 VirtualBox 结果宣布其 PASS。
+
+### 9.6 2026-10-18 — N-07 最终证据风险裁定与 C2 有界 Closeout
+
+**裁定：`C2 CLOSED — ISOLATED VIRTUALBOX SYNTHETIC RECOVERY VERIFIED / N-07 LIMITED-ACCEPTED`。** 本次用户要求对剩余证据风险作最终裁定，若无重大问题即可 closeout C2。复核 §7.3/§7.4、§9.1–§9.5 与两份已经独立读取的归档后，**未发现关键来源 UUID/介质链相冲突、独立新实例无法启动、Guest 稳定观测出现无法解释的差异，或合成接管/受控停止失败**。仅在**指定 Test-02、指定快照、独立恢复 VM、Host-only/无业务数据及现有合成测试**范围内满足 C2-01 / C2-02；本裁定不放宽任何未来执行的来源认证/隔离/原件要求。
+
+| N-07 剩余限制 | 已知证据与风险分类 | 处置 / 不得推导 |
+| --- | --- | --- |
+| 原始 Mac Host 采集时没有独立签名/可信第三方 Host witness | **低影响残余风险（仅隔离、可丢弃、无生产数据 Guest）**：来自操作员的来源身份不能变成密码学独立签认；历史 Source/Snapshot/VDI/VM UUID 与本轮 Host 只读读回、clone 成功、Guest 与 HTTP 多侧记录相互吻合，没有观察到来源矛盾 | **接受为 N-07 LIMITED**；保留当时执行主体自报及独立归档校验范围；禁止借此认证 AWS IAM/云控制面、真实 root/发行源或 production host |
+| 部分 Guest / HTTP server SSH 外层 exit code 未采集 | **低影响记录缺口**：内部 Guest 每条命令各有 rc；Host curl / clone 的实际退出码和 HTTP 正负测试已保存且逻辑一致；缺少的是部分外层 SSH rc | 原样登记 `MISSING`，不编造，不强制为了历史调用包装退出码重复恢复；将来新采集一律保留真实外层 rc |
+| 本轮 `snapshot showvminfo` / `showmediuminfo` 为对话终端输出，尚无该轮独立离机原件 | **低影响保管链差异**：两份旧归档 SHA-256 和包内清单独立复核成功，Mac/Drive 的既有副本由操作者报告可取回；本轮实时输出不是已经签名封存的 Host 原始档案 | 对话值仅作为辅助印证，不能宣传为新 off-host witness；未来真实系统必须有独立保管链 |
+| A 快照含 Bidirectional clipboard；恢复 B 已 disabled；未审查全 Host namespace、machine-id/SSH keys 重复和整盘字节 | **对限定范围可接受**：启动前已禁用 B clipboard/Drag & Drop、NIC Host-only；Snapshot → 独立 base VDI 与 Guest 选定基线/合成 HTTP 已证明。未知平台/身份/整盘状态没有被标 PASS | 不宣布任意隔离/全盘/生产真实性。真实 AWS 新实例身份去重、防双写、数据/WAL 一致性及首启冻结保留后续门禁 |
+
+**N-01–N-07 最终汇总：**N-01、N-02、N-04、N-06 为 `VERIFIED (defined scope)`；N-03 的完整 clone 命令未随 stdout 封存、N-05 未进行整盘时点对照，均为 `VERIFIED with scope limits`；N-07 为 `LIMITED — ACCEPTED FOR THIS SYNTHETIC C2 ONLY`。该接受是**特定现有证据和非生产实验资产的风险裁定**，不是修改第 7.3 节普遍规则，也不是把缺失值假称为实际采集。
+
+**关闭范围与执行门禁：**仅关闭 R0 **C2「可恢复的隔离实验环境」** 这一前置项，保留 Test-02、原 Snapshot、恢复 VM、两份私有离机归档与 SHA；不删除、不重演、不要求 Marker A/B、VirtualBox 原机 restore 或整盘 hash。**C1、C3–C8 仍 OPEN/NOT REQUESTED；C5-G2 仍 NO-GO；S2 DAILY CONFIG EXPANSION 继续 PAUSED**。PR #2864 的 **RUNTIME-SNAPSHOT-01、MAINT-RESTART-01** 实际 AWS 代码创建/available/隔离新实例、跨重启停写与 [S01–S12](Runtime更新-AWS快照与维护冻结方案.md) 同平台验收均**没有执行、不能从 C2 closeout 推导通过**。C2 closeout 也**不授权**任何 B2B2-B2/root/发行来源 pin、VM/Host 写入、IAM、生产安装或流量切换；对应执行仍须具体对象、命令、证据保全方案及新的明确授权。
 
 
