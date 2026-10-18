@@ -100,7 +100,9 @@ B2B2-A 已由 [PR #2859](https://github.com/sanqin888/sanqinMVP/pull/2859) 合�
 - **重复 inode 明确拒绝，不暗中合并：**同一个**逻辑节点**经多个 symlink hop 得到一个 FD 可记录；但是不同 manifest 逻辑节点若终结于同一 (dev,inode)，或真实硬链接 `nlink>1`，仍按现行 observer/offline reviewer 拒绝。若 Ubuntu 实机显示不可避免的同实体多节点，先给出具体样本与消费语义，再就去重/分组合同单独获授权；不得删掉原断言或把其中一个节点静默跳过。
 - 不修改 B4B-3A 的固定解释器版本字符串、既有 `root_python_dependency_path_fds.py`、observer 或 offline reviewer 的公开行为；若新解析路径需要扩展其合同或提升 authority，**先停止另审**。不修改 `build_bundle.py` 的 17 项、Runtime 安装入口、CI、依赖/锁、Prisma、业务组件、系统权限或生产配置。
 
-### 7.3 C2 的三阶段就绪与准确操作批次（本文件不执行）
+### 7.3 C2 生产模式新实例恢复验收：现行合同与准确操作批次（本文件不执行）
+
+**C2-CHANGE-01：用户于 2026-10-18 明确授权将 C2 恢复验收直接替换为方案 B。唯一现行恢复路径为「从明确指定的 Snapshot 创建独立新实例 → 恢复点一致性/隔离/合成服务验证 → 原始证据离机独立核查」。不再要求 VirtualBox 原机 `snapshot restore`，不设置 C2-02I 可选分支；旧 §7/§9 的原机回退描述仅为 2026-10-18 变更前的历史记录，不得再作为关闭门禁、后续操作指令或待决替代方案。** 本条为文档合同授权，**不是** VM、Snapshot、root、生产执行授权。R0 D1–D5、C1/C3–C8 及 G2 A–F 原边界不变。
 
 ### C2-0：只读材料/身份（可以先独立取得，仍须人类执行授权）
 
@@ -153,13 +155,21 @@ systemctl list-unit-files --no-pager 'sanq-*'
 
 **证据：**Host/Guest 的原始终端输出分别采集原样 stdout/stderr/rc、执行日期/顺序、命令文本与观察身份；只向 Host 私有、非 Guest、非 Repo/Drive 公共目录保存，不上传密钥或原始环境变量。为每份原始文件在 Host 计算 `shasum -a 256 <实际文件>`，保留原件+manifest，另由独立核对人读取并复算；报告用文件名+hash+保管责任人引用，不从聊天记录重建原始 JSON。
 
-### C2-1：实际快照恢复演练（**明确另授权后**才做）
+### C2-1：Snapshot → New Instance 实际恢复演练（**对象与副作用逐项另授权后**才做）
 
-**目标对象：**只能是 C2-0 精确认证的可丢弃隔离 VM / 指定 snapshot，优先使用独立克隆来保护旧 Guest 和原始证据；克隆与原 Guest 的 medium/snapshot/UUID 对应关系必须重新证实。不能将“创建/列出快照”“从快照克隆能启动”冒充对**本次批准恢复对象**的实际 restore 成功。
+**唯一支持的 C2 恢复方式：**按照目标生产 Lightsail 的「从指定快照新建替代实例」机制，在完全隔离、可丢弃的 VirtualBox Guest 中构造等效的**独立新实例**恢复实验。实际生产 Lightsail 切流/数据库恢复不属于 C2 实验权限。`clonevm --snapshot=... --mode=machine` 是此类 VirtualBox 演练的候选机制；其返回 0 或 Guest 能启动不能单独构成 PASS。**不再执行、不要求原 VM 的 `snapshot restore`；不建立待选的原地恢复验收路径。**
 
-**副作用：**真正 `snapshot restore` 会回退目标 VM 磁盘/配置状态，丢失该目标在快照之后的变化；停机/开机、克隆/新磁盘和测试标记也会改变试验资产。没有保存并核对恢复前磁盘/证据、没有目标隔离/无生产数据保证时，**禁止开始**。原 10-17 Guest 根实验的文件/日志及旧 snapshot 保留，不覆盖、不清理。
+**唯一强制操作合同（C2-02 / N-01–N-07，全项 PASS 才能提交 C2 关闭评审）：**
 
-**待逐项核准的操作序列（命令模板只用于审核，未获执行许可）：**① Host 只读验明 VM/snapshot/medium 当前身份，复制完整旧证据并独立验证 hash；② 单独核准克隆/快照保全与关机策略；③ 在**批准的目标 VM**上建立唯一、无真实业务数据的恢复后差异标记（记录发生在 snapshot 之后的证据）；④ 确认该 VM 完全 powered off，向用户展示**实际** VM UUID、snapshot UUID、目标 medium、预计丢失的 Guest 改动及恢复点；⑤ 用户批准后才可采用 `VBoxManage snapshot "$VM" restore "$SNAP_UUID"`，不得用未经审核的 `controlvm poweroff` 强断电替代正常收尾；⑥ 重新启动**经批准目标**，Host/Guest 独立复读 UUID/mount/文件 baseline 与差异标记，检查原状态恢复、无真实 SanQ 数据和原始日志留存；⑦ 记录执行者、rc、失败处理、未清理资产。无法恢复、原状态未知或 Host/Guest 不符：**C2 FAIL/BLOCKED**，不继续 root/B2B2-B 实测。
+1. **N-01 来源与隔离身份：**离机、跨侧核实确切的源 Guest VM UUID、Snapshot UUID/时点、来源 medium/父子链、发行版/UID/GID、网络/挂载/共享目录/剪贴板及管理身份。只有经过批准的**可丢弃合成 Guest** 能成为源对象。原 Test-02/旧快照/旧原始证据默认不可删除、覆盖或回退。
+2. **N-02 快照内基线标记：**在**经过单独批准的可丢弃源对象**上，于快照创建**之前**以非敏感合成材料建立随机唯一 baseline marker（内容/元数据/摘要），并由 Host 离机记录预期值、来源、时间和身份；证据在新实例创建前完成保全。如果旧快照无法独立证明预置标记，必须在新批准的 disposable source 上重新建立恢复点，不能事后把已有文件称作预置标记。
+3. **N-03 快照后差异标记：**快照创建之后、从快照新建实例之前，在同一受控 disposable 源对象上建立**不同**的随机合成 marker 与可核对的 post-snapshot 值，记录操作 rc/时间和离机摘要。源对象保持独立保全，不能把差异标记写进将恢复的快照；有生产数据或身份不明立即 STOP。
+4. **N-04 实际新实例创建：**明确批准且记录开关机/新 VDI 等副作用后，从**精确指定**的 snapshot 创建不同 UUID、不同 MAC、独立普通 base VDI/介质链的替代 VM。原来源及其证据原样保留；记录原始 stdout/stderr、**立即捕获**的操作退出码、Snapshot→new VDI 映射、快照分支来源。任何错误目标/隐含 linked clone/意外磁盘依赖拒绝。
+5. **N-05 恢复点真实对照：**在恢复实例的隔离 Guest 中检查 N-02 baseline marker 精确存在且内容/hash/metadata 一致，同时 N-03 的快照后 marker **明确不存在**；并复核 ext4 rootfs、平台身份、Python/loader、mount、只读基线候选信息。缺任一项即 BLOCKED；`diff=0` 的有限系统元数据不替代这两项因果区分。
+6. **N-06 隔离及合成接管：**在启动前核实恢复配置（包括快照可能继承的危险剪贴板/网卡设置）；源 VM 保持关机或已批准的失效隔离；在 Host-only 链路验证可丢弃合成 HTTP 端点旧目标失败、新目标身份/非空 run ID 匹配和健康 200，并验证停止后健康失败。不得连真实 SanQ Web/API、DB、Clover/Uber/Fantuan 或生产 Cloudflare/DNS/Static IP。
+7. **N-07 独立证据闭环：**保留每步授权、执行者、UTC、脚本源/hash、Host/Guest 原始 stdout/stderr/实际 rc、来源/目标 identity、前后 marker 与实际读取值、失败和清理状态；先保存 Host 私有，再离机备份并下载/复核 SHA，最后由**不同于执行者的独立复核主体或能独立核验原件及权威 Host 身份的隔离见证环境**核对。自生成摘要与自己下载只能证明字节一致，不能自证来源。缺原始退出码不得填假值；需在新完整演练中重新取得。
+
+**副作用与审批：**新建 disposable VM/snapshot、写入合成标记、Guest power 操作、复制 medium 都有实际副作用，须在执行前再获精确 VM/Snapshot/目录/时间窗与保全方案批准。未经单独授权不执行，不修改真实生产系统。任一身份、快照时点、marker、离机证据、隔离或独立见证不符，一律 `C2 OPEN / BLOCKED`，不进入新 privileged Guest/root 实测。该验收模拟生产**恢复机制**，**不认证真实业务 DB/Uploads/外部供应商恢复**。
 
 ### C2-2：独立源/消费取证（只计划，不随 C2-0/1 自动执行）
 
@@ -177,15 +187,18 @@ systemctl list-unit-files --no-pager 'sanq-*'
 | SRC-06 | symlink/父目录/leaf 替换、竞争时序、FD 生命周期异常 | 发现即 BLOCKED；前后相等不产生持续排他 PASS | 人工可控 swap fixture + 未覆盖竞态登记 |
 | SRC-07 | 不同设备、同设备 bind mount、mount ID/namespace 漂移、不可读取 | BLOCKED；不以 dev 相等自动准入 | Linux fixture/Guest 专项，缺 mount 覆盖时不 PASS |
 | SRC-08 | 正确 FD bytes 但外部 pin 错、pin 仅自报或 receipt 丢失 | BLOCKED，来源/保管链不认证 | 独立核对与错误来源负例 |
-| C2-01 | 新鲜 Host/Guest/磁盘/网络/挂载/凭据隔离证据 | 全部准确、跨侧核对；不确定则 STOP | 原始 Host/Guest 文件+rc+hash |
-| C2-02 | 指定恢复对象的实际 snapshot restore | 恢复前后版本与唯一差异标记有独立 readback；失败即 STOP | 克隆映射/恢复日志/原始 hash |
-| C2-03 | 10-17 旧 8/8 原始证据 | 保留历史实验，明确 NOT RESTORED/离机原件未证实 | 历史条目不改写 |
+| C2-01 | 新鲜 Host/Guest/源磁盘与网络/挂载/凭据隔离身份 | 准确跨侧核对；未知 STOP | N-01 Host/Guest 原始记录、rc、独立证据 |
+| C2-02 / N-01–N-04 | 指定恢复点与真实 Snapshot → New Instance | 快照前基线/快照后差异标记分别保全，独立新实例及 VDI 身份实证，源资产不变 | 准确 source/snapshot/new VM/medium、原始 hash、rc；未验证即 BLOCKED |
+| C2-02 / N-05–N-07 | 新实例恢复点与服务、隔离、外部见证 | baseline 存在、post-marker 不存在；合成流量接管/停止；完整离机原件及独立见证 | 同一轮演练全链、缺一即 BLOCKED |
+| 历史 B4B-2 8/8 | 2026-10-17 当时的实验原件 | 保留历史观察和当时缺失项；**非 C2 现行关闭条件** | 历史记录不重写，不把旧实验升级为 PASS |
 | LIVE-01 | 真实 Guest alias / loader / 发行包与独立外部 pin | 每条 logical→FD→bytes→source pin 可复核 | C2 通过后另批准采集；仍非 C1 PASS |
 | LIVE-02 | 动态 import、ELF/dlopen 完整消费及独立 witness | 同候选完整一致；缺口 BLOCKED | 后续 B4B-3C，不在 B2B2-B 源码范围 |
 
 ### 7.5 下一源码切片与集中审批分组
 
-**下一源码批（B2B2-B；当前仅供批准，不执行）：**新增独立、外置 `ops/runtime/root_python_dependency_alias_fds.py` + `ops/runtime/tests/test_root_python_dependency_alias_fds.py`；仅专用 `root-FD+nofollow link/FD` 解析及非授权轨迹；使用现成 manifest、B2B1 / FD observer 的严格合同和 R0 门禁。临时私有 Linux 文件树聚焦正负测试，不执行真实候选，不调用任意路径/网络/子进程/Guest/root/生产写入；不修改旧 nofollow、observer 重复 inode 策略、17 项 Bundle、安装器/备份/运行服务、依赖/锁/Prisma。路径语义扩展是**专项架构扩展**，需批准上文 §7.2 的白名单/相对目标/预算/重复 inode 拒绝及 fail-closed 边界后才可编码；若真实 Guest 布局证明与本节不相容，退回专项评审，不猜测兼容。
+**以下 B2B2-B 设计语义来自 PR #2860 时的源码实施前评审，属于历史记录；截至本次 PR #2861 / CI #7352 的 B2B2-B1 合成候选已合并，而真实 B2B2-B2 Guest/root 未获授权。**
+
+**当时拟实施的源码批（B2B2-B；历史提案）：**新增独立、外置 `ops/runtime/root_python_dependency_alias_fds.py` + `ops/runtime/tests/test_root_python_dependency_alias_fds.py`；仅专用 `root-FD+nofollow link/FD` 解析及非授权轨迹；使用现成 manifest、B2B1 / FD observer 的严格合同和 R0 门禁。临时私有 Linux 文件树聚焦正负测试，不执行真实候选，不调用任意路径/网络/子进程/Guest/root/生产写入；不修改旧 nofollow、observer 重复 inode 策略、17 项 Bundle、安装器/备份/运行服务、依赖/锁/Prisma。路径语义扩展是**专项架构扩展**，需批准上文 §7.2 的白名单/相对目标/预算/重复 inode 拒绝及 fail-closed 边界后才可编码；若真实 Guest 布局证明与本节不相容，退回专项评审，不猜测兼容。
 
 **CI（获得首次远端授权后）：**`.github/workflows/ci.yml` 的 `ops-checks` 选择 Runtime+Release：`bash -n ops/verify-runtime-readiness.sh` 与 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`；`python3 -m unittest discover -s ops/release/tests -p 'test_*.py'`，以及 `ci-change-scope` / 汇总检查。无关 Web/E2E 按范围跳过，CI 合成 PASS 不等于 Guest/C1/C2。MCP-workspace 不运行 lint/build/test。
 
@@ -194,7 +207,7 @@ systemctl list-unit-files --no-pager 'sanq-*'
 1. **本轮文档交付：**审阅本文件及 #2859 同批记录校正；授权前不推送/PR/合并。
 2. **B2B2-B 源码边界：**仅批准受限新模块及合成测试；如无法接受提议预算/相对目标语义，则保持严格 no-follow BLOCKED、不得先写代码。
 3. **C2-0 只读取证：**核准实际 Host/VM/Guest 与逐条命令和原始日志保管位置；不授权 snapshot/Guest root。
-4. **C2-1 恢复演练：**基于 C2-0 的**精确 VM UUID / snapshot UUID / medium / 保全方案**，单独审批会回退磁盘状态的 restore 和各副作用；不删除旧 VM/snapshot/日志。
+4. **C2-1 生产式新实例恢复：**在 C2-0 身份核查基础上，对 disposable source、新建快照、pre/post marker、独立 new VM/VDI、Host-only 合成服务和 N-01–N-07 离机 witness 逐项另批授权；不要求或执行原机 `snapshot restore`，不删除旧 VM/snapshot/日志。
 5. **C2-2 / B4B-3C Guest root：**满足 C2 后，另交精确脚本 SHA、命令、root-owned 安全路径、独立 pin/witness 和失败保全清单，经新的许可才执行。
 6. **生产 G2-E：**R1–R5 同候选证据及 C1–C8 门禁全部满足后独立审批；当前始终 **NO-GO**。
 
@@ -212,9 +225,9 @@ systemctl list-unit-files --no-pager 'sanq-*'
 
 **权限/架构：**B2B1、B3A、FD observer/offline reviewer 保持原样，原 17 项 Runtime Bundle 与入口无变化；不改变任何业务 owner、模块边、HTTP/DB/API/Prisma、CI workflow、lockfile/sudoers、真实配置或备份服务。返回结果始终 `decision=BLOCKED`、`readyToInstall=false`、`authorizedToMutateProduction=false`、root/外部 pin/动态依赖来源未认证。下一步经用户审阅才允许提交远端跑 `.github/workflows/ci.yml` 的 `ops-checks`；最终仍须 **C2-0/1** 真恢复证据后单独批准 **B2B2-B2** 的准确 Guest/root/witness 操作，**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
 
-## 9. 2026-10-18 — C2-0 / C2-1 生产式新实例恢复演练：操作员实测续记（不改变 §7 的审批合同）
+## 9. 2026-10-18 — C2-0 / C2-1 生产式新实例恢复演练：操作员历史实测续记
 
-**记录口径：**下表来自操作者在 Mac Terminal / VirtualBox / Ubuntu Guest 的原始输出和对话内 SHA-256 校验反馈；MCP-workspace **没有直接访问、下载、重算或独立鉴证其 Mac / Google Drive 原件**。Git 仓库只保存脱敏的证据**索引和可复核结论**，不收录原始系统配置、密钥、压缩包或个人路径。§7 原「未执行」代表当时设计交付状态；本节记录后续有限真实观察，**不能把 C2-02 的原地 restore 偷换为克隆 PASS**。
+**记录口径：**下表来自操作者在 Mac Terminal / VirtualBox / Ubuntu Guest 的原始输出和对话内 SHA-256 校验反馈；MCP-workspace **没有直接访问、下载、重算或独立鉴证其 Mac / Google Drive 原件**。Git 仓库只保存脱敏的证据**索引和可复核结论**，不收录原始系统配置、密钥、压缩包或个人路径。§7 原「未执行」代表当时设计交付状态；本节记录之后的有限观察，**2026-10-18 C2-CHANGE-01 已将原地 restore 门禁替换为 §7.3 新实例恢复唯一现行合同**。本次旧实测的不足仍必须按 N-01–N-07 评估，不能追认完整 C2 PASS。
 
 ### 9.1 准确资产与 C2-0 观察
 
@@ -247,9 +260,9 @@ systemctl list-unit-files --no-pager 'sanq-*'
 
 **C2-1 证据索引（仅文件夹 basename）：**`c2-1-preflight-20261018T202134Z.gbChJv`、`c2-1-recovery-20261018T203356Z.IyFAre`、`c2-1-recovered-20261018T204616Z.e2yM2t`、`c2-1c-20261018T205243Z.q4e9R1`、`c2-1d-final-20261018T210512Z.PjjytD`。C2-1C 合成运行 ID `c2-1c-20261018T205243Z-FD359935-33A1-481E-808F-F6E173538607`；其不是 Operator/Runtime 源 pin。证据包在私人 Google Drive 上用户报告已上传/下载并校验；**尚缺独立第三方保管链、Host witness 的签认和 SHA 完整值回填**。
 
-### 9.3 关闭口径与剩余门禁（本批不改变 R0 合同）
+### 9.3 现行 C2-CHANGE-01 下的历史证据复用与剩余门禁
 
 - **可记录：**`C2-0 HOST/GUEST READ-ONLY OBSERVATION REVIEWED`；`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`。上述后者证明 VirtualBox 新实例从指定 snapshot 的有限恢复、启动和合成 endpoint 读回；原 Guest/Host 离机证据经操作者自行核验，不是跨主体签认。两次 Guest SSH、HTTP Server SSH 退出码缺失以及早先 404 均为正式已知限制。
-- **不能关闭：**R0 原 C2 / 本文件 C2-02 所要求的**批准对象的真实 `snapshot restore`、pre/post 独特差异标记恢复确认、完整独立 witness/快照介质保全**仍未通过；新实例 `clonevm --snapshot` 不是 `restore` 的同义词。更不能归入 C1 的可信 root-anchor、动态依赖消费、独立来源。**C1/C2 = OPEN，C5-G2 = NO-GO，S2 DAILY CONFIG EXPANSION = PAUSED**；现役 timer 不变。
-- **后续分批审批：**① 独立离机/Host witness 核验并取回 C2-1 archive 实际 SHA；② 另审另授权在**可丢弃且明确保护旧资产**的对象上实际 `snapshot restore`，记录原生差异标记、pre/post、rc、完整磁盘链；③ 如想把“新实例 DR”替换 R0 C2-02 原 restore 验收，**这是冻结验收合同变更，必须先提交必要性、影响与备选方案并取得用户明确批准**，不能在文档收口中直接修改；④ C2 正式达标后仍单独批准 C2-2 / B2B2-B2 的真实 Guest/root、外部源 pin 与独立消费见证。参考 [Lightsail DR 流程草案（备份恢复手册附录 A）](../runbooks/backup-recovery.zh-CN.md)；生产 VM、Static IP、Cloudflare、数据库恢复和外部支付核对均未执行。
+- **仍未完成的新 C2-02：**现有 clone 的源/目标 UUID、独立 VDI、Guest 基础布局、合成流量和离机取回已经观察，但缺少**在快照创建前预置并离机封存的唯一 baseline marker（N-02）**、快照后不同 marker（N-03）、恢复 VM 对两个 marker 的正/负完整读回（N-05）、本次 SSH rc 和独立外部 witness（N-07），隔离范围也尚非 N-06 完整独立审核。现有 2026-10-17 snapshot 不能事后补造其创建前 marker；若证据确实缺失，须在**另经批准的新 disposable source/新 snapshot**上完整重演。**不要求、不计划以原机 `snapshot restore` 补验。** C1 可信 root-anchor、实际加载依赖、独立来源继续 OPEN。**C1/C2 = OPEN，C5-G2 = NO-GO，S2 DAILY CONFIG EXPANSION = PAUSED**；现役 timer 不变。
+- **下一步审批：**① 审阅已保全 C2-0/C2-1 原始日志与实际 SHA（缺值明确列缺）并安排独立 witness；② 单独提交新 disposable source、预/后 marker、snapshot、新实例、隔离与清理的精确操作方案与授权；③ 按 N-01–N-07 实测/独立验收后再评审 C2 关闭；④ C2 正式通过后另行批准 C2-2/B2B2-B2 真实 Guest/root、外部 source pin 与消费取证。参考 [备份恢复手册附录 A](../runbooks/backup-recovery.zh-CN.md)；真实 Lightsail/Static IP/Cloudflare/业务 DB 和外部支付恢复均未执行。
 

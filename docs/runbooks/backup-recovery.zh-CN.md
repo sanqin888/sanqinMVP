@@ -11,7 +11,7 @@
 > `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`；独立恢复及业务实测仍在
 > `docs/runbooks/runtime-backup-cutover-c4p2d-acceptance.zh-CN.md`（P2-D 有限范围证据验收完成；离机 roles 已捕获在加密 DMG，正式关闭待文档审阅、dev PR/CI 合并）。
 
-> **2026-10-18 Runtime C2 生产式恢复演练附录：**参见本文附录 A《Lightsail 灾难恢复：新实例替换演练与生产门禁（草案）》。目前仅 VirtualBox 指定快照新实例克隆/Ubuntu 启动/Host-only 合成服务接管及证据下载 SHA 核对由操作员报告完成；尚未在 Lightsail 实测实例/数据库/Cloudflare/Static IP/供应商。该附录不覆盖本手册现行备份和生产数据恢复合同，也不替代 R0 C2-02 的真实 snapshot restore；C5-G2 NO-GO。
+> **2026-10-18 Runtime C2 生产式恢复验收合同已调整：**用户明确批准 C2-CHANGE-01，将 C2-02 **唯一强制路径**改为指定 Snapshot → 独立新实例（N-01–N-07，包括恢复点差异和独立见证）；旧原机 `snapshot restore` 不再是验收要求或备选方案。详见本文附录 A 与 [B2B2 §7.3](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。本轮 VirtualBox 克隆/Ubuntu/Host-only 合成接管/下载 SHA 校验为有限实测，缺预后 marker/部分 rc/独立 witness，C2 仍 OPEN。真实 Lightsail/DB/Cloudflare/供应商未测，C5-G2 NO-GO。
 >
 > 对应英文运维合同：`docs/runbooks/backup-recovery.md`  
 > 当前状态：Post-Modularization §3.2 Backup / Recovery Drill 已于 2026-10-02 **PRODUCTION VERIFIED / CLOSED**。  
@@ -828,7 +828,7 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 
 ## 附录 A — Lightsail 灾难恢复：新实例替换演练与生产门禁（草案）
 
-> **2026-10-18 / 文档-only / 非生产执行授权。** 本文件只把本次 VirtualBox **生产式新实例恢复合成演练**与未来 AWS Lightsail 业务恢复步骤一一映射，不宣称已经在 Lightsail 验证 AWS 创建、数据库恢复、供应商切换或真实流量。本草案不覆盖、修改或关闭 [R0 冻结设计](../architecture/Runtime更新-R0冻结设计.md) D1–D5 / C1–C8，尤其**不替代 C2-02 实际 `snapshot restore`**。真实完整 DR 仍由本手册、[G2 权限层级](../architecture/c5-g2-trusted-runtime-contract-2026-10-13.md) 与 [C2 操作员证据索引](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)共同约束。
+> **2026-10-18 / C2-CHANGE-01 APPROVED（仅验收合同、非操作授权）。** 用户已将原 C2-02 的 VirtualBox 原机快照回退验收**直接替换**为与 AWS Lightsail 一致的「指定 Snapshot → 独立新实例 → 恢复点因果标记/隔离/合成端点/独立证据」**唯一强制恢复路径**；不设置旧 restore 备选。下面仅将已有 VirtualBox 有限合成演练与生产 DR 作映射，不代表 AWS 实测或自动关闭 C2。R0 D1–D5、C1/C3–C8、[G2 权限层级](../architecture/c5-g2-trusted-runtime-contract-2026-10-13.md) 均保持不变；C2 精确 N-01–N-07 见 [B2B2 §7.3](../architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。本文件不授权新 VM/root/Cloudflare/生产执行。
 
 ### A.1 为什么要分成两种恢复
 
@@ -837,7 +837,6 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 | 仅 Runtime 安装中断、业务数据与宿主机未损坏 | R0 D5 `Abort & Clean Reinstall`：用完整可信外部 Archive/Kit、独立执行材料与全新 txid 重装 Runtime | **不**自行回退 PostgreSQL、Uploads，不恢复旧 journal，不假冒整机 DR |
 | 应用发布失败，但 Runtime/持久化健康 | 采用现有 `deploy_release.py` 发布/回退与配对镜像合同 | 不能用旧 VM snapshot 覆盖实时订单和支付 |
 | 主机丢失、OS/文件系统损坏、业务数据完整性不可证或恢复需要替代服务器 | **全 DR 新实例恢复**：从审核的 Lightsail snapshot 新建实例，恢复/对齐数据库与文件，受控切流 | 不在未经证实的旧 VM 上原地覆盖运行中业务，不让旧新实例同时产生有效 provider/DB 写入 |
-| 隔离测试需要验证 VirtualBox 原地恢复功能 | 经单独审批在指定可丢弃 VM 上执行真实 `snapshot restore` | 属 R0 C2-02 单独验收；`clonevm --snapshot` 不等于实际 restore |
 
 **生产原则：**在故障对象与恢复对象身份、数据恢复点、隔离、访问控制、应用镜像发布 SHA、外部事件与写入者互斥未确认前，目标实例只准隔离核查，不得开放真实业务处理。RPO/RTO 必须由具体快照/备份时间和回放证据计算，不编造“零损失”或固定恢复时间。
 
@@ -853,7 +852,7 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 | 健康失败阻断使用 | `/__stop` 首次 404 已留证；第二次精确 ID 返回 200，日志 STOPPED；停止后健康检查 curl rc=7 | 正式流量切换、回滚、重复 webhook/支付防护 |
 | 离机保全 | C2-0、C2-1 压缩包由操作者在私有 Google Drive 上传、下载，均 `shasum -a 256 -c` OK | 独立第三方见证、不可变存储与真实恢复所需原凭据源 |
 
-**准确验收口径：**`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`；**R0 C2/C2-02 OPEN、C5-G2 NO-GO**。两次 Guest SSH 和 Server SSH 外层退出码没有捕获；C2-1 包的完整 SHA-256 值尚未由操作者在对话提供，不可补造。C2-0 操作员报告 SHA-256 为 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`。详情在所属架构文档 §9；证据原件**不提交 Git**。
+**准确验收口径：**`C2-1A–D PRODUCTION-STYLE SYNTHETIC NEW-INSTANCE RECOVERY OBSERVED`；**新的 C2-02 N-01–N-07 仍不齐备，R0 C2 OPEN / C5-G2 NO-GO**。已执行的 clone 不需补做原机 restore，但缺快照创建前 baseline 与快照后 marker 的因果验证、部分 Guest/Server SSH 外层 rc 与独立见证；只有新一轮同恢复点演练全项通过才能申请 C2 PASS。C2-1 压缩包的完整 SHA-256 尚未在对话中提供，不能补造；C2-0 操作员报告 SHA-256 `5503b6f9942613e66e886ddd945aad4544c4f4d56835539db97cd8bc0683eaea`。详情在所属架构文档 §9；原始证据**不提交 Git**。
 
 ### A.3 生产 Lightsail DR 审批与执行清单（未执行、非自动授权）
 
@@ -902,10 +901,10 @@ off-VM escrow 本身**不要删除**，并继续保持其密码与加密文件�
 
 - [x] C2-0 Host/Guest 普通用户有限观察（2026-10-18 操作员报告）
 - [x] C2-1A–D 合成新实例替换与 Google Drive 取回校验（2026-10-18 操作员报告）
-- [ ] C2-1 原冻结合同 C2-02：单独批准的**真实** snapshot restore、独特差异标记、完整 pre/post 与证据 custody
+- [ ] **新 C2-02（N-01–N-07）：**在单独批准的 disposable source 上于快照创建**前**保存基线 marker，快照**后**写入不同 marker，真实新建独立 VM 并验证恢复 VM「前者存在/后者不存在」；加上源介质链、隔离合成接管、完整 rc 和独立离机 witness；当前有限实测不可追认全项 PASS
 - [ ] 独立 Host/Guest witness 与 C2-1 完整 SHA-256 值来源审阅
 - [ ] B2B2-B2 实际 root-anchor/别名 FD、外部发行 pins/消费见证（另审、另授权）
 - [ ] 真正 Lightsail 实例创建、应用/DB/Uploads 恢复、Static IP/Cloudflare、供应商与生产切换的独立 DR 验收（另立任务，不属于本次模拟）
 
-**本轮不执行任何生产/VM 变更。** 若后续提议用新实例恢复替代原 C2-02 `snapshot restore` 作为强制关闭条件，属于**更改已冻结验收合同**，必须先说明必要性、影响和可选替代方案并获得用户明确授权；本文件只并列记录两种场景，不进行替换。
+**C2-CHANGE-01 已获用户明确合同授权：新实例恢复现在是唯一正式验收标准，旧原机 `snapshot restore` 的强制验收已废止，不再列为待评审选项。** 本次文档修改仍不授权任何具体 Guest/Host/snapshot/生产操作；如需执行 N-01–N-07，请先明确可丢弃源 VM、快照与证据范围、写入影响及安全保全，再另行取得精确操作许可。
 

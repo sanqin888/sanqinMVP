@@ -24,6 +24,6 @@ B4B-3A 只审查调用方提出的依赖清单，B4B-3B-1 从**预打开 FD** �
 
 本批已通过按依赖范围选择的 CI #7344：`.github/workflows/ci.yml` 的 `ops-checks` Runtime 步骤已运行 `python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`，包括本批合成测试；`ci-change-scope`、`api-checks` 与 `build-test (api)` 均成功，其余无关作业按范围跳过。MCP-workspace 本地未执行。此结果不是实机/Guest 或生产验证，也不能用旧工作流的 `api-checks` 代替真实 Runtime 测试证据。
 
-**尚未实现 / 不因本批 PASS：**真正主机 `/` 锚点的独立认证、Ubuntu usrmerge 别名的可信解析、所有文件/软件包的外部来源 pin、完整 CPython 动态 import 和 ELF/dlopen 依赖图、运行中 namespace/替换攻击的连续阻断、离机证据与独立 root 消费见证。B4B-3C 新 root/Guest 实测仍先受 R0 C2 约束，历史跳过 snapshot restore 的例外不豁免恢复门禁。
+**尚未实现 / 不因本批 PASS：**真正主机 `/` 锚点的独立认证、Ubuntu usrmerge 别名的可信解析、所有文件/软件包的外部来源 pin、完整 CPython 动态 import 和 ELF/dlopen 依赖图、运行中 namespace/替换攻击的连续阻断、离机证据与独立 root 消费见证。B4B-3C 新 root/Guest 实测仍先受 R0 C2 约束，旧实验未做原机 `snapshot restore` 仅为历史事实；当前按 R0 C2-CHANGE-01，以快照创建独立新实例的 N-01–N-07 为唯一强制恢复验收，已有合成证据不自动豁免新恢复门禁。
 
 **结果语义：**本组件仅提供候选 FD；B4B-3B-1 观察 receipt 仍是 `decision=BLOCKED`、`preopenedFDAndPathProvenanceAuthenticated=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。不自动扩展 B4B-3A/B4B-3B-1 的公共合同，也不增加正式 C1–C8 任何 PASS。下一阶段先做 [B4B-3B-2B2 Ubuntu 别名与可信锚点设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，未经审批不放宽现有 `O_NOFOLLOW`。
