@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**交付记录：**[PR #2853](https://github.com/sanqin888/sanqinMVP/pull/2853) → `dev`；本批提交、最终 head 的 CI 与合并状态以该 PR 检查和事件为权威。
+
 **决策状态：D1–D5 APPROVED / R0 DESIGN FROZEN。** 用户明确要求“五项都按照推荐方案进行 R0 一次冻结设计”，本记录据此生效，不再等待重复架构批准。冻结日为 2026-10-17（America/Toronto）；源码核对基线为 `origin/dev@592c534896d18ca51082b708b8ab677402fabe4a`，文档分支为 `docs/runtime-r0-design-freeze-20261017`。
 
 **交付与运行状态：本批仅文档，已获用户远端交付授权；C5-G2 NO-GO；S2 DAILY CONFIG EXPANSION PAUSED。** R0 完成的是设计和文档收口，C1–C8 整体均未通过；没有新的 Guest/root、生产执行、MCP 权限、云配置、依赖、CI、Prisma/schema/migration 授权。本批没有新增迁移；仓库 PEM 等其他工作已有的 `MIGRATION REQUIRED` 状态不受本批影响。
