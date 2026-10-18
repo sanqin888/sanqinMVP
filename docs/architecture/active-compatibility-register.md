@@ -104,7 +104,7 @@ side effects show no current source path that deliberately fans one successful
 preparation transition through both mechanisms, so no compatibility ID is required.
 The deprecated private `OrderEventsBus` accepted/prep naming remains an ordinary
 future atomic cleanup candidate rather than active compatibility debt. Detailed
-evidence is recorded in `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
+evidence is recorded in `docs/archive/architecture/phase-5-commerce-orders-fulfillment.md`.
 
 The former Next rewrite versus `app/api/[...path]` proxy overlap was resolved in
 PR #2020 by making the App Router BFF the single regular JSON API entry.
@@ -113,3 +113,7 @@ Every new non-atomic compatibility path must add a unique `compat_id`, all
 required lifecycle fields in the JSON register, and an `@compat <compat_id>`
 annotation at the code path. The scanner rejects an annotation that is absent
 from the register.
+
+## 已归档关闭证据的路径
+
+第三批只将已关闭工作包的证据指向 [归档索引](../archive/README.md) 下的同字节副本；JSON 与本视图同步维护。所有 compat_id、active/closed 状态、owner、退出条件和证据含义不变，历史迁移与生产事实不改写。
