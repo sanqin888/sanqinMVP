@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 / B4B-3B-2B2-A：有限纯内存 usrmerge 别名声明模型
+
+**状态：MCP-WORKSPACE LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO PR。** 已合并的设计评审 PR #2858、CI #7346、dev `c9db47b7` 是本批源代码基线；新分支 `feat/c5-g2-b4b3b2b2a-inert-alias-contract-20261018`。新增 `ops/runtime/root_python_usrmerge_alias_claims.py` 和 `ops/runtime/tests/test_root_python_usrmerge_alias_claims.py`，仅使用调用方提出的 B4B-3A manifest/pins 和固定两类**合成** `/lib`、`/lib64` 前缀关系，在内存中严格拒绝额外/错误/冗余路径与超预算；所有模型输出仍是 `decision=BLOCKED`。不会验证真实 Ubuntu 布局、根锚、FD→路径、外部独立来源或 Python/ELF/dlopen 动态闭包，不允许接入现有 B2B1 严格 no-follow 开启器或执行候选代码。无业务 owner / 依赖图基线 / Runtime 17 / 新依赖 / CI / Prisma / 权限 / Guest/root/生产写入变化。MCP-workspace 未开放测试执行权限；后续经审阅授权推送，GitHub CI `ops-checks` 才有权威合成结果；B2B2-B 实际可信别名证据链另行评审。详细见 [B2B2 评审/实施记录](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
+
 ## 2026-10-18 — R1 / B4B-3B-2B2-D：Ubuntu usrmerge 别名与可信根锚设计评审
 
 **状态：LOCAL DESIGN REVIEW / USER REVIEW PENDING / NO PR / NO IMPLEMENTATION。** 以 `origin/dev@1a82caff` 和已合并 PR #2857 / CI #7344 为基线，审阅 B4B-3B-2B1 的严格 `O_NOFOLLOW` FD 开启、B4B-3A 固定 `/lib64` loader 路径与 Ubuntu usrmerge symlink 的不兼容处。对比保持严格 no-follow、另建经外部认证的有限 alias 策略、以及不安全的 `realpath`/任意 symlink 直开三种方案；推荐独立审核 B 方案，**未经用户专项批准不得放宽现有代码的 fail-closed 路径规则**。本批仅新增 [B4B-3B-2B2 评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 并按真实 PR/CI 更新 B2B1、R0、G2 和依赖图，不修改业务 owner、依赖图边、Runtime 17 文件 Bundle、接口/CI/依赖/Prisma、Guest/root/生产状态；未运行本地测试。C1/C2 和 C5-G2 NO-GO 未关闭；S2 DAILY CONFIG EXPANSION PAUSED，现役备份 timer 不变。

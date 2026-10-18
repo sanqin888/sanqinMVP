@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 B4B-3B-2B2-A 纯内存 usrmerge 前缀声明模型（MCP-workspace LOCAL / NOT TESTED）**：基于 PR #2858 / CI #7346 合并后的 dev `c9db47b7`，新增外置 `ops/runtime/root_python_usrmerge_alias_claims.py` 与合成负向测试，仅复核 B4B-3A 输入图与 `/lib`、`/lib64` 两类提议映射的有限结构；不读取/解析真实文件、symlink、FD、root/Guest 或外部可信 pin。**无业务 owner、跨上下文导入债务、SCC/cycle/scanner baseline、正式 Runtime 17 文件 Bundle、HTTP/持久化公共合同、CI/锁文件/Prisma/生产状态变化。** B2B1 严格 no-follow 不变；B2B2-B 真实证据链另审，C1/C2 未关闭。详见 `docs/architecture/C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md`；C5-G2 NO-GO / S2 PAUSED。
+
 2026-10-18 **R1 B4B-3B-2B1 候选路径安全 FD 打开（PR #2857 / CI #7344 / dev `1a82caff`；合成验证）**：新增外置 `ops/runtime/root_python_dependency_path_fds.py` 与非 root 合成临时树测试，借助独立预开 root-anchor FD 与既有 B4B-3A manifest 对路径每段采用 `O_NOFOLLOW`、入口身份/权限和完成后复核；真实根锚、usrmerge 符号链接、外部 pin 和完整执行闭包均尚未认证。不增加安装能力。**无业务 owner、上下文跨界 import、SCC/架构 scanner baseline/allowance、公共 HTTP contract、Runtime 冻结 17 成员、CI/依赖/Schema/Prisma/生产部署变化**。R0 D1–D5、C1/C2 仍开放。详见 `docs/architecture/C5-G2-B4B3B2B1-受控路径FD候选开启.md`。G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。
 
 2026-10-17 **R1 B4B-3B-2A 静态依赖线索（本地待审 / 未运行）**：新增外置 Runtime `ops/runtime/root_python_elf_static_hints.py` 与非 root 人工字节测试，仅内存解析 Python AST import 和 ELF64 x86-64 DT_NEEDED，永不提供生产授权，不打开真实文件、执行 Python/native 模块或验证外部来源。**无任何业务上下文 owner、跨上下文 import/依赖边、SCC/scanner、公共合同、冻结 Runtime 17 成员、CI、Prisma/schema/migration、依赖锁或生产部署变化。** R0 D1–D5 不变，真正 Guest FD→路径与动态闭包仍未证明。详情：`docs/architecture/C5-G2-B4B3B2A-Python与ELF静态依赖线索.md`。G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。

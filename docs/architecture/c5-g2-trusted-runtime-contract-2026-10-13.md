@@ -213,6 +213,10 @@ B4B-3B-1 的 FD 候选观察与离机比对已通过 PR #2854 / CI #7336 / merge
 
 PR #2855 的 B4B-3B-2A 已经在 dev 合并为 `2db85d32`。本批独立新建 `ops/runtime/root_python_dependency_path_fds.py`，基于**调用方先前打开但尚未独立认证来源**的根目录 FD，对 B4B-3A manifest 中的候选文件逐级使用 `dir_fd` + `O_NOFOLLOW` + 目录项/FD 元数据一致性检查，借出只读 FD 给已合并的 B4B-3B-1；上下文结束后复核并关闭 FD。只使用 CI 临时树合成测试，不执行任何真实 Python/ELF 或 Guest/root 命令；并不替代独立 `/` root anchor、软件包来源、usrmerge symlink 别名、动态 import/ELF/dlopen 传递闭包或独立执行见证。为避免静默降低安全语义，Ubuntu `/lib64` 等 symlink 路径目前**有意 fail-closed**，后续必须另审可信别名策略与真正运行态证据。旧 B4B-1/2/3A/3B-1/3B-2A 和 17 文件 Bundle 均不修改；当前 `C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED`。详见 [B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md)。本批已通过 PR #2857 的 CI #7344（Runtime/Release 合成检查及相关汇总检查成功），dev merge `1a82caff22b49881aad2893ae1c9374c03c97ffb`；仍未做 Guest/root 实测。下一阶段先见 [B4B-3B-2B2 只读设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，未经专项批准不得变更严格 no-follow。
 
+## 2026-10-18 — R1 B4B-3B-2B2-D 合并与 2B2-A 纯内存合成别名模型（本地待审）
+
+B4B-3B-2B2 设计评审已通过 PR #2858、CI #7346 合并 dev 为 `c9db47b7`。当前 B2B2-A 在独立本地分支新增只检查**调用方自报** `/lib` / `/lib64` 前缀合成关系的独立外置 Python 模块和纯内存测试；没有 `readlink` / `realpath`、Guest FD、真实平台扫描或 loader 执行，不能使自报的映射等同实际解析，也不修改 2B1 严格 no-follow 打开器和 17 文件 Bundle。源码与测试尚未经过 GitHub CI，用户审阅前不推送新分支。任何接入实际文件开启/别名安全策略的 2B2-B 仍需独立架构评审和授权；C2 恢复门禁仍先于任何新 privileged Guest 试验。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。**详情：[2B2 评审与进度](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)。
+
 ## 6. Validation and exit
 
 G2-A tests under existing CI `api-checks`:
