@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-18 **C2 N-07 最终证据裁定 / 限定关闭（当前结论）**：在最新 dev 的 [B2B2 §9.6](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 内，依据已验 C2-0/C2-1 原始归档、Snapshot→独立 VM/base VDI、22 项 Guest 和 Host-only HTTP，正式接受 N-07 历史 Host 独立签认/部分 SSH 外层 rc/新 Host 查询未独立离机封存等**限定残余风险**，仅将「可丢弃隔离 VirtualBox 合成新实例恢复」**C2 CLOSED / LIMITED-ACCEPTED**。不提高证据来源权威，不声称生产真实性、快照时点全盘证明或根权限认证；C1/C3–C7 OPEN、C8 NOT REQUESTED、C5-G2 NO-GO、S2 PAUSED。PR #2864 AWS 整机快照 RUNTIME-SNAPSHOT-01 / MAINT-RESTART-01、R2/R3/R4/S01–S12 与真实同平台 DR 仍未实施/未通过。本文旧日期下的 `C2 OPEN` 是彼时状态，不反向改写历史。**仅文档状态与证据风险裁定，代码 owner/依赖边/SCC/scanner/Runtime 17、CI/依赖/Prisma、VM/生产均不变**。
+
 ## 2026-10-18 Runtime AWS 快照与维护冻结文档对齐
 
 用户批准 RUNTIME-SNAPSHOT-01 / MAINT-RESTART-01；现行合同见 [AWS 快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 与修订 R0。代码创建更新前准确手动快照；快照前容器 no/正常停服/禁入，失败维持维护并走独立新实例恢复；旧 Kit/故障机自举退出必做。仅改变文档操作合同与验收映射，没有源码 owner/依赖边/SCC/架构扫描基线变化，没有 17 Bundle、CI、依赖、schema/Prisma 或现役 Runtime 变化。功能未实现、AWS 未验收、C5-G2 NO-GO；下文旧日期条目保留当时范围。
