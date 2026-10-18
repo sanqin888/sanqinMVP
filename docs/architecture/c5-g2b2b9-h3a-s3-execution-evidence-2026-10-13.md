@@ -1,5 +1,7 @@
 # C5-G2-B2B9 H-3A — H-01/S3 execution evidence and RERUN-02 receipt
 
+> **R0 现行口径（2026-10-17 Toronto）：**D1–D5 已获用户批准并冻结；当前决策、进度、C1–C8 门禁与 R0–R5 队列以 [Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 为准。本文其余内容保留发表/取证时的状态：`LOCAL`、待审、未运行及“下一批”均是当时记录，不能覆盖 R0 当前进度；原始 PASS / NOT EXECUTED 与适用边界不变。旧命令不获得重新执行授权。旧 S12/冷掉电要求按 D5 退出首版默认门禁，进程中断及独立重装仍为必验，掉电持久性仍 NOT VERIFIED。`S2 PAUSED` 指日常配置扩充/接线暂缓，不表示现役备份 timer 已停止。**R0 DESIGN FROZEN；C5-G2 NO-GO。**
+
 **Date:** 2026-10-13 (America/Toronto).  
 **Scope:** Disposable `SanQ-Linux-Test` VirtualBox guest; synthetic systemd unit only.  
 **Source review contract:** [H-3A fixed-source/root-command review](./c5-g2b2b9-h3a-s3-source-root-command-review-2026-10-13.md).  

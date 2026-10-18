@@ -1,12 +1,18 @@
 # C5-G2 — Trusted Runtime independent acceptance and installation authority contract
 
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
+本合同后部带日期的 B02/B4B 条目是各批撰写/取证时记录；其 LOCAL、NOT RUN 和下一步按当时范围保留。当前源码/CI 总进度与 C1–C8 映射以 R0 为准，A–F 授权层级继续有效。
+
 **Date:** 2026-10-13 America/Toronto  
 **Baseline:** `origin/dev@3b9178f68c56888d88da43e34af3d0b248f7f962`  
-**State (2026-10-13, post-merge operator-evidence update):** G2-A PR #2791, G2-B1 PR #2792, G2-B2A–B2B5 PRs #2793–#2798, G2-B2B6 PR #2799, and G2-B2B7 PR #2801 **MERGED** (B2B7 CI #7190 7/7 green). G2-B2B8 separate disposable VirtualBox guest real-systemd **S1/S2/S11 3/3 operator-reported PASS** with independently queried synthetic unit cleanup. This does **not** prove host-wide quiescence, namespace coverage or new-consumer prevention; preceding VirtualBox freeze root cause remains unknown. All lab receipts non-authorizing; **NO ROOT PRODUCTION INSTALL; C5-G2 NO-GO; S2 DAILY BACKUP PAUSED.**
+**当前状态（R0，2026-10-17 Toronto）：**D1–D5 已按用户批准冻结；R0 设计与文档完成，C1–C8 整门禁尚未通过。S1、G2-A/B 已有源码与有限证据；B4B-3A PR #2848 已合并，CI #7315 / run `39077195858` 通过。真实执行闭包、维护禁入、crypt/Drive Kit、安装/独立重装和同候选矩阵仍缺。**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**；现役备份 timer 不因此停止。
 
 > **2026-10-17 documentation consolidation:** inherited GHCR/U1–U2D constraints are now indexed in [Runtime delivery/install constraints](./Runtime交付与安装约束.md), with the 27 original dated decisions and bounded lab evidence at [historical evidence index](./Runtime历史决策与证据索引.md). This changes no G2 authority, acceptance requirement, experiment result or source implementation.
 
 ## 1. Frozen design and ownership
+
+R0 已批准 D1 有限独立平台基线、D2-A 操作员维护窗口、D3 crypt/Drive create-only 实证优先、D4 preinstall 先于 S2 扩充、D5 Abort & Clean Reinstall。实际值和关闭条件见 R0；这是已批准现行合同，后续精确执行授权不替代也不重复本次决策。
 
 Primary recovery remains **ABORT the interrupted transaction → isolate incident →
 download/decrypt an externally retained original Runtime Recovery Kit → start a
@@ -80,7 +86,7 @@ cannot rely only on a Google Drive object name or self-declared Manifest hash.
 | Storage | actual Compose project `sanq-app`, named DB volume `sanq-app_pgdata`, bind `/srv/sanq/uploads`, no DB/Uploads mutation | BLOCKED |
 | Privileged state | root `0600` Release State, ubuntu `0600` env, root C4 marker and original bytes/UID/GID/mode; inode may change but not hardlinked | BLOCKED |
 | External Kit | **before any active Runtime mutation**, unique txid, create-only encrypted off-VM Archive + live config and provenance, full independent remote decrypt/readback/hash, proven crypt-key escrow and retention | BLOCKED |
-| Quiescence | externally controlled operator maintenance window, root-owned lock outside active Runtime, stopped backup timer + idle service/helper/rclone, no concurrent deploy, no MCP production subprocess, no shell cwd/fd holders; double check | BLOCKED |
+| Quiescence | D2-A 持续有限维护：先验证管理通道，再按精确清单控制 Backup/Deploy/MCP/SSH/调度与新消费者禁入，排空并覆盖 PID/FD/inode/mmap/namespace；未知/不可读/预算不足拒绝。记录原状态、持续观察并在 Kit 读回后复查；lock/双扫描不足 | BLOCKED |
 | Handoff | private candidate and separate prior-tree evidence, fsync/atomic directory operation, non-overwrite journal, all resulting dirs verified; no automatic journal resume | INCIDENT / STOP |
 | Clean reinstall | source and executable independent of damaged Runtime, separately verified Kit and fresh txid, **same-version reinstall allowed only via a distinct recovery entry**, never changing normal upgrade same-SHA rejection | BLOCKED |
 | Exit | active Runtime file inventory and dynamic bytes rechecked, storage/container health, backup/MCP timer restored to **original** state, incident sealed, independent operator acceptance | NOT VERIFIED |
@@ -131,7 +137,7 @@ sole permission.** A standalone flock is not quiescence: existing backup,
 
 **G2-B2B7 (merged, PR #2801, CI #7190 7/7):** inert [claimed disposable guest Gate 0/1 review](./c5-g2b2b7-guest-gate01-review-2026-10-13.md), with no host access and all root/install authority flags false. The operator separately reported host/guest raw observations; the contract alone does not authenticate them.
 
-**G2-B2B8 (operator-reported disposable guest real-systemd VERIFIED in bounded scope, no repository source/CI change):** [2026-10-13 S1/S2/S11 evidence and residual gates](./c5-g2b2b8-real-systemd-operator-acceptance-2026-10-13.md). Source v2 SHA-256 `ec8674bdbea237d8b780e03ba7e298bdc7d9429467a5ce48b3c2e4c31f6f4569`; synthetic enabled+active and disabled+inactive timer restoration, injected-exception restore, and separate unit-unloaded observation passed. Whole-host exclusion, mount namespace coverage and new-consumer prevention remain explicitly false. S3–S10/S12 and the earlier unexplained guest freeze remain open. **Next proposed B2B9 is readiness audit only, requiring separate scope approval for any new privileged test or architecture change.**
+**G2-B2B8 (operator-reported disposable guest real-systemd VERIFIED in bounded scope, no repository source/CI change):** [2026-10-13 S1/S2/S11 evidence and residual gates](./c5-g2b2b8-real-systemd-operator-acceptance-2026-10-13.md). Source v2 SHA-256 `ec8674bdbea237d8b780e03ba7e298bdc7d9429467a5ce48b3c2e4c31f6f4569`; synthetic enabled+active and disabled+inactive timer restoration, injected-exception restore, and separate unit-unloaded observation passed. Whole-host exclusion, mount namespace coverage and new-consumer prevention remain explicitly false. S3–S10/S12 and the earlier unexplained guest freeze remain open. **此为 B2B8 当时的下一步；H-01–H-08 已有后续有限负向证据。当前已批准 D2-A，下一步按 R0 的 R1/R2 补真实闭包与维护禁入；具体 privileged Guest 命令仍需单独批准。**
 
 **G2-B2B8 RERUN-01 (later evidence, local review only):** the first run's raw `99-result.json` is unavailable. A separately executed second disposable-guest S1/S2/S11 rehearsal supplied a **1,488-byte original JSON receipt** with SHA-256 `fe9452cf42decc800fdaedcc918953087045f7c61268ee800bc7c0a19ead65d9`, stored without content changes at [B2B8 RERUN-01 raw JSON](./evidence/c5-g2b2b8-rerun-01-99-result.json). The uploaded file hash was independently checked against operator-reported Ubuntu original and persistent-copy digests. This is **not** first-run raw evidence, third-party guest attestation, host-wide exclusion or production authority; see [B2B8 §6](./c5-g2b2b8-real-systemd-operator-acceptance-2026-10-13.md).
 
@@ -154,7 +160,7 @@ repeat interruptions, preservation of DB/Uploads and original timer state.
 the source code being merged, a GitHub artifact's flag, or S1's simulated
 round-trip receipt.
 
-Daily S2 remains **on hold until C5 is accepted**. No underlying
+Daily S2 配置扩充/接线按已批准 D4 **on hold until v1/C5 is accepted**；首次更新前置是 mandatory preinstall Kit、现役日常备份健康和独立 DR 可用性，不等待新的 daily helper。此处不暂停现役 timer。No underlying
 `sanq-backup.service`, sudoers, script or retention cutover in this slice.
 
 ## 2026-10-16 — B02-A source identity review (local / non-authorizing)
@@ -191,9 +197,9 @@ Daily S2 remains **on hold until C5 is accepted**. No underlying
 
 **EXPERIMENTAL MECHANISM 8/8 OBSERVED / NOT AN INDEPENDENT ROOT TRUST OR INSTALL GATE.** A human operator later reported MacBook VirtualBox Host-only Guest `SanQ-H05-Restore-Check-20261015`, VM UUID `4b1bd5e7-54c5-45c4-9cc3-dba2ed48a033`, with a pinned external synthetic consumer SHA-256 `0e724d1fbd8fe01852c6e7550e81f5e192da4ba155c34e8ba72297e1cdb7e537`. Root fixed-byte case `b4b20001` exited 0 with `fixedSyntheticCodeConsumed=true`/`decision=BLOCKED`; six scoped negative cases `b4b20002..07` exited 2 and rejected; separately imported pinned runner functions in a one-off root path-swap case `b4b20008` consumed previously captured bytes and blocked recapture. The operator skipped snapshot **restore** validation by explicit choice: this does **not** waive the existing formal Gate 0/1 rollback requirement, establish independent execution witnessing, authenticate interpreter/stdlib/dynamic transitive closure, prove host-wide/admission exclusion or authorize a production Bootstrap. §B4B-2 above preserves the historical *pre-execution* state. Full case/evidence/provenance record: [disposable Guest acceptance §6](./c5-g2b4b2-disposable-guest-byte-consumption-acceptance-2026-10-17.md). **C5-G2 NO-GO; S2 BACKUP PAUSED; `readyToInstall=false`; `authorizedToMutateProduction=false`.**
 
-## 2026-10-17 — B02-B4B-3A 独立 Python/ELF 依赖闭包清单契约（本地第一批）
+## 2026-10-17 — B02-B4B-3A 独立 Python/ELF 依赖闭包清单契约（已合并，CI 通过）
 
-**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING。** 按用户授权新增独立 `ops/runtime/root_python_dependency_manifest.py`，对 Python 3.12.3、固定 `-I -S -B`、stdlib .py/package、native extension、ELF loader、native shared objects、builtin/frozen/vDSO 构建**仅基于调用方声明**的有限依赖图与 SHA-256 清单结构检查。要求规范绝对路径、文件 pin 一一对应、manifest digest 声明一致、缺失/额外/未知边拒绝以及无游离节点的有界图遍历；循环允许，不能把静态图视为真实完整 Runtime 闭包。对应合成测试已编写，GitHub CI 尚未运行；没有 Guest/root 执行或真实文件清单采集。旧 B4B-1 direct-only 原型与 B4B-2 固定字节消费者保持不变，不增加根启动器、真实验证器、执行能力、Bundle 17 成员或生产权限。所有结构符合也仍返回 `decision=BLOCKED`、`pythonRuntimeDependencyClosureVerified=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。架构文档：[B4B-3A Python 依赖闭包清单](./C5-G2-B4B3A-Python依赖闭包清单.md)。后续 B4B-3B 需独立可信的文件/传递导入与 ELF 来源采集；B4B-3C 须另行授权隔离 Guest 命令、独立见证与证据链。**C5-G2 NO-GO；S2 BACKUP PAUSED。**
+**MERGED / SYNTHETIC CI GREEN：PR #2848，merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061`，CI #7315 / run `39077195858`。** 按用户授权新增独立 `ops/runtime/root_python_dependency_manifest.py`，对 Python 3.12.3、固定 `-I -S -B`、stdlib .py/package、native extension、ELF loader、native shared objects、builtin/frozen/vDSO 构建**仅基于调用方声明**的有限依赖图与 SHA-256 清单结构检查。要求规范绝对路径、文件 pin 一一对应、manifest digest 声明一致、缺失/额外/未知边拒绝以及无游离节点的有界图遍历；循环允许，不能把静态图视为真实完整 Runtime 闭包。对应合成测试已随该 PR 的 GitHub CI 通过；没有 Guest/root 执行或真实文件清单采集。旧 B4B-1 direct-only 原型与 B4B-2 固定字节消费者保持不变，不增加根启动器、真实验证器、执行能力、Bundle 17 成员或生产权限。所有结构符合也仍返回 `decision=BLOCKED`、`pythonRuntimeDependencyClosureVerified=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`。架构文档：[B4B-3A Python 依赖闭包清单](./C5-G2-B4B3A-Python依赖闭包清单.md)。后续 B4B-3B 需独立可信的文件/传递导入与 ELF 来源采集；B4B-3C 须另行授权隔离 Guest 命令、独立见证与证据链。**C5-G2 NO-GO；S2 BACKUP PAUSED。**
 
 ## 6. Validation and exit
 

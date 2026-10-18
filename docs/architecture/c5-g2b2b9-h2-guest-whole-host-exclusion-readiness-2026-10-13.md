@@ -178,33 +178,11 @@ incident output cannot be preserved. Continue no more cases until the
 disposable guest is separately re-established from a reviewed baseline.
 An unexplained VM freeze is **not** a deliberate power-loss S12 pass.
 
-## 7. Architectural limits, alternatives, and next approval
+## 7. R0 已批准的架构路线与后续
 
-A true production whole-host barrier still needs new **operator authority**
-and enforced admission exclusion; existing Backup, Deploy, MCP, SSH and
-other noncooperators do not honor the lab flock. Two choices remain:
+用户已批准 **D2-A：操作员控制的有限维护窗口**。先在可恢复、隔离 Guest 验证精确停止/禁入/排空/持续观察/复查/原状态恢复，覆盖 Backup、Deploy、MCP、SSH、调度入口和 namespace；先独立确认可用管理通道，再关闭其他入口。仅 flock、两次空扫描或观察到新进程后拒绝不足以证明禁入。
 
-- **A (preferred pending review):** operator-controlled maintenance
-  window, first validated in disposable guest, then separately approved
-  production choreography. Imposes planned downtime and precise
-  stop/restore ownership checks. No existing service modifications in H2.
-- **B (higher scope):** modify independent Backup/Deploy/MCP consumers to
-  honor a shared maintenance lock/protocol. Requires separate architecture
-  authorization and rollout; even then arbitrary SSH sessions are not
-  covered by cooperation alone.
-
-H2 does not choose or implement either, create a production installer,
-modify service ownership or change the system's privileges. The remaining
-namespace tests (B2B9-N), new-consumer admission (B2B9-A), independently
-verified encrypted original Recovery Kit (G2-B3), clean reinstall
-(G2-C), recovery matrix (G2-D) and exact production execution consent
-(G2-E) remain separate gates.
-
-**Next independently approvable task:** prepare the *exact source bytes,
-SHA-256, literal root commands and synthetic unit definitions* for a
-single H-01/H-02/H-03/H-04 disposable guest batch, review them with the
-user, then seek explicit approval for that bounded experiment. **Do not
-start that root/systemd experiment on the strength of this document.**
+方案 B（改独立消费者加入共享协议）未选，不在首版范围。D2 的设计批准不意味着已实施屏障或获得新的 Guest/root/生产命令许可。早期 H-01–H-08 已提供有限负向证据，当前下一步是 R0 的 R1/R2，而非再次把 H-01–H-04 当尚未开始。B2B9-N/A、R3 Kit、R4 重装、R5 同候选矩阵及精确 G2-E/F 仍需完成。
 
 **Repository impact of H2 readiness:** documentation only. No changes
 to CI, tests, `AGENTS.md`, production Runtime, B2A/H0/H1 contracts,

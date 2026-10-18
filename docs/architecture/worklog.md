@@ -1,5 +1,14 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-17 — Runtime R0：D1–D5 一次冻结与全仓文档对齐
+
+**最高状态：D1–D5 APPROVED / R0 DESIGN FROZEN / DOCUMENTATION COMPLETE / REMOTE DELIVERY / PR #2853 / CI+MERGE: SEE PR FINAL HEAD；C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED。** 基线 `origin/dev@592c534896d18ca51082b708b8ab677402fabe4a`，分支 `docs/runtime-r0-design-freeze-20261017`。
+
+按用户明确批准冻结 D1 有限独立平台与执行闭包、D2-A 有限维护窗口、D3 crypt/Drive create-only 真适配优先、D4 preinstall 先于 S2 扩充、D5 Abort & Clean Reinstall。新增 [R0 冻结设计](./Runtime更新-R0冻结设计.md)，统一 C1–C8、R0–R5、18 组验收与 I1–I6 中断点；同步 G2、Kit、S1、安装约束、状态/runbook、总队列/索引与依赖图。全仓 96 份 Markdown 纳入核对；旧实验/归档/原始证据保持其事实和原状态，仅在适用旧篇加当前入口。B4B-3A 更正为 PR #2848 / CI #7315 已通过，不提升实际采集或安装资格。
+
+仅文档；无代码、17 文件 Bundle、依赖、owner/graph/baseline、CI、权限、云/VM、生产、Prisma/schema/migration 变更；不清除 PEM 等其他批次已有迁移要求。未运行本地 lint/build/test 或 Guest/root/Kit 实验。检查文档引用、字节/readback、历史保真及 diff/status；真实验收与 GitHub CI 不宣称通过。用户已审阅并明确授权本批远端交付，现通过 [PR #2853](https://github.com/sanqin888/sanqinMVP/pull/2853) 交付至 dev；CI/合并以该 PR 最终 head 的 Checks 与事件为权威，本文不预先声明 CI 通过。后续从 R1 继续，不重复请求批准 D1–D5。
+
+
 本文件遵循仓库 `AGENTS.md` 第 19 节，按批次记录项目后续开发、维护和验收。文件超过 1,000,000 UTF-8 字节前，应续写同目录的 `worklog2.md`，依次递增；旧的 `modularization-worklog*.md` 仍保留为历史资料。
 
 ## 2026-10-17 — PEM：付款异常通用案件、STAFF 申请和 ADMIN 审批
@@ -8,7 +17,10 @@
 
 ## 2026-10-17 — C5-G2 / B02-B4B-3A：Python 依赖闭包清单第一批
 
-**状态：MCP-workspace 本地源码/合成测试完成、尚未运行 lint/build/test、等待用户审阅；未推送、未建立 PR。** 分支 `feat/c5-g2-b4b3a-dependency-closure-manifest-20261017`（基于任务开始时最新 `origin/dev@1cd89d9e`）。新增独立 `ops/runtime/root_python_dependency_manifest.py`：纯内存结构审查含 stdlib .py、package、CPython native extension、ELF loader、shared libraries、builtin/frozen 和 Linux vDSO 的**声明式**哈希与依赖图；异常缺失与不匹配 fail-closed，声称的清单结构闭合仍永久拒绝认证和生产安装。配套合成测试 `ops/runtime/tests/test_root_python_dependency_manifest.py`；不改 B4B-1/B4B-2、17 文件 Runtime Bundle、现有业务所有者/依赖边/架构基线、CI、依赖锁文件、数据库迁移和生产状态。真正 Guest 哈希清单、完整传递导入/ELF 依赖动态可信采集和独立见证仍为 B4B-3B/C 的单独门禁。详见 [B4B-3A 清单合同](./C5-G2-B4B3A-Python依赖闭包清单.md) 及 [C5-G2 可信 Runtime 契约](./c5-g2-trusted-runtime-contract-2026-10-13.md)。最高状态 LOCAL / UNTESTED，`C5-G2 NO-GO` / `S2 PAUSED`。
+**状态：MERGED / SYNTHETIC CI GREEN；PR #2848，merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061`，CI #7315。** 分支 `feat/c5-g2-b4b3a-dependency-closure-manifest-20261017`（基于任务开始时最新 `origin/dev@1cd89d9e`）。新增独立 `ops/runtime/root_python_dependency_manifest.py`：纯内存结构审查含 stdlib .py、package、CPython native extension、ELF loader、shared libraries、builtin/frozen 和 Linux vDSO 的**声明式**哈希与依赖图；异常缺失与不匹配 fail-closed，声称的清单结构闭合仍永久拒绝认证和生产安装。配套合成测试 `ops/runtime/tests/test_root_python_dependency_manifest.py`；不改 B4B-1/B4B-2、17 文件 Runtime Bundle、现有业务所有者/依赖边/架构基线、CI、依赖锁文件、数据库迁移和生产状态。真正 Guest 哈希清单、完整传递导入/ELF 依赖动态可信采集和独立见证仍为 B4B-3B/C 的单独门禁。详见 [B4B-3A 清单合同](./C5-G2-B4B3A-Python依赖闭包清单.md) 及 [C5-G2 可信 Runtime 契约](./c5-g2-trusted-runtime-contract-2026-10-13.md)。最高状态 MERGED / SYNTHETIC CI GREEN，`C5-G2 NO-GO` / `S2 PAUSED`。
+
+
+**R0 进度校正：**该批已通过 PR #2848 合并，final head `d4d5513f5dc734e0f9b9321e99e49582073cd263`，CI #7315 / run `39077195858` 成功。没有执行本地 lint/build/test；仅合成声明图，不代表真实文件/依赖采集、Guest/root 或生产验收。后续 B4B-3B/3C 进入 R0 队列 R1。
 
 ## 2026-10-17 — 文档清理第一批：过期入口与引用收口
 

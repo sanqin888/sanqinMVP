@@ -1,5 +1,9 @@
 # Runtime 交付与安装约束
 
+本次批准的现行补充：D1 有限独立平台/执行闭包；D2-A 真实有限维护/禁入；D3 crypt/Drive create-only 实证和完整独立读回；D4 mandatory preinstall/现役备份健康先行，S2 扩充在 v1 后；D5 中断即 ABORT、新事务独立重装，冷掉电持久性仍 NOT VERIFIED。旧 A–F 精确操作许可保留；具体条件、矩阵和进度统一见下方 R0 入口。
+
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
 本文承接已整合的 GHCR A/C0–C5-B2B3、U1/U2A–U2D-2B2-C 中仍有效的规则。整理基线为 `origin/dev@94bc7be6`（2026-10-17），只调整文档归属，不改变代码、模块职责、发布权限或既有验收门禁。
 
 当前进度和生产安装的具体门禁仍以 [G2 合同](./c5-g2-trusted-runtime-contract-2026-10-13.md)、[Recovery Kit 方向](./c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) 和 [S1 边界](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md) 为所有者文档。旧设计、实验与替代关系见 [历史决策与证据索引](./Runtime历史决策与证据索引.md)。本文没有重新验证生产主机；已安装版本与源码能力分开查阅 [GHCR 发布与 Runtime 状态](../runbooks/GHCR发布与Runtime状态.md)。

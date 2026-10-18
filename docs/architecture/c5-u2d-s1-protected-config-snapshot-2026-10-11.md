@@ -1,5 +1,9 @@
 # C5-U2D S1 — Protected Config Snapshot / old-plan retirement
 
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
+**D4 已冻结次序：**S1 独立库供 R3 mandatory preinstall Kit 复用；现役 daily backup 健康/独立 DR 可用性先行，新增 S2 daily helper/扩充/接线/sudoers 在 v1/C5 验收后。下面按原 S2/S3 编号描述职责，不代表必须先 S2 后 S3。D3 真适配未完成前，fake/synthetic remote 不构成可安装 Kit。
+
 **State:** MERGED dev PR #2789 / PR CI #7164 AND post-merge #7165 GREEN / NOT INSTALLED / NO PRODUCTION AUTHORIZATION  
 **Baseline:** latest `origin/dev` at `48915a59f9262347a37c74e6339f496fc20567ad` (2026-10-11).  
 **Decision:** pre-install encrypted Runtime Recovery Kit is primary, daily config backup is supplementary; interrupted Runtime installation is abandoned, never resumed.
@@ -45,6 +49,6 @@ The Python library's private `_capture(..., anchor=..., ids=...)` fixture seam e
 
 GitHub's existing `api-checks` lane discovers `ops/backup/tests/test_*.py` and `ops/runtime/tests/test_*.py`. New synthetic tests exercise the five-file inventory, root/ubuntu identity policy, symlink/hardlink/mode rejection, state/marker/Compose conflicts, replacement race, independent source/app SHA, remote collision, upload/readback failures, corrupt remote bytes, and fixture-only receipt semantics.
 
-Per `AGENTS.md`, local validation is not run before user review. GitHub CI will be the next gate **only after** the operator explicitly authorizes remote delivery to a dev PR. S1 carries no migration, package/lockfile or 17-member Bundle change.
+S1 当时未执行本地 lint/build/test，后经批准远端交付并通过 PR #2789 / CI #7164、#7165；此为源码/合成验收，不是生产 helper、crypt 或真实安装 PASS。S1 无 migration、package/lockfile 或 17-member Bundle 变更。当前 R0 文档批已获远端交付授权；交付/CI/合并以该批 PR 最终记录为准。
 
-**Exit update 2026-10-13:** S1 MERGED/CI GREEN; production helper/crypt/installation remains NO-GO. C5-G2-A local work takes precedence over S2.
+**原 2026-10-13 退出记录 / R0 更新：**S1 MERGED/CI GREEN；G2-A 已合并，当前按 R1–R5 继续；production helper/crypt/installation 仍 NO-GO。S2 新 daily 扩充在 v1/C5 后，不暂停现役 timer。

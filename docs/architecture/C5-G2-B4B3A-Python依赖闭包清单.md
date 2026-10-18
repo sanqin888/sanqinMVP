@@ -1,7 +1,11 @@
 # C5-G2 B02-B4B-3A — Python 依赖闭包清单契约（第一批）
 
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
+D1 已冻结有限独立认证平台基线；本文 Python 3.12.3 等仍只是合成模型声明，不是目标平台实际认证。R1（B4B-3B/3C）必须对真实版本采集完整依赖、独立来源和实际消费见证，未知项拒绝，不扩成主机自证内核。
+
 **日期：**2026-10-17（America/Toronto）
-**状态：**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING；**C5-G2 NO-GO / S2 BACKUP PAUSED**。
+**状态：**MERGED / SYNTHETIC CI GREEN：PR #2848，merge `dda7698e00effc37e1e8a76aba7c43e50f8f4061`，final head `d4d5513f5dc734e0f9b9321e99e49582073cd263`，CI #7315 / run `39077195858`；**C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。
 **归属：**Runtime / Release 安全边界；不进入冻结的 17 文件 Runtime Bundle。
 
 ## 1. 边界与实施范围
@@ -54,7 +58,7 @@ Linux vDSO 不是常规的可哈希磁盘文件；libcrypto 和其路径别名�
 
 新增 ops/runtime/tests/test_root_python_dependency_manifest.py，以虚构 digest 构建纯合成图，覆盖声明正确但拒绝生产授权、包/子模块/扩展/loader/native/builtin/frozen、缺失额外 SHA、未知模块/路径/ABI、缺边/重复/不可达和有界环遍历。没有真实 Guest/root 操作。
 
-MCP-workspace 不开放本地 lint/build/test 执行权限；首次改动停在 diff/status 审阅。用户批准远端提交后，由 GitHub Actions 的 api-checks 按既有 Runtime unittest discover 步骤执行。
+该批已获远端交付批准并由 GitHub Actions 的 api-checks 按既有 Runtime unittest discover 步骤通过；没有执行本地 lint/build/test，也没有 Guest/root 真实采集或执行。当前 R0 文档批已获远端交付授权；交付/CI/合并以该批 PR 最终记录为准。
 
 **B4B-3B（后续单独审阅）：**独立可信源/文件哈希采集、真实 Python 传递 import 和 ELF DT_NEEDED/dlopen 发现、真实路径/inode 映射、内核 vDSO、系统包来源与动态环境影响；未知时 fail closed。若需要增加第三方 wheel、zip 导入或其他 ABI 的支持，必须另外审阅新边界。
 
