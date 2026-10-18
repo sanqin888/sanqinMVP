@@ -179,13 +179,17 @@ const CreateSchema = z.object({
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('STAFF', 'ADMIN')
 export class PosPaymentExceptionController {
-  constructor(private readonly exceptions: PaymentExceptionOrchestrationService) {}
+  constructor(
+    private readonly exceptions: PaymentExceptionOrchestrationService,
+  ) {}
 
   private identity(req: PosDeviceRequest) {
     const actor = req.user?.userStableId?.trim();
     const store = req.posDevice?.storeStableId?.trim();
     if (!actor || !store) {
-      throw new UnauthorizedException('Authenticated operator and POS Store required');
+      throw new UnauthorizedException(
+        'Authenticated operator and POS Store required',
+      );
     }
     return { actor, store };
   }
@@ -201,7 +205,10 @@ export class PosPaymentExceptionController {
     @Req() req: PosDeviceRequest,
     @Param('attemptId') attemptId: string,
   ) {
-    const row = await this.exceptions.byAttempt(this.identity(req).store, attemptId);
+    const row = await this.exceptions.byAttempt(
+      this.identity(req).store,
+      attemptId,
+    );
     return row ? toPaymentExceptionPublicView(row) : null;
   }
 
@@ -227,7 +234,10 @@ export class PosPaymentExceptionController {
     @Req() req: PosDeviceRequest,
     @Param('caseStableId') caseStableId: string,
   ) {
-    const row = await this.exceptions.execute(caseStableId, this.identity(req).store);
+    const row = await this.exceptions.execute(
+      caseStableId,
+      this.identity(req).store,
+    );
     return toPaymentExceptionPublicView(row);
   }
 }
@@ -241,7 +251,9 @@ const DecisionSchema = z.object({
 @UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminPaymentExceptionController {
-  constructor(private readonly exceptions: PaymentExceptionOrchestrationService) {}
+  constructor(
+    private readonly exceptions: PaymentExceptionOrchestrationService,
+  ) {}
 
   @Get()
   async list() {
@@ -258,7 +270,12 @@ export class AdminPaymentExceptionController {
   ) {
     const actor = req.user?.userStableId?.trim();
     if (!actor) throw new UnauthorizedException('Admin identity required');
-    const row = await this.exceptions.decide(caseStableId, actor, body.decision, body.note);
+    const row = await this.exceptions.decide(
+      caseStableId,
+      actor,
+      body.decision,
+      body.note,
+    );
     return toPaymentExceptionPublicView(row);
   }
 
@@ -271,8 +288,11 @@ export class AdminPaymentExceptionController {
     if (!actor) throw new UnauthorizedException('Admin identity required');
     const target = await this.exceptions.getForAdmin(caseStableId);
     if (!target) throw new UnauthorizedException('Case not in admin review scope');
-    const row = await this.exceptions.execute(caseStableId, target.storeStableId, true);
+    const row = await this.exceptions.execute(
+      caseStableId,
+      target.storeStableId,
+      true,
+    );
     return toPaymentExceptionPublicView(row);
   }
 }
-

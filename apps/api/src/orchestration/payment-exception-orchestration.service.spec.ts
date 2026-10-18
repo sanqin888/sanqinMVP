@@ -93,13 +93,17 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
         '2YJK1ED5GTZZG',
       ),
     ).resolves.toMatchObject({ status: 'APPROVED' });
-    expect(cases.open.mock.calls[0]?.[0]).toMatchObject({
-      action: 'SANDBOX_CONFIRM_UNPAID',
-      mode: 'SANDBOX',
-      paymentTransactionId: paymentId,
-      externalPaymentId: baseDetail.externalPaymentId,
-      amountCents: 1695,
-    });
+    expect(cases.open.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          action: 'SANDBOX_CONFIRM_UNPAID',
+          mode: 'SANDBOX',
+          paymentTransactionId: paymentId,
+          externalPaymentId: baseDetail.externalPaymentId,
+          amountCents: 1695,
+        }),
+      ],
+    ]);
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
     expect(cardPayments.recheckReviewAttempt.mock.calls).toHaveLength(0);
   });
@@ -136,13 +140,16 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
     await service.execute(baseCase.caseStableId, storeStableId);
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toEqual([[
       storeStableId,
-      attemptId,
+        attemptId,
       'staff-one',
       '2YJK1ED5GTZZG',
       baseCase.operatorNote,
       true,
-    ]]);
-    expect(cases.finish.mock.calls).toEqual([[baseCase.caseStableId, true, undefined]]);
+      ],
+    ]);
+    expect(cases.finish.mock.calls).toEqual([
+      [baseCase.caseStableId, true, undefined],
+    ]);
   });
 
   it('blocks a cross-store request before making any financial call', async () => {
@@ -160,11 +167,13 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
       ...baseDetail,
       externalPaymentId: 'different-sale',
     });
-    await expect(service.execute(baseCase.caseStableId, storeStableId)).rejects.toThrow(
-      'PAYMENT_EXCEPTION_FROZEN_IDENTITY_CONFLICT',
-    );
+    await expect(
+      service.execute(baseCase.caseStableId, storeStableId),
+    ).rejects.toThrow('PAYMENT_EXCEPTION_FROZEN_IDENTITY_CONFLICT');
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
-    expect(cases.finish.mock.calls[0]?.[1]).toBe(false);
+    expect(cases.finish.mock.calls).toEqual([
+      [baseCase.caseStableId, false, 'PAYMENT_EXCEPTION_FROZEN_IDENTITY_CONFLICT'],
+    ]);
   });
 
   it('only investigates an unresolved production payment; admin approval does not execute', async () => {
@@ -178,11 +187,20 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
       'staff-one',
       'Original payment remains unknown; please investigate',
     );
-    expect(cases.open.mock.calls[0]?.[0]).toMatchObject({
-      mode: 'PRODUCTION',
-      action: 'INVESTIGATE_ONLY',
-    });
-    await service.decide('case-test-1', 'admin-two', 'APPROVED', 'Review requires provider settlement');
+    expect(cases.open.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          mode: 'PRODUCTION',
+          action: 'INVESTIGATE_ONLY',
+        }),
+      ],
+    ]);
+    await service.decide(
+      'case-test-1',
+      'admin-two',
+      'APPROVED',
+      'Review requires provider settlement',
+    );
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
     expect(cardPayments.recheckReviewAttempt.mock.calls).toHaveLength(0);
   });
@@ -198,8 +216,9 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
       action: 'RELEASE_CONFIRMED_FAILURE',
       approvedByStableId: 'admin-two',
     });
-    await expect(service.execute(baseCase.caseStableId, storeStableId))
-      .rejects.toThrow('Only ADMIN');
+    await expect(
+      service.execute(baseCase.caseStableId, storeStableId),
+    ).rejects.toThrow('Only ADMIN');
     expect(cardPayments.recheckReviewAttempt.mock.calls).toHaveLength(0);
   });
 
@@ -235,10 +254,16 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
         terminalOperationState: 'FINALIZED',
       });
     await service.execute(baseCase.caseStableId, storeStableId, true);
-    expect(cardPayments.recheckReviewAttempt.mock.calls).toEqual([[storeStableId, attemptId]]);
-    expect(paymentGuard.finishConfirmedFailureTerminal.mock.calls).toEqual([[attemptId]]);
+    expect(cardPayments.recheckReviewAttempt.mock.calls).toEqual([
+      [storeStableId, attemptId],
+    ]);
+    expect(paymentGuard.finishConfirmedFailureTerminal.mock.calls).toEqual([
+      [attemptId],
+    ]);
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
-    expect(cases.finish.mock.calls[0]?.[1]).toBe(true);
+    expect(cases.finish.mock.calls).toEqual([
+      [baseCase.caseStableId, true, undefined],
+    ]);
   });
 
   it('keeps an unknown production payment fenced despite ADMIN approval', async () => {
@@ -253,8 +278,9 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
       action: 'INVESTIGATE_ONLY',
       approvedByStableId: 'admin-two',
     });
-    await expect(service.execute(baseCase.caseStableId, storeStableId, true))
-      .rejects.toThrow('Investigation only');
+    await expect(
+      service.execute(baseCase.caseStableId, storeStableId, true),
+    ).rejects.toThrow('Investigation only');
     expect(cases.claim.mock.calls).toHaveLength(0);
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
   });
@@ -262,8 +288,9 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
   it('prevents duplicate parallel recovery executions', async () => {
     const { service, cases, cardPayments } = harness();
     cases.claim.mockResolvedValue('BUSY');
-    await expect(service.execute(baseCase.caseStableId, storeStableId))
-      .rejects.toThrow('Recovery already executing');
+    await expect(
+      service.execute(baseCase.caseStableId, storeStableId),
+    ).rejects.toThrow('Recovery already executing');
     expect(cardPayments.manuallyCloseSandboxUnpaid.mock.calls).toHaveLength(0);
   });
 
@@ -273,7 +300,12 @@ describe('PaymentExceptionOrchestrationService PEM', () => {
     process.env.NODE_ENV = 'production';
     delete process.env.PAYMENT_EXCEPTION_PRODUCTION_ENABLED;
     await expect(
-      service.submit(storeStableId, attemptId, 'staff-one', 'Investigate payment status'),
+      service.submit(
+        storeStableId,
+        attemptId,
+        'staff-one',
+        'Investigate payment status',
+      ),
     ).rejects.toThrow();
     expect(cases.open.mock.calls).toHaveLength(0);
   });

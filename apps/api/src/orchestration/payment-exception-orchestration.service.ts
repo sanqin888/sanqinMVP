@@ -53,9 +53,7 @@ export class PaymentExceptionOrchestrationService {
       attemptId,
     );
     if (!original.paymentId || !original.externalPaymentId) {
-      throw new ConflictException(
-        'Original Terminal payment identity missing',
-      );
+      throw new ConflictException('Original Terminal payment identity missing');
     }
     if (original.externalAmountCents <= 0) {
       throw new ConflictException(
@@ -63,9 +61,7 @@ export class PaymentExceptionOrchestrationService {
       );
     }
     if (!/^[A-Z]{3}$/.test(original.currency)) {
-      throw new ConflictException(
-        'Original checkout currency is unavailable',
-      );
+      throw new ConflictException('Original checkout currency is unavailable');
     }
     const terminalFinal =
       original.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID' &&
@@ -91,9 +87,7 @@ export class PaymentExceptionOrchestrationService {
       });
     }
     if (action === 'SANDBOX_CONFIRM_UNPAID' && !cloverOrderId?.trim()) {
-      throw new ConflictException(
-        'Original Clover order is required',
-      );
+      throw new ConflictException('Original Clover order is required');
     }
     return this.cases.open({
       attemptId,
@@ -235,7 +229,9 @@ export class PaymentExceptionOrchestrationService {
             before.paymentStatus ?? '',
           )
         ) {
-          throw new Error('PAYMENT_EXCEPTION_FINAL_FAILURE_NO_LONGER_CONFIRMED');
+          throw new Error(
+            'PAYMENT_EXCEPTION_FINAL_FAILURE_NO_LONGER_CONFIRMED',
+          );
         }
         await this.cardPayments.recheckReviewAttempt(
           storeStableId,

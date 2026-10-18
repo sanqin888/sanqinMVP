@@ -31,10 +31,17 @@ export class PaymentExceptionCaseService {
     resultCode: string,
     description: string,
   ): Promise<void> {
-    return this.repository.appendEvidence(caseStableId, source, resultCode, description);
+    return this.repository.appendEvidence(
+      caseStableId,
+      source,
+      resultCode,
+      description,
+    );
   }
 
-  decide(input: PaymentExceptionDecisionInput): Promise<PaymentExceptionCase | null> {
+  decide(
+    input: PaymentExceptionDecisionInput,
+  ): Promise<PaymentExceptionCase | null> {
     return this.repository.decide(input);
   }
 
@@ -42,7 +49,11 @@ export class PaymentExceptionCaseService {
     return this.repository.claimExecution(caseStableId);
   }
 
-  finish(caseStableId: string, complete: boolean, failureCode?: string): Promise<void> {
+  finish(
+    caseStableId: string,
+    complete: boolean,
+    failureCode?: string,
+  ): Promise<void> {
     return this.repository.finishExecution(caseStableId, complete, failureCode);
   }
 }

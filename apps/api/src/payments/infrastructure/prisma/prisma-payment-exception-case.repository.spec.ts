@@ -22,6 +22,21 @@ const existing = {
   updatedAt: new Date('2026-10-17T20:00:00Z'),
 };
 
+const request = {
+  attemptId: existing.attemptId,
+  storeStableId: existing.storeStableId,
+  paymentTransactionId: existing.paymentTransactionId,
+  externalPaymentId: existing.externalPaymentId,
+  amountCents: existing.amountCents,
+  currency: existing.currency,
+  action: 'SANDBOX_CONFIRM_UNPAID' as const,
+  mode: 'SANDBOX' as const,
+  requestedByStableId: existing.requestedByStableId,
+  operatorNote: existing.operatorNote,
+  cloverOrderId: existing.cloverOrderId,
+  evidenceCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+};
+
 const harness = () => {
   const tx = {
     paymentExceptionCase: {
@@ -38,15 +53,21 @@ const harness = () => {
       create: jest.fn().mockResolvedValue({ id: 'approval' }),
     },
     paymentExceptionExecution: {
-      upsert: jest.fn().mockResolvedValue({ caseStableId: existing.caseStableId }),
-      update: jest.fn().mockResolvedValue({ caseStableId: existing.caseStableId }),
+      upsert: jest
+        .fn()
+        .mockResolvedValue({ caseStableId: existing.caseStableId }),
+      update: jest
+        .fn()
+        .mockResolvedValue({ caseStableId: existing.caseStableId }),
     },
   };
   const prisma = {
     ...tx,
-    $transaction: jest.fn().mockImplementation(
-      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
-    ),
+    $transaction: jest
+      .fn()
+      .mockImplementation((callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
   };
   const repository = new PrismaPaymentExceptionCaseRepository(
     prisma as unknown as PrismaService,
@@ -58,20 +79,9 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
   it('reuses the exact original Attempt without creating a second audit case', async () => {
     const { repository, tx } = harness();
     tx.paymentExceptionCase.findUnique.mockResolvedValue(existing);
-    await expect(repository.open({
-      attemptId: existing.attemptId,
-      storeStableId: existing.storeStableId,
-      paymentTransactionId: existing.paymentTransactionId,
-      externalPaymentId: existing.externalPaymentId,
-      amountCents: existing.amountCents,
-      currency: existing.currency,
-      action: 'SANDBOX_CONFIRM_UNPAID',
-      mode: 'SANDBOX',
-      requestedByStableId: existing.requestedByStableId,
-      operatorNote: existing.operatorNote,
-      cloverOrderId: existing.cloverOrderId,
-      evidenceCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
-    })).resolves.toMatchObject({ caseStableId: existing.caseStableId });
+    await expect(repository.open(request)).resolves.toMatchObject({
+      caseStableId: existing.caseStableId,
+    });
     expect(tx.paymentExceptionCase.create.mock.calls).toHaveLength(0);
     expect(tx.paymentExceptionEvidence.create.mock.calls).toHaveLength(0);
   });
@@ -79,20 +89,9 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
   it('rejects a second claimant reusing an Attempt with a different external identity', async () => {
     const { repository, tx } = harness();
     tx.paymentExceptionCase.findUnique.mockResolvedValue(existing);
-    await expect(repository.open({
-      attemptId: existing.attemptId,
-      storeStableId: existing.storeStableId,
-      paymentTransactionId: existing.paymentTransactionId,
-      externalPaymentId: 'sq_conflicting',
-      amountCents: existing.amountCents,
-      currency: existing.currency,
-      action: 'SANDBOX_CONFIRM_UNPAID',
-      mode: 'SANDBOX',
-      requestedByStableId: existing.requestedByStableId,
-      operatorNote: existing.operatorNote,
-      cloverOrderId: existing.cloverOrderId,
-      evidenceCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
-    })).rejects.toThrow('PAYMENT_EXCEPTION_DUPLICATE_ATTEMPT_CONFLICT');
+    await expect(
+      repository.open({ ...request, externalPaymentId: 'sq_conflicting' }),
+    ).rejects.toThrow('PAYMENT_EXCEPTION_DUPLICATE_ATTEMPT_CONFLICT');
     expect(tx.paymentExceptionCase.create.mock.calls).toHaveLength(0);
   });
 
@@ -103,12 +102,14 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
       mode: 'PRODUCTION',
       status: 'REQUESTED',
     });
-    await expect(repository.decide({
-      caseStableId: existing.caseStableId,
-      actorStableId: 'staff-one',
-      decision: 'APPROVED',
-      note: 'Self approval should never be allowed',
-    })).rejects.toThrow('PAYMENT_EXCEPTION_SELF_APPROVAL_FORBIDDEN');
+    await expect(
+      repository.decide({
+        caseStableId: existing.caseStableId,
+        actorStableId: 'staff-one',
+        decision: 'APPROVED',
+        note: 'Self approval should never be allowed',
+      }),
+    ).rejects.toThrow('PAYMENT_EXCEPTION_SELF_APPROVAL_FORBIDDEN');
     expect(tx.paymentExceptionCase.updateMany.mock.calls).toHaveLength(0);
     expect(tx.paymentExceptionApproval.create.mock.calls).toHaveLength(0);
   });
@@ -126,29 +127,55 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
       status: 'APPROVED',
       approvedByStableId: 'admin-two',
     });
-    await expect(repository.decide({
-      caseStableId: existing.caseStableId,
-      actorStableId: 'admin-two',
-      decision: 'APPROVED',
-      note: 'Evidence verified for release only',
-    })).resolves.toMatchObject({ status: 'APPROVED' });
-    expect(tx.paymentExceptionCase.updateMany.mock.calls[0]?.[0]).toMatchObject({
-      where: { caseStableId: existing.caseStableId, status: 'REQUESTED' },
-    });
-    expect(tx.paymentExceptionApproval.create.mock.calls[0]?.[0]).toMatchObject({
-      data: { actorStableId: 'admin-two', decision: 'APPROVED' },
-    });
+    await expect(
+      repository.decide({
+        caseStableId: existing.caseStableId,
+        actorStableId: 'admin-two',
+        decision: 'APPROVED',
+        note: 'Evidence verified for release only',
+      }),
+    ).resolves.toMatchObject({ status: 'APPROVED' });
+    expect(tx.paymentExceptionCase.updateMany.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          where: {
+            caseStableId: existing.caseStableId,
+            status: 'REQUESTED',
+          },
+        }),
+      ],
+    ]);
+    expect(tx.paymentExceptionApproval.create.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          data: {
+            actorStableId: 'admin-two',
+            decision: 'APPROVED',
+            note: 'Evidence verified for release only',
+          },
+        }),
+      ],
+    ]);
   });
 
   it('only one worker can claim a current APPROVED case', async () => {
     const { repository, tx } = harness();
     tx.paymentExceptionCase.findUnique.mockResolvedValue(existing);
-    await expect(repository.claimExecution(existing.caseStableId))
-      .resolves.toBe('CLAIMED');
-    expect(tx.paymentExceptionCase.updateMany.mock.calls[0]?.[0]).toMatchObject({
-      where: { status: 'APPROVED', updatedAt: existing.updatedAt },
-      data: { status: 'EXECUTING' },
-    });
+    await expect(
+      repository.claimExecution(existing.caseStableId),
+    ).resolves.toBe('CLAIMED');
+    expect(tx.paymentExceptionCase.updateMany.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          where: {
+            caseStableId: existing.caseStableId,
+            status: 'APPROVED',
+            updatedAt: existing.updatedAt,
+          },
+          data: { status: 'EXECUTING' },
+        }),
+      ],
+    ]);
     expect(tx.paymentExceptionExecution.upsert.mock.calls).toHaveLength(1);
   });
 
@@ -159,21 +186,35 @@ describe('PrismaPaymentExceptionCaseRepository audit/CAS', () => {
       status: 'EXECUTING',
       updatedAt: new Date(),
     });
-    await expect(repository.claimExecution(existing.caseStableId))
-      .resolves.toBe('BUSY');
+    await expect(
+      repository.claimExecution(existing.caseStableId),
+    ).resolves.toBe('BUSY');
     expect(tx.paymentExceptionExecution.upsert.mock.calls).toHaveLength(0);
   });
 
   it('only persists a completed checkpoint after owned EXECUTING CAS', async () => {
     const { repository, tx } = harness();
     await repository.finishExecution(existing.caseStableId, true);
-    expect(tx.paymentExceptionCase.updateMany.mock.calls[0]?.[0]).toMatchObject({
-      where: { caseStableId: existing.caseStableId, status: 'EXECUTING' },
-      data: { status: 'COMPLETED' },
-    });
+    expect(tx.paymentExceptionCase.updateMany.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          where: {
+            caseStableId: existing.caseStableId,
+            status: 'EXECUTING',
+          },
+          data: { status: 'COMPLETED' },
+        }),
+      ],
+    ]);
     expect(tx.paymentExceptionExecution.update.mock.calls).toHaveLength(1);
-    expect(tx.paymentExceptionEvidence.create.mock.calls[0]?.[0]).toMatchObject({
-      data: { resultCode: 'RECOVERY_COMPLETED' },
-    });
+    expect(tx.paymentExceptionEvidence.create.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          data: expect.objectContaining({
+            resultCode: 'RECOVERY_COMPLETED',
+          }),
+        }),
+      ],
+    ]);
   });
 });

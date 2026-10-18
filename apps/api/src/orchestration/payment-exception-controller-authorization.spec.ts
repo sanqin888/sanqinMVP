@@ -12,10 +12,9 @@ import {
 
 describe('PEM authentication and workflow authorization boundary', () => {
   it('allows authenticated enrolled POS STAFF to request and execute only sandbox-eligible cases', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, PosPaymentExceptionController)).toEqual([
-      'STAFF',
-      'ADMIN',
-    ]);
+    expect(
+      Reflect.getMetadata(ROLES_KEY, PosPaymentExceptionController),
+    ).toEqual(['STAFF', 'ADMIN']);
     expect(
       Reflect.getMetadata(GUARDS_METADATA, PosPaymentExceptionController),
     ).toEqual(

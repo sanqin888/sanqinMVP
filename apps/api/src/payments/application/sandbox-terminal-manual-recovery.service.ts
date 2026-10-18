@@ -69,8 +69,9 @@ export class SandboxTerminalManualRecoveryService {
     approvedExceptionCase?: boolean;
   }): Promise<PaymentTransaction> {
     if (!(input.approvedExceptionCase
-      ? this.isIsolatedSandbox()
-      : this.isEnabled())) {
+        ? this.isIsolatedSandbox()
+        : this.isEnabled())
+    ) {
       throw new Error('POS_SANDBOX_MANUAL_RECOVERY_DISABLED');
     }
     const payment = await this.terminalPayments.findById(input.paymentId);
@@ -100,10 +101,9 @@ export class SandboxTerminalManualRecoveryService {
       original.failureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED';
     if (
       original.status !== 'RECONCILING' ||
-      (!historicalAllFailed && (
+      (!historicalAllFailed &&
         original.resultCode !== 'CLOVER_TERMINAL_SALE_HTTP_504' ||
-        original.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND'
-      )) ||
+          original.failureCode !== 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND')) ||
       original.providerPaymentId !== null ||
       !original.externalPaymentId ||
       Date.now() - original.createdAt.getTime() < 5 * 60 * 1000
@@ -161,7 +161,9 @@ export class SandboxTerminalManualRecoveryService {
     storeStableId: string,
     approvedExceptionCase = false,
   ): Promise<boolean> {
-    if (!(approvedExceptionCase ? this.isIsolatedSandbox() : this.isEnabled())) {
+    if (
+      !(approvedExceptionCase ? this.isIsolatedSandbox() : this.isEnabled())
+    ) {
       return false;
     }
     const decision = await this.getSandboxManualUnpaidDecision(attemptId);
@@ -188,23 +190,22 @@ export class SandboxTerminalManualRecoveryService {
       amountCents: identity.amountCents,
       currency: identity.currency,
     });
-    const expectedCode = decision.originalFailureCode ===
-      'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'
+    const expectedCode =
+      decision.originalFailureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'
         ? 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED'
         : 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND';
     if (
       canonical.status !== 'UNKNOWN' ||
       canonical.failureCode !== expectedCode ||
-      (expectedCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED' && (
+      (expectedCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED' &&
         canonical.evidence !== 'CANONICAL' ||
-        canonical.paymentId !== identity.id ||
+          canonical.paymentId !== identity.id ||
         canonical.attemptId !== identity.attemptId ||
         canonical.idempotencyKey !== identity.idempotencyKey ||
         canonical.providerPaymentId != null ||
         canonical.externalPaymentId !== identity.externalPaymentId ||
         canonical.amountCents !== identity.amountCents ||
-        canonical.currency !== identity.currency
-      ))
+          canonical.currency !== identity.currency))
     ) {
       if (canonical.status === 'SUCCEEDED') {
         await this.terminalOperations.noteSandboxLateCanonicalSuccess(
@@ -291,7 +292,9 @@ export class SandboxTerminalManualRecoveryService {
     attemptId: string,
     approvedExceptionCase = false,
   ): Promise<void> {
-    if (!(approvedExceptionCase ? this.isIsolatedSandbox() : this.isEnabled())) {
+    if (
+      !(approvedExceptionCase ? this.isIsolatedSandbox() : this.isEnabled())
+    ) {
       throw new Error('POS_SANDBOX_MANUAL_RECOVERY_DISABLED');
     }
     await this.terminalOperations.checkpointSandboxBenefitsReleased(attemptId);

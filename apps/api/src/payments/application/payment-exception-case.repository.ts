@@ -61,9 +61,15 @@ export interface PaymentExceptionCaseRepository {
     resultCode: string,
     description: string,
   ): Promise<void>;
-  decide(input: PaymentExceptionDecisionInput): Promise<PaymentExceptionCase | null>;
+  decide(
+    input: PaymentExceptionDecisionInput,
+  ): Promise<PaymentExceptionCase | null>;
   claimExecution(caseStableId: string): Promise<'CLAIMED' | 'BUSY' | 'DONE'>;
-  finishExecution(caseStableId: string, complete: boolean, failureCode?: string): Promise<void>;
+  finishExecution(
+    caseStableId: string,
+    complete: boolean,
+    failureCode?: string,
+  ): Promise<void>;
 }
 
 export const PAYMENT_EXCEPTION_CASE_REPOSITORY = Symbol(

@@ -1527,9 +1527,7 @@ const toCase = (row: CaseRow): PaymentExceptionCase => ({
  * No cross-context tables or raw Clover payload are written here.
  */
 @Injectable()
-export class PrismaPaymentExceptionCaseRepository
-  implements PaymentExceptionCaseRepository
-{
+export class PrismaPaymentExceptionCaseRepository implements PaymentExceptionCaseRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async open(input: PaymentExceptionOpenInput): Promise<PaymentExceptionCase> {
@@ -1626,7 +1624,9 @@ export class PrismaPaymentExceptionCaseRepository
     });
   }
 
-  async decide(input: PaymentExceptionDecisionInput): Promise<PaymentExceptionCase | null> {
+  async decide(
+    input: PaymentExceptionDecisionInput,
+  ): Promise<PaymentExceptionCase | null> {
     const row = await this.prisma.$transaction(
       async (tx) => {
         const previous = await tx.paymentExceptionCase.findUnique({
@@ -1669,7 +1669,9 @@ export class PrismaPaymentExceptionCaseRepository
     return row ? toCase(row) : null;
   }
 
-  async claimExecution(caseStableId: string): Promise<'CLAIMED' | 'BUSY' | 'DONE'> {
+  async claimExecution(
+    caseStableId: string,
+  ): Promise<'CLAIMED' | 'BUSY' | 'DONE'> {
     return this.prisma.$transaction(
       async (tx) => {
         const current = await tx.paymentExceptionCase.findUnique({
@@ -1719,27 +1721,32 @@ export class PrismaPaymentExceptionCaseRepository
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.paymentExceptionCase.updateMany({
-        where: { caseStableId, status: 'EXECUTING' },
+          where: { caseStableId, status: 'EXECUTING' },
         data: { status: complete ? 'COMPLETED' : 'NEEDS_REVIEW' },
       });
       if (updated.count !== 1) return;
       await tx.paymentExceptionExecution.update({
-        where: { caseStableId },
+          where: { caseStableId },
         data: {
           finishedAt: complete ? new Date() : null,
-          failureCode: complete ? null : (failureCode ?? 'RECOVERY_INCOMPLETE'),
+            failureCode: complete
+              ? null
+              : (failureCode ?? 'RECOVERY_INCOMPLETE'),
         },
       });
-      await tx.paymentExceptionEvidence.create({
+        await tx.paymentExceptionEvidence.create({
         data: {
           caseStableId,
           source: 'SANQ_RECOVERY_CHECKPOINT',
-          resultCode: complete ? 'RECOVERY_COMPLETED' : 'RECOVERY_NEEDS_REVIEW',
+            resultCode: complete
+              ? 'RECOVERY_COMPLETED'
+              : 'RECOVERY_NEEDS_REVIEW',
           description: failureCode ?? 'Owner checkpoints evaluated',
-          observedAt: new Date(),
+            observedAt: new Date(),
         },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 }
-

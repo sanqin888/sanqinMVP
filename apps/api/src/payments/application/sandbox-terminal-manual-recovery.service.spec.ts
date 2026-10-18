@@ -179,13 +179,17 @@ describe('SandboxTerminalManualRecoveryService', () => {
       status: 'UNKNOWN',
       resultCode: 'CLOVER_CANCELLED',
       failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
-    }));
+      }),
+    );
     await expect(service.acceptSandboxManualUnpaid({
       ...input,
       approvedExceptionCase: true,
-    })).resolves.toMatchObject({ status: 'FAILED' });
+      }),
+    ).resolves.toMatchObject({ status: 'FAILED' });
     expect(terminalPayments.reconcile.mock.calls).toEqual([[paymentId]]);
-    expect(operations.claimSandboxManualUnpaid.mock.calls[0]?.[0]).toMatchObject({
+    expect(
+      operations.claimSandboxManualUnpaid.mock.calls[0]?.[0],
+    ).toMatchObject({
       originalResultCode: 'CLOVER_CANCELLED',
       originalFailureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
     });
@@ -198,9 +202,11 @@ describe('SandboxTerminalManualRecoveryService', () => {
       status: 'UNKNOWN',
       resultCode: 'CLOVER_CANCELLED',
       failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
-    }));
-    await expect(service.acceptSandboxManualUnpaid(input))
-      .rejects.toThrow('POS_SANDBOX_MANUAL_RECOVERY_NOT_ELIGIBLE');
+      }),
+    );
+    await expect(service.acceptSandboxManualUnpaid(input)).rejects.toThrow(
+      'POS_SANDBOX_MANUAL_RECOVERY_NOT_ELIGIBLE',
+    );
     expect(operations.claimSandboxManualUnpaid.mock.calls).toHaveLength(0);
   });
 
@@ -210,7 +216,8 @@ describe('SandboxTerminalManualRecoveryService', () => {
     setPayment(originalPayment().applyProviderOutcome({
       status: 'FAILED',
       resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
-    }));
+      }),
+    );
     operations.getSandboxManualUnpaidDecision.mockResolvedValue({
       ...input,
       paymentTransactionId: paymentId,
@@ -238,7 +245,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
     await expect(
       service.finishSandboxManualUnpaid(attemptId, storeStableId, true),
     ).resolves.toBe(true);
-    expect(operations.finalizeSandboxManualUnpaid.mock.calls).toEqual([[attemptId]]);
+    expect(operations.finalizeSandboxManualUnpaid.mock.calls).toEqual([
+      [attemptId],
+    ]);
   });
 
   it('keeps the terminal fenced if the ALL_FAIL canonical amount conflicts', async () => {
@@ -246,8 +255,9 @@ describe('SandboxTerminalManualRecoveryService', () => {
     jest.spyOn(service, 'isIsolatedSandbox').mockReturnValue(true);
     setPayment(originalPayment().applyProviderOutcome({
       status: 'FAILED',
-      resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
-    }));
+        resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+      }),
+    );
     operations.getSandboxManualUnpaidDecision.mockResolvedValue({
       ...input,
       paymentTransactionId: paymentId,
