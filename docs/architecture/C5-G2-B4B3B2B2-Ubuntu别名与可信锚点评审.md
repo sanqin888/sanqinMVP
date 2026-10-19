@@ -343,4 +343,10 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 **关闭范围与执行门禁：**仅关闭 R0 **C2「可恢复的隔离实验环境」** 这一前置项，保留 Test-02、原 Snapshot、恢复 VM、两份私有离机归档与 SHA；不删除、不重演、不要求 Marker A/B、VirtualBox 原机 restore 或整盘 hash。**C1、C3–C8 仍 OPEN/NOT REQUESTED；C5-G2 仍 NO-GO；S2 DAILY CONFIG EXPANSION 继续 PAUSED**。PR #2864 的 **RUNTIME-SNAPSHOT-01、MAINT-RESTART-01** 实际 AWS 代码创建/available/隔离新实例、跨重启停写与 [S01–S12](Runtime更新-AWS快照与维护冻结方案.md) 同平台验收均**没有执行、不能从 C2 closeout 推导通过**。C2 closeout 也**不授权**任何 B2B2-B2/root/发行来源 pin、VM/Host 写入、IAM、生产安装或流量切换；对应执行仍须具体对象、命令、证据保全方案及新的明确授权。
 
+## 10. 2026-10-18 — B2B2-B2 第一批 B2-0 源码与 B2-1 取证合同
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 以 C2 已有界关闭后的 `origin/dev@eec9668c` 为基线，在独立 `feat/c5-g2-r1-b2b2b2-evidence-contract-20261018` 分支新增外置、**纯内存且永久 BLOCKED** 的 Guest packet 合同、与 Guest 组包代码独立的离机交叉比对以及虚构 Python/ELF/包/Host 身份的聚焦负例；不改变 B2B2-B1 解析器、B3A 清单、B3B1 observer/offline 的既有拒绝行为，不开放 root/Guest/生产执行。
+
+详见 [B2-0 数据合同及 B2-1 只读取证设计](C5-G2-R1-B2B2-B2-取证合同与离机审核.md)：`root_python_dependency_guest_evidence.py` 和 `root_python_dependency_guest_offline_review.py` 仅验证**多份调用方提供材料之间的形状和候选摘要一致性**，不验证 Guest `/` 锚点的独立来源，不验官方软件包签名，不执行动态 Python/ELF/`dlopen` 消费。CI、Guest/root、Host 新采集、真实 .deb 来源和离机 witness **尚未执行/核验**；精确 Guest 命令/执行身份/Root-private 来源与原始证据链仍需另行审核授权。C2 不重开；C1 OPEN、C5-G2 NO-GO、S2 PAUSED。
+
 

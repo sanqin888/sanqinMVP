@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 B4B-3B-2B2-B2 第一批 B2-0 源码及 B2-1 只读取证设计
+
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 `origin/dev@eec9668c5c90df38ed7be08cf7f1b2f0607516bc` 创建 `feat/c5-g2-r1-b2b2b2-evidence-contract-20261018`。在 Runtime/Ops 外置 `ops/runtime` 中增加 B1+B3B1 候选 Guest packet（严格结构/FD/alias/阻断状态）与独立 Host/Guest/Ubuntu .deb 来源 pin/custody **声明**比对模块以及纯虚构不执行的合成测试；[B2-1 合同](C5-G2-R1-B2B2-B2-取证合同与离机审核.md) 指定独立 Host/发行包/Guest 证据顺序与未来单独 root 审批。结果强制 BLOCKED/全部授权 false；不改变 B1/B3A/B3B1、17 Bundle、owner/依赖/SCC/scanner、CI/依赖/Prisma/HTTP/业务或生产。**没有**本地测试执行、CI、Guest/root、真实平台/包签名验证、AWS/生产操作。C2 维持有界 CLOSED、C1/C3–C7 OPEN、C8 NOT REQUESTED、C5-G2 NO-GO、S2 PAUSED；首次远端交付必须用户审阅授权。
+
 ## 2026-10-18 — C2 N-07 最终风险裁定与隔离恢复有界 Closeout
 
 **状态：LOCAL DOCUMENTATION / C2 CLOSED — ISOLATED SYNTHETIC RECOVERY VERIFIED / N-07 LIMITED-ACCEPTED / C5-G2 NO-GO；首次远端交付待用户审阅。** 基于最新 `origin/dev@b22f90469963c73281bdaa4ae4861e1eb5b53d82`（PR #2865 / CI #7361 及先前 AWS 设计 PR #2864 已合并）重审 AGENTS、R0 C1–C8、C2-CHANGE-01/02、B2B2 §7/§9、G2、[AWS 快照新方案](Runtime更新-AWS快照与维护冻结方案.md)、恢复手册及既有 C2-0/C2-1 离机原件复核登记。依据用户「如果没什么大问题就 closeout C2」授权，**只针对已经验证的指定可丢弃 Test-02 → 独立新实例恢复流程**接受 N-07 的低影响残余风险（历史 Mac Host 无独立签名见证、部分外层 SSH rc 缺失、本轮 Host 实时输出未另行封存）；保留这三项真实性/取证边界，不把一致的归档 SHA、Guest 19/22 稳定观测、合成 HTTP 200 或独立 base VDI 夸大为整盘 hash / 真实 AWS 恢复。N-01/02/04/06 有界 VERIFIED、N-03/05 VERIFIED with limits、N-07 LIMITED-ACCEPTED。R0 **C2 有界 CLOSED**，C1/C3–C7 OPEN、C8 NOT REQUESTED，G2 不因此晋级；C1/root/FD/外部发行来源及 B2B2-B2 具体 Guest 操作须另批。**AWS RUNTIME-SNAPSHOT-01、MAINT-RESTART-01 只是设计批准，真实同平台 S01–S12 未验证、NO-GO；保留每日现役备份、S2 PAUSED。** 同步 B2B2 §9.6、R0、G2、AWS 设计、恢复手册和依赖图；未执行任何 VM/Guest/云/生产操作，无源码、owner、Prisma、CI、锁文件、Bundle 17、敏感原始证据提交。MCP workspace 不具备 lint/build/test 执行权限，本地仅差异/文档审阅；经用户审阅后另授权远端 PR→dev/CI→合并。
