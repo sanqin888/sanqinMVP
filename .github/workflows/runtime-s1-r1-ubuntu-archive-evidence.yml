@@ -1,0 +1,51 @@
+name: runtime-s1-r1-ubuntu-archive-evidence
+
+# Isolated evidence acquisition ONLY. Never a production trust or install gate.
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - ".github/workflows/runtime-s1-r1-ubuntu-archive-evidence.yml"
+      - "ops/runtime/root_python_s1_r1_runner_evidence.py"
+      - "ops/runtime/root_python_s1_ubuntu_archive_collector.py"
+      - "ops/runtime/tests/test_root_python_s1_r1_runner_evidence.py"
+      - "ops/runtime/tests/test_root_python_s1_ubuntu_archive_collector.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-s1-r1-evidence-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Public Ubuntu Archive candidate signature evidence (BLOCKED)
+    # Don't run PR-supplied code for forks even though no secrets are provided.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR merge tree without persisted token
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Capture real noble Release + Release.gpg with fixed public keyring
+        env:
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          command -v python3
+          # Let the collector record missing gpgv as BLOCKED evidence.
+          python3 ops/runtime/root_python_s1_r1_runner_evidence.py
+
+      - name: Upload public raw evidence for independent off-runner review
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-s1-r1-archive-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sanq-s1-r1-evidence/
+          if-no-files-found: error
+          retention-days: 30
