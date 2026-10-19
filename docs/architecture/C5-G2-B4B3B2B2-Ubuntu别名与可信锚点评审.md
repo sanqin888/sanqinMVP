@@ -349,4 +349,10 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 详见 [B2-0 数据合同及 B2-1 只读取证设计](C5-G2-R1-B2B2-B2-取证合同与离机审核.md)：`root_python_dependency_guest_evidence.py` 和 `root_python_dependency_guest_offline_review.py` 仅验证**多份调用方提供材料之间的形状和候选摘要一致性**，不验证 Guest `/` 锚点的独立来源，不验官方软件包签名，不执行动态 Python/ELF/`dlopen` 消费。CI、Guest/root、Host 新采集、真实 .deb 来源和离机 witness **尚未执行/核验**；精确 Guest 命令/执行身份/Root-private 来源与原始证据链仍需另行审核授权。C2 不重开；C1 OPEN、C5-G2 NO-GO、S2 PAUSED。
 
+**B2-0 后续交付状态（2026-10-18）：**原文中 LOCAL/NOT PUSHED 为首次源码审阅时点。现已由 PR #2867 / CI #7365 success 合并 `dev@b95f09e1984a8ba134289775ae30aeddaff81c5c`，仅晋级为合成 CI GREEN；真实来源/Guest/root 仍未验。
+
+## 11. 2026-10-18 — B2-1A 指定 Host/Guest 原始只读回执的本地实施
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING。** 新独立分支 `docs/c5-g2-r1-b2b2b2-b21-readonly-evidence-approval-20261018` 基于上述合并 SHA：新增固定**已登记**的 C2 Source/Snapshot/Recovered VM/VDI 身份的五项 Host / 九项 Guest **纯输入离线**原始命令回执审阅及合成负例，约束准确 argv、stdout/stderr **原始字节**、独立声明 SHA、UTC、双层 rc 和证据预算；另对 C2 历史 Guest UID 与准确 usrmerge/loader link text 做候选同值核对；正常结果**永久 BLOCKED**。新增 [B2-1A 精确只读命令与 Guest/root 后续审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)。未执行 Mac Host、VirtualBox、SSH、Guest、root、发行包验证或生产，未打开新执行入口；用户审阅前不推送远端。C2 有界 CLOSED，C1 OPEN、G2 NO-GO、S2 PAUSED。
+
 
