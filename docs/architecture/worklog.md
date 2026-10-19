@@ -1,8 +1,13 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 B2B2-B2 B2-1D 跨包归属与 Manifest 候选覆盖
+
+**LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 基于 B2-1C PR #2870 / CI #7371 success / dev merge `3c623b88a20962a820d6269ab330e6b6c48552f3`，从独立分支 `feat/c5-g2-r1-b2b2b2-b21d-manifest-provenance-offline-20261018` 新增外置 Runtime/Ops `root_python_b21_multi_package_manifest.py` 与纯内存合成测试。复用 B3A manifest validator 并严格核对 N 包候选 B2-1C receipt 的 regular SHA/声明式 symlink 原文、logical→member 唯一映射、无漏/多/孤儿/重复，全部结果 BLOCKED。详见 [B2-1D 审阅](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。不证明 GPG/真实发行源、Guest/Host/root FD 或动态消费；无业务 owner/import、依赖图/SCC/scanner、Runtime 17 Bundle、CI/依赖锁文件、Prisma/API/生产/AWS 变化。C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 ## 2026-10-18 — R1 B2B2-B2 B2-1C Debian 包内 member 字节与 symlink 候选合同
 
-**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 B2-1B PR #2869 / CI #7369 success / dev merge e823bb165c1cf0460cf1279cda8d44f0b6884366，在 feat/c5-g2-r1-b2b2b2-b21c-deb-members-offline-20261018 外置新增 ops/runtime/root_python_b21_deb_members.py 和纯虚构 .deb ar/data.tar 测试。仅对 caller 提供的候选 deb bytes/整体 SHA、明确选定包内 regular 文件 digest、symlink 原始 link text 进行有界纯内存核对；不跟随链接、绝不认证 Ubuntu GPG/官方包来源或 Guest FD，也不运行 VM/root/安装。详见 [B2-1C 合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。不改业务 owner/导入、依赖边、SCC/scanner baseline、17 Bundle、B1/B3B1/B2-0/B2-1A/B2-1B 原合同、HTTP/Prisma、CI/锁文件、AWS/生产。C2 LIMITED CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+**首次本地审阅：SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN。后续用户授权提交：PR #2870 / CI #7371 success / merge commit `3c623b88a20962a820d6269ab330e6b6c48552f3` 已进入 dev；仅合成 CI GREEN，不认证真实 Ubuntu 包或 Guest/root。** 基于 B2-1B PR #2869 / CI #7369 success / dev merge e823bb165c1cf0460cf1279cda8d44f0b6884366，在 feat/c5-g2-r1-b2b2b2-b21c-deb-members-offline-20261018 外置新增 ops/runtime/root_python_b21_deb_members.py 和纯虚构 .deb ar/data.tar 测试。仅对 caller 提供的候选 deb bytes/整体 SHA、明确选定包内 regular 文件 digest、symlink 原始 link text 进行有界纯内存核对；不跟随链接、绝不认证 Ubuntu GPG/官方包来源或 Guest FD，也不运行 VM/root/安装。详见 [B2-1C 合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。不改业务 owner/导入、依赖边、SCC/scanner baseline、17 Bundle、B1/B3B1/B2-0/B2-1A/B2-1B 原合同、HTTP/Prisma、CI/锁文件、AWS/生产。C2 LIMITED CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
 
 
 ## 2026-10-18 — R1 B2B2-B2 B2-1B Ubuntu 来源 Release→Packages→deb 原始字节链

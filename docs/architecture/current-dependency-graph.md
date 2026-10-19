@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 B2B2-B2 B2-1D（LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN）**：外置 Runtime/Ops 新增 B3A manifest ↔ 多个 B2-1C 候选 package receipts 的纯内存唯一路由与漏项核验，无下载、root/VM、GPG/独立来源认证或生产授权；见 [B2-1D 合同](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。无业务上下文 owner/import、直接依赖边、SCC/cycle/scanner baseline、HTTP/Prisma、冻结 17 Bundle、CI/依赖锁文件、AWS/生产改变。B2-1C PR #2870 / CI #7371 已合并 dev `3c623b88`；C2 有界 CLOSED、C1 OPEN、G2 NO-GO / S2 PAUSED。
+
+
 2026-10-18 **R1 B2B2-B2 B2-1C（LOCAL SOURCE / SYNTHETIC TESTS AUTHORED / NOT RUN）**：在 Runtime/Ops 现有边界新增单个 .deb ar/data.tar.xz 或 gzip 的 candidate file-member SHA/link text 离线核对及合成负例，始终 BLOCKED；不对官方 GPG 来源或真实 Guest/root 提升权威。参见 [B2-1C 包内成员合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。无业务 owner/跨上下文导入、依赖边/SCC/cycle/scanner baseline、HTTP/Prisma、冻结 Runtime 17 Bundle、CI/依赖锁、AWS/生产变化。B2-1B PR #2869 / CI #7369 合并 dev e823bb16；C2 CLOSED（有界）、C1 OPEN、C5-G2 NO-GO / S2 PAUSED。
 
 
