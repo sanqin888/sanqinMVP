@@ -85,3 +85,31 @@ MacBook Terminal 示例（若文件已经下载到 Downloads，且操作者已�
 
 当前：Mac 公钥没有实际采集，gpgv 真实验签/Runner workflow/Drive 证据归档/生产读回均未执行。C1 OPEN、C5-G2 NO-GO、S2 PAUSED。项目仓库本批只记录这份设计和工作日志。
 
+## 7. 2026-10-19 — S1-W1 现场交叉核验与 S1-R1 本地准备（尚未远端执行）
+
+> 本节是对 §6 历史「尚未执行」的后续现场记录，不改写之前状态。所有实测数据由 MacBook/Debian 操作员提供日志并经对照；MCP-workspace 本批没有执行联网 GPGV，也没有获取私有证据目录。
+
+### 7.1 S1-W1 — 技术交叉核验 PASS / 独立审批 PENDING
+
+- MacBook：Catalina 10.15、MacPorts GnuPG；使用非仓库的 `sanq_mac_ubuntu_keyring_candidate_macports.py` 自 Canonical 固定 HTTPS URL 获取 3,607 字节公钥文件，`T1-candidate-002/candidate.json` 的 `gpgExitCode=0`，但 `decision=BLOCKED`。
+- 独立 Debian 13.7 trixie VirtualBox `SanQ-Forensic`：`debian-archive-keyring 2025.1`；APT 以 Debian 官方 trixie/main 安装 `ubuntu-keyring 2023.11.28.1-0.2`、`gpg`、`gpgv`；`dpkg -V ubuntu-keyring` 无差异输出。APT 危险跳过验签配置的指定 grep 未命中。
+- Debian CD Signing Key：`DF9B9C49EAA9298432589D76DA87E80D6294BE9B`；MacPorts `gpgv --keyring ... SHA256SUMS.sign SHA256SUMS` 返回 `Good signature`（输出为中文）及 rc=0；Debian 13.7 `debian-13.7.0-amd64-netinst.iso` 的现场 SHA256 与签名清单相符：`a7ef94ac2fb9a7fec454552abd629b7cc9d5155c886165a45649f5ce6167e355`。CD Signing Key 的身份来自 Debian 官方 HTTPS 与发布指纹，**没有宣称额外独立带外身份锚**。
+- Debian `ubuntu-archive-keyring.gpg` 与 Mac Canonical 候选文件的 SHA256 均为 **`80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31`**；`cmp -s` 返回 0，确认为字节相同。公钥包含 Archive 2012 `790BC7277767219C42C86F933B4FE6ACC0B21F32`、Archive 2018 `F6ECB3762474EDA9D21B7022871920D1991BC93C`，以及不同用途的 CD Image Key；**CD Image Key 不能签 Archive 来源**。
+- 原始 `candidate.json`、`gpg.stdout`/`stderr`、Debian 公钥副本、Debian CD 签名清单、签名、核对文件及原始 `gpgv.stderr`、退出码保存在 MacBook `~/sanq-s1-private/`，不提交 Git。**完整原始证据的另名见证审阅、持久归档、批准签认尚未完成**，不能仅依据操作者的文本转录自动升级信任标志。
+
+判定：**S1-W1 TECHNICAL CROSS-CHECK PASS / FORMAL INDEPENDENT WITNESS APPROVAL PENDING**。此处的精确 SHA256 为交叉核验的**候选固定 pin**，而非已经赋予生产安装权限的独立批准。
+
+### 7.2 S1-R1 本地代码设计边界
+
+以 `origin/dev@a36690f0576cb727513ea79b96377a766d9b9fb6` 为基线，在隔离 MCP-workspace 编写：
+
+- `.github/workflows/runtime-s1-r1-ubuntu-archive-evidence.yml`：仅 `pull_request → dev`，且限定同仓库 PR；`permissions: contents: read`；`actions/checkout@v6` 不保留凭据；Ubuntu GitHub-hosted runner、无 secrets、AWS、Drive、生产 SSH/部署权限；失败仍上传公开原件 artifact（GitHub Artifact 有保留期限，不是 WORM）。
+- `ops/runtime/root_python_s1_r1_runner_evidence.py`：仅在上述精确 Runner PR 上运行，固定候选 keyring SHA256、Canonical HTTPS 公开公钥 URL、Archive 2018 完整指纹、`noble` pocket；拒绝 redirect、超限下载、哈希不符、覆盖既有目录，使用独立 0700 私有目录/0600 文件。**无新依赖，不调用 apt、无 root/Guest/生产/云控制面动作**。
+- 完整调用**现有** `root_python_s1_ubuntu_archive_collector.py` 的 `collect()` 执行真实 `gpgv`；不修改 Collector 的单签名、Release Suite/时间、下载域名或 `decision=BLOCKED` 防线。保留 `Release`/`Release.gpg`、原始 GPGV stdout/stderr、Collector receipt、候选公钥、Runner JSON（run id/attempt、PR HEAD、checkout merge SHA、源文件 SHA256、UTC、自报 Runner image）、sha256-manifest；不在 Git 保存任何运行产物。
+- 新离线 unittest 覆盖 PR/仓库/事件约束、固定 hash 和创建目录、不匹配/网络失败、Collector FAIL 或企图升级 authority、来源/预算/redirect 和 workflow 权限约束。实际 CI 以已授权 PR 的 `ci.yml` `ops-checks` 等真实 Actions 为准；MCP-workspace 不执行测试。
+
+Runner 若真实验签成功，**只代表候选公钥下的签名与限定 Release 元数据核验完成**；`independentWitnessApproved=false`、`readyToInstall=false`、`authorizedToMutateProduction=false`、`decision=BLOCKED` 均不变。失败及外部签名多签等不兼容情况都必须如实 FAIL，不临时扩大允许签名或调整预算以求 CI 绿。
+
+**本地改动完成后停在用户审阅门禁**；用户另行批准才可推送 PR→dev，等待 CI 和真正公网 GPGV evidence。下一阶段由用户在 MacBook 下载 GitHub 原始 artifact，与准确 PR/head/merge SHA、原始数据和 file digest 重新独立核对，再决定是否申请 S1 独立信任审批和独立 Drive 归档。无此审批不触碰生产；C1 OPEN、C5-G2 NO-GO、S2 PAUSED。
+
+
