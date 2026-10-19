@@ -41,3 +41,5 @@ B2-1B 只核对调用方提供的 Ubuntu Release→Packages→.deb 整体候选�
 **不变事项：**原 B2B1 nofollow、B2B2-B1 alias FD、B3A、B3B1、B2-0、B2-1A、B2-1B 代码均不修改；无依赖/锁文件、CI、应用模块 owner/import、SCC/scanner baseline、Runtime 17 文件、Prisma/API/数据、sudoers、备份、Docker/AWS、VM/生产行为变化。C2 有界 CLOSED / N-07 LIMITED-ACCEPTED；C1 OPEN，C5-G2 NO-GO，S2 PAUSED。
 
 本地审阅结束即停止，不推远端、不执行真实取证，等待用户审阅并授权。
+
+**后续交付状态（2026-10-18）：**以上 LOCAL/未推送为本批初始审阅时点。后经用户单独授权，PR #2870 / CI #7371 success，Merge commit `3c623b88a20962a820d6269ab330e6b6c48552f3` 已进入 dev；仅合成 CI GREEN，不改变真实来源和 Guest/root 取证权限。
