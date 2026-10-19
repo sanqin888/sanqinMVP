@@ -68,7 +68,11 @@
 | R4 | 正式 Runtime installer + 准确快照→独立新 AWS 实例，首启冻结/数据/身份核对、单写者与人工切流 | PLANNED；组合正常执行来源、R2/R3；不部署旧故障主机自举链，不隐藏改外部 helper |
 | R5 | 同最终候选完整端到端、故障和恢复矩阵；再提交精确 C8 readiness/执行/复验 | PLANNED；前四批真实证据成立后进行；不自动取得生产授权 |
 
-**2026-10-18 R1 B2-1D 跨包 Manifest 归属审阅（本地待审）：**B2-1C 已由 PR #2870 / CI #7371 成功合并 dev `3c623b88`。本批外置、纯内存组合 B3A Manifest 的 file SHA 与多个 B2-1C 声明式包内成员 SHA/link text，拒绝缺失、重复或孤儿候选映射；详见 [B2-1D](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。无独立真实性、GPG、真实 Mac/Guest/root/FD、安装或 AWS 取证；正常输出永久 BLOCKED。本地 tests 未运行，C2 有界 CLOSED/C1 OPEN/G2 NO-GO/S2 PAUSED，R2–R5 不变。
+**2026-10-18 R1 S0 实际 Host 身份转贴审阅：**用户按批准五条 VBoxManage 命令回传 Mac Terminal 输出；指定 C2 VM/Snapshot/VDI、Host-only 网络配置与盘链在操作员所见范围内匹配，Source 快照原双向剪贴板及当前差分盘差异均如实留存。**S0 = IDENTITY MATCHED (OPERATOR-OBSERVED) / EVIDENCE LIMITED，非完整 VERIFIED**；缺每条真实 rc、独立原件/witness/UTC 和 Guest 内隔离证明，不改变原 C2 已限定 CLOSED 及 G2 C1 OPEN；S1 真实官方签名未验、G2 NO-GO/S2 PAUSED。见 [审批包 §9](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)。
+
+**2026-10-18 R1 B2-1 真实来源/取证审批准备（本地文档；其后 S0/S1 获授权但环境阻塞）：**B2-1D 已经 PR #2871/CI #7373 success 合并 `dev@e5f2e64376251f9f03edb1ebf337f74fab820d90`，仍只是候选一致性合同。本批从最新 dev 只形成 [真实 Ubuntu Archive 签名、指定 Mac/Guest 只读回执与未来 root-held FD 的分阶段审批包](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)，不下载发行对象、不验签、不执行 Host/Guest/root，也不开放 Runtime 安装。根 collector 尚无固定源码、hash 和准确命令；需要另审后才能单独授权。C2 有界 CLOSED，C1 OPEN、G2 NO-GO、S2 PAUSED，R2–R5 与 AWS 门禁不变。
+
+**2026-10-18 R1 B2-1D 跨包 Manifest 归属审阅（首次本地状态，现 PR/CI 已合并）：**B2-1C 已由 PR #2870 / CI #7371 成功合并 dev `3c623b88`。本批外置、纯内存组合 B3A Manifest 的 file SHA 与多个 B2-1C 声明式包内成员 SHA/link text，拒绝缺失、重复或孤儿候选映射；详见 [B2-1D](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。无独立真实性、GPG、真实 Mac/Guest/root/FD、安装或 AWS 取证；正常输出永久 BLOCKED。本地 tests 未运行，C2 有界 CLOSED/C1 OPEN/G2 NO-GO/S2 PAUSED，R2–R5 不变。
 
 **2026-10-18 R1 B2-1C 下一离线源码批（当时本地待审，现已 CI 合并）：**B2-1B 已通过 PR #2869/CI #7369 合并 dev e823bb16。本批在既有 Runtime/Ops owner 内增加 .deb ar/data.tar 有界纯内存成员 SHA 与 symlink link text 候选对照，不解包到磁盘、不验证官方 GPG、不操作 Guest/root/安装；详见 [B2-1C 合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。候选结果 BLOCKED，测试仅编写未运行，保持 C2 有界 CLOSED/C1 OPEN/G2 NO-GO/S2 PAUSED。
 

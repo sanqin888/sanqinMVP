@@ -1,8 +1,17 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — S0 Mac Host 五项只读身份预核对（操作员回传）
+
+**S0：IDENTITY MATCHED (OPERATOR-OBSERVED) / EVIDENCE LIMITED / NOT FULLY VERIFIED。** 已审阅操作员上传的五条准确 VBoxManage snapshot list、snapshot showvminfo、Source/Recovered showvminfo、recovered VDI showmediuminfo 终端转贴。精确 Source/Snapshot/Recovered/VDI UUID 与冻结 C2 登记一致；Snapshot base VDI、Recovered base VDI、Host-only NIC、VM 电源状态、当前 clipboard/dragdrop 显示符合预期。特别保留 Source Snapshot 的双向剪贴板、Source 当前差分盘 UUID 与 Snapshot base 不同、Recovered VDI 在 running 状态下 locked write 等真实观察，不伪称矛盾或静默改配置。**欠缺每条真实 shell rc、原始 stdout/stderr 独立保管、采集 UTC、Mac Host witness、当前 Guest 内路由/共享文件夹完整闭包**，故未签认整机隔离/原件真实性。仅本地文档更新，不运行 Host/Guest/root。S1 真实独立 Ubuntu 官方 Release GPG 仍未验证，S2–S6 不启动；C1 OPEN / G2 NO-GO / S2 PAUSED。参见 [审批包 §9](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)。
+
+## 2026-10-18 — R1 B2-1 真实 Ubuntu 来源与 C2 Host/Guest/root 取证审批准备
+
+**首次文档状态：LOCAL DOCUMENT-ONLY / SOURCE NOT CAPTURED / NO ROOT OR GUEST EXECUTION / NOT PUSHED；2026-10-18 用户随后明确批准 S0 Host 身份预核对与 S1 Ubuntu 独立来源验签范围。已作真实工具可达性核查：MCP 不具备 Mac/VirtualBox Host 直连能力，S0 无新实测；独立 Debian 13 执行环境具备 gpgv 但无独立可信 Ubuntu keyring 且 archive.ubuntu.com DNS 失败（curl rc=6，下载接口亦失败），S1 未下载成功任何签名原件、未运行 gpgv。** 在用户明确授权开展**审批准备**后，基于 B2-1D PR #2871 / CI #7373 success / dev merge `e5f2e64376251f9f03edb1ebf337f74fab820d90`，在 `docs/c5-g2-r1-b21-real-provenance-root-approval-20261018` 整理 [真实来源验真与 Host/Guest/root 分组命令审批包](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)：历史准确 C2 资产身份、B2-1A Host5/Guest9 只读命令、Canonical Ubuntu Archive key/签名 Release→Packages→deb/member→manifest 独立证据闭包、离机 stdout/stderr/rc/actor/witness、root collector 需先源码 CI/SHA 冻结才能执行。尚未下载 Ubuntu 原件/执行签名验真、Mac/VM/Guest、sudo/root 或 AWS/生产操作。B2-1D 只实现合成 CI 绿，不提高独立来源认证；无代码、业务所有权、依赖边/SCC/scanner、17 Bundle、HTTP/Prisma、CI/锁文件或生产变更；C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 ## 2026-10-18 — R1 B2B2-B2 B2-1D 跨包归属与 Manifest 候选覆盖
 
-**LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 基于 B2-1C PR #2870 / CI #7371 success / dev merge `3c623b88a20962a820d6269ab330e6b6c48552f3`，从独立分支 `feat/c5-g2-r1-b2b2b2-b21d-manifest-provenance-offline-20261018` 新增外置 Runtime/Ops `root_python_b21_multi_package_manifest.py` 与纯内存合成测试。复用 B3A manifest validator 并严格核对 N 包候选 B2-1C receipt 的 regular SHA/声明式 symlink 原文、logical→member 唯一映射、无漏/多/孤儿/重复，全部结果 BLOCKED。详见 [B2-1D 审阅](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。不证明 GPG/真实发行源、Guest/Host/root FD 或动态消费；无业务 owner/import、依赖图/SCC/scanner、Runtime 17 Bundle、CI/依赖锁文件、Prisma/API/生产/AWS 变化。C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+**首次本地审阅：SOURCE/TESTS AUTHORED / NOT RUN。后续远端交付 PR #2871 / CI #7373 success / merge commit `e5f2e64376251f9f03edb1ebf337f74fab820d90` 已进入 dev；仅合成 CI GREEN，未验 Ubuntu 原件、真实 Host/Guest/root。** 基于 B2-1C PR #2870 / CI #7371 success / dev merge `3c623b88a20962a820d6269ab330e6b6c48552f3`，从独立分支 `feat/c5-g2-r1-b2b2b2-b21d-manifest-provenance-offline-20261018` 新增外置 Runtime/Ops `root_python_b21_multi_package_manifest.py` 与纯内存合成测试。复用 B3A manifest validator 并严格核对 N 包候选 B2-1C receipt 的 regular SHA/声明式 symlink 原文、logical→member 唯一映射、无漏/多/孤儿/重复，全部结果 BLOCKED。详见 [B2-1D 审阅](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。不证明 GPG/真实发行源、Guest/Host/root FD 或动态消费；无业务 owner/import、依赖图/SCC/scanner、Runtime 17 Bundle、CI/依赖锁文件、Prisma/API/生产/AWS 变化。C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
 
 
 ## 2026-10-18 — R1 B2B2-B2 B2-1C Debian 包内 member 字节与 symlink 候选合同
