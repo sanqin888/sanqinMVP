@@ -112,4 +112,42 @@ Runner 若真实验签成功，**只代表候选公钥下的签名与限定 Rele
 
 **本地改动完成后停在用户审阅门禁**；用户另行批准才可推送 PR→dev，等待 CI 和真正公网 GPGV evidence。下一阶段由用户在 MacBook 下载 GitHub 原始 artifact，与准确 PR/head/merge SHA、原始数据和 file digest 重新独立核对，再决定是否申请 S1 独立信任审批和独立 Drive 归档。无此审批不触碰生产；C1 OPEN、C5-G2 NO-GO、S2 PAUSED。
 
+## 8. 2026-10-19 — S1-W1 / S1-R1 / S1-D1 限定收口和 R1 剩余门禁（后续续记）
 
+> **最新有限结论：W1 TRUST ROOT LIMITED APPROVED / S1-R1 HOSTED EVIDENCE VERIFIED / D1 ENCRYPTED ARCHIVE READBACK VERIFIED（操作员回传）；Runtime R1 与 C1 仍 OPEN。** 本节是 §6–7 当时“未执行/PENDING”的后续记录，不追溯改写历史事实。GitHub 公开记录经只读检查；MacBook、Debian、独立见证审批、Google Drive 的私有证据来自操作员回传的原始终端/文件摘要，本仓库没有取得私有原件。任何 LIMITED 证据不能自动提升程序的 BLOCKED 权限标志。
+
+### 8.1 W1 可信公钥与限定审批
+
+- 独立 Debian 13.7 “SanQ-Forensic” 使用 Debian 签名 ISO 与官方 APT 来源安装 ubuntu-keyring 2023.11.28.1-0.2；经既有 SSH 连接复制 Guest 的 /usr/share/keyrings/ubuntu-archive-keyring.gpg 原始文件到 MacBook，不改变 Debian 系统文件。该文件与 MacBook 从 Canonical 固定 HTTPS 获取的候选 keyring 均为 **3,607 bytes**，SHA-256 **`80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31`**；先前的 0-byte Mac 本地副本已由正确原件替换。
+- 指定 Ubuntu Archive 2018 signer 完整指纹 **`F6ECB3762474EDA9D21B7022871920D1991BC93C`**。操作员回传独立见证人的**限定审批邮件**；非空审批原件 “SanQ S1-W1_R1 Independent Witness Approval.eml” 的本地 SHA-256 **`9eccc8f068213d5e64d87423049e0528cd95e662f3be40a578b6c0f55f6770d4`**，已收入私有归档。尚未对本地 .eml 与 Gmail 服务器原始 MIME 做字节级同源复核，不将邮件身份核实或存储可用性夸称为独立数字签名/WORM。
+- 批准只限定上述**准确公钥 pin + 指定 S1-R1 Runner 的 noble Release 取证**；不扩展为 noble-updates/noble-security 的实际包来源、Guest/root FD、动态加载闭包、生产执行/安装许可。
+
+### 8.2 S1-R1 Hosted Runner 实测与离机文件
+
+- [PR #2876](https://github.com/sanqin888/sanqinMVP/pull/2876) 已 merge 至 dev；PR head **`7fc97e0ea8c7e8f1b59091cd8c581ab52e5c9185`**，merge **`c2e33af27bb15ad5ba209dd3831a2aae5a462d4a`**。[Actions run 39285377503](https://github.com/sanqin888/sanqinMVP/actions/runs/39285377503) 的 pull_request 工作流整体 success，固定 Ubuntu Archive 2018 keyring 的 noble Release/Release.gpg 原件采集和 artifact 上传步骤均 success。
+- 原始 artifact：`runtime-s1-r1-archive-evidence-39285377503-1`（ID **`12202742878`**）；操作员离机 ZIP **95,238 bytes**，SHA-256 **`bfe1ef28fa60a6479b8b90c53f3253de5ff1f8ae4e6fa7fa888fa980f25addce`**。MacBook 原件 ZIP 和内部八份证据对 manifest 的检查完成，操作员用 MacPorts gpgv 对保留的 noble 签名验证得到 rc=0。它仅证明**对应 keyring 与准确 noble Release 元数据**的签名链，不能证明 Packages/deb、具体 Guest 运行字节或实际依赖消费。
+- 既有 Collector/Runner 的 `decision=BLOCKED`、`readyToInstall=false`、`authorizedToMutateProduction=false`、`independentWitnessApproved=false` **不变**；外部人工审批不通过修改机器自报权限标志实现。GitHub Artifact 的保留期限不能代替离机归档。
+
+### 8.3 S1-D1 加密归档与读回
+
+- 本地 `D1-archive-20261019/` 共有 **15 个证据文件 + SHA256SUMS**；操作员执行清单核对 **15/15 OK**。`SHA256SUMS` 文件 SHA-256 **`52add45e4c9da86a5ce1a0458fc91fc49c9cbf5d1250d26dc55668670cbb97c4`**。单包 `D1-archive-20261019.tar.gz` **176,044 bytes**、SHA-256 **`0f0683a2a9ae2c68c572d28864d66c6e9646cd7da9d287c9423e1574fd282600`**。MacBook 到 SanQ VM 私有暂存经 SSH/scp 后的摘要相同；原备份程序/配置未改变。
+- 已按操作员回传执行，目标 **`gdrive_secure:runtime-trust/v1/S1-W1R1-D1-20261019-0f0683a2/D1-archive-20261019.tar.gz`**；`rclone lsjson --original` 回传单个对象、size 176,044、**Google Drive ID=OrigID=`1cOiq-V7wjef-F5kOivVsD5uC1Ct5QA-y`**；`rclone cat` 解密读回 SHA-256 **`0f0683a2a9ae2c68c572d28864d66c6e9646cd7da9d287c9423e1574fd282600`**，结果 “D1 UPLOAD AND READBACK SHA256 PASS”。
+- 这是**准确对象在本次读回时与原件一致**的证据，不是持续不可篡改证明：Drive 允许同名文件，预检查加新建不提供原子 create-only，现有 OAuth/crypt 也不是 WORM。MacBook 完整 tar.gz 已保留；用户计划再复制 U 盘，**U 盘副本实际写入/独立哈希尚无验收记录，不能标 PASS**。早期 `T1-candidate-001` 未纳入 D1 归档，不能作为可清理的已归档原件；.eml/私有原件不进入 Git。
+
+### 8.4 R1 整体剩余的证明与阶段顺序
+
+最新只读 GitHub dev HEAD **`58e317b79024a027644be7ec55e5eb7b9ad71143`**。R0 的 R1 是 **B4B-3B/3C 全部真实来源、真实执行闭包和独立消费见证**；内部名称 “S1-R1” 仅表示 S1 Hosted Runner，**不等于 Runtime R1 CLOSED**。
+
+| 子门禁 | 当前裁定 | 仍需完成 |
+| --- | --- | --- |
+| S0 | IDENTITY MATCHED / EVIDENCE LIMITED | 复用 C2 N-07 有界接受，只补 root 取证必需的新鲜 Host/Guest 身份、rc/UTC/原件/独立 witness 和隔离/namespace，不重做 C2 |
+| S1 | LIMITED APPROVED / EVIDENCE VERIFIED | 仅上述准确 noble Release 与 keyring，不能外推到真实包 |
+| **R1-S2**（Ubuntu 来源，不是 S2 daily） | OPEN | 取得目标 Ubuntu 实际版本/pocket 的认证 Release → Packages[.xz] → 准确 .deb → member/symlink 原始证据与外部 pins，复用 B2-1B/C/D |
+| S3 | PARTIAL | 准确 Host 5 / Guest 9 只读命令输出/rc/UTC/独立保管；额外命令逐条另审 |
+| S4 | NOT READY | 冻结准确 Guest root collector 源码、commit/file SHA、root-only 路径、argv/env、权限、失败保留和独立审阅方案 |
+| S5 | NOT RUN | 经单独 root 命令批准后在隔离 Guest 验真实根锚 /、mount namespace、alias/FD/inode、实际文件 SHA 与原始离机 witness |
+| S6 / B4B-3C | NOT IMPLEMENTED | 正式**正常更新执行器**的真实 CPython import、ELF PT_INTERP/DT_NEEDED/RUNPATH、dlopen 与完整传递依赖消费见证，和认证字节逐项对照；静态 AST/ELF 线索不构成 PASS |
+
+建议 **R1-A（来源 R1-S2 + 必要 S0/S3）→ R1-B（S4/S5）→ R1-C（S6 + 独立 C1 裁定）**。依 R0 D1/D5，旧故障机自举 clean reinstall 的专用完整依赖重建链已退出首版关键路径，无需重复；正式正常更新执行器的来源、完整依赖和实际消费仍是强制门禁。R2 只读 readiness 可并行，正式批次仍按 R1 → R2 → R3 → R4 → R5；新的 Guest/root/生产/AWS 实测与源码扩权必须另获批准。
+
+**总状态：R1 OPEN / C1 OPEN；C2 CLOSED（isolated synthetic / N-07 limited accepted）；R2–R5 未开始正式实施；C5-G2 NO-GO；S2 daily 扩充 PAUSED。** 本次仅补文档与证据索引，不变更 17 Bundle、CI、Ops 源码、凭据、运行环境或机器权限。
