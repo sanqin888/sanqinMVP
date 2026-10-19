@@ -359,6 +359,10 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 **B2-1B 首次本地审阅状态（现已交付）：** 基于 PR #2868 合并后的 dev，在 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018` 分支新增外置 `ops/runtime/root_python_b21_ubuntu_source_chain.py`，离线核查调用方提供的 Ubuntu Noble Release 与 detached signature 原始 bytes、Packages[.xz]、准确 .deb 包候选的 SHA256/size/pocket/path/version/amd64 关联；新增纯虚构字节/XZ 的合成负例，独立 [B2-1B 来源链合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。**后续交付为 PR #2869 / CI #7369 success / dev merge `e823bb165c1cf0460cf1279cda8d44f0b6884366`，仅合成 CI 成功，不代表来源认证**。不执行或认证 GPG、不解包 .deb 文件成员、不读取 VM/Guest/root、不授予安装权限；结果永久 BLOCKED。既有 B1/B3A/B3B1/B2-0/B2-1A 和冻结 Bundle/CI/依赖/应用架构不变；C1 OPEN / C5-G2 NO-GO / S2 PAUSED。
 
+## 17. 2026-10-18 — R1 S1 独立 Ubuntu Archive 签名原件收集源码审阅准备
+
+在 S0 文档 PR #2872 / CI #7375 success 合并 `dev@001d7c345bff43f8c29391fdf9da45286c57fb81` 后，本地外置新增 [S1 Ubuntu Archive Release+Release.gpg 独立签名采集合同](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)、最小独立审阅机 CLI 和离线模拟/负向测试。源限制为 Canonical Archive 的 Noble 固定 pocket；实际可信 Archive keyring 原件/SHA 必须先独立人工批准，签名由 gpgv 真实核验，`VALIDSIG` 必须属于已审的完整 2012/2018 Archive 签名主键。所有输出永久 BLOCKED、不向 Runtime 放权。**本次没有成功真实下载或 gpgv验签，不碰 Guest/root/VM/生产**，本地 tests 尚未运行、未推送；C2 限定 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+
 ## 16. 2026-10-18 — S0 操作员五项 Host 只读输出与身份核对
 
 操作员回传已批准的五条 Mac `VBoxManage` 命令终端输出。Snapshot/Source/Recovered/VDI UUID、Snapshot base 与恢复 base 盘链、NIC Host-only 配置、恢复机 clipboard/dragdrop 观察一致；Source 运行差分盘与 Snapshot base 盘 UUID 不同非自动异常；Snapshot 历史 clipboard 为 Bidirectional 仍须如实保留。因为没有每条 stdout/stderr 原始 bytes/rc/UTC、独立 Host witness 和当前 Guest 的真实外联/共享通道完整证明，**S0 = IDENTITY MATCHED (OPERATOR-OBSERVED) / EVIDENCE LIMITED / NOT FULL VERIFIED**。并未重开 C2 或认可 Guest/root 操作。见 [B2-1 真实来源审批包 §9](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)，S1 Ubuntu 官方签名仍 BLOCKED，C1 OPEN、G2 NO-GO、S2 PAUSED。

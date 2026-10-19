@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 S1 独立 Ubuntu Archive Release 签名采集（LOCAL SOURCE/TESTS ONLY / TESTS NOT RUN / NO REAL GPGV / NOT PUSHED）**：在既有 Runtime/Ops owner 下新增单独外部执行 CLI（固定官方 Archive 域/noble pockets、HTTPS Release+Release.gpg、已有 trusted keyring pin、gpgv、私有证据回执）与 22 项纯离线模拟单元测试。**未**接到 Runtime 17 Bundle、B1/B3B1、应用 owner/依赖边/SCC/scanner、CI、API/HTTP/Prisma、AWS/生产；不添加第三方依赖。不采集 Guest/root。见 [S1 合同](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。S0 身份有限匹配、S1 待真实独立验签、C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 2026-10-18 **R1 B2-1 实际 Ubuntu 官方来源与隔离 Guest/root 取证审批（LOCAL DOCUMENT-ONLY；S0/S1 已授权但实时证据 BLOCKED / NO GUEST-ROOT EXECUTION）**：基于 B2-1D PR #2871 / CI #7373 全绿、dev `e5f2e643`，冻结准确 C2 Source/Snapshot/Recovered VM/VDI 身份、Ubuntu key/signature/Release→Packages→deb/member 信任链、Host5/Guest9 非 root 原始命令与未来 root collector 逐阶段授权门禁。见 [审批包](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)。无业务 owner/import、依赖边/SCC/scanner baseline、Bundle17、API/Prisma、CI/依赖/AWS/生产变化；**无下载/GPG/Host/Guest/root/VM 执行**。C2 有界 CLOSED，C1 OPEN、G2 NO-GO、S2 PAUSED。
 
 
