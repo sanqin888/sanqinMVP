@@ -2,7 +2,7 @@
 
 ## 2026-10-18 失败恢复行为修复（现行源码；下文保留历史实验）
 
-**源码/回归测试已获远端交付授权，本地测试及 CI 尚未运行、未部署；C5-G2 NO-GO。** 用户指出旧实验在 `finally` 无条件调用 `host.restore(original)`，会在排他失败或中断后请求重新启动合成消费者。本批按 A 类内部原子修复，将恢复移出失败路径：`suspend`、第一/第二次观察或排他核验失败，以及可捕获的 `KeyboardInterrupt/SystemExit`，均保留原始异常为 cause，不调用自动恢复；仅完整成功的合成实验执行原状态恢复并核验。失败前未停止或只停止部分消费者时，只能声称“不请求恢复”，不能声称已建立完整冻结。成功清理时的恢复失败仍拒绝成功；不为真实更新提供恢复或放行能力。
+**源码 CI GREEN / FINAL DOCUMENTATION CHECKS PENDING / NOT DEPLOYED。** PR [#2874](https://github.com/sanqin888/sanqinMVP/pull/2874) 的源码提交 `201ea1b396a38d3df566a94588646a5f372e1f9a` 已通过 [CI #7379](https://github.com/sanqin888/sanqinMVP/actions/runs/39192838473)：4 个选中作业成功，Runtime 415 / Release 45 tests OK；其余无关作业按范围跳过。此处只追加实际证据，不改源码；最终文档 head 的 Checks 与合并事件仍为交付权威。本地测试未运行，未部署/未做真实主机验收，C5-G2 NO-GO。 用户指出旧实验在 `finally` 无条件调用 `host.restore(original)`，会在排他失败或中断后请求重新启动合成消费者。本批按 A 类内部原子修复，将恢复移出失败路径：`suspend`、第一/第二次观察或排他核验失败，以及可捕获的 `KeyboardInterrupt/SystemExit`，均保留原始异常为 cause，不调用自动恢复；仅完整成功的合成实验执行原状态恢复并核验。失败前未停止或只停止部分消费者时，只能声称“不请求恢复”，不能声称已建立完整冻结。成功清理时的恢复失败仍拒绝成功；不为真实更新提供恢复或放行能力。
 
 聚焦测试覆盖忙消费者、第二次核验失败、非法声明、部分停止失败、两次观察的异常/中断；原成功恢复、恢复失败、来源、路径权限、锁竞争和 Bundle 排除护栏保留。权威验证仍为 `.github/workflows/ci.yml` 的 `ops-checks` / Runtime unittest discovery，未执行不记 PASS。
 
