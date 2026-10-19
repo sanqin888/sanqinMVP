@@ -1,5 +1,10 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 S1 Ubuntu Archive 独立签名采集 CLI（本地、未执行）
+
+**基线：**S0 审批与 Mac 回执文档 PR #2872 / GitHub Actions #7375 success / dev merge `001d7c345bff43f8c29391fdf9da45286c57fb81`。**本次状态：LOCAL SOURCE/TESTS/DOC ONLY / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 由于当前隔离 Debian 13 容器缺 Ubuntu 可信 Archive keyring、官方 archive URL DNS 返回 rc=6，没有伪造 gpgv 真实签名结果；而是在 `docs/c5-g2-r1-s1-real-ubuntu-signature-evidence-20261018` 构建独立于 Guest/生产的官方 `Release + Release.gpg` HTTPS 限域下载及预先固定 SHA 的 Archive keyring 对照、gpgv 主键指纹/摘要算法/发行时效校验、私有只读证据回执脚本，并编写 22 项虚构原件/模拟网络/gpgv 的合成负例。严格 `decision=BLOCKED`、不自动授信、不进入 Runtime 17 Bundle 或安装路径；详见 [S1 可审阅采集合同](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。Mac/Guest/root、系统安装、Archive 原件下载和真实 gpgv 都未在本批执行；S0 有界身份匹配、S1 仍未实际验签，C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 ## 2026-10-18 — S0 Mac Host 五项只读身份预核对（操作员回传）
 
 **S0：IDENTITY MATCHED (OPERATOR-OBSERVED) / EVIDENCE LIMITED / NOT FULLY VERIFIED。** 已审阅操作员上传的五条准确 VBoxManage snapshot list、snapshot showvminfo、Source/Recovered showvminfo、recovered VDI showmediuminfo 终端转贴。精确 Source/Snapshot/Recovered/VDI UUID 与冻结 C2 登记一致；Snapshot base VDI、Recovered base VDI、Host-only NIC、VM 电源状态、当前 clipboard/dragdrop 显示符合预期。特别保留 Source Snapshot 的双向剪贴板、Source 当前差分盘 UUID 与 Snapshot base 不同、Recovered VDI 在 running 状态下 locked write 等真实观察，不伪称矛盾或静默改配置。**欠缺每条真实 shell rc、原始 stdout/stderr 独立保管、采集 UTC、Mac Host witness、当前 Guest 内路由/共享文件夹完整闭包**，故未签认整机隔离/原件真实性。仅本地文档更新，不运行 Host/Guest/root。S1 真实独立 Ubuntu 官方 Release GPG 仍未验证，S2–S6 不启动；C1 OPEN / G2 NO-GO / S2 PAUSED。参见 [审批包 §9](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)。
