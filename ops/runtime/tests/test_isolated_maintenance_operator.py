@@ -70,15 +70,92 @@ class OperatorBarrierTests(unittest.TestCase):
                          "authorizedToMutateProduction"):
                 self.assertIs(receipt[name], False)
 
-    def test_noncooperating_consumer_blocks_and_restores(self):
+    def test_noncooperating_consumer_blocks_without_restoration(self):
         context, root, digest = self.lab()
         with context:
             host = FakeHost()
             host.busy = True
             with self.assertRaisesRegex(op.BarrierBlocked, "exclusion failed"):
                 op.execute_isolated_barrier(root, digest, host)
-            self.assertEqual(host.state, host.original)
+            self.assertNotIn("restore", host.calls)
+            self.assertFalse(host.state["backupTimerActive"])
+            self.assertFalse(host.state["backupServiceActive"])
+            self.assertFalse(host.state["mcpActive"])
             self.assertEqual(host.calls.count("observe"), 1)
+
+    def test_second_observation_failure_keeps_synthetic_host_suspended(self):
+        context, root, digest = self.lab()
+        with context:
+            host = FakeHost()
+            observations = 0
+
+            def observe():
+                nonlocal observations
+                observations += 1
+                item = claimed_idle_host()
+                if observations == 2:
+                    item["maintenance"]["processCounts"]["deployProcesses"] = 1
+                return item
+
+            host.observe = observe
+            with self.assertRaisesRegex(op.BarrierBlocked, "exclusion failed"):
+                op.execute_isolated_barrier(root, digest, host)
+            self.assertEqual(observations, 2)
+            self.assertNotIn("restore", host.calls)
+            self.assertFalse(host.state["backupTimerActive"])
+            self.assertFalse(host.state["mcpActive"])
+
+    def test_partial_suspend_failure_does_not_attempt_restoration(self):
+        for failure in (RuntimeError("stop failed"), KeyboardInterrupt(),
+                        SystemExit(2)):
+            with self.subTest(failure=type(failure).__name__):
+                context, root, digest = self.lab()
+                with context:
+                    host = FakeHost()
+
+                    def suspend():
+                        host.calls.append("suspend")
+                        host.state["backupTimerActive"] = False
+                        raise failure
+
+                    host.suspend = suspend
+                    with self.assertRaisesRegex(
+                            op.BarrierBlocked, "automatic restoration suppressed") as caught:
+                        op.execute_isolated_barrier(root, digest, host)
+                    self.assertIs(caught.exception.__cause__, failure)
+                    self.assertEqual(host.calls, ["original", "suspend"])
+                    self.assertFalse(host.state["backupTimerActive"])
+                    # Partial suspension is not proof that every consumer froze.
+                    self.assertTrue(host.state["mcpActive"])
+
+    def test_observation_exception_or_interruption_never_restores(self):
+        for failed_observation in (1, 2):
+            for failure in (RuntimeError("probe failed"), KeyboardInterrupt(),
+                            SystemExit(2)):
+                with self.subTest(observation=failed_observation,
+                                  failure=type(failure).__name__):
+                    context, root, digest = self.lab()
+                    with context:
+                        host = FakeHost()
+                        observations = 0
+
+                        def observe():
+                            nonlocal observations
+                            observations += 1
+                            if observations == failed_observation:
+                                raise failure
+                            return claimed_idle_host()
+
+                        host.observe = observe
+                        with self.assertRaisesRegex(
+                                op.BarrierBlocked, "automatic restoration suppressed") as caught:
+                            op.execute_isolated_barrier(root, digest, host)
+                        self.assertIs(caught.exception.__cause__, failure)
+                        self.assertEqual(observations, failed_observation)
+                        self.assertNotIn("restore", host.calls)
+                        self.assertFalse(host.state["backupTimerActive"])
+                        self.assertFalse(host.state["backupServiceActive"])
+                        self.assertFalse(host.state["mcpActive"])
 
     def test_restoration_failure_is_not_success(self):
         context, root, digest = self.lab()
@@ -128,7 +205,9 @@ class OperatorBarrierTests(unittest.TestCase):
             host.observe = dishonest_observation
             with self.assertRaises(op.BarrierBlocked):
                 op.execute_isolated_barrier(root, digest, host)
-            self.assertEqual(host.state, host.original)
+            self.assertNotIn("restore", host.calls)
+            self.assertFalse(host.state["backupTimerActive"])
+            self.assertFalse(host.state["mcpActive"])
 
     def test_same_lab_lock_is_exclusive(self):
         context, root, digest = self.lab()
