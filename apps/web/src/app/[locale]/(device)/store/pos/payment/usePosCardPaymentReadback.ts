@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/api/client";
 import {
   fetchPosCardPaymentReviewAttempt,
   type PosCardPaymentResult,
+  type PosCardPaymentReviewDetail,
 } from "@/lib/api/pos";
 import { needsPosCardPaymentReadback } from "@/lib/pos-card-payment-realtime";
 
@@ -22,7 +23,7 @@ export function usePosCardPaymentReadback({
   enabled: boolean;
   attemptId?: string;
   latestSnapshot: PosCardPaymentResult | null;
-  onSnapshot: (snapshot: PosCardPaymentResult) => void;
+  onSnapshot: (snapshot: PosCardPaymentReviewDetail) => void | Promise<void>;
 }): void {
   const needsReadback = needsPosCardPaymentReadback(latestSnapshot);
 
@@ -37,7 +38,7 @@ export function usePosCardPaymentReadback({
       inFlight = true;
       try {
         const snapshot = await fetchPosCardPaymentReviewAttempt(attemptId);
-        if (!disposed) onSnapshot(snapshot);
+        if (!disposed) await onSnapshot(snapshot);
       } catch (err) {
         // The first GET may race with /start persisting the original Attempt.
         // A failed read never changes payment finality or allows a second Sale.

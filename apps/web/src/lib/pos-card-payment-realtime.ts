@@ -1,4 +1,8 @@
-import type { PosCardPaymentResult } from "./api/pos";
+import type {
+  PaymentExceptionCase,
+  PosCardPaymentResult,
+  PosCardPaymentReviewDetail,
+} from "./api/pos";
 
 export type PosCardPaymentRealtimeEvent = {
   attemptId: string;
@@ -43,6 +47,15 @@ export function needsPosCardPaymentReadback(
   if (result.status === "CANCELLED") {
     return result.benefitsReleaseComplete !== true;
   }
+  // A Sandbox operator-attested FAILED is not a provider cancellation.
+  // Continue read-only review until all PEM and owner checkpoints are proven.
+  if (result.status === "FAILED") {
+    return [
+      "SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT",
+      "POS_SANDBOX_OPERATOR_UNPAID_CLOSED",
+      "POS_SANDBOX_OPERATOR_UNPAID_REVIEW_PENDING",
+    ].includes(result.failureCode ?? "");
+  }
   return false;
 }
 
@@ -71,6 +84,41 @@ export function canUnlockCancelledPosCheckout(result: PosCardPaymentResult): boo
   return (
     result.status === "CANCELLED" &&
     result.benefitsReleaseComplete === true
+  );
+}
+
+/**
+ * Only an existing, completed Sandbox PEM case plus a fresh owner read can
+ * release the browser's original unpaid marker. No client-supplied FAILED,
+ * generic provider failure or partial Benefits/Fence checkpoint may unlock it.
+ */
+export function canUnlockCompletedSandboxUnpaidPosCheckout(
+  review: PosCardPaymentReviewDetail,
+  exception: PaymentExceptionCase | null,
+  storeStableId: string,
+): boolean {
+  return Boolean(
+    storeStableId &&
+    exception?.mode === "SANDBOX" &&
+    exception.status === "COMPLETED" &&
+    exception.action === "SANDBOX_CONFIRM_UNPAID" &&
+    exception.storeStableId === storeStableId &&
+    exception.attemptId === review.attemptId &&
+    exception.externalPaymentId === review.externalPaymentId &&
+    exception.amountCents === review.externalAmountCents &&
+    exception.currency === review.currency &&
+    exception.cloverOrderId &&
+    review.status === "FAILED" &&
+    review.paymentStatus === "FAILED" &&
+    review.resultCode === "POS_TERMINAL_SANDBOX_OPERATOR_UNPAID" &&
+    review.failureCode === "SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT" &&
+    review.benefitsReleaseComplete === true &&
+    review.terminalOperationState === "FINALIZED" &&
+    review.sandboxOperatorUnpaidAccepted === true &&
+    review.sandboxRecoveryTerminalFinalized === true &&
+    review.sandboxLateCanonicalPayment === false &&
+    review.providerPaymentId === null &&
+    review.orderStableId === null
   );
 }
 
