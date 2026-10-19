@@ -60,3 +60,28 @@ python3 ops/runtime/root_python_s1_ubuntu_archive_collector.py \
 ## 5. 既有 Gate 不变
 
 C2 LIMITED CLOSED；S0 = IDENTITY MATCHED (OPERATOR OBSERVED) / EVIDENCE LIMITED；S1 = **AWAITING REAL VERIFIED SIGNATURE**；C1 OPEN；C5-G2 NO-GO；S2 PAUSED。S3 Guest、S4/S5 root 取证、S6 动态消费、R2–R5、AWS/生产权限均不被本 S1 CLI 授予。
+
+## 6. 2026-10-18 — MacBook 候选可信根与 Runner 验签交付顺序（用户确认）
+
+**本节是后续追加状态，不改变上文历史采集器签名和合成测试结论。** 用户选择 Google Drive 方案 B：继续复用现有 gdrive_secure 存储，MacBook 保存**完整原始证据离机副本**。现有生产 OAuth scope=drive/owner 对 Drive 对象仍具有写删能力，此已明确接受；crypt/目录约束不等同于 WORM 或独立 ACL。现有定时备份、配置与保留策略不改。
+
+**S1-M0：**MacBook 专用公开公钥候选采集脚本 sanq_mac_ubuntu_keyring_candidate.py 通过聊天单独交付，**不提交仓库或 CI**；与它配套的 12 项 mock 模拟测试也不单独进入仓库，避免未提交的 import 造成 CI 错误。该脚本下载固定 Canonical 官方 URL https://archive.ubuntu.com/ubuntu/project/ubuntu-archive-keyring.gpg，检查本机 GnuPG gpg 导出主指纹与 2018 Ubuntu Archive 主指纹，保管原始 keyring、公钥 SHA256、原始 gpg stdout/stderr 和私有 candidate.json。它永久 decision=BLOCKED、独立认证和 witness 为 false；成功下载不代表公钥可信。用户 Mac 实测 Python=/usr/bin/python3、尚无 gpg，可自行安装 Homebrew gnupg，不能由采集脚本自动安装。
+
+MacBook Terminal 示例（若文件已经下载到 Downloads，且操作者已独立安装 gpg）：
+
+    command -v python3
+    command -v gpg
+    umask 077
+    mkdir -p "$HOME/sanq-s1-private"
+    chmod 700 "$HOME/sanq-s1-private"
+    python3 "$HOME/Downloads/sanq_mac_ubuntu_keyring_candidate.py" \
+      --evidence-dir "$HOME/sanq-s1-private/T1-candidate-001"
+
+**S1-W1：**必须在独立于 Ubuntu 被测 Guest、Mac 本次下载和生产的既有可信包签名链（例如已认证 Debian trixie 安装的 ubuntu-keyring）交叉核对 Canonical Archive 公钥主指纹、版本和来源，记录独立 witness/UTC/stdout/stderr/rc/SHA。可能因发行包版本不同而 keyring 全文件字节不一致；须批准 **Mac 采集的准确 keyring SHA256**，不能让 Runner 自己生成可信 pin。S1-W1 尚未执行，T1 未批准。
+
+**S1-R1：**W1 通过后另批提交只读 GitHub Hosted Runner workflow，限定 PR → dev、仅 contents:read、无生产/Drive/AWS/Mac 凭据。Runner 从已预先批准准确 SHA 的公共 keyring 开始，复用现有 root_python_s1_ubuntu_archive_collector.py 下载官方 Noble pocket Release + Release.gpg 真运行 gpgv，保存原始 bytes/rc/UTC/Runner run SHA 和独立离机副本。现有 collector decision=BLOCKED 不许更改为自动授信；CI 绿不等于独立 S1 PASS。本批不创建未确定 pin 的 Runner workflow。
+
+**S1-D1 → S1-P1：**验签通过并完成人工授权后，再按准确 ID、create-only、读回 SHA 和 Mac 完整离机副本归档到 gdrive_secure:runtime-trust/v1；原备份系统不变。生产 Runtime 只读读取准确签认、目标源码/文件 hash、旧快照防回滚等，涉及生产可信根/特权 operator 边界；必须另行审阅并获得明确授权，**本次没有实施**。
+
+当前：Mac 公钥没有实际采集，gpgv 真实验签/Runner workflow/Drive 证据归档/生产读回均未执行。C1 OPEN、C5-G2 NO-GO、S2 PAUSED。项目仓库本批只记录这份设计和工作日志。
+

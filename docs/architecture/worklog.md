@@ -1,5 +1,10 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 S1-M0 MacBook 公钥候选脚本独立交付与仓库文档记录
+
+**状态：MAC SCRIPT EXTERNALLY DELIVERED / REPO DOC-ONLY PR AUTHORIZED / MAC NOT RUN / NO REAL UBUNTU SIGNATURE VERIFIED。** 用户选择方案 B（现有 Google Drive + Mac 完整离机证据），授权分批执行 Mac T1 → GitHub Runner 真实 S1 验签 → 后续 Drive 归档 → 生产只读验证。按用户后续明确决定，Mac 专用 Canonical 公钥候选采集脚本及其 12 项本地模拟测试**仅通过聊天独立交付，不进入远端仓库/CI**；本批只提交分阶段设计与状态说明。Mac 的 /usr/bin/python3 已存在，尚缺 gpg；操作者可审阅安装 Homebrew gnupg。采集公钥不能自证信任；须由独立可信 Debian/Ubuntu 软件包签名链见证并人工批准准确 keyring SHA，才可另批建立 Runner workflow。Drive/生产 Runtime 接线尚未实施、不得越过独立权限审阅，原 17 Bundle、备份 OAuth、现役 daily/CI、AWS、Guest 和生产均未更改。详见 [S1 设计追加 §6](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 ## 2026-10-18 — Runtime 旧隔离维护实验：失败/中断不自动恢复
 
 **状态：SOURCE CI GREEN / FINAL DOCUMENTATION CHECKS PENDING / 未部署。** PR [#2874](https://github.com/sanqin888/sanqinMVP/pull/2874) 的源码提交 `201ea1b396a38d3df566a94588646a5f372e1f9a` 已通过 [CI #7379](https://github.com/sanqin888/sanqinMVP/actions/runs/39192838473)：4 个选中作业成功，Runtime 415 / Release 45 tests OK；其余无关作业按范围跳过。此处只追加实际证据，不改源码；最终文档 head 的 Checks 与合并事件仍为交付权威。本地测试未运行，未部署/未做真实主机验收，C5-G2 NO-GO。 用户明确指出历史合成维护实验的 `finally` 会在失败后恢复原服务。本批按 A 类内部原子修复移出无条件恢复：停止/观察/排他失败与可捕获中断保留 cause、不请求 restore，仅成功实验核对原状态恢复。更新忙消费者/非法声明断言，补第二次核验、部分停止与两次观察异常/中断回归；原成功恢复及恢复失败/来源/锁/Bundle 护栏保留。[所属文档](c5-g2b2b-isolated-operator-rehearsal-2026-10-13.md) 明确历史与当前源码、新更新流程不得直接复用本实验；同步依赖图无变化。Runtime/Ops 既有边界内修复，不是已部署生产问题，不增加真实维护/更新入口、特权或 AWS 动作。无 schema/依赖/CI/Bundle 变更；不需要迁移。MCP-workspace 无 lint/build/test 权限；用户已授权本补丁远端交付，分支 `fix/runtime-isolated-maintenance-failure-freeze-20261018` 从 `origin/dev@08937ee5` 创建，以最终 head 的 GitHub Actions 结果为准。
