@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-19 R1 取证状态续记（本次仅本地文档待审）：**S1-W1 可信公钥取得限定独立审批，S1-R1 Hosted Runner 的准确 `noble` Release 签名原件和 S1-D1 加密归档/读回已核对；详见 [S1 §8](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。**仅关闭 R1 内部这组有限取证子项，Runtime R1 / C1 总体继续 OPEN**。R1-A/B/C 仍需推进；R2 MAINT-RESTART-01 依然是下一正式总批次、目前未实施。旧 §3/§5 的历史“未执行”记录不追溯修改；本次没有新源码/Guest/root/AWS/生产授权。
+
 **2026-10-18 两项修订交付：**[PR #2864](https://github.com/sanqin888/sanqinMVP/pull/2864) → `dev`；CI/合并以此 PR 最终 head 的 Checks/事件为准，原 PR #2853 仅为初始 R0 历史交付。
 
 **原 R0 交付记录（历史）：**[PR #2853](https://github.com/sanqin888/sanqinMVP/pull/2853) → `dev`；本批提交、最终 head 的 CI 与合并状态以该 PR 检查和事件为权威。
@@ -134,3 +136,19 @@ S2 新 daily 扩充/接线/sudoers 后置不变；现役日常备份和独立 DR
 
 
 后续按修订后的 R1–R5 补齐有限缺口，同一真实 AWS 演练可复用 C2 与快照恢复证据，不能为旧默认路线重复实测。G2 A–F 的精确 Guest/生产许可和安装后独立复验仍有效；此处不再次请求 D1–D5 决策批准，也不因 R0 完成自动开始任何生产操作。
+
+## 9. 2026-10-19 — Runtime R1 最终剩余项审计与后续执行门禁（状态续记）
+
+最新核查基线 GitHub `dev@58e317b79024a027644be7ec55e5eb7b9ad71143`。S1-R1 Runner [PR #2876](https://github.com/sanqin888/sanqinMVP/pull/2876) merge `c2e33af27bb15ad5ba209dd3831a2aae5a462d4a`，[Actions run 39285377503](https://github.com/sanqin888/sanqinMVP/actions/runs/39285377503) success。MacBook/Debian 公钥、见证审批及 Google Drive 归档读回为操作员独立保存/回传材料，准确原件和限制见 [S1 §8](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)，不能把 GitHub CI 或操作员自报值单独当作完整 C1 独立消费证据。
+
+| 门禁/任务 | 最新裁定 | 不能据此推论 |
+| --- | --- | --- |
+| S1-W1 可信 keyring + 见证审批 | LIMITED APPROVED；准确 SHA-256 `80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31` | 目标 Guest 的具体 Python/loader/deb 已获来源认证 |
+| S1-R1 GitHub Runner（**非 Runtime 总 R1**） | `noble` Archive Release 真实签名原件 LIMITED VERIFIED；原 decision=BLOCKED 保留 | 其他 pocket、Packages/deb、生产安装或执行材料已认证 |
+| S1-D1 加密归档 | OPERATOR-REPORTED VERIFIED；对象 ID `1cOiq-V7wjef-F5kOivVsD5uC1Ct5QA-y`、读回包 SHA-256 `0f0683a2a9ae2c68c572d28864d66c6e9646cd7da9d287c9423e1574fd282600` | WORM、原子 create-only、U 盘副本已复核 |
+| **Runtime R1 / C1** | **OPEN**，尚缺包级来源、真实 root-held FD、动态执行消费与独立见证 | S1-R1/D1 成功即可关闭整个 R1 |
+| R2 / C4 | PLANNED / NOT EXECUTED，MAINT-RESTART-01 | 已允许真实生产冻结、快照或跳过 R1 |
+
+**R1 剩余最小顺序：**R1-A（R1-S2：经签名 Release → Packages → 准确 deb/member 外部 pins，并补必要 S0/S3 Host/Guest 身份与原始 rc）；R1-B（S4 真正 root collector 与准确执行材料审阅，S5 隔离 Guest 可信根锚和 FD 实测）；R1-C（S6 / B4B-3C 正式正常更新执行器 CPython/ELF/dlopen 实际消费闭包 + C1 独立验收）。现有 B4B-3A/3B 合成声明、FD 观察、有限别名解析及 B2-1B/C/D 原件对照模块可复用，不为旧故障机自举 clean reinstall 的退役路线重新构建恢复闭包。
+
+**R1 → R2** 是 R0 的总实施顺序；R2 的只读生产清单/接口 readiness 审计可以并行准备，不能据此将维护禁入或服务策略操作视为已实现、已实测或已获生产授权。D1–D5 冻结决策、17 成员、Docker/Compose、现役备份、权限与 G2 A–F 不变。R2–R5 继续按各自审批门禁执行；C2 仅隔离合成 CLOSED / N-07 LIMITED-ACCEPTED；C5-G2 NO-GO，S2 daily 扩充 PAUSED。本批文档尚未 push/PR，也未执行本地 lint/build/test、Guest/root、AWS 或生产操作。
