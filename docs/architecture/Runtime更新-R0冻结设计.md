@@ -68,6 +68,8 @@
 | R4 | 正式 Runtime installer + 准确快照→独立新 AWS 实例，首启冻结/数据/身份核对、单写者与人工切流 | PLANNED；组合正常执行来源、R2/R3；不部署旧故障主机自举链，不隐藏改外部 helper |
 | R5 | 同最终候选完整端到端、故障和恢复矩阵；再提交精确 C8 readiness/执行/复验 | PLANNED；前四批真实证据成立后进行；不自动取得生产授权 |
 
+**2026-10-18 R1 B2-1A 分批续记：**在 B2-0 PR #2867/CI #7365 合并 `dev@b95f09e1` 后，本地新增固定 C2 Host/Guest 精确只读 argv 的原始 stdout/stderr/rc/摘要离线审阅及纯合成负例，详见 [B2-1A 审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)。未运行本地 tests/CI、真实 Host/Guest/root、软件包签名验证或安装。当前只是本地源码审阅；B2-1B 的实际 Guest/root 操作与 C1 认证仍待准确对象/命令/来源另批批准。C2 有界 CLOSED、C1 OPEN、G2 NO-GO。
+
 **2026-10-18 R1 B2B2-B2 源码批续记（本地、未执行）：**在 C2 有界 CLOSED 后，B2-0 纯内存 Guest packet / 独立离机候选一致性审核及合成负例已编写，B2-1 外部 Ubuntu 包/Host/Guest 只读取证方案已成文，见 [B2-0/B2-1 合同](C5-G2-R1-B2B2-B2-取证合同与离机审核.md)。未执行本地测试/CI、真实 Guest/root、平台/发行来源验证或动态依赖消费；未推送 PR。**不得将结构一致升级为 C1 PASS；C1 仍 OPEN、C5-G2 NO-GO。** 本地源码不改变 R2–R5、AWS S01–S12 和 C2 有界关闭口径。
 
 S2 新 daily 扩充/接线/sudoers 后置不变；现役日常备份和独立 DR/凭据可用性仍是更新前置。下一批先做真实生产清单、协调器/生产执行器接口、最小 IAM、原策略持久化与恢复清单评审，再按 R1–R5 实现和同平台验收。不继续套用旧 R3 crypt/Drive、旧 R4 clean reinstall 工作单。

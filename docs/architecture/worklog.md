@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 B2B2-B2 B2-1A 原始 Host/Guest 只读取证合同
+
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 上一批 B2-0 PR #2867 已合并（CI #7365 success；merge commit `b95f09e1984a8ba134289775ae30aeddaff81c5c`）。本批基于最新 dev，分支 `docs/c5-g2-r1-b2b2b2-b21-readonly-evidence-approval-20261018`。外置 Runtime/Ops 新增 `root_python_b21_raw_transcripts.py` 和对应纯合成测试，仅对特定 C2 Source/Snapshot/Recovered VM/VDI 的五项 Host 和九项 Guest **已提供的原始 byte**、严格白名单 argv、内/外 rc、各材料 SHA、大小/顺序/补缺进行负向优先审阅；正常结构一致也永久 `BLOCKED`。同步 [B2-1A 精确审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)，说明真实 Host、Ubuntu 包签名与未来 Guest root 必须另行授权。没有代码执行、Mac/Guest/SSH/root/VM/AWS/生产操作或真实平台证据；无业务模块/依赖方向/SCC、17 Bundle、Prisma、CI、锁文件、数据或生产行为变化。C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+
 ## 2026-10-18 — R1 B4B-3B-2B2-B2 第一批 B2-0 源码及 B2-1 只读取证设计
 
-**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 `origin/dev@eec9668c5c90df38ed7be08cf7f1b2f0607516bc` 创建 `feat/c5-g2-r1-b2b2b2-evidence-contract-20261018`。在 Runtime/Ops 外置 `ops/runtime` 中增加 B1+B3B1 候选 Guest packet（严格结构/FD/alias/阻断状态）与独立 Host/Guest/Ubuntu .deb 来源 pin/custody **声明**比对模块以及纯虚构不执行的合成测试；[B2-1 合同](C5-G2-R1-B2B2-B2-取证合同与离机审核.md) 指定独立 Host/发行包/Guest 证据顺序与未来单独 root 审批。结果强制 BLOCKED/全部授权 false；不改变 B1/B3A/B3B1、17 Bundle、owner/依赖/SCC/scanner、CI/依赖/Prisma/HTTP/业务或生产。**没有**本地测试执行、CI、Guest/root、真实平台/包签名验证、AWS/生产操作。C2 维持有界 CLOSED、C1/C3–C7 OPEN、C8 NOT REQUESTED、C5-G2 NO-GO、S2 PAUSED；首次远端交付必须用户审阅授权。
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 `origin/dev@eec9668c5c90df38ed7be08cf7f1b2f0607516bc` 创建 `feat/c5-g2-r1-b2b2b2-evidence-contract-20261018`。在 Runtime/Ops 外置 `ops/runtime` 中增加 B1+B3B1 候选 Guest packet（严格结构/FD/alias/阻断状态）与独立 Host/Guest/Ubuntu .deb 来源 pin/custody **声明**比对模块以及纯虚构不执行的合成测试；[B2-1 合同](C5-G2-R1-B2B2-B2-取证合同与离机审核.md) 指定独立 Host/发行包/Guest 证据顺序与未来单独 root 审批。结果强制 BLOCKED/全部授权 false；不改变 B1/B3A/B3B1、17 Bundle、owner/依赖/SCC/scanner、CI/依赖/Prisma/HTTP/业务或生产。**首次审阅时**没有本地测试执行、CI、Guest/root、真实平台/包签名验证、AWS/生产操作。C2 维持有界 CLOSED、C1/C3–C7 OPEN、C8 NOT REQUESTED、C5-G2 NO-GO、S2 PAUSED。**同一批后续交付：**用户授权远端后提交源码 `8f8ed7538177500d30b99b824f5ce9badf959476`，PR #2867，GitHub Actions #7365 `success`（Runtime ops-checks 通过），merge commit `b95f09e1984a8ba134289775ae30aeddaff81c5c` 已进入 dev；这一状态仅表示合成 CI GREEN，不升级 Guest/root/软件包来源/C1 真实性。
 
 ## 2026-10-18 — C2 N-07 最终风险裁定与隔离恢复有界 Closeout
 
