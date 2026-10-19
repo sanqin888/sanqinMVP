@@ -1,5 +1,10 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — Runtime 旧隔离维护实验：失败/中断不自动恢复
+
+**状态：SOURCE CI GREEN / FINAL DOCUMENTATION CHECKS PENDING / 未部署。** PR [#2874](https://github.com/sanqin888/sanqinMVP/pull/2874) 的源码提交 `201ea1b396a38d3df566a94588646a5f372e1f9a` 已通过 [CI #7379](https://github.com/sanqin888/sanqinMVP/actions/runs/39192838473)：4 个选中作业成功，Runtime 415 / Release 45 tests OK；其余无关作业按范围跳过。此处只追加实际证据，不改源码；最终文档 head 的 Checks 与合并事件仍为交付权威。本地测试未运行，未部署/未做真实主机验收，C5-G2 NO-GO。 用户明确指出历史合成维护实验的 `finally` 会在失败后恢复原服务。本批按 A 类内部原子修复移出无条件恢复：停止/观察/排他失败与可捕获中断保留 cause、不请求 restore，仅成功实验核对原状态恢复。更新忙消费者/非法声明断言，补第二次核验、部分停止与两次观察异常/中断回归；原成功恢复及恢复失败/来源/锁/Bundle 护栏保留。[所属文档](c5-g2b2b-isolated-operator-rehearsal-2026-10-13.md) 明确历史与当前源码、新更新流程不得直接复用本实验；同步依赖图无变化。Runtime/Ops 既有边界内修复，不是已部署生产问题，不增加真实维护/更新入口、特权或 AWS 动作。无 schema/依赖/CI/Bundle 变更；不需要迁移。MCP-workspace 无 lint/build/test 权限；用户已授权本补丁远端交付，分支 `fix/runtime-isolated-maintenance-failure-freeze-20261018` 从 `origin/dev@08937ee5` 创建，以最终 head 的 GitHub Actions 结果为准。
+
+
 ## 2026-10-18 — R1 S1 Ubuntu Archive 独立签名采集 CLI（本地、未执行）
 
 **基线：**S0 审批与 Mac 回执文档 PR #2872 / GitHub Actions #7375 success / dev merge `001d7c345bff43f8c29391fdf9da45286c57fb81`。**本次状态：LOCAL SOURCE/TESTS/DOC ONLY / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 由于当前隔离 Debian 13 容器缺 Ubuntu 可信 Archive keyring、官方 archive URL DNS 返回 rc=6，没有伪造 gpgv 真实签名结果；而是在 `docs/c5-g2-r1-s1-real-ubuntu-signature-evidence-20261018` 构建独立于 Guest/生产的官方 `Release + Release.gpg` HTTPS 限域下载及预先固定 SHA 的 Archive keyring 对照、gpgv 主键指纹/摘要算法/发行时效校验、私有只读证据回执脚本，并编写 22 项虚构原件/模拟网络/gpgv 的合成负例。严格 `decision=BLOCKED`、不自动授信、不进入 Runtime 17 Bundle 或安装路径；详见 [S1 可审阅采集合同](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。Mac/Guest/root、系统安装、Archive 原件下载和真实 gpgv 都未在本批执行；S0 有界身份匹配、S1 仍未实际验签，C1 OPEN、G2 NO-GO、S2 PAUSED。

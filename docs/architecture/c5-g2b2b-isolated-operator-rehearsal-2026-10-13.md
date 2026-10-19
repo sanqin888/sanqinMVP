@@ -1,5 +1,14 @@
 # C5-G2-B2B — Isolated root-private operator barrier rehearsal
 
+## 2026-10-18 失败恢复行为修复（现行源码；下文保留历史实验）
+
+**源码 CI GREEN / FINAL DOCUMENTATION CHECKS PENDING / NOT DEPLOYED。** PR [#2874](https://github.com/sanqin888/sanqinMVP/pull/2874) 的源码提交 `201ea1b396a38d3df566a94588646a5f372e1f9a` 已通过 [CI #7379](https://github.com/sanqin888/sanqinMVP/actions/runs/39192838473)：4 个选中作业成功，Runtime 415 / Release 45 tests OK；其余无关作业按范围跳过。此处只追加实际证据，不改源码；最终文档 head 的 Checks 与合并事件仍为交付权威。本地测试未运行，未部署/未做真实主机验收，C5-G2 NO-GO。 用户指出旧实验在 `finally` 无条件调用 `host.restore(original)`，会在排他失败或中断后请求重新启动合成消费者。本批按 A 类内部原子修复，将恢复移出失败路径：`suspend`、第一/第二次观察或排他核验失败，以及可捕获的 `KeyboardInterrupt/SystemExit`，均保留原始异常为 cause，不调用自动恢复；仅完整成功的合成实验执行原状态恢复并核验。失败前未停止或只停止部分消费者时，只能声称“不请求恢复”，不能声称已建立完整冻结。成功清理时的恢复失败仍拒绝成功；不为真实更新提供恢复或放行能力。
+
+聚焦测试覆盖忙消费者、第二次核验失败、非法声明、部分停止失败、两次观察的异常/中断；原成功恢复、恢复失败、来源、路径权限、锁竞争和 Bundle 排除护栏保留。权威验证仍为 `.github/workflows/ci.yml` 的 `ops-checks` / Runtime unittest discovery，未执行不记 PASS。
+
+本函数仍仅用于指定 `/tmp` 合成 fixture，不能作为新 Runtime 更新入口。新流程须持续维护至整个安装、独立验收和必要外部对账完成；仅成功时准确恢复原策略，事故保持冻结，取消维护需另满足现行合同。清理 FD/锁不是解除生产维护；真实停止、跨重启禁入、持久化原策略、AWS 快照和恢复尚未在此实现。历史实验/CI/实测结果只对应原提交，不因本次修复追认新版通过。下面 2026-10-13 原始行为说明保留为历史记录。
+
+
 > **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
 
 **Status:** LOCAL SOURCE REVIEW ONLY / NOT PRODUCTION READY / NO LIVE HOST TEST.  

@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-18 **旧隔离维护实验失败路径修复（PR #2874 / SOURCE CI #7379 GREEN / FINAL DOC CHECKS PENDING / NO PRODUCTION CHANGE）**：在 Runtime/Ops 内将 `isolated_maintenance_operator.py` 的恢复移出无条件 finally；失败/可捕获中断不请求自动恢复，仅成功合成实验清理恢复原状态。见 [所属实验与现行修复边界](c5-g2b2b-isolated-operator-rehearsal-2026-10-13.md)。已审阅调用方：执行仅在本模块聚焦测试；其他 probe 仅导入既有常量/文件检查函数。无业务上下文所有权、公共导入方向、依赖边/SCC/scanner baseline 或 Runtime 17 Bundle 变化；无 root/Guest/Docker/AWS/生产、CI/依赖/Prisma 变更；不建立新更新器或关闭 C4/G2。
+
+
 2026-10-18 **R1 S1 独立 Ubuntu Archive Release 签名采集（LOCAL SOURCE/TESTS ONLY / TESTS NOT RUN / NO REAL GPGV / NOT PUSHED）**：在既有 Runtime/Ops owner 下新增单独外部执行 CLI（固定官方 Archive 域/noble pockets、HTTPS Release+Release.gpg、已有 trusted keyring pin、gpgv、私有证据回执）与 22 项纯离线模拟单元测试。**未**接到 Runtime 17 Bundle、B1/B3B1、应用 owner/依赖边/SCC/scanner、CI、API/HTTP/Prisma、AWS/生产；不添加第三方依赖。不采集 Guest/root。见 [S1 合同](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。S0 身份有限匹配、S1 待真实独立验签、C1 OPEN、G2 NO-GO、S2 PAUSED。
 
 

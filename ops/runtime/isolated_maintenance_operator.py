@@ -123,6 +123,9 @@ def execute_isolated_barrier(root: Path, source_sha256: str,
     """Exercise stop/check/restore ordering against a synthetic host.
 
     Never executes the pinned source. No archive read or Runtime file write.
+    Failure or interruption never requests automatic host restoration.
+    Only a completed synthetic rehearsal restores its fake host state; this
+    function cannot finalize an update or release production maintenance.
     A failed restoration cannot be disguised as successful exclusion.
     """
     owned_fd = _private_fixture(root)
@@ -148,26 +151,25 @@ def execute_isolated_barrier(root: Path, source_sha256: str,
                                            "backupServiceActive", "mcpActive"}
                      and all(type(v) is bool for v in original.values()),
                      "incomplete initial service state")
-            failure: BaseException | None = None
-            cleared = False
             try:
                 host.suspend()
                 _is_excluded(host.observe())
                 _is_excluded(host.observe())
-                cleared = True
             except BaseException as exc:
-                failure = exc
-            finally:
-                try:
-                    host.restore(original)
-                    _require(host.original_state() == original,
-                             "original service state not restored")
-                except BaseException as exc:
-                    # Fail closed even if the observation passed.
-                    raise BarrierBlocked("maintenance restoration failed") from exc
-            if failure is not None:
-                raise BarrierBlocked("maintenance exclusion failed") from failure
-            _require(cleared, "maintenance evidence incomplete")
+                # A failed or interrupted exclusion must not restart consumers.
+                # Keep the original cause; only the caller may arrange a
+                # separately reviewed recovery. This remains a lab-only model.
+                raise BarrierBlocked(
+                    "maintenance exclusion failed; automatic restoration suppressed"
+                ) from exc
+            try:
+                # Successful synthetic rehearsal cleanup only. This is NOT
+                # permission to release a real Runtime update's maintenance.
+                host.restore(original)
+                _require(host.original_state() == original,
+                         "original service state not restored")
+            except BaseException as exc:
+                raise BarrierBlocked("maintenance restoration failed") from exc
             return {
                 "kind": "c5-g2b2b-isolated-barrier-rehearsal-v1",
                 "operatorSourceSha256": source.sha256,
