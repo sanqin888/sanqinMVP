@@ -68,6 +68,8 @@
 | R4 | 正式 Runtime installer + 准确快照→独立新 AWS 实例，首启冻结/数据/身份核对、单写者与人工切流 | PLANNED；组合正常执行来源、R2/R3；不部署旧故障主机自举链，不隐藏改外部 helper |
 | R5 | 同最终候选完整端到端、故障和恢复矩阵；再提交精确 C8 readiness/执行/复验 | PLANNED；前四批真实证据成立后进行；不自动取得生产授权 |
 
+**2026-10-18 R1 B2-1C 下一离线源码批（本地待审）：**B2-1B 已通过 PR #2869/CI #7369 合并 dev e823bb16。本批在既有 Runtime/Ops owner 内增加 .deb ar/data.tar 有界纯内存成员 SHA 与 symlink link text 候选对照，不解包到磁盘、不验证官方 GPG、不操作 Guest/root/安装；详见 [B2-1C 合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。候选结果 BLOCKED，测试仅编写未运行，保持 C2 有界 CLOSED/C1 OPEN/G2 NO-GO/S2 PAUSED。
+
 **2026-10-18 R1 B2-1B 后续源码切片（本地、未执行）：**继 B2-1A PR #2868 / CI #7367 全绿、dev merge `5711aa12` 后，外置新增纯内存 Ubuntu Release → Packages[.xz] → 准确 .deb 的候选 SHA256/size/身份一致性校验与合成负例，详见 [B2-1B 原始字节合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。未真实下载 Ubuntu 发行原件、不验证官方 GPG、不解包 .deb 成员、不执行 Guest/root/安装，无生产权威；B2-1B tests/CI 尚未执行。C1 OPEN、G2 NO-GO，C2 有界 CLOSED，R2–R5 不变。
 
 **2026-10-18 R1 B2-1A 分批续记：**在 B2-0 PR #2867/CI #7365 合并 `dev@b95f09e1` 后，本地新增固定 C2 Host/Guest 精确只读 argv 的原始 stdout/stderr/rc/摘要离线审阅及纯合成负例，详见 [B2-1A 审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)。未运行本地 tests/CI、真实 Host/Guest/root、软件包签名验证或安装。当前只是本地源码审阅；B2-1B 的实际 Guest/root 操作与 C1 认证仍待准确对象/命令/来源另批批准。C2 有界 CLOSED、C1 OPEN、G2 NO-GO。

@@ -357,6 +357,10 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 ## 12. 2026-10-18 — B2-1B Ubuntu 原始 Release→Packages→deb 字节链
 
-**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 基于 PR #2868 合并后的 dev，在 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018` 分支新增外置 `ops/runtime/root_python_b21_ubuntu_source_chain.py`，离线核查调用方提供的 Ubuntu Noble Release 与 detached signature 原始 bytes、Packages[.xz]、准确 .deb 包候选的 SHA256/size/pocket/path/version/amd64 关联；新增纯虚构字节/XZ 的合成负例，独立 [B2-1B 来源链合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。不执行或认证 GPG、不解包 .deb 文件成员、不读取 VM/Guest/root、不授予安装权限；结果永久 BLOCKED。既有 B1/B3A/B3B1/B2-0/B2-1A 和冻结 Bundle/CI/依赖/应用架构不变；C1 OPEN / C5-G2 NO-GO / S2 PAUSED。
+**B2-1B 首次本地审阅状态（现已交付）：** 基于 PR #2868 合并后的 dev，在 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018` 分支新增外置 `ops/runtime/root_python_b21_ubuntu_source_chain.py`，离线核查调用方提供的 Ubuntu Noble Release 与 detached signature 原始 bytes、Packages[.xz]、准确 .deb 包候选的 SHA256/size/pocket/path/version/amd64 关联；新增纯虚构字节/XZ 的合成负例，独立 [B2-1B 来源链合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。**后续交付为 PR #2869 / CI #7369 success / dev merge `e823bb165c1cf0460cf1279cda8d44f0b6884366`，仅合成 CI 成功，不代表来源认证**。不执行或认证 GPG、不解包 .deb 文件成员、不读取 VM/Guest/root、不授予安装权限；结果永久 BLOCKED。既有 B1/B3A/B3B1/B2-0/B2-1A 和冻结 Bundle/CI/依赖/应用架构不变；C1 OPEN / C5-G2 NO-GO / S2 PAUSED。
+
+## 13. 2026-10-18 — B2-1C 逐成员文件 SHA 与 symlink 原文候选对照
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 基于 B2-1B 合并后的 dev，在 `feat/c5-g2-r1-b2b2b2-b21c-deb-members-offline-20261018` 新增外置、纯内存的 `root_python_b21_deb_members.py` 和虚构 ar/tar 合成测试：限定一个候选 .deb、data.tar.xz 或 data.tar.gz，核对 caller-selected 文件 SHA 与 symlink 原始 link text。任何数据一致仍 BLOCKED，不签认 Release.gpg、外部 package key、FD/root anchor 或实际动态消费；不调用真实 Host/Guest、网络、root、dpkg、tar 解包到磁盘，保持 B1/B3B1/B2-0/B2-1A/B2-1B 原样。详见 [B2-1C 审阅合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。C2 有界 CLOSED、C1 OPEN/G2 NO-GO/S2 PAUSED。
 
 

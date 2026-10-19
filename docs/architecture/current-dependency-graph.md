@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 B2B2-B2 B2-1C（LOCAL SOURCE / SYNTHETIC TESTS AUTHORED / NOT RUN）**：在 Runtime/Ops 现有边界新增单个 .deb ar/data.tar.xz 或 gzip 的 candidate file-member SHA/link text 离线核对及合成负例，始终 BLOCKED；不对官方 GPG 来源或真实 Guest/root 提升权威。参见 [B2-1C 包内成员合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。无业务 owner/跨上下文导入、依赖边/SCC/cycle/scanner baseline、HTTP/Prisma、冻结 Runtime 17 Bundle、CI/依赖锁、AWS/生产变化。B2-1B PR #2869 / CI #7369 合并 dev e823bb16；C2 CLOSED（有界）、C1 OPEN、C5-G2 NO-GO / S2 PAUSED。
+
+
 2026-10-18 **R1 B2B2-B2 B2-1B Ubuntu 来源原始字节链（LOCAL SOURCE / TESTS AUTHORED / NOT RUN）**：外置 Runtime/Ops 新增纯内存 Release → Packages[.xz] → .deb 候选 SHA/大小/路径与版本交叉审核及合成负例，始终 BLOCKED；不进行真实 Ubuntu GPG/官方签名鉴证、deb 内文件/链接认证或 Guest/root FD 操作。详见 [B2-1B 来源合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。无业务 owner/import、直接依赖边、SCC/cycle/scanner baseline/allowance、HTTP/DB/Prisma、17 Runtime Bundle、CI/锁文件/AWS/生产变更；B2-1A PR #2868 / CI #7367 已合并 dev `5711aa12`。C2 有界 CLOSED，C1 OPEN、C5-G2 NO-GO、S2 PAUSED。
 
 2026-10-18 **R1 B2B2-B2 B2-1A（LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN）**：在外置 Runtime/Ops 新增固定 C2 虚拟机与快照身份的 Host/Guest 只读原始 byte/argv/rc/摘要交叉审核合同，不运行任何真实平台/Guest 命令；参见 [B2-1A 审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)。仅普通数据与测试、始终 BLOCKED；无应用业务模块 import/owner、SCC/cycle/scanner baseline/allowance、HTTP/数据/Prisma/迁移、17 Runtime Bundle、CI/依赖/生产或 AWS 修改。B2-0 PR #2867/CI #7365 已成功合并 dev `b95f09e1`，但不认证 C1；C2 有界 CLOSED/C1 OPEN/C5-G2 NO-GO/S2 PAUSED。
