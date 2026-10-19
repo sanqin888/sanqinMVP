@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 B4B-3B-2B2-B2 第一批 B2-0（LOCAL SOURCE / TESTS AUTHORED / NOT RUN / NOT PUSHED）**：在外置 Runtime/Ops 新增纯内存 Guest packet 合同、独立离机材料一致性审阅与合成负例；B2-1 只读取证方案单独冻结（[设计与合同](C5-G2-R1-B2B2-B2-取证合同与离机审核.md)）。未打开真实 Host/Guest/root/发行包、未提升来源或生产权限，全部结果仍 BLOCKED。**没有**业务上下文 owner/直接导入方向变更、SCC/cycle/scanner/allowlist 基线变化、HTTP/PWA/数据/Prisma、Runtime 17 项、CI/依赖、容器/AWS/生产执行变化；此前 C2 CLOSED（有界）、C1/C3–C7 OPEN、C8 NOT REQUESTED、G2 NO-GO、S2 PAUSED 维持。
+
 2026-10-18 **C2 N-07 最终证据裁定 / 限定关闭（当前结论）**：在最新 dev 的 [B2B2 §9.6](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 内，依据已验 C2-0/C2-1 原始归档、Snapshot→独立 VM/base VDI、22 项 Guest 和 Host-only HTTP，正式接受 N-07 历史 Host 独立签认/部分 SSH 外层 rc/新 Host 查询未独立离机封存等**限定残余风险**，仅将「可丢弃隔离 VirtualBox 合成新实例恢复」**C2 CLOSED / LIMITED-ACCEPTED**。不提高证据来源权威，不声称生产真实性、快照时点全盘证明或根权限认证；C1/C3–C7 OPEN、C8 NOT REQUESTED、C5-G2 NO-GO、S2 PAUSED。PR #2864 AWS 整机快照 RUNTIME-SNAPSHOT-01 / MAINT-RESTART-01、R2/R3/R4/S01–S12 与真实同平台 DR 仍未实施/未通过。本文旧日期下的 `C2 OPEN` 是彼时状态，不反向改写历史。**仅文档状态与证据风险裁定，代码 owner/依赖边/SCC/scanner/Runtime 17、CI/依赖/Prisma、VM/生产均不变**。
 
 ## 2026-10-18 Runtime AWS 快照与维护冻结文档对齐
