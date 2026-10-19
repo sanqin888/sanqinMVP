@@ -1,8 +1,13 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 B2B2-B2 B2-1C Debian 包内 member 字节与 symlink 候选合同
+
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 B2-1B PR #2869 / CI #7369 success / dev merge e823bb165c1cf0460cf1279cda8d44f0b6884366，在 feat/c5-g2-r1-b2b2b2-b21c-deb-members-offline-20261018 外置新增 ops/runtime/root_python_b21_deb_members.py 和纯虚构 .deb ar/data.tar 测试。仅对 caller 提供的候选 deb bytes/整体 SHA、明确选定包内 regular 文件 digest、symlink 原始 link text 进行有界纯内存核对；不跟随链接、绝不认证 Ubuntu GPG/官方包来源或 Guest FD，也不运行 VM/root/安装。详见 [B2-1C 合同](C5-G2-R1-B2B2-B21C-deb包内文件与链接候选合同.md)。不改业务 owner/导入、依赖边、SCC/scanner baseline、17 Bundle、B1/B3B1/B2-0/B2-1A/B2-1B 原合同、HTTP/Prisma、CI/锁文件、AWS/生产。C2 LIMITED CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 ## 2026-10-18 — R1 B2B2-B2 B2-1B Ubuntu 来源 Release→Packages→deb 原始字节链
 
-**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 B2-1A PR #2868 / GitHub CI #7367 success / dev merge `5711aa1267cd7f5cbc9b011747edf5b99cd9f9a9` 创建 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018`。在 `ops/runtime` 新增纯内存 Ubuntu Release/Release.gpg/Packages[.xz]/.deb 原始候选 bytes/size/SHA256/架构/版本/路径一致性审阅模块和虚构原件/XZ 合成负例，详见 [B2-1B 设计和状态](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。不执行 GPG 验签、不提权、不触碰真实 Guest、VM、AWS/生产、不认证 deb 内成员与官方来源、不授予执行权限；保持 C2 有界 CLOSED / C1 OPEN / G2 NO-GO / S2 PAUSED。没有业务 owner、依赖边、SCC/scanner baseline、17 Bundle、CI/依赖锁文件/Prisma/HTTP/现役 Runtime 变化。
+**首次本地审阅：SOURCE + TESTS AUTHORED / NOT RUN；后续用户授权远端交付：PR #2869 / CI #7369 SUCCESS / merge commit e823bb165c1cf0460cf1279cda8d44f0b6884366 已进入 dev；仅合成 CI GREEN，不认证外部源。** 基于 B2-1A PR #2868 / GitHub CI #7367 success / dev merge `5711aa1267cd7f5cbc9b011747edf5b99cd9f9a9` 创建 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018`。在 `ops/runtime` 新增纯内存 Ubuntu Release/Release.gpg/Packages[.xz]/.deb 原始候选 bytes/size/SHA256/架构/版本/路径一致性审阅模块和虚构原件/XZ 合成负例，详见 [B2-1B 设计和状态](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。不执行 GPG 验签、不提权、不触碰真实 Guest、VM、AWS/生产、不认证 deb 内成员与官方来源、不授予执行权限；保持 C2 有界 CLOSED / C1 OPEN / G2 NO-GO / S2 PAUSED。没有业务 owner、依赖边、SCC/scanner baseline、17 Bundle、CI/依赖锁文件/Prisma/HTTP/现役 Runtime 变化。
 
 ## 2026-10-18 — R1 B2B2-B2 B2-1A 原始 Host/Guest 只读取证合同
 
