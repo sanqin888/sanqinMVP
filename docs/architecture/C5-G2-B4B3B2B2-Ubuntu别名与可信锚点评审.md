@@ -359,6 +359,14 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 **B2-1B 首次本地审阅状态（现已交付）：** 基于 PR #2868 合并后的 dev，在 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018` 分支新增外置 `ops/runtime/root_python_b21_ubuntu_source_chain.py`，离线核查调用方提供的 Ubuntu Noble Release 与 detached signature 原始 bytes、Packages[.xz]、准确 .deb 包候选的 SHA256/size/pocket/path/version/amd64 关联；新增纯虚构字节/XZ 的合成负例，独立 [B2-1B 来源链合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。**后续交付为 PR #2869 / CI #7369 success / dev merge `e823bb165c1cf0460cf1279cda8d44f0b6884366`，仅合成 CI 成功，不代表来源认证**。不执行或认证 GPG、不解包 .deb 文件成员、不读取 VM/Guest/root、不授予安装权限；结果永久 BLOCKED。既有 B1/B3A/B3B1/B2-0/B2-1A 和冻结 Bundle/CI/依赖/应用架构不变；C1 OPEN / C5-G2 NO-GO / S2 PAUSED。
 
+## 16. 2026-10-18 — S0 操作员五项 Host 只读输出与身份核对
+
+操作员回传已批准的五条 Mac `VBoxManage` 命令终端输出。Snapshot/Source/Recovered/VDI UUID、Snapshot base 与恢复 base 盘链、NIC Host-only 配置、恢复机 clipboard/dragdrop 观察一致；Source 运行差分盘与 Snapshot base 盘 UUID 不同非自动异常；Snapshot 历史 clipboard 为 Bidirectional 仍须如实保留。因为没有每条 stdout/stderr 原始 bytes/rc/UTC、独立 Host witness 和当前 Guest 的真实外联/共享通道完整证明，**S0 = IDENTITY MATCHED (OPERATOR-OBSERVED) / EVIDENCE LIMITED / NOT FULL VERIFIED**。并未重开 C2 或认可 Guest/root 操作。见 [B2-1 真实来源审批包 §9](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)，S1 Ubuntu 官方签名仍 BLOCKED，C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+## 15. 2026-10-18 — B2-1 真实 Ubuntu 来源/Host/Guest/root 取证分组审批准备（S0/S1 已获执行范围授权，但原件未取得）
+
+**REVIEW-ONLY APPROVAL PACKAGE LOCAL / NO REAL HOST/GUEST/ROOT EXECUTED / NOT PUSHED / USER REVIEW PENDING。** B2-1D PR #2871 / CI #7373 success 已合并 `dev@e5f2e64376251f9f03edb1ebf337f74fab820d90`，但 C1 与真实发行/Guest 根锚未被合成 CI 证明。本次经用户授权**开始审批准备**：冻结准确 C2 Source/Snapshot/Recovered VM/VDI 历史身份、B2-1A 的 Mac Host 五项及非 root Guest 九项只读命令、独立 Ubuntu Archive key → 签名 Release → Packages → .deb → 包内文件 → B3A Manifest 的真实来源分阶段审批；另外明确尚无经审阅/固定 SHA 的 root collector CLI，未来 root 持有 FD 同会话取证需另批逐命令授权。查阅 [B2-1 真实来源与 root 取证审批包](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)。本批不运行 Ubuntu 下载、gpgv、ssh/VBoxManage、sudo 或其他 root 命令，不写 VM、云或生产；C2 有界 CLOSED、C1 OPEN / G2 NO-GO / S2 PAUSED。
+
 ## 14. 2026-10-18 — B2-1D 跨包 Manifest 候选归属审阅
 
 **LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 在 B2-1C PR #2870 / CI #7371 success / dev merge `3c623b88a20962a820d6269ab330e6b6c48552f3` 后，从新分支增加 B3A manifest 所有 file paths 与多个 B2-1C package member receipt 的候选一对一归属、SHA/link text 交叉核对、拒绝多/漏/孤儿项等，不触及 B1/Guest/root/真实来源/安装；详见 [B2-1D 合同](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。正常返回永久 BLOCKED，不授予 Host/Ubuntu 身份真实性；C1 OPEN / G2 NO-GO / S2 PAUSED。

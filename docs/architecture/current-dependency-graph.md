@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+2026-10-18 **R1 B2-1 实际 Ubuntu 官方来源与隔离 Guest/root 取证审批（LOCAL DOCUMENT-ONLY；S0/S1 已授权但实时证据 BLOCKED / NO GUEST-ROOT EXECUTION）**：基于 B2-1D PR #2871 / CI #7373 全绿、dev `e5f2e643`，冻结准确 C2 Source/Snapshot/Recovered VM/VDI 身份、Ubuntu key/signature/Release→Packages→deb/member 信任链、Host5/Guest9 非 root 原始命令与未来 root collector 逐阶段授权门禁。见 [审批包](C5-G2-R1-B21-真实Ubuntu来源与GuestRoot取证审批包.md)。无业务 owner/import、依赖边/SCC/scanner baseline、Bundle17、API/Prisma、CI/依赖/AWS/生产变化；**无下载/GPG/Host/Guest/root/VM 执行**。C2 有界 CLOSED，C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+
 2026-10-18 **R1 B2B2-B2 B2-1D（LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN）**：外置 Runtime/Ops 新增 B3A manifest ↔ 多个 B2-1C 候选 package receipts 的纯内存唯一路由与漏项核验，无下载、root/VM、GPG/独立来源认证或生产授权；见 [B2-1D 合同](C5-G2-R1-B2B2-B21D-跨包文件归属候选审阅.md)。无业务上下文 owner/import、直接依赖边、SCC/cycle/scanner baseline、HTTP/Prisma、冻结 17 Bundle、CI/依赖锁文件、AWS/生产改变。B2-1C PR #2870 / CI #7371 已合并 dev `3c623b88`；C2 有界 CLOSED、C1 OPEN、G2 NO-GO / S2 PAUSED。
 
 
