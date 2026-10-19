@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-19 **PEM-S1 POS 浏览器恢复后黄色未决提示修复（PR #2877 / 源码 head a70ef268 CI #7386 GREEN / DOC-ONLY FINAL HEAD CHECK PENDING / NOT DEPLOYED）**：仅修改 Web/POS 的现有 read-only Payment Review + PEM Case GET 消费、浏览器 pending marker/报价缓存的同步；两个数据源沿既有 HTTP/Public contract 获取，未添加 Payments/Clover 基础设施直接导入，不更改 owner、跨上下文导入、路由字段、依赖图/SCC、scanner/baseline、schema/迁移或生产 Ecommerce。新的 `FAILED` 清理只在 `SANDBOX_CONFIRM_UNPAID` Case COMPLETED、同门店/Attempt/金额/External 身份、Benefits RELEASE、Terminal Fence FINALIZED 且无迟到冲突下生效。MacBook 操作员已执行原 Attempt 的独立只读 Prisma 核验并回传 PASS 8/8：同一 PEM Case `COMPLETED`、三次执行含两次历史 `NEEDS_REVIEW`、最终 Payment/Checkout/Benefits/Fence/Recovery 检查点一致，原 Checkout 未生成 SanQ Order；该证据仅覆盖隔离 Sandbox，不把人工判未收款当作 Clover 官方取消。源码 head 已通过 CI #7386，追加文档 head 仍待最终 GitHub CI 核查；未部署/未主动实测 MacBook POS UI。见 [PEM §7](../payments/支付异常管理-PEM.md)。
+
 2026-10-18 **旧隔离维护实验失败路径修复（PR #2874 / SOURCE CI #7379 GREEN / FINAL DOC CHECKS PENDING / NO PRODUCTION CHANGE）**：在 Runtime/Ops 内将 `isolated_maintenance_operator.py` 的恢复移出无条件 finally；失败/可捕获中断不请求自动恢复，仅成功合成实验清理恢复原状态。见 [所属实验与现行修复边界](c5-g2b2b-isolated-operator-rehearsal-2026-10-13.md)。已审阅调用方：执行仅在本模块聚焦测试；其他 probe 仅导入既有常量/文件检查函数。无业务上下文所有权、公共导入方向、依赖边/SCC/scanner baseline 或 Runtime 17 Bundle 变化；无 root/Guest/Docker/AWS/生产、CI/依赖/Prisma 变更；不建立新更新器或关闭 C4/G2。
 
 

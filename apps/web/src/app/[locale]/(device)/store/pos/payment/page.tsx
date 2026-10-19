@@ -11,6 +11,7 @@ import { fetchPosLoyaltyPolicy } from "@/lib/api/loyalty";
 import {
   cancelPosCardPayment,
   fetchPosCardTerminalConfig,
+  fetchPosPaymentExceptionCase,
   quotePosCadToCny,
   quotePosOrderPricing,
   recoverPosCardPayment,
@@ -18,6 +19,7 @@ import {
   startPosCardPayment,
   type PosCardPaymentRequest,
   type PosCardPaymentResult,
+  type PosCardPaymentReviewDetail,
   type PosCardTerminalConfig,
   type PosExchangeRateQuote,
   type PosOrderPricingQuote,
@@ -25,6 +27,7 @@ import {
 import {
   canDismissPosCardPaymentReview,
   canUnlockCancelledPosCheckout,
+  canUnlockCompletedSandboxUnpaidPosCheckout,
   mergePosCardPaymentSnapshot,
   parsePosCardPaymentSnapshot,
   shouldOpenRestoredPosCardDialog,
@@ -1576,11 +1579,47 @@ export default function StorePosPaymentPage() {
     t.cardTerminalUnknown,
   ]);
 
+  const applyCardPaymentReadback = useCallback(
+    async (review: PosCardPaymentReviewDetail) => {
+      if (activeCardAttemptRef.current !== review.attemptId) return;
+
+      if (
+        review.status === "FAILED" &&
+        review.resultCode === "POS_TERMINAL_SANDBOX_OPERATOR_UNPAID"
+      ) {
+        // The persisted review/PEM case are the authority, not a stale browser
+        // marker or an uncorrelated realtime FAILED notice.
+        const exception = await fetchPosPaymentExceptionCase(review.attemptId);
+        if (activeCardAttemptRef.current !== review.attemptId) return;
+        if (canUnlockCompletedSandboxUnpaidPosCheckout(
+          review,
+          exception,
+          cardTerminalConfig?.storeId ?? "",
+        )) {
+          clearPendingCardPayment();
+          setCardPaymentOpen(false);
+          setCardPaymentResult(null);
+          setCardFlowState("IDLE");
+          setCardFlowError(null);
+          // Benefits RELEASE can change the price of a subsequent checkout.
+          setPricingQuote(null);
+          setPricingQuoteKey(null);
+          setPricingQuoteStructuralKey(null);
+          setPricingRefreshEpoch((current) => current + 1);
+          return;
+        }
+      }
+
+      applyCardPaymentResult(review);
+    },
+    [applyCardPaymentResult, cardTerminalConfig?.storeId, clearPendingCardPayment],
+  );
+
   usePosCardPaymentReadback({
     enabled: cardTerminalConfig?.enabled === true,
     attemptId: pendingCardRequest?.attemptId,
     latestSnapshot: cardPaymentResult,
-    onSnapshot: applyCardPaymentResult,
+    onSnapshot: applyCardPaymentReadback,
   });
 
   const handleDismissCardPaymentReview = useCallback(() => {

@@ -1,7 +1,12 @@
-import type { PosCardPaymentResult } from "./api/pos";
+import type {
+  PaymentExceptionCase,
+  PosCardPaymentResult,
+  PosCardPaymentReviewDetail,
+} from "./api/pos";
 import {
   canDismissPosCardPaymentReview,
   canUnlockCancelledPosCheckout,
+  canUnlockCompletedSandboxUnpaidPosCheckout,
   mergePosCardPaymentSnapshot,
   needsPosCardPaymentReadback,
   parsePosCardPaymentSnapshot,
@@ -235,6 +240,107 @@ describe("POS card payment realtime facts", () => {
       paymentId: null,
       benefitsReleaseComplete: true,
     })).toBe(true);
+  });
+
+  it("continues passive readback for a Sandbox operator-attested FAILED until PEM resolves", () => {
+    for (const failureCode of [
+      "SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT",
+      "POS_SANDBOX_OPERATOR_UNPAID_CLOSED",
+      "POS_SANDBOX_OPERATOR_UNPAID_REVIEW_PENDING",
+    ]) {
+      expect(needsPosCardPaymentReadback({
+        ...complete,
+        status: "FAILED",
+        failureCode,
+        orderStableId: null,
+      })).toBe(true);
+    }
+    expect(needsPosCardPaymentReadback({
+      ...complete,
+      status: "FAILED",
+      failureCode: "CLOVER_CARD_DECLINED",
+    })).toBe(false);
+  });
+
+  it("unlocks only a completed, identity-matched Sandbox PEM unpaid review with all owner checkpoints", () => {
+    const review: PosCardPaymentReviewDetail = {
+      ...complete,
+      status: "FAILED",
+      failureCode: "SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT",
+      benefitsReleaseComplete: true,
+      terminalReadyForNextSale: false, // The ordinary review GET does not expose Fence readiness.
+      orderStableId: null,
+      currency: "CAD",
+      paymentStatus: "FAILED",
+      resultCode: "POS_TERMINAL_SANDBOX_OPERATOR_UNPAID",
+      externalPaymentId: "sq_original",
+      providerPaymentId: null,
+      terminalOperationState: "FINALIZED",
+      terminalId: "test-terminal",
+      sandboxManualRecoveryEnabled: false,
+      sandboxOperatorUnpaidAccepted: true,
+      sandboxRecoveryTerminalFinalized: true,
+      sandboxLateCanonicalPayment: false,
+    };
+    const exception: PaymentExceptionCase = {
+      caseStableId: "pem-original",
+      attemptId: review.attemptId,
+      storeStableId: "test-store",
+      externalPaymentId: "sq_original",
+      amountCents: review.externalAmountCents,
+      currency: "CAD",
+      action: "SANDBOX_CONFIRM_UNPAID",
+      mode: "SANDBOX",
+      status: "COMPLETED",
+      requestedByStableId: "staff-one",
+      operatorNote: "Operator reviewed the canonical failed Sale",
+      cloverOrderId: "clover-original",
+      approvedByStableId: null,
+      createdAt: "2026-10-19T00:00:00.000Z",
+      updatedAt: "2026-10-19T00:00:00.000Z",
+    };
+    const safe = (r: PosCardPaymentReviewDetail, c: PaymentExceptionCase | null = exception, store = "test-store") =>
+      canUnlockCompletedSandboxUnpaidPosCheckout(r, c, store);
+
+    expect(safe(review)).toBe(true);
+    expect(safe(review, null)).toBe(false);
+    expect(safe(review, exception, "another-store")).toBe(false);
+    for (const mismatch of [
+      { status: "NEEDS_REVIEW" as const },
+      { action: "RELEASE_CONFIRMED_FAILURE" as const },
+      { mode: "PRODUCTION" as const },
+      { attemptId: "another-attempt" },
+      { externalPaymentId: "sq_another" },
+      { storeStableId: "another-store" },
+      { amountCents: 1696 },
+      { currency: "USD" },
+      { cloverOrderId: null },
+    ]) {
+      expect(safe(review, { ...exception, ...mismatch })).toBe(false);
+    }
+    const invalidReviews: Partial<PosCardPaymentReviewDetail>[] = [
+      { status: "RECONCILING" },
+      { paymentStatus: "RECONCILING" },
+      { status: "CANCELLED" },
+      { resultCode: null },
+      { failureCode: "CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED" },
+      { benefitsReleaseComplete: false },
+      { terminalOperationState: "SALE_IN_FLIGHT" },
+      { sandboxOperatorUnpaidAccepted: false },
+      { sandboxRecoveryTerminalFinalized: false },
+      { sandboxLateCanonicalPayment: true },
+      { providerPaymentId: "provider-success" },
+      { orderStableId: "paid-order" },
+      { externalPaymentId: "sq_another" },
+      { currency: "USD" },
+      { externalAmountCents: 1696 },
+    ];
+    for (const mismatch of invalidReviews) {
+      expect(safe({ ...review, ...mismatch })).toBe(false);
+    }
+
+    // The existing provider-cancelled flow is unchanged.
+    expect(canUnlockCancelledPosCheckout(review)).toBe(false);
   });
 
   it("preserves cancellation checkpoint fields across full WebSocket snapshots", () => {
