@@ -353,6 +353,10 @@ VBoxManage showmediuminfo disk "$RECOVERED_DISK"
 
 ## 11. 2026-10-18 — B2-1A 指定 Host/Guest 原始只读回执的本地实施
 
-**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING。** 新独立分支 `docs/c5-g2-r1-b2b2b2-b21-readonly-evidence-approval-20261018` 基于上述合并 SHA：新增固定**已登记**的 C2 Source/Snapshot/Recovered VM/VDI 身份的五项 Host / 九项 Guest **纯输入离线**原始命令回执审阅及合成负例，约束准确 argv、stdout/stderr **原始字节**、独立声明 SHA、UTC、双层 rc 和证据预算；另对 C2 历史 Guest UID 与准确 usrmerge/loader link text 做候选同值核对；正常结果**永久 BLOCKED**。新增 [B2-1A 精确只读命令与 Guest/root 后续审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)。未执行 Mac Host、VirtualBox、SSH、Guest、root、发行包验证或生产，未打开新执行入口；用户审阅前不推送远端。C2 有界 CLOSED，C1 OPEN、G2 NO-GO、S2 PAUSED。
+**B2-1A 先前本地审阅状态（随后已提交）：** 新独立分支 `docs/c5-g2-r1-b2b2b2-b21-readonly-evidence-approval-20261018` 基于上述合并 SHA：新增固定**已登记**的 C2 Source/Snapshot/Recovered VM/VDI 身份的五项 Host / 九项 Guest **纯输入离线**原始命令回执审阅及合成负例，约束准确 argv、stdout/stderr **原始字节**、独立声明 SHA、UTC、双层 rc 和证据预算；另对 C2 历史 Guest UID 与准确 usrmerge/loader link text 做候选同值核对；正常结果**永久 BLOCKED**。新增 [B2-1A 精确只读命令与 Guest/root 后续审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)。**后续提交证明：PR #2868 / GitHub CI #7367 全绿，dev merge `5711aa1267cd7f5cbc9b011747edf5b99cd9f9a9`。**未执行 Mac Host、VirtualBox、SSH、Guest、root、发行包验证或生产，未打开新执行入口。C2 有界 CLOSED，C1 OPEN、G2 NO-GO、S2 PAUSED。
+
+## 12. 2026-10-18 — B2-1B Ubuntu 原始 Release→Packages→deb 字节链
+
+**LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED / USER REVIEW PENDING。** 基于 PR #2868 合并后的 dev，在 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018` 分支新增外置 `ops/runtime/root_python_b21_ubuntu_source_chain.py`，离线核查调用方提供的 Ubuntu Noble Release 与 detached signature 原始 bytes、Packages[.xz]、准确 .deb 包候选的 SHA256/size/pocket/path/version/amd64 关联；新增纯虚构字节/XZ 的合成负例，独立 [B2-1B 来源链合同](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。不执行或认证 GPG、不解包 .deb 文件成员、不读取 VM/Guest/root、不授予安装权限；结果永久 BLOCKED。既有 B1/B3A/B3B1/B2-0/B2-1A 和冻结 Bundle/CI/依赖/应用架构不变；C1 OPEN / C5-G2 NO-GO / S2 PAUSED。
 
 

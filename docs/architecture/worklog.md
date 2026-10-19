@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-18 — R1 B2B2-B2 B2-1B Ubuntu 来源 Release→Packages→deb 原始字节链
+
+**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 基于 B2-1A PR #2868 / GitHub CI #7367 success / dev merge `5711aa1267cd7f5cbc9b011747edf5b99cd9f9a9` 创建 `feat/c5-g2-r1-b2b2b2-b21b-ubuntu-byte-chain-20261018`。在 `ops/runtime` 新增纯内存 Ubuntu Release/Release.gpg/Packages[.xz]/.deb 原始候选 bytes/size/SHA256/架构/版本/路径一致性审阅模块和虚构原件/XZ 合成负例，详见 [B2-1B 设计和状态](C5-G2-R1-B2B2-B21B-Ubuntu原始字节链合同.md)。不执行 GPG 验签、不提权、不触碰真实 Guest、VM、AWS/生产、不认证 deb 内成员与官方来源、不授予执行权限；保持 C2 有界 CLOSED / C1 OPEN / G2 NO-GO / S2 PAUSED。没有业务 owner、依赖边、SCC/scanner baseline、17 Bundle、CI/依赖锁文件/Prisma/HTTP/现役 Runtime 变化。
+
 ## 2026-10-18 — R1 B2B2-B2 B2-1A 原始 Host/Guest 只读取证合同
 
-**状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN / USER REVIEW PENDING / NO REMOTE PR。** 上一批 B2-0 PR #2867 已合并（CI #7365 success；merge commit `b95f09e1984a8ba134289775ae30aeddaff81c5c`）。本批基于最新 dev，分支 `docs/c5-g2-r1-b2b2b2-b21-readonly-evidence-approval-20261018`。外置 Runtime/Ops 新增 `root_python_b21_raw_transcripts.py` 和对应纯合成测试，仅对特定 C2 Source/Snapshot/Recovered VM/VDI 的五项 Host 和九项 Guest **已提供的原始 byte**、严格白名单 argv、内/外 rc、各材料 SHA、大小/顺序/补缺进行负向优先审阅；正常结构一致也永久 `BLOCKED`。同步 [B2-1A 精确审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)，说明真实 Host、Ubuntu 包签名与未来 Guest root 必须另行授权。没有代码执行、Mac/Guest/SSH/root/VM/AWS/生产操作或真实平台证据；无业务模块/依赖方向/SCC、17 Bundle、Prisma、CI、锁文件、数据或生产行为变化。C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
+**初始审阅状态：LOCAL SOURCE + SYNTHETIC TESTS AUTHORED / NOT RUN。后续远端交付：PR #2868 / CI #7367 SUCCESS / merge commit `5711aa1267cd7f5cbc9b011747edf5b99cd9f9a9` 已进入 dev；仅合成 CI GREEN，不认证真实 Host/Guest/root。** 上一批 B2-0 PR #2867 已合并（CI #7365 success；merge commit `b95f09e1984a8ba134289775ae30aeddaff81c5c`）。本批基于最新 dev，分支 `docs/c5-g2-r1-b2b2b2-b21-readonly-evidence-approval-20261018`。外置 Runtime/Ops 新增 `root_python_b21_raw_transcripts.py` 和对应纯合成测试，仅对特定 C2 Source/Snapshot/Recovered VM/VDI 的五项 Host 和九项 Guest **已提供的原始 byte**、严格白名单 argv、内/外 rc、各材料 SHA、大小/顺序/补缺进行负向优先审阅；正常结构一致也永久 `BLOCKED`。同步 [B2-1A 精确审批包](C5-G2-R1-B2B2-B21A-原始只读取证审批包.md)，说明真实 Host、Ubuntu 包签名与未来 Guest root 必须另行授权。没有代码执行、Mac/Guest/SSH/root/VM/AWS/生产操作或真实平台证据；无业务模块/依赖方向/SCC、17 Bundle、Prisma、CI、锁文件、数据或生产行为变化。C2 有界 CLOSED、C1 OPEN、G2 NO-GO、S2 PAUSED。
 
 ## 2026-10-18 — R1 B4B-3B-2B2-B2 第一批 B2-0 源码及 B2-1 只读取证设计
 
