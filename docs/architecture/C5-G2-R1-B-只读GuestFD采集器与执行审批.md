@@ -1,9 +1,9 @@
-# R1-B S4 — 只读 Guest FD 采集器与执行审批
+# R1-B S4/S5 只读 Guest FD 采集与 R1-C S6 准备
 
-**日期：2026-10-20；状态：SOURCE IMPLEMENTED / SOURCE CI VERIFIED / ROOT EXECUTION NOT APPROVED。**
-[PR #2885](https://github.com/sanqin888/sanqinMVP/pull/2885) 源码 head `523a973caa38b863ba9cee2f584fbf42756c96bb` / [CI #7404](https://github.com/sanqin888/sanqinMVP/actions/runs/39455452477)：ops-checks 已成功，Runtime 465 项与 paired-image release 45 项测试均 OK；最终文档 head 仍须通过 CI 后才可合并。
-分支：`feat/runtime-r1b-readonly-guest-capture-20261020`，基线 dev `ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a`。
-本批只实现可审阅候选源码和合成测试。它不是正常更新执行器、可信加载器、安装器或已获授权的 root 命令。
+**2026-10-20 最新状态：SOURCE MERGED / S5 CAPTURE COMPLETED / ORIGINAL-EVIDENCE REVIEW PASS_SCOPED；R1/C1 OPEN。**
+[PR #2885](https://github.com/sanqin888/sanqinMVP/pull/2885) 最终 head `0533c209a9a34a2f33902ef9731a9a5053f9537c` / [CI #7405](https://github.com/sanqin888/sanqinMVP/actions/runs/39455730047) success，squash merge dev `8a99c99eb17a3ff27552e3b0f611204691e72984`。此前源码 head `523a973c` / CI #7404 的 Runtime 465 与 release 45 测试只记录合成软件验证。
+**§1–§5 保留源码准备时的历史状态和执行前要求；其“未取原件/未执行/未批准”停点已由 §6 的实际批准、执行和离机复核续记更新。** 原源码分支为 `feat/runtime-r1b-readonly-guest-capture-20261020`，基线 dev `ac5fcfef`；本次文档续记不修改采集器或原回执。
+S5 只批准并完成这一次准确暂存与 root 只读取证；它不授予新的 root、正常更新、安装或生产权。R1-C 就绪准备见 [S6 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)。
 
 ## 1. 前置证据与状态
 
@@ -61,3 +61,132 @@ proposal v1 字段为 schema、sessionClaims、manifest、manifestSha256、fileP
 5. 第一次真实 root capture 后，对原件、Host 预检和经独立复核的包来源做离机三侧审阅。无成功就不进入 R1-C；完整动态消费、正式正常更新执行器与 C1 独立裁定仍另行完成。
 
 因此本版没有可立即复制执行的 sudo/SSH root 命令，也不要求操作员此时重采 Guest、升级 Guest Python、改 mount、创建 sudoers 或更改 VM 设置。C1/R1 OPEN、G2 NO-GO、S2 daily PAUSED，C2 保持既有有限 CLOSED。
+
+## 6. 2026-10-20 — S5 准确批准、一次成功采集与原件复核
+
+### 6.1 批准及失败保全
+
+用户在独立准备包交付后明确授权「S5 暂存与一次 root 只读取证」。PREP 原件归档 SHA256 `cec930bdcfea32ae663d17c9f37f6b54875e37a6b3ebafec3aecab253517d994` 已读取复核：外层 70 项、Host 15 项、Guest 45 项清单、原始命令/回执/源码索引及既有来源 pins 匹配；原来的“只有操作员摘要”停点已补齐为原件技术核对，不扩大平台/独立见证真实性。
+
+CAPTURE-001 保留了已暂存 incoming 和 rootCommandSubmitted=true，但实际 root SSH 返回 255、stdout 为空、stderr 为准确 Permission denied 认证错误。已读取其失败原件归档并核对 23 项 manifest，确定这条连接未启动远端 root 命令；没有通过覆盖输出目录或删除暂存来重跑。CAPTURE-002 操作员回传显示 incoming verification 的 SSH 认证失败、rootCommandSubmitted=false；002 原件未上传，不冒称已独立复核其归档。
+
+仓库外 RESUME-v2 复核准确 001 失败链并只读验证/复用原 incoming，批准计划 SHA256 为 `45380611a6799f1c350f32ac33c881024eba0ba467db5850ec860ec134fa109a`。root-command SHA256 `2e8bfa81f4df8a1299b4d153e3681a93b3549bd0c0744a0226e6a270e74e38be` 与 v1 相同，仍限定八个输入的 root 私有暂存和原采集器；没有扩大为第二次成功 root 执行许可。密码由操作员交互输入，不写入证据或 Git；四条独立 SSH 登录与一次 sudo 密码输入分别处理。
+
+### 6.2 成功原件链
+
+| 对象 | SHA256 / 结果 |
+| --- | --- |
+| CAPTURE-003-review 归档 | `7d33106d340df9727276a969f12925852f6ab9ecc5542ff6ab88b9e8a3300ab9`，18,758 bytes |
+| SHA256SUMS | `b9f819e20ac00d589ade3a4250ba3dc9e510fdb72ba795198f077fe0a783184a`，27 项全部重算一致 |
+| Mac receipt | `94c23cb2abb0e6118aed8706823e9fa1ea0a9129f19bdca5e221cfc0c2614c89` |
+| Guest collector receipt / 原始 stdout | `2a193cb976e48590f554bdb8e440c7c4f4061cba8a2dc9f901184507898cb955`，逐字节相同 |
+| source-index | `e3e2bda4fbc26ef53c41c264c6472c4b43f45d5a26c111688b7bad8de7ca9d05` |
+| proposal | `52912c7531c75dd27d47fcf6af81f955f86eb333492befcb9307cb83c1606195` |
+| SSH outer / root command / collector | `0 / 0 / 0`；两个 inner 标记唯一，complete=true/failure=null |
+
+归档 28 个普通文件及其路径/集合已核对，无链接、重复成员或路径穿越。plan/wrapper-source/root-command 与交付版本逐字节一致，六份源码/index/proposal、SSH 主机密钥和 prior failure chain 均匹配。七条命令的完整 argv、原始 stdout/stderr 摘要、RC 与 Mac 本地顺序匹配；root stderr 是 UID 0、三个系统文件和八个 root 暂存输入的 OK 校验及成功标记。
+
+Mac 回执 collectionCompleted=true、rootCommandSubmitted=true、remoteRootCommandStarted=true、guestIncomingReused=true、guestIncomingWritten=false；Guest collectorRanAsRoot=true，real/effective uid/gid 全为 0。原 incoming 未重写；本次准确批准的 root 私有暂存/采集已完成，不再运行 capture。001、002、003 均须保留，不因最终成功删除失败证据。
+
+### 6.3 限定三侧核对
+
+三个 FD 的 Python executable 8,020,928 bytes、os.py 39,786 bytes、loader 236,616 bytes，合计 8,297,330 bytes；各 SHA 与 [S1 §9.3](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md) 已独立复核包成员匹配。终点 device/inode/mount 与 alias trace、根 FD context 一致；实际 mnt_id 由 FD/procfs 观察，非从 proposal 猜测。loader 两条 used-links 与单独 /lib alias 均匹配既有包成员原文，未改变 B1 的 used-links 集合。packet 与 rawObservation 的 FD/alias 记录完全一致。
+
+三次 Host 输出及两次原生 Guest 预检分别逐字节相同；目标 VM/盘/snapshot、rootfs 声明、boot/ns、根元数据、平台与原方案匹配，Host-only/其余 NIC none/无共享目录及禁用剪贴板/拖放符合批准记录。该核对不扩张为完整路由/防火墙隔离或物理 root 来源认证。现场 UUID/boot/ns/路径保留私有原件，不入 Git。
+
+Mac guest-root 调用为 17:36:21.767219–17:36:35.653106 UTC，Guest collector 为 17:35:55.859988–17:35:55.921881 UTC。**两端时钟存在偏差，不能拼接为统一 UTC 时间线。** 各自记录有序及同会话字节/退出标记匹配成立；不把跨机时间相减当成真实耗时，也不为此改时钟或重采。既有包来源基线本轮只做交叉比较，未重新运行 GPG 或软件包读取器。
+
+### 6.4 裁定与接续
+
+**S5 CAPTURE + ORIGINAL-EVIDENCE CONSISTENCY = PASS_SCOPED。** 采集由操作员执行，离机复核核对原件；没有在审阅环境重复执行 collector/仓库测试，不声称另一主体独立现场见证。所有原始 trust/closure/installation/production authority 仍 false、decision=BLOCKED；外层 root collector 成功与内层未执行传入候选 FD 的消费语义分别保留。
+
+R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 既有限定 CLOSED。下一步进入 [R1-C S6 就绪与首批源码范围](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)，完整 import/ELF/dlopen、正式正常更新入口及独立 C1 裁定均未完成。本轮只更新文档，用户已授权将本续记与 R1-C 准备包一同提交；最终 CI/合并以本批 PR 为准，S5 的批准不延伸至新执行命令。
+
+## 7. R1-C S6 就绪审计与实施拆分
+
+**日期：2026-10-20（America/Toronto）；状态：READINESS AUDITED / EXECUTOR AND LIVE S6 NOT IMPLEMENTED / DOC-ONLY DELIVERY AUTHORIZED。**
+分支：`docs/runtime-r1c-readiness-s5-closeout-20261020`；基线 `origin/dev@acd7f19311bd1117aab4f67f3c293f1a47d8758e`。本轮完成 S5 证据收口和 R1-C 实施拆分，无新源码或现场执行；用户已审阅并授权本批远端交付，最终 CI/合并以本批 PR 的实际 head 检查与事件为准。
+
+### 7.1. 目标与现行决策
+
+上位合同为 [R0 D1–D5、C1–C8 与 R1–R5](Runtime更新-R0冻结设计.md)、[S1 的 R1-A/B/C 队列](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)、[R1-B S4/S5](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。R1-C 对应 S6 / B4B-3C：确定正式正常更新执行器、证明其实际 CPython import、ELF PT_INTERP/DT_NEEDED/RUNPATH、dlopen 及传递依赖消费与认证字节一致，提交独立 C1 裁定。
+
+R0 D1 已明确接受受控云账户/虚拟化平台、内核和 root 管理为有限信任前提，不递归证明内核。旧故障机 clean-reinstall 自举闭包已退出首版关键路径。C2 已有限 CLOSED，不重做恢复实验或强制 Marker A/B。后续维护冻结、AWS 代码快照、安装和同候选矩阵仍归 R2/R3/R4/R5；本包不重开这些设计、不改变其顺序，也不授予运行权。
+
+### 7.2. 进入本阶段的证据
+
+- R1-A 准确七包对象的签名/索引/包内成员已完成技术原件复核；人工文档确认仍 LIMITED，R1-A 整体与 C1 未关闭。
+- R1-B 源码 PR #2885 最终 head `0533c209a9a34a2f33902ef9731a9a5053f9537c` / CI #7405 success，合并 dev `8a99c99eb17a3ff27552e3b0f611204691e72984`。源码阶段 CI #7404 的 Runtime 465 与 release 45 测试仅证明合成软件行为。
+- 用户随后明确授权 S5 暂存及一次 root 只读取证。成功批次 `R1B-S5-CAPTURE-003` 的归档 SHA256 为 `7d33106d340df9727276a969f12925852f6ab9ecc5542ff6ab88b9e8a3300ab9`；27 项 manifest、准确计划/源码/命令、原始 stdout/stderr 与三层退出码交叉核对通过。
+- 同会话三个 FD 共 8,297,330 bytes，哈希与既有独立包成员基线匹配；loader 两条 used-links 与单独 /lib alias 匹配。Host、Guest 原生预检及 root FD context 一致性通过，证据详情统一见 R1-B §6。
+- Mac 与 Guest UTC 有偏差；只保留各自时间线和命令/摘要/会话关联，未认证跨机统一时钟。
+- 本次 root 执行已完成；不重跑 capture、不改写 001/002/003，S5 的批准不延伸到新的动态执行命令。
+
+### 7.3. 当前源码审计发现
+
+| 已审阅实现 | 当前真实能力 | 对 S6 的意义 |
+| --- | --- | --- |
+| `runtime_update_contract.py` | 惰性正常更新声明合同，明确不认证证据、不安装或执行命令 | 可复核不变量；不能作为真实更新入口 |
+| `prepare_runtime_update.py` | 来源核对和非活跃私有暂存，明确没有 activation/服务写操作 | 可评估有限复用；不能将其单独运行等同完整正常更新 |
+| `offline_root_private_installer.py` | 限定 /tmp 合成 fixture 的交接内核，无生产入口 | 保留 lab guard；不能删除限制直接升级为正式安装器 |
+| `isolated_maintenance_operator.py` | 合成 HostAdapter 的隔离维护模型，无真实 Docker/systemd 接线 | 失败保持冻结的规则可复用审阅，生产维护实现仍归 R2 |
+| `root_operator_execution_binding.py` | 调用方字节/claimed FD 的纯模型，不编译或执行 | 同 bytes 对象不等于真实解释器已消费这些字节 |
+| `root_python_elf_static_hints.py` | 有界 AST/ELF 静态线索，永久 BLOCKED | 用于发现遗漏的提示；不能证明实际动态闭包 |
+| `root_python_r1b_guest_capture.py` | 三个固定候选文件的 root-held FD 读取与回执 | 给出起始字节/路径基线；不观察完整解释器和进程生命周期 |
+
+**主要缺口是尚无可冻结的正式正常更新执行入口与完整场景集。** 不能先对无关“hello/import 演示”取得跟踪结果，再转称正式执行器认证。现有七包也不覆盖已知静态线索中的全部 libm/libz/libexpat/libc 与可能的运行期加载对象。
+
+### 7.4. 首批源码的明确范围：R1C-1 执行入口与场景冻结
+
+下一源码批先实现正常更新流程的同一受限核心及其可审阅入口材料；首批不接真实维护、AWS 或活跃路径写入。具体文件/API 在源码批开工前根据现有合同审阅确定，当前尚未建立该入口。
+
+需要在该源码批交付：
+
+1. 明确未来 R4 将实际调用的核心入口和源码闭包、执行阶段及能力边界；所有 Host/快照/活跃交接效果使用明确能力接口，缺少能力必须拒绝。不得创建长期并行的“认证用假执行器”和“生产用真执行器”。
+2. 在同一核心上定义来源拒绝、私有准备、交接前拒绝、正常交接、交接后失败和中断保全场景，明确哪些仅合成覆盖、哪些必须后续真实演练。R2/R3 的前置证明未成立时不能越过活跃写入边界。
+3. 冻结待审的完整启动材料：候选 commit、逐文件 SHA/大小、解释器和隔离 flags、完整 argv、env 白名单、cwd、uid/gid、输入归属/权限及子进程清单。准确值由该批最终 CI 后生成，不能复用 S5 计划或猜测 hash。
+4. 保持既有 B1/B3A/B3B1/Guest v1 与 17 Bundle 不变；不修改实验 guard、不给模型布尔值授信、不恢复旧事故事务或在失败 finally 中恢复业务。
+5. 编写能验证阶段顺序、越权拒绝、能力缺失、失败冻结和中断语义的聚焦合成测试。现有 Runtime/release CI 承担验证，不能把 mock 合成成功登记为 S6 真实消费完成。
+
+R1C-1 的有限核心软件测试可以先准备，但 **C1 的真实关闭必须等待最终实际执行器候选及其完整真实路径已存在并验证**。为避免“R1 等 R4 实现、R4 等 R1 通过”的循环，S6 前必须在 R1-C 的后续源码准备中冻结同一候选的完整入口和 effect adapters；这是提前准备待审源码，不是提前执行 R2/R3/R4 的维护、快照或安装。首批纯核心/模拟能力测试本身不能关闭 C1。最终同候选的受控隔离验证方案另交准确审批，R4 实际执行仍按 R0 队列；若届时修改源码、启动环境、依赖或行为场景，必须先重新打开并核验相应 C1 消费证据。不得将早期合成核心的 profile 转移为后续正式接线的认证。
+
+### 7.5. R1C-2 观察器选型与证据合同
+
+选型前先提交覆盖矩阵，不在本 doc-only 批次增加系统工具、第三方包、audit 配置、内核探针或 Guest 权限。观察方案须覆盖下表；不能覆盖的阶段明确 BLOCKED，不能用多份不完整日志拼成已验证全闭包。
+
+| 必须观察的对象/阶段 | 要形成的证据 | 单项不足以证明的材料 |
+| --- | --- | --- |
+| 解释器启动前至退出及全部受控子进程 | 进程身份、父子关系、exec、候选启动材料、事件序号和丢失/截断状态 | Python 启动之后才安装的单一 hook |
+| CPython 真实模块消费 | 模块名、origin/loader、源码/pyc/native 或 frozen/builtin 分类、实际输入字节绑定、环境和场景 | 仅 AST、sys.modules 最终快照或 import 名称 |
+| ELF 与运行期 native 加载 | 实际解释器/loader、DT_NEEDED 搜索结果、RUNPATH 影响、dlopen/dlclose、实际映射/文件身份 | 仅静态 SONAME、一次 maps 快照或成功 open |
+| 被消费的真实文件 | logical/canonical/alias、namespace/mount、device/inode、元数据与稳定字节摘要 | 执行结束后重新按路径打开再 hash |
+| 外部认证来源 | 每个实际文件到准确包/发行链和 source pin 的映射，非包文件单列来源 | 只用本机 dpkg 所属信息或采集器自报 SHA |
+| 未消费路径和拒绝分支 | 已冻结场景集、动态代码/条件分支策略、未知加载的拒绝 | 一次成功路径覆盖全部潜在输入 |
+| 离机保管与审阅 | 原始事件流/命令/退出码、严格预算、摘要、顺序和独立复核来源 | collector 自写报告的再次读取 |
+
+必须纳入 bootstrap 依赖、观察器本身、其所调用工具及 native 扩展；按 R0 有限信任前提闭合，避免依靠观测脚本自证全部依赖。冻结字节仍需运行时污染/替换窗口控制；连续新消费者/写入者排他归 R2，S5 两次 stat 或 root FD 回执不能替代。
+
+原始记录须区分完整、未知与拒绝；发生事件缺失、未绑定文件、摘要漂移、来源缺口、未覆盖动态加载或命令中断，保留原件并拒绝。各阶段新回执可采用独立版本，但原有永久 BLOCKED 回执不得改写成授权凭证。
+
+### 7.6. 依赖补齐与现场执行顺序
+
+| 顺序 | 交付 | 进入下一步的条件 |
+| --- | --- | --- |
+| R1C-1 | 同一正常更新核心、启动材料与完整场景合同，源码/测试 PR | 审阅与准确 head 的 GitHub CI 完成；仍无现场执行权 |
+| R1C-2 | 观察器覆盖/信任/预算/丢失事件设计及最小源码 | 选型成立，必要依赖或权限变更已按范围批准 |
+| 完整执行候选冻结 | 同一正常更新入口、完整 effect adapters 与全部场景源码/测试 | 在 S6 前准备并审阅准确代码，真实操作仍受 R0 的 R2–R4 门禁；不能只用模拟核心关闭 C1 |
+| 来源补齐 | 根据真实发现清单补齐准确 package/index/signature/member 与非包来源 | 原件离机复核通过，缺项维持 BLOCKED |
+| 动态现场执行 | 准确候选/Guest/源码/SHA/argv/env/场景/权限/失败保全包 | 另有具体执行批准；不沿用 S5 的一次授权 |
+| S6 与 C1 裁定 | 同候选实际消费、全部来源映射和独立证据 | 限定前提/缺口显式裁定；不自动放行 R2–R5 或生产 |
+
+来源补齐可随有界发现迭代；执行探索所得的未经认证依赖只能登记为 discovery，不能倒推该次执行已可信。最终受控执行必须使用已冻结且认证的完整清单。S6/C1 最终判定由实际证据决定，不预先创建 true/授权字段或修改旧 receipts。
+
+### 7.7. 本批变更、验证与停点
+
+本批为 **A 类内部文档准备**，归 Runtime/Ops；无实现、公共或持久化合同变更，无新兼容路径。已审阅且无业务 owner、跨上下文导入/依赖边、SCC/cycle、债务计数或 scanner baseline、部署单元、CI/依赖/锁文件、Prisma/migration、17 Bundle、生产/Guest/AWS 配置变化。
+
+同步 R1-B、S1、R0、B2-1C、current-dependency-graph 和 worklog；原件、Mac wrapper、密码、现场 UUID/boot/ns/私有路径不进入 Git。MCP-workspace 未运行 lint/build/test，未在外部环境代跑仓库实现或测试。按现行 change_scope，纯 docs Markdown 不选择应用/Runtime 测试 lane，实际授权后 CI 才是交付证据，不把预期跳过记为测试成功。
+
+本地差异已审阅，用户已明确要求“提交远端”，授权本批 [PR #2886](https://github.com/sanqin888/sanqinMVP/pull/2886) → dev、必要 CI 修复及全绿后合并；最终交付以该 PR 实际 head 的 CI 与合并事件为准。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
+

@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-20 R1-B/S5 最新续记：**PR #2885 最终 head `0533c209` / CI #7405 success，dev merge `8a99c99eb17a3ff27552e3b0f611204691e72984`。操作员在明确批准的一次准确暂存/root 只读取证范围完成 CAPTURE-003；成功归档 SHA256 `7d33106d340df9727276a969f12925852f6ab9ecc5542ff6ab88b9e8a3300ab9`、27 项清单及三个退出码 0/0/0 已离机核对，三个 FD/三条链接匹配既有独立包成员基线。S5 CAPTURE + ORIGINAL-EVIDENCE CONSISTENCY = PASS_SCOPED；两端时钟有偏差，平台/来源/动态消费/安装授权 false 保留。详情见 [R1-B §6](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)；下一步 [R1-C 就绪与实施拆分](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)，尚无正式正常更新执行入口/完整 S6 消费见证。下文 §3/§5/§9 等旧未执行状态保留历史范围。D1–D5 不变，C2 有限 CLOSED，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED，R2–R5/生产/AWS 均未因此放行；不重跑 capture。
+
 **2026-10-20 R1-A 原件复核续记：**已读取六批封存原件（261 files），在独立于采集 Mac/Guest 的环境重验 noble-updates Release 签名、完整索引、七个 deb、三个普通成员及三条链接，准确来源对象技术检查通过；另收到更正日期后的人工文档确认，明确未自行验签/解析，故为 LIMITED，不冒充另一主体的独立技术见证。准确 hash、保管与剩余缺口见 [S1 §9](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。R1-A 整体正式验收仍 OPEN，原回执 BLOCKED、guestRouteAuthenticated=false、R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。文档 PR 合并后先做 B2-1C optional ar slash/zstd 的最小格式适配，再准备 R1-B；本次没有 root/生产执行授权。下面 2026-10-19 及更早续记均保留历史时间范围。
 
 **2026-10-19 R1 取证状态续记（本次仅本地文档待审）：**S1-W1 可信公钥取得限定独立审批，S1-R1 Hosted Runner 的准确 `noble` Release 签名原件和 S1-D1 加密归档/读回已核对；详见 [S1 §8](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。**仅关闭 R1 内部这组有限取证子项，Runtime R1 / C1 总体继续 OPEN**。R1-A/B/C 仍需推进；R2 MAINT-RESTART-01 依然是下一正式总批次、目前未实施。旧 §3/§5 的历史“未执行”记录不追溯修改；本次没有新源码/Guest/root/AWS/生产授权。

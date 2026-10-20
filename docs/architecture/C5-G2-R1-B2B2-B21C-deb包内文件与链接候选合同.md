@@ -78,6 +78,6 @@ B2-1B 只核对调用方提供的 Ubuntu Release→Packages→.deb 整体候选�
 
 Mac 非 root Python 3.14.8 / zstd 1.5.7 对固定合并源码执行外置 replay：七包 ar/data.tar.zst 全部解码并匹配前批独立技术复核的完整 data.tar SHA，四包的三个既有 regular 及三条链接候选匹配；其余三包没有新增成员 pin 审阅。回执 SHA `a8b33d5defcc9408ccc275b15b24006c60fd08781339c8cabfa0a1ce3d0de8bf`。已取得 13,813-byte 原件，五文件 manifest、交付脚本、参考 pins、冻结 Git 源码快照均重算匹配；不在审阅环境代跑仓库测试，也不把该原件复核冒称第二次 Runtime 实际执行。
 
-**结论只关闭本次限定格式回归差异。** receipt 的 BLOCKED/false 保留；Guest root/FD、完整传递依赖和实际动态消费未完成，R1/C1 OPEN、G2 NO-GO。新 R1-B 只读采集器当前仅本地源码/测试准备，无 CI/root 执行；见 [R1-B S4 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。
+**结论只关闭本次限定格式回归差异。** receipt 的 BLOCKED/false 保留。后续 R1-B PR #2885 / final CI #7405 success 已合并 dev `8a99c99e`；操作员经准确批准完成 S5 CAPTURE-003，原件 27 项清单/三个 FD/三条链接及退出码 0/0/0 的三侧一致性复核 PASS_SCOPED，详见 [R1-B §6](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。这项后续证据不改变本 B2-1C 的来源/授权语义；完整传递依赖、正式正常更新执行器实际消费和 C1 仍 OPEN，见 [R1-C 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED，C2 有限 CLOSED。
 
 
