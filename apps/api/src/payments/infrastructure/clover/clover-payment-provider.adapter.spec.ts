@@ -36,6 +36,19 @@ describe('CloverPaymentProviderAdapter', () => {
     };
   };
 
+  const refundRequest = {
+    paymentId: 'refund-payment-internal',
+    attemptId: 'refund-attempt',
+    source: 'POS_TERMINAL' as const,
+    idempotencyKey: 'refund-idempotency',
+    operation: 'REFUND' as const,
+    providerPaymentId: 'terminal-payment-1',
+    amountCents: 2000,
+    currency: 'CAD',
+    expectedTipRefundCents: 0,
+    expectedAdditionalChargeRefundCents: 48,
+  };
+
   it('routes Web Ecommerce through the Ecommerce transport and normalizes success', async () => {
     const { adapter, ecommerce } = createAdapter();
     const createCardPayment = jest
@@ -578,30 +591,295 @@ describe('CloverPaymentProviderAdapter', () => {
     );
   });
 
-  it('keeps an Interac-style device refund unresolved until Platform v3 exposes canonical truth', async () => {
+  it.each([
+    'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+    'CLOVER_PLATFORM_REFUND_STATUS_PENDING',
+  ])('GET-rechecks propagating Refund %s', async (failureCode) => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValueOnce({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          failureCode,
+        })
+        .mockResolvedValueOnce({
+          status: 'SUCCEEDED',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          amountCents: 2000,
+          currency: 'CAD',
+          refundedAmountCents: 2000,
+          tipCents: 0,
+          chargedTotalCents: 2048,
+          resultCode: 'CLOVER_REFUND_CONFIRMED',
+        });
+      const pending = adapter.refundPayment(refundRequest);
+      await jest.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        providerRefundId: 'terminal-refund-1',
+        resultCode: 'CLOVER_REFUND_CONFIRMED',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          operation: 'REFUND',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          idempotencyKey: refundRequest.idempotencyKey,
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('discovers a Refund relation without a Terminal Refund ID', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValueOnce({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        })
+        .mockResolvedValueOnce({
+          status: 'SUCCEEDED',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'discovered-refund-1',
+          refundedAmountCents: 2000,
+          tipCents: 0,
+          chargedTotalCents: 2048,
+          resultCode: 'CLOVER_REFUND_CONFIRMED',
+        });
+      const pending = adapter.refundPayment(refundRequest);
+      await jest.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        providerRefundId: 'discovered-refund-1',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenLastCalledWith(
+        expect.objectContaining({ providerRefundId: undefined }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not recheck after uncertain Terminal Refund ACK', async () => {
     const { adapter, terminal, platform } = createAdapter();
-    jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+    const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      providerPaymentId: 'terminal-payment-1',
+      failureCode: 'CLOVER_REFUND_REQUEST_UNCERTAIN',
+    });
+    const read = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+    await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject({
+      status: 'UNKNOWN',
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unresolved Refund UNKNOWN and recovers its original ID later', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+        });
+      const pending = adapter.refundPayment(refundRequest);
+      await jest.advanceTimersByTimeAsync(1500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        providerRefundId: 'terminal-refund-1',
+        failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+      });
+      expect(read).toHaveBeenCalledTimes(3);
+      read.mockResolvedValueOnce({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        resultCode: 'CLOVER_REFUND_CONFIRMED',
+      });
+      await expect(
+        adapter.getPaymentStatus(refundRequest),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        providerRefundId: 'terminal-refund-1',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    'CLOVER_PLATFORM_REFUND_AMOUNT_MISMATCH',
+    'CLOVER_PLATFORM_REFUND_PAYMENT_ID_MISMATCH',
+    'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+    'CLOVER_PLATFORM_REFUND_QUERY_UNCERTAIN',
+  ])('does not recheck unsafe Refund %s', async (failureCode) => {
+    const { adapter, terminal, platform } = createAdapter();
+    const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
       status: 'SUCCEEDED',
       evidence: 'EXECUTION',
-      providerPaymentId: 'interac-payment-1',
-      providerRefundId: 'interac-refund-1',
-      terminalId: 'device-1',
+      providerPaymentId: 'terminal-payment-1',
+      providerRefundId: 'terminal-refund-1',
     });
-    jest.spyOn(platform, 'getCanonicalReversal').mockResolvedValue({
+    const read = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        providerRefundId: 'terminal-refund-1',
+        failureCode,
+      });
+    await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject({
       status: 'UNKNOWN',
-      evidence: 'CANONICAL',
-      paymentId: 'interac-refund-internal',
-      attemptId: 'interac-refund-attempt',
-      idempotencyKey: 'interac-refund-idempotency',
-      providerPaymentId: 'interac-payment-1',
-      amountCents: 2000,
-      currency: 'CAD',
-      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
-      failureMessage: 'refund is not visible yet',
+      failureCode,
     });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
 
-    await expect(
-      adapter.refundPayment({
+  it.each([
+    ['different-payment', 'terminal-refund-1'],
+    ['terminal-payment-1', 'other-refund'],
+  ])(
+    'does not recheck mismatched Refund identity: %s / %s',
+    async (terminalPaymentId, canonicalRefundId) => {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: terminalPaymentId,
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerRefundId: canonicalRefundId,
+          failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+        });
+      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject(
+        {
+          status: 'UNKNOWN',
+        },
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not launch a GET beyond the elapsed-time cutoff', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockImplementation(() => {
+          jest.setSystemTime(Date.now() + 13_000);
+          return {
+            status: 'UNKNOWN',
+            evidence: 'CANONICAL',
+            providerRefundId: 'terminal-refund-1',
+            failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+          };
+        });
+      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject(
+        {
+          status: 'UNKNOWN',
+        },
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps Interac Refund unresolved after bounded GETs', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'interac-payment-1',
+        providerRefundId: 'interac-refund-1',
+        terminalId: 'device-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          paymentId: 'interac-refund-internal',
+          attemptId: 'interac-refund-attempt',
+          idempotencyKey: 'interac-refund-idempotency',
+          providerPaymentId: 'interac-payment-1',
+          amountCents: 2000,
+          currency: 'CAD',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+          failureMessage: 'refund is not visible yet',
+        });
+      const pending = adapter.refundPayment({
         paymentId: 'interac-refund-internal',
         attemptId: 'interac-refund-attempt',
         source: 'POS_TERMINAL',
@@ -612,15 +890,21 @@ describe('CloverPaymentProviderAdapter', () => {
         currency: 'CAD',
         expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 0,
-      }),
-    ).resolves.toMatchObject({
-      status: 'UNKNOWN',
-      evidence: 'CANONICAL',
-      providerPaymentId: 'interac-payment-1',
-      providerRefundId: 'interac-refund-1',
-      terminalId: 'device-1',
-      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
-    });
+      });
+      await jest.advanceTimersByTimeAsync(1500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        providerPaymentId: 'interac-payment-1',
+        providerRefundId: 'interac-refund-1',
+        terminalId: 'device-1',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(3);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('uses Platform v3 reversal truth instead of REST Pay for refund reconciliation', async () => {
@@ -2762,6 +3046,31 @@ describe('Clover Platform Payments Gateway', () => {
     expect(url).toContain('expand=');
   });
 
+  it('keeps a just-acknowledged Refund ID UNKNOWN when Platform returns 404', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 }),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      providerRefundId: 'clover-refund-1',
+      failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchRequestUrl(fetchSpy.mock.calls[0][0])).toContain(
+      '/refunds/clover-refund-1',
+    );
+  });
+
   it('confirms a zero-tip full refund when Clover omits tipAmount and additionalCharges', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -2827,7 +3136,7 @@ describe('Clover Platform Payments Gateway', () => {
   it.each([
     [
       { status: 'PENDING', voided: false },
-      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+      'CLOVER_PLATFORM_REFUND_STATUS_PENDING',
     ],
     [
       { status: 'FAILED', voided: false },

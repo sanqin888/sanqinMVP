@@ -4,6 +4,10 @@ Start date: 2026-09-07
 Current implementation base: `origin/dev@fcc0b7c1`  
 Current status: **MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE; TERMINAL DEVICE ACCEPTANCE + WEB CUTOVER DEFERRED**
 
+## Post-closeout Phase E Refund 即时 Canonical 确认加固（2026-10-20；LOCAL / CI PENDING）
+
+在现有 Payments/Clover infrastructure 内对 POS Terminal Refund 增加**已知 Refund ID 优先**的有界 GET-only 重查：Terminal 正向资金 ACK 后仅 404、明确 PENDING、原 Payment 未出现 Refund 关联这三类可等待 Canonical UNKNOWN 进入最多两个短间隔 500/1000ms 的补读；严格原 Payment/Refund ID、金额/币种/Tip/附加费事实和单次 POST。明确 FAILED、未知状态、异常/冲突/身份不符立即保持未决不重读；与已有 VOID 有界 read-back 是分离逻辑，不调整 Ecommerce 生产路径。平台 PENDING 新增区分性诊断 failureCode，不修改公共字段形状。考虑 25 秒 BFF 上游超时，在 Terminal 开始时计时并设置 12 秒新 GET 启动截止；该门禁不覆盖单次 Platform 请求 10 秒上限或 OAuth 时间，因此仍可能 HTTP 超时，必须保留 UNKNOWN 和同一 Attempt 手动恢复。聚焦 Jest 已编写未执行，未授权远端、Sandbox 新 Refund 或生产变更。**C 类受控外部关键路径修复；无新的资金写命令、owner/跨上下文导入/依赖图债务、schema/Prisma/migration、HTTP 路由、订单/权益/会计归属、CI/锁文件/生产切流变更。** 完整 Phase E 仍 OPEN；详见 [Phase E 验收计划](../payments/clover-pos-phase-plan.md)。
+
 ## Post-closeout Phase E VOID Readiness 修复（2026-10-20；SOURCE CI VERIFIED / DEVICE PENDING）
 
 从 `origin/dev@ac5fcfef` 建立 `fix/clover-phase-e-void-readiness-20261020`，经用户明确代码授权修复 VOID 前资金未知分类、发送前事实校验、单进程设备队列与显式空闲后 Welcome。Platform v3 仍是最终资金事实：真 VOID 与转换 Refund 各自核验，已知 Refund ID 的 VOID 仍校验原 Payment 关系，矛盾事实保持 UNKNOWN。Payments-owned 原 Sale preflight 改为验证而非写回零退款观察，避免降级并发已记录累计事实。

@@ -534,10 +534,17 @@ const mapPlatformRefund = (
         refundStatus.toUpperCase(),
       ))
   ) {
+    // Only an explicitly recognized in-flight status is eligible for
+    // read-only finality rechecks. FAILED and unknown statuses stay separate.
+    const pending = refundStatus?.toUpperCase() === 'PENDING';
     return reversalUnknown(
       request,
-      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
-      'Clover Platform refund does not report a recognized completed status',
+      pending
+        ? 'CLOVER_PLATFORM_REFUND_STATUS_PENDING'
+        : 'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+      pending
+        ? 'Clover Platform refund is still pending canonical finality'
+        : 'Clover Platform refund does not report a recognized completed status',
       providerRefundId,
     );
   }
