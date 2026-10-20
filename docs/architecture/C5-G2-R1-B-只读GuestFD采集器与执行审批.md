@@ -430,5 +430,35 @@ R1C-2B 首先只写 **无执行、无 filesystem/Guest/root/网络、仅 caller-
 
 **冻结的是设计契约，不是 S6 实测认证。** 本批最高状态为 `R1C-2A CONTRACT AUTHORED / REVIEW PENDING`；R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 LIMITED CLOSED。
 
+## 10. R1C-2B — 离线动态消费证据解析器与独立审核器
+
+**2026-10-20（America/Toronto）／LOCAL SOURCE+TESTS AUTHORED / NO TESTS EXECUTED / NO REMOTE AUTHORIZATION。** 从最新 `origin/dev@5a026e68` 创建 `feat/runtime-r1c2b-offline-consumption-review-20261020`。此前 R1C-2A 已通过 [PR #2889](https://github.com/sanqin888/sanqinMVP/pull/2889) / [CI #7419](https://github.com/sanqin888/sanqinMVP/actions/runs/39482206485) success、合并 `dev@f8dc9808`。本批落实 §9 冻结的 v1 契约，不改变合同名称、字段列表、结果授权或已有 B1/B3A/B3B1/Guest v1 语义。
+
+### 10.1 源码责任与数据流
+
+- `ops/runtime/r1c2_consumption_offline_review.py`：Runtime/Ops 独立纯内存 reviewer。输入为调用方提供的规范 JSON `bytes`、原件 `bytes` 字典、独立渠道提供的 envelope SHA、candidate/scope/session/source pins 和逐件原件 SHA。无 path opens、网络、subprocess、Guest/root、VM、安装、运行、动态 import 或 provenance 提权；只消费传入 bytes。与旧 `root_python_dependency_offline_review.py` 和 S5 collector 不互相导入或更改历史 receipts。
+- `ops/runtime/tests/test_r1c2_consumption_offline_review.py`：合成 v1 完整实例和多组恶意/不完整证据负例，仅 Python 标准库、`unittest`，由既有 `.github/workflows/ci.yml` Runtime unittest discovery 选中；该测试没有任何现场取证权限。
+- 结果另列 `sanq.runtime.r1c2-offline-review.v1` **非授权离线审阅器输出**：`reviewStatus=CANDIDATE_REVIEWED/REJECTED`、具体 reasonCodes，始终 `decision=BLOCKED`，`actualConsumptionAuthenticated/sourceProvenanceAuthenticated/eventCoverageIndependentlyVerified/readyToInstall/authorizedToMutateProduction=false`。此处不为任何旧或新回执创造 PASS 字段。外部 pins 只是另一参数渠道传入的待比对值，程序**无法证明该渠道真正独立、可信或未被串改**。
+
+### 10.2 严格校验与有界预算
+
+先拒绝非规范 JSON、未知/重复字段、重复 JSON 键、非 UTF-8/NaN/Infinity/floats、混用 bool/int、原件 SHA/长度不一致、非法 ID、无法关联的事件与进程引用。严格校验全部 v1 子对象字段；排序事件 seq 从 1 连续、同一 monotonic 时钟域有序、observer start/end、全部被审核候选进程 exec/exit、父子关系与 process-generation/PID 区间、受控 fork/clone、原件 byte-range 与 process/file event-time 区间。
+
+`fileBindings[].fdIdentity` 用作 v1 `object.fileBindingRef` 的**有界关联键**，不将其名称推断为实际内核 FD 所有权。具体 `rawReference` 使用 `artifactId/startByte/endByte` 绑定传入原件，起止区间 `[startByte,endByte)`。每份文件 SHA 与提供的来源原件及独立比对值对照，但一致性**不证明执行时不可替换**。完整覆盖清单 COV-01..10 必须在事件声明并与 scope/completeness 精确一致；任何未知进程、动态代码/ELF 文件关联、缺原件、丢事件/超限、中断、来源缺口均保留 BLOCKED 并给出原因码。审核器只能处理已归一化事实，不会尝试自行推导系统调用的真实 native/Python 语义。
+
+沿用 §9.5.3 冻结预算：envelope ≤32 MiB、event ≤32768 且单条 ≤16 KiB、process ≤64、file ≤512、raw artifact ≤64；离线 bytes 输入额外采取**实现内部的防滥用上限**：单件 raw artifact ≤32 MiB、全部原件总和 ≤64 MiB。不改变 §9 v1 基础合同，也不以此批准现场采集规模；超过预算一律拒绝，不截断。
+
+### 10.3 有意保持未认证与后续门禁
+
+- `CANDIDATE_REVIEWED` 仅证明**在用户提供的输入与独立声称的比对值范围内结构一致**；不会因成功读 FD、看到 mmap、生成 SHA、日志 rc=0、claim `INDEPENDENTLY_AUTHENTICATED` 而授予 C1 PASS。
+- 不发明真实 Guest/loader/文件路径、Session/boot UUID、签名、发行链或 S5 候选验证结果；所有测试均使用 `synthetic-*` 身份与纯数据 bytes。
+- 真正覆盖 `-I -S -B`、.pyc/zip、ELF DT_NEEDED/RUNPATH、native dlopen、实际读/映射与字节保护、来源认证需要 R1C-2C/2D 和独立 S6 实测批准。实际记录若存在无法表达的字段，必须**另提交 v1 合同修订评审**，不得在 parser 私下加入信任。
+- 现有 17 Bundle、R1C-1 正常更新核心、B3A/B3B1/S5 receipt、CI workflow、Prisma/migration、依赖锁、运行时/部署拓扑、业务所有权和跨上下文依赖图均不修改。分类 A 类内部新能力，不新增兼容路径、SCC/cycle/scanner baseline 或公共/持久化接口。
+
+### 10.4 验证及停点
+
+MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/差异审阅，**不得声称新测试已经通过**；须等待首次远端提交授权后的 GitHub Actions Runtime CI 结果。新增源码与测试必须随本批 PR 一起交付；不能只提交文档。若 MCP-workspace 的 `git add` 无法暂存新文件，须经用户远端交付授权后通过同一功能分支补齐完整文件，并在创建 PR 前核对全部五个文件确已在远端。没有 Guest/root/AWS/生产访问或执行。R1/C1 OPEN、C5-G2 NO-GO、S2 daily PAUSED、C2 LIMITED CLOSED。首次远端 PR 提交与后续阶段须分别按 AGENTS 批准。
+
+
 
 
