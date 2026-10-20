@@ -46,7 +46,7 @@ B2-1B 只核对调用方提供的 Ubuntu Release→Packages→.deb 整体候选�
 
 ## 4. 2026-10-20 — 真实 Ubuntu 格式适配源码准备
 
-**SOURCE/TESTS AUTHORED / REMOTE DELIVERY AUTHORIZED / CI PENDING。** 首版已完成本地静态审阅；用户于 2026-10-20 明确要求“提交远端”，本批按最终 head 的 GitHub Actions 门禁交付 dev。 前置文档 PR [#2882](https://github.com/sanqin888/sanqinMVP/pull/2882) 最终 head `e45065e910cf70e04006777960dd28031bf0d105` 经 [CI #7398](https://github.com/sanqin888/sanqinMVP/actions/runs/39440447717) success 后 squash merge `5223c08fc2dc9d3e4316f5af1bb6567e9e8b5f15`。该 doc-only CI 只选中 ci-change-scope，其余按范围 skipped，不是本次源码测试结果。来源实包的有界重算与人工文档 LIMITED 见 [S1 §9](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。
+**SOURCE IMPLEMENTED / SOURCE CI VERIFIED。** [PR #2883](https://github.com/sanqin888/sanqinMVP/pull/2883) 源码 head `6e8afe043d262a45b8da5c5853d7efe9b59082ed` 的 [CI #7400](https://github.com/sanqin888/sanqinMVP/actions/runs/39442496016) success；Runtime 436 tests、paired-image release 45 tests 均 OK，Runtime 日志显示 `/usr/lib/python3.14/`，3.14+ 正向 zstd 路径未跳过。本文为合并前证据收口，最终文档 head 仍须通过 CI，合并事件以 PR 为准。 首版已完成本地静态审阅；用户于 2026-10-20 明确要求“提交远端”，本批按最终 head 的 GitHub Actions 门禁交付 dev。 前置文档 PR [#2882](https://github.com/sanqin888/sanqinMVP/pull/2882) 最终 head `e45065e910cf70e04006777960dd28031bf0d105` 经 [CI #7398](https://github.com/sanqin888/sanqinMVP/actions/runs/39440447717) success 后 squash merge `5223c08fc2dc9d3e4316f5af1bb6567e9e8b5f15`。该 doc-only CI 只选中 ci-change-scope，其余按范围 skipped，不是本次源码测试结果。来源实包的有界重算与人工文档 LIMITED 见 [S1 §9](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。
 
 ### 4.1 已观察差异与实现方式
 
@@ -66,9 +66,9 @@ B2-1B 只核对调用方提供的 Ubuntu Release→Packages→.deb 整体候选�
 
 分类 **A 类内部能力扩展**：同 owner、同函数入口及 v1 receipt schema；B2-1D 只导入既有 SCHEMA，调用方无需修改；没有并行旧/新 owner、过渡 facade 或双读迁移，因此没有新增过渡兼容登记。源模块、聚焦测试、本合同、current-dependency-graph 和同批 worklog 同步；应用 owner/import/依赖图/SCC/scanner、CI、依赖清单/锁文件、Prisma/migration、Bundle、备份与生产行为不变。
 
-**本地未执行 lint/build/test，也未在其他环境偷跑仓库测试。** 下批远端交付仍以本源码最终 head 的 GitHub Actions 为准；现有 ci.yml 的 ubuntu-26.04 / ops-checks 运行 Runtime 全套离线测试，届时核对真实结果。官方 runner 镜像清单列有 Python 3.14，但清单不能替代该 PR 实际 CI 证据。当前未在新实现中重跑私有七包，不把前批 dpkg-deb/外置读取结果冒称此代码验收。
+**本地未执行 lint/build/test，也未在其他环境偷跑仓库测试。** CI #7400 已按 ci.yml 的 ubuntu-26.04 / ops-checks 实际完成 Runtime 全套离线测试，所选作业与聚合门禁成功；API/Web/E2E 等无关检查按范围 skipped，不声称这些业务测试执行。合并前继续核对 PR 最终 head 的全部必需 GitHub Actions。当前未在新实现中重跑私有七包，不把前批 dpkg-deb/外置读取结果冒称此代码验收。
 
-本地静态审阅及源码批报告已完成，用户已授权本批 push/PR 与 CI 全绿后的 dev 合并；本条不预先声称 CI 或合并完成。需要真实原件回归、R1-B root/FD 或生产执行时，保留各自准确目标/版本/权限/命令门禁。
+本地静态审阅及源码批报告已完成，用户已授权本批 push/PR 与 CI 全绿后的 dev 合并；本条不预先声称最终文档 head 的 CI 或合并完成。需要真实原件回归、R1-B root/FD 或生产执行时，保留各自准确目标/版本/权限/命令门禁。
 
 参考：[Python compression.zstd](https://docs.python.org/3.14/library/compression.zstd.html)、[RFC 8878](https://www.rfc-editor.org/rfc/rfc8878.html)、[Debian deb(5)](https://manpages.debian.org/unstable/dpkg-dev/deb.5.en.html)、[GitHub Ubuntu 26.04 镜像清单](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md)。
 
