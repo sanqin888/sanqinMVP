@@ -4,11 +4,28 @@
 **日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
-### 2026-10-20 — Phase E Compact Refund Canonical 零小费与设备 Welcome 收口（LOCAL SOURCE / REVIEW PENDING）
+### 2026-10-20 — Phase E Compact Discover Credit Refund 有界验收（SANDBOX VERIFIED / SCOPED CLOSED；FULL PHASE E OPEN）
 
-- **事故证据（操作员 MacBook Test Merchant，非生产）**：SanQ Order `ca7b752120375ddd92af0cb55` 原 Sale `WKQYSCVH8TSJW`，2026-10-20 08:52 EDT 从 POS 发起一笔 CAD $5.65 完整退款。REST Pay Display `/connect/v1/payments/{paymentId}/refunds` 返回 HTTP 200，Platform v3 `/refunds/WD51H52NKNDBM` 返回 HTTP 200；Clover Test Merchant Dashboard 已显示对应 Refund ID、CAD $5.65、Tip $0.00 和原 Payment 关联。MacBook 本地退款 Payment `UNKNOWN`，`failureCode=CLOVER_PLATFORM_REFUND_TIP_MISMATCH`，原 Sale `refundedAmountCents=0`、Order 仍 `completed`。平台退款数据 keys 未包含 `tipAmount`；Compact 屏幕持续转圈，但只读 `/pos/payments/card/availability` 显示明确 `providerState=IDLE`、`providerStateExplicit=true`。Clover 有 Refund 记录不等于 SanQ 已完成 Canonical finality；设备重启由操作员自行处理，完成状态未从回执证实。
-- **受控修复（独立分支 `fix/clover-compact-refund-canonical-welcome-20261020`，仅 MCP 本地源码，未执行/未合并）**：仅在被冻结的原 Sale `expectedTipRefundCents=0` 且退款资源确实**省略** `tipAmount` 时将退款 tip 视作零；明确的非零/非法数值仍严格校验，保留 Refund ID、原 Payment ID、退款基本金额、货币、附加费/客户总额的既有 Canonical 验证；对退款资源中明确 `voided` 或未识别的非成功 `status` 继续 UNKNOWN。收到 Terminal 正向 Refund ACK 且具有 Refund ID 后，经过同进程设备操作序列化，额外只读检查 Compact **明确空闲**，才可尽力发送一次纯显示 `/device/welcome`；设备忙、无状态、请求失败则跳过，且 Welcome 失败绝不改变资金状态或额外发起退款。保留原 `UNKNOWN -> RECONCILING` 同 Attempt 查询恢复；绝不强制改 DB 或重发 REFUND。
-- **验证/发布门禁**：聚焦模拟回归涵盖零小费缺失、非零小费缺失、未完成/已撤销状态、设备 IDLE/无状态/BUSY、Welcome 失败及无新增退款。MCP-workspace 不具备 lint/build/test 权限，未运行；等待用户审阅、授权远端 PR、GitHub CI 全绿后再由用户在隔离 MacBook 更新部署和受控读取已有 Refund Attempt，严格确认只对原 Refund ID `WD51H52NKNDBM` 做 GET 对账，不重试 Clover 退款 POST。当前 **PHASE E REFUND ACCEPTANCE BLOCKED / MACBOOK RECOVERY PENDING / PRODUCTION DEFERRED**。无 Prisma/schema/migration、锁文件、公共合同/导入边界、生产 Web Ecommerce、AWS VM 代码或数据更改；当前 Runtime 分支不受影响。
+- **初始事故证据（当时的操作员 MacBook Test Merchant，非生产）**：SanQ Order `ca7b752120375ddd92af0cb55` 原 Sale `WKQYSCVH8TSJW`，2026-10-20 08:52 EDT 从 POS 发起一笔 CAD $5.65 完整退款。REST Pay Display `/connect/v1/payments/{paymentId}/refunds` 返回 HTTP 200，Platform v3 `/refunds/WD51H52NKNDBM` 返回 HTTP 200；Clover Test Merchant Dashboard 已显示对应 Refund ID、CAD $5.65、Tip $0.00 和原 Payment 关联。MacBook 本地退款 Payment `UNKNOWN`，`failureCode=CLOVER_PLATFORM_REFUND_TIP_MISMATCH`，原 Sale `refundedAmountCents=0`、Order 仍 `completed`。平台退款数据 keys 未包含 `tipAmount`；Compact 屏幕持续转圈，但只读 `/pos/payments/card/availability` 显示明确 `providerState=IDLE`、`providerStateExplicit=true`。Clover 有 Refund 记录不等于 SanQ 已完成 Canonical finality；设备重启由操作员自行处理，完成状态未从回执证实。
+- **受控修复（提交前的历史状态：独立分支 `fix/clover-compact-refund-canonical-welcome-20261020`；后续已合并，见下方）**：仅在被冻结的原 Sale `expectedTipRefundCents=0` 且退款资源确实**省略** `tipAmount` 时将退款 tip 视作零；明确的非零/非法数值仍严格校验，保留 Refund ID、原 Payment ID、退款基本金额、货币、附加费/客户总额的既有 Canonical 验证；对退款资源中明确 `voided` 或未识别的非成功 `status` 继续 UNKNOWN。收到 Terminal 正向 Refund ACK 且具有 Refund ID 后，经过同进程设备操作序列化，额外只读检查 Compact **明确空闲**，才可尽力发送一次纯显示 `/device/welcome`；设备忙、无状态、请求失败则跳过，且 Welcome 失败绝不改变资金状态或额外发起退款。保留原 `UNKNOWN -> RECONCILING` 同 Attempt 查询恢复；绝不强制改 DB 或重发 REFUND。
+- **修复提交前的验证/发布门禁（历史）**：聚焦模拟回归涵盖零小费缺失、非零小费缺失、未完成/已撤销状态、设备 IDLE/无状态/BUSY、Welcome 失败及无新增退款。MCP-workspace 不具备 lint/build/test 权限，未运行；等待用户审阅、授权远端 PR、GitHub CI 全绿后再由用户在隔离 MacBook 更新部署和受控读取已有 Refund Attempt，严格确认只对原 Refund ID `WD51H52NKNDBM` 做 GET 对账，不重试 Clover 退款 POST。当时状态为 **PHASE E REFUND ACCEPTANCE BLOCKED / MACBOOK RECOVERY PENDING / PRODUCTION DEFERRED**；后续 MacBook 已验收，详见本节下方续记。无 Prisma/schema/migration、锁文件、公共合同/导入边界、生产 Web Ecommerce、AWS VM 代码或数据更改；当前 Runtime 分支不受影响。
+
+#### 2026-10-20 10:21 America/Toronto — PR #2880 自动 Welcome 修复：第二笔独立 Sandbox Refund 实机验证（DEVICE VERIFIED）
+
+- **独立新交易，不重退第一笔**：MacBook Test Merchant 的新 Order `c2c34d11c67982d59b1c0201f`，原 Clover Payment `HY8KKDPK82HQT`，新 Clover Refund `76C5ZPZBS0DZT`；与已经 `PASS 7/7` 的首笔 CAD $5.65 Refund `WD51H52NKNDBM` 完全区分。操作者报告本次也退款成功，且 Compact 在转圈后**自动回到 Welcome 待机**，未人工操作 Welcome、无需再次重启。
+- **日志链路（同一 `reqId=mvgru9ge-2ht0ap`）**：10:21:23 Platform `GET /v3/merchants/CS9XWTR0QST51/payments/HY8KKDPK82HQT` HTTP 200；10:21:30 Terminal `POST /connect/v1/payments/HY8KKDPK82HQT/refunds` HTTP 200；随后设备 `GET /connect/v1/device/status` HTTP 200（返回 keys 为 `status`，日志未记录实际值）；再由服务端自动 `POST /connect/v1/device/welcome` **HTTP 200**；同秒 Platform `GET /v3/merchants/CS9XWTR0QST51/refunds/76C5ZPZBS0DZT` HTTP 200；SanQ POS `POST /api/v1/pos/payments/card/orders/c2c34d11c67982d59b1c0201f/full-refund` HTTP **201**（7824 ms）。这一串响应和操作者目视回到 Welcome 相互印证：**PR #2880 新增的自动 Welcome 真机显示收口 = `SANDBOX DEVICE VERIFIED / SCOPED CLOSED`**。
+- **资金证据范围**：操作者报告第二笔退款成功，Terminal/Platform 均有相应 ID 的 HTTP 200、SanQ HTTP 201；但此份 Nest 日志**只提供返回字段 keys，没有附第二笔 SanQ 响应 `status`/Order `refunded` 及独立 Prisma `PASS 7/7`**。故不虚报第二笔新的独立持久化/供应商最终状态核对已完成；第一笔 CAD $5.65 的 Canonical/数据库 7/7 验收结论保持有效，自动 Welcome 的设备收口已独立通过。
+- **非资金遗留**：10:21:31 同订单 `CANCELLATION` 厨房打印任务 `a49a0fbb-87c1-4696-ae52-a9d4eccf7c5b` 已创建，但 `pos_print_dispatch_deferred` / `CLIENT_OFFLINE`，kitchen `PENDING`、customer/label `SKIPPED`。这是离线打印投递待处理，**不是**退款失败或自动 Welcome 失败；不得当作已打印成功。后续按 POS/打印既有重投递流程单独处理，不为此增加金融操作。
+- **更新裁定**：`Discover Credit Full Refund（第一笔资金/订单恢复）` 和 `Refund automatic Welcome（第二笔实机）` 均已在本地隔离 Sandbox **有界关闭**；`FULL PHASE E = OPEN`，VOID、Interac Debit/card/PIN、异常/权益 exactly-once、生产切流门禁仍需独立验证。不再为 Welcome 重复创建信用卡交易或退款。
+
+#### 2026-10-20 — 同一笔 Credit Full Refund 的后续真实验收证据（有界关闭）
+
+- **代码/CI 证据**：修复 [PR #2880](https://github.com/sanqin888/sanqinMVP/pull/2880) final head `0f9ac9309b9df22f34525363c980ce45fd36c650`，[GitHub CI #7394](https://github.com/sanqin888/sanqinMVP/actions/runs/39429762079) `SUCCESS`（API static/tests/build 与 Browser E2E 包含于成功作业）；2026-10-20 squash merge 到 `dev@af2238d46dc37aac8d452baaba08bcd0f68fea40`。操作者在 MacBook `~/sanqinmvp` 拉取新代码、重启 API，`git merge-base --is-ancestor af2238d46dc37aac8d452baaba08bcd0f68fea40 HEAD` 返回 `SOURCE VERSION: PASS`。该检查证明当前 checkout 包含修复提交，但**未提供运行中 API 进程的独立构建 SHA**。
+- **原退款身份与恢复门禁**：订单 `ca7b752120375ddd92af0cb55`，原 Clover Sale `WKQYSCVH8TSJW`，原内部 Sale `40308ed8-614b-48e4-b12c-421991e29a2b`；同一 Refund Attempt `refund_7158a8701059f583f2f293ed9f3ae4dcb4df5598bf8206fc`，内部 Refund Transaction `cf9063e8-20be-4c8f-a912-e70fe8ca7567`，Provider Refund ID **`WD51H52NKNDBM`**；币种 CAD，退款 565 cents。受控恢复前只读 Prisma 回执 `UNKNOWN` / `REFUND` / 原 Sale `refundedAmountCents=0` / Order `completed`，精确 ID、金额和门店 Sandbox 门禁一致，`READY FOR CONTROLLED RECOVERY REVIEW`。用户随后单独授权仅针对原退款进行**一次** SanQ 恢复 POST。
+- **受控恢复实际结果**：操作者在 MacBook localhost POS 登录会话执行一次 `POST /api/v1/pos/payments/card/orders/ca7b752120375ddd92af0cb55/full-refund`，返回 HTTP `201`、Envelope `OK`、`operation=REFUND`、`status=SUCCEEDED`、`failureCode=null`、`refundedCustomerTotalCents=565`、Order `refunded`。现有 Refund Attempt 为 `UNKNOWN` 时，代码按 `UNKNOWN -> RECONCILING -> getPaymentStatus -> Platform canonical read` 恢复；`refundPayment` 仅在新的 `CREATED` Attempt 执行路径调用，本次不创建新 Attempt。操作者回执显示 `POST SENT ONCE — DO NOT REPEAT`；本批**没有再次发起独立 Clover Refund**。
+- **持久化核对**：随后在相同隔离 MacBook DB 运行独立只读 Prisma 审计，回执 **`PASS 7/7`**：Refund `SUCCEEDED`；Refund 的原 Provider Payment/Refund 身份一致；退款累计 565 cents；原 Sale `refundedAmountCents=565` 且 `providerRefundId=WD51H52NKNDBM`；Order `refunded`；SanQ 针对原 Payment ID **恰有一个 REFUND Attempt**。此前操作者提供 Clover Test Merchant Dashboard 截图显示同一 Refund ID、CAD $5.65、Tip CAD $0、原 Payment 关联；**未提供独立的 Clover Refund 列表最终数量回执、真实银行卡结算证据**。不将 SanQ 本地一条 Attempt 等同于对供应商全部退款记录的数量审计。
+- **Compact UI**：操作员在发现转圈后先只读核实 `providerState=IDLE`、`providerStateExplicit=true`，之后报告 Compact 已恢复 Welcome 待机。**这属于第一笔退款的历史恢复，并非新代码自动 Welcome 的验证**；随后 10:21 第二笔独立退款已实际验证自动 Welcome，详见上方独立记录。
+- **范围裁定**：仅将 **`Phase E / Discover Credit CAD $5.65 Full Refund / SANDBOX VERIFIED / SCOPED CLOSED`** 登记为完成；**`FULL PHASE E = OPEN`**，未达到 `PRODUCTION VERIFIED / CLOSED`。Phase E 原计划的 VOID、Interac Debit card/PIN refund、timeout/network interruption、明确失败、restart、真正 duplicate action、loyalty/balance 等资金/权益 exactly-once 等真实矩阵仍需各自证据；**自动 Welcome 已由第二笔独立退款获得真机验证**。不重复退款当前已成功的 Refund ID；新增测试必须使用独立、经批准的测试交易和额外授权。无生产 Clover、AWS VM、生产 Web Ecommerce 路由切换或部署，legacy refund 继续保留。
 
 ## 0. 总体原则
 
@@ -926,6 +943,21 @@ POS request refund
 ## 测试要求
 
 full refund、void、failure、timeout、reconciliation、duplicate refund、restart、Interac、loyalty once only、Order refunded once only。
+
+## 2026-10-20 Phase E 验收矩阵状态（分场景，不跨项升级）
+
+| 场景 / 门禁 | 现有证据 | 裁定 |
+| --- | --- | --- |
+| Discover Credit CAD $5.65 full refund + 原退款 `UNKNOWN` Canonical 恢复 + Order 最终收口 | PR #2880 / CI #7394 SUCCESS；MacBook 单次恢复 HTTP 201 `SUCCEEDED`；隔离 DB 7/7；Clover Test Merchant 原 Refund ID 存在 | **SANDBOX VERIFIED / SCOPED CLOSED**；**无需再次退款** |
+| 原退款重复执行抑制 | SanQ 原 Payment 仅一个 Refund Attempt；本次恢复仅提交一次；回归测试覆盖 `UNKNOWN` read-back 无新的 Provider Refund 调用 | **本次证据 PASS**；并发/真实多次点击压力尚未主动实测 |
+| Compact 自动返回 Welcome（PR #2880） | 第二笔独立 Sandbox Order `c2c34d11c67982d59b1c0201f`：Terminal Refund HTTP 200 → GET device/status HTTP 200 → 服务端 POST `/device/welcome` HTTP 200 → 操作员目视 Compact 自动回到待机；另有 Platform Refund ID `76C5ZPZBS0DZT` | **SANDBOX DEVICE VERIFIED / SCOPED CLOSED**，不再需要第三笔退款来证明自动 Welcome |
+| VOID（含原 Sale 25 分钟内） | 本次 Refund 为 `REFUND`，非 `VOID` | **PENDING** |
+| Interac Debit Refund + 原卡/PIN | 本次信用卡 Refund 不能替代 | **PENDING** |
+| Provider 失败 / 超时 / 断网 / API restart / recovery / exactly-once | 有代码及 CI 聚焦模拟，缺本场景的完整真机断网/重启等主动核验 | **REAL-DEVICE PENDING** |
+| Loyalty / Balance 回滚、Amendment、重复 Order refund 防护 | 当前 7/7 核实了 Order/refund facts，未独立审计权益账本/Amendment | **PENDING** |
+| 生产切流、真实商户结算与 Web Ecommerce | 当前仅本地隔离 MacBook Sandbox | **NOT AUTHORIZED / NOT VERIFIED** |
+
+**裁定原则**：本次有界关闭范围包括第一笔 Discover Credit Refund 正向资金/订单收口，以及第二笔新 Sandbox Refund 实证的自动 Welcome 设备显示生命周期。原退款 ID `WD51H52NKNDBM` 已完成，不再用于发起新退款或补测其它场景。完整 Phase E 暂保持 **`OPEN / ADDITIONAL TEST MATRIX PENDING`**；未来如需为 Void、Interac 或故障/权益矩阵准备独立测试交易、测试计划和操作授权。不得因这个有界 Sandbox PASS 将 Phase E 标记为 `PRODUCTION VERIFIED / CLOSED`，也不得提前开启 Terminal 生产切流或删除 legacy CARD refund。
 
 ## VM 部署
 
