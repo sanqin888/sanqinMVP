@@ -1,6 +1,6 @@
 # R1-B S4/S5 只读 Guest FD 采集与 R1-C S6 准备
 
-**2026-10-20 R1C-1 最新源码状态：LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED。** 正常更新流程核心与启动材料冻结器已在 MCP-workspace 编写，真实 bootstrap、Host/AWS/安装适配器和 S6 消费见证尚未接线。最新实现见 §8；§6 的 S5 有界验收保持不变，§7 保留 PR #2886 就绪准备范围。
+**2026-10-20 最新接续：R1C-1 SOURCE MERGED / SOURCE CI VERIFIED；R1C-2A LOCAL CONTRACT AUTHORED / USER REVIEW PENDING。** R1C-1 已通过 [PR #2888](https://github.com/sanqin888/sanqinMVP/pull/2888) / [CI #7417](https://github.com/sanqin888/sanqinMVP/actions/runs/39478774789) SUCCESS，并合并 `dev@54638f2e`；§8 留存当时本地实现状态。R1C-2A 的观察覆盖、威胁模型及独立 v1 证据合同见本文件 §9；尚未实现观察器/真实 bootstrap/effect adapters、实际 S6 或独立 C1 验收。§6 S5 PASS_SCOPED 不变，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
 
 **2026-10-20 最新状态：SOURCE MERGED / S5 CAPTURE COMPLETED / ORIGINAL-EVIDENCE REVIEW PASS_SCOPED；R1/C1 OPEN。**
 [PR #2885](https://github.com/sanqin888/sanqinMVP/pull/2885) 最终 head `0533c209a9a34a2f33902ef9731a9a5053f9537c` / [CI #7405](https://github.com/sanqin888/sanqinMVP/actions/runs/39455730047) success，squash merge dev `8a99c99eb17a3ff27552e3b0f611204691e72984`。此前源码 head `523a973c` / CI #7404 的 Runtime 465 与 release 45 测试只记录合成软件验证。
@@ -257,6 +257,178 @@ LaunchMaterials 绑定调用方准确 source commit、txid、排序逐文件 SHA
 分类 A 类新增内部编排核心；新内部依赖为 normal_runtime_update → normal_runtime_launch，同 Runtime/Ops owner，未接入任何现役调用方或 17 Bundle。12-context 的 owner/跨上下文边/直接导入债务/SCC/scanner baseline、公共持久化合同、兼容登记、Prisma/migration、CI/依赖锁和生产行为不变；没有设置新的执行权限。同步 S1/R0、current-dependency-graph 和 worklog，保留旧回执与原证据。
 
 MCP-workspace 未开放 lint/build/test，未运行，也未在外部环境代跑本批源码或测试。授权远端后的 ci.yml ops-checks 会选择 Runtime unittest discovery 和 paired-image release 测试；当前 **CI NOT RUN / NOT PUSHED**。下一步先完成本批审阅/源码 CI，再准备完整候选适配器及 R1C-2 观察方案；最终 S6 需真实同候选消费与独立裁定。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
+## 9. R1C-2A — 真实消费观察覆盖与证据合同冻结
+
+**日期：2026-10-20（America/Toronto）**  
+**阶段：R1-C / S6 / B4B-3C；本批状态：CONTRACT SOURCE AUTHORED / LOCAL REVIEW PENDING / NOT EXECUTED / NOT PUSHED。**  
+**源码基线：`origin/dev@54638f2eb80cb6635a17c1d3c286c1c6e2980d2d`（R1C-1 PR #2888 / CI #7417 SUCCESS / dev merge）。**  
+**工作分支：`docs/runtime-r1c2a-observation-contract-20261020`。**
+
+> 本文是 **R1C-2A 设计与证据格式冻结**，不是观察器实现、真实 S6 取证、完整来源认证或 C1 PASS。所有 v1 离线候选回执的安全结论固定为 `BLOCKED`；不可在文档中手填 PASS。真实执行器、观察器及精确现场命令均留给后续审阅/授权。
+
+### 9.1. 继承合同、职责与范围
+
+依照 [R0 D1–D5/C1–C8/R1–R5](Runtime更新-R0冻结设计.md)、R1-B §6/S5、R1-C §7.5–7.6 与 [R1-S1 §11–12](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)，本批只冻结 **Runtime/Ops 内部**观察覆盖、信任分层、证据格式和离线拒绝规则。
+
+R1C-1 已通过 [PR #2888](https://github.com/sanqin888/sanqinMVP/pull/2888) / [CI #7417](https://github.com/sanqin888/sanqinMVP/actions/runs/39478774789) 并合并 dev `54638f2e`，包含唯一计划正常更新核心 `NormalUpdateFlow.run`、`LaunchMaterials` 的 hash-only 提案及合成失败矩阵。**没有**执行 bootstrap、真实 Host/AWS/安装 effect adapters、持续写入禁入屏障、跨进程事务准入，亦无实际动态消费证明。启动提案为 `/usr/bin/python3.12 -I -S -B`、固定候选 root-private 目录/环境/uid/gid；准确未来候选必须包含后续完整 effect adapters 和 bootstrap，不可用现有合成测试资源替代。
+
+S5 CAPTURE-003 的三文件 FD 和原件一致性 **PASS_SCOPED**，不代表所有动态依赖、完整 Host/Guest 可信来源或 S6；其原 `decision=BLOCKED` 与所有 `false` 权限字段保持不变。R1-A 总验收、C1 独立裁定均 OPEN；R2–R5 不因此启动，G2 NO-GO、S2 daily PAUSED、C2 有界 CLOSED。
+
+**改动类别 A：仅新增内部设计与独立 v1 候选证据合同说明。** 不新增运行时代码、API/DB/持久化合同、跨上下文边、依赖或锁、不改旧 Runtime bundle 的 17 成员、不修改现役/实验安装或维护语义、生产/Guest/root/AWS 配置和权限。R1C-2B 离线解析器、2C 观察器、2D 完整候选与独立来源验证分别后置。
+
+### 9.2. 有限威胁模型与证明边界
+
+#### 9.2.1 继承的可信前提
+
+R0 D1 **有限接受受控云账户/虚拟化平台、Guest 内核和 root 管理**作为信任根；不尝试无限递归证明内核。但**采集器本身、命令行、日志、文件路径、进程元数据、内存模块列表、dpkg 声明和外部传入的 SHA 均不是自动可信根**。独立证据来源的 custody、实际执行主体/Guest 会话同一性和完整动态依赖闭包需要分别证明。未审的外部工具及其启动依赖不得偷偷纳入信任根。
+
+#### 9.2.2 必须考虑的攻击/失败模式
+
+- **启动与覆盖窗口**：观察器晚于 Python/ld.so、未跟踪 fork/clone/vfork/exec 后代、PID/TID 重用、mount/pid namespace 漂移、进程脱离追踪、观察器退出或部分回调失败。
+- **真实加载偏差**：Python import hook/loader 自定义、动态 `__import__`/`importlib`、`runpy`/`exec`、`ctypes`/`cffi`、已有 `.pyc`、zip/importer、builtin/frozen、`.so` 扩展、native `dlopen`、`LD_PRELOAD`/`LD_AUDIT`、`DT_RPATH/DT_RUNPATH`、`PT_INTERP`、`DT_NEEDED`、未知 loader/ABI。
+- **身份与字节替换**：path reopen/符号链接/硬链接/bind mount、FD 重用、`/proc/.../fd` 指称变化、文件在 open→mmap/read/执行期间变化、既有 mmap/内存中缓存、统计前后相同但中间变动、Namespace/overlay 别名。
+- **错误授信**：把成功 open、单次 maps 快照、AST 提示、最终 sys.modules、进程 `rc=0`、采集器报告中的 hash、离线同源自签都提升成“实际消费了认证字节”；事件丢失、记录重排、丢尾、超预算但自动截断。
+- **场景遗漏**：仅一次正常路径的发现被当成所有分支/失败时刻、业务维护及外部 child 命令已完整验证；模拟/“hello import”轨迹移植为正式 R4 候选。
+- **保管链风险**：收集者自给 expected digest、跨机时钟未经认证、stdout/stderr/exit code 未留原始字节、敏感 env/token 泄漏、人工审阅被标记为独立技术签认。
+
+**明确范围外但作为后续门禁**：通过观察器实现运行前文件字节防篡改或阻止新消费者属于保护/隔离能力，不是解析器的自然结果；R2 持续维护/新写入者禁入、R3 精确 AWS 快照、R4 正式 effect adapters 与安装、R5 同候选故障/恢复矩阵仍各自受原审批。
+
+### 9.3. 覆盖矩阵（v1 冻结）
+
+每行 **必须**通过设计/离线负例纳入 R1C-2B；`DISCOVERY` 不是 `AUTHENTICATED`。最终 C1 需要由独立证据证明实际事件完整、认证字节消费及冻结后的不可污染性；单一工具无法证明时须 BLOCKED。
+
+| ID | 被观察边界 | 最低证据 / 反例 | 只用该材料的局限 |
+| --- | --- | --- | --- |
+| COV-01 | **起点**：解释器与 loader 启动之前 | 观察器已就位的起点/attestation、完整 argv/env 摘要、原进程 exec 身份、准确平台、启动策略；起点未知拒绝 | Python `sys.addaudithook` 后置不能追溯 loader 启动 |
+| COV-02 | 进程全生命周期、全部被允许子进程 | 稳定进程身份 + 父子边、fork/clone/vfork/exec、线程与退出、全体后代退出/未退出、丢事件标记；漏任一后代拒绝 | 单个 PID、一次性 `ps`、shell 返回 0 |
+| COV-03 | CPython `.py`/包/`.pyc`/zip/自定义 importer | 模块/loader/origin、文件身份及所读内容绑定；无法绑定动态产生代码拒绝 | 仅模块名、AST import、`sys.modules` |
+| COV-04 | builtin/frozen/运行时生成代码 | 明确分类、所属 Python/bootstrapping 二进制的认证关联；`eval/exec` 和不可证明的生成源策略拒绝 | 无路径不等于无需来源或可信 |
+| COV-05 | native bootstrap 与 ELF | 实际 `PT_INTERP` 身份、loader、初始环境、`DT_NEEDED` 及传递加载映射、`RPATH/RUNPATH` 与 preload/audit 策略 | 静态 `SONAME` 不等于实际被映射库 |
+| COV-06 | 延迟 native 扩展/`dlopen` | 真实扩展和库的加载生命周期、映射身份、失败/重试、依赖闭包 | 仅成功 `open`、`/proc/maps` 快照不足 |
+| COV-07 | 文件、FD、别名与实际内容 | mount namespace/id、device/inode、logical/observed/alias、打开时 FD 与读取/映射关联、文件源字节 SHA 和时间窗口保护；替换未知拒绝 | 结束后按路径 hash 或 `fstat` 两次不能证明中间未变 |
+| COV-08 | 认证来源与边界内非包文件 | 所有实际文件对应准确 Release→Packages→deb/member 和另有审批的自有源码/非包工具来源；独立原件复核 | `dpkg -S`、Guest 自报 hash 或 S5 三文件不足 |
+| COV-09 | 场景和可达分支 | 同一最终候选成功/拒绝/中断路径的场景身份、条件和已到达阶段；未触达分支必须登记 | 单次成功不能证明所有潜在加载 |
+| COV-10 | 日志完整性与离机复核 | 完整原始事件/标准流/退出码、连续 seq、无 lost/truncated、预算和清单、独立固定 pin/custody | 采集器自己生成“verified”报告不独立 |
+
+**覆盖策略**：全部 COV-01..10 对每个最终审核场景都需要适用或由明确理由判为“不适用”；重要加载类别不能以“不适用”消除未知输入；事件观察 `NOT_OBSERVED` 不能推论“行为不存在”。受控合成负例成功仅可说明离线格式/判拒实现，不能关闭实际覆盖。
+
+### 9.4. 技术选型状态、失效条件
+
+| 候选层 | 预计用途 | 未达到前的状态 |
+| --- | --- | --- |
+| Linux 进程/系统调用级受控跟踪（如经过审阅的 ptrace/strace 适配器） | 从 exec 之前开始追踪后代、open/read/mmap/exec 等发现轨迹和丢失信息 | **仅候选**；Guest 工具版本/权限/内核约束尚未核实；系统调用日志本身不证明内容 |
+| CPython 审计/import 元数据（若经受控早期安装） | 关联 module/loader 与路径及动态 import | 辅助线索；无法独立覆盖 native/解释器启动与禁入 |
+| ELF 静态分析 + 根 FD/别名读取 | 补充预期依赖、来源成员与文件身份 | 复用既有 `root_python_elf_static_hints.py`、`root_python_dependency_*`；原有限回执仍 BLOCKED |
+| 文件防替换/内容完整性保护能力（如经独立评审的只读来源/文件系统约束） | 封闭“观察时一致、执行时换字节”的缺口 | 尚未选型/实现/授权；不许把被动跟踪当成主动预执行防护 |
+| 独立离机验证器 | 不执行候选，不调用 Guest/root，根据双源原件和闭包审阅 | **R1C-2B 首选实施点**；必须独立于 Guest collector 授信逻辑 |
+
+**架构裁定**：首选 **观察发现 + 独立来源核对 + 额外的消费时字节保护/闭包证明** 的分层模式；**本 2A 不冻结 strace 为最终生产技术、不授权安装系统工具、ptrace/eBPF/IMA 权限或采集 Guest**。不能覆盖的行为标为 `GAP` 并阻断。R1C-2C 技术/权限变动须根据实测限制单独审批。Linux 文件事件观察与实际 mmap/CPU 指令执行之间的证明缺口不得被字段名掩盖。
+
+### 9.5. 证据合同 `sanq.runtime.r1c2-consumption-evidence.v1`
+
+#### 9.5.1 身份、序列与原件约束
+
+为避免既有 Guest/B3A v1 被当作权限证明，**本合同独立命名空间，不替换旧合同，不继承旧 PASS 或 source authority**。v1 设计冻结以下概念及严格字段；2B 可以分拆为原始封套 + 离线复核结果，但必须保持下面的同名字段及关联不变量，额外字段/版本一律拒绝，不允许悄悄接受未审 schema。
+
+**Envelope**（每个授权尝试/每个冻结场景一份；所有身份字段必须从已审来源独立比对）：
+
+| 字段 | 形式与必要性 |
+| --- | --- |
+| `schema` | 固定字符串 `sanq.runtime.r1c2-consumption-evidence.v1` |
+| `captureId`、`scenarioId` | 非空固定字符集 ID，跨原件稳定唯一；场景关联被冻结的候选 |
+| `candidate` | `sourceCommit`（40 lowercase hex）、`launchMaterialsSha256`（64 lowercase hex）、`requestSha256`（64 lowercase hex）、`entryPoint`、`bootstrapSource`；关联完整 effect adapters 的冻结清单 hash，缺失即拒绝 |
+| `scope` | 冻结观察方案标识及 SHA、声明的 `coverageIds`、`sourceSetSha256`、已批准进程/命令/环境预算摘要；**声明不等于真实授权** |
+| `session` | Guest/boot 与 mount/pid namespaces、实际 Python/loader 与观察器进程身份、启动/结束时间（各主体独立时间线）；无准确对象则拒绝 |
+| `rawArtifacts` | 原始事件流、argv/env（只保留经批准的脱敏原件）、stdout/stderr、exit status、采集器日志、外部独立 pin 的逐件 `sha256` 与大小、保管方式；缺原件不能凭 summary 代替 |
+| `processes` | 进程完整身份表和父子/exec/退出边；覆盖本次全体候选、观察器和受控工具 |
+| `events` | 有序观察事实集，格式见下；事件来源属于候选，不自动可信 |
+| `fileBindings` | 观察对象与其读/映射/载入关系、身份/别名/来源交叉核验，含明确 gap |
+| `completeness` | 覆盖声明、事件丢失/截断/预算/观测中断、后代遗失、起点/终点覆盖及缺口列表 |
+| `provenance` | 独立批准和保管的 expected pins（或其原件 hash/reference）、逐文件映射/来源未闭合项、是否真正独立复核；不能由 Guest collector 自生成 expected |
+| `assessment` | 仅 `CANDIDATE_REVIEWED` 或 `REJECTED` 的离线判断、原因码及固定 `decision=BLOCKED`、`actualConsumptionAuthenticated=false`、`readyToInstall=false`、`authorizedToMutateProduction=false` |
+
+**v1 子对象的精确字段集合**（以下为强制键，类型按本节定义；2B 不得只验证顶层 schema）：
+
+| 对象 | 强制且仅允许的键 |
+| --- | --- |
+| `candidate` | `sourceCommit`、`launchMaterialsSha256`、`requestSha256`、`entryPoint`、`bootstrapSource`、`effectAdapterSetSha256` |
+| `scope` | `observerPlanId`、`observerPlanSha256`、`coverageIds`、`sourceSetSha256`、`permittedProcessPlanSha256`、`budgetSha256` |
+| `session` | `guestIdentity`、`guestBootId`、`mountNamespace`、`pidNamespace`、`rootMountId`、`observerProcessIdentity`、`pythonIdentity`、`loaderIdentity`、`observedStartUtc`、`observedEndUtc`、`clockDomain` |
+| `rawArtifacts[]` | `artifactId`、`kind`、`sha256`、`byteCount`、`producer`、`custodyRef`、`collectionScope`、`completeness` |
+| `processes[]` | `processIdentity`、`parentProcessIdentity`、`pid`、`tid`、`startDiscriminator`、`pidNamespace`、`mountNamespace`、`binaryFileBinding`、`firstSeq`、`lastSeq`、`exitState` |
+| `events[]` | `sequence`、`timeMonotonic`、`captureId`、`processIdentity`、`parentProcessIdentity`、`eventType`、`result`、`object`、`rawReference`、`coverageIds`、`uncertainty` |
+| `fileBindings[]` | `logicalPath`、`observedPath`、`mountNamespace`、`mountId`、`device`、`inode`、`fdIdentity`、`size`、`sha256`、`byteEvidenceSource`、`firstEvent`、`lastEvent`、`moduleOrNativeOrigins`、`aliasChain`、`packageOrApprovedNonpackageSource`、`mutabilityGuardEvidence`、`classification` |
+| `completeness` | `coveredIds`、`startWitnessed`、`endWitnessed`、`childrenCovered`、`lostEventCount`、`truncationDetected`、`observerInterrupted`、`budgetExceeded`、`gaps` |
+| `provenance` | `separatelyPinnedSourceArtifactSha256`、`reviewMethod`、`unverifiedFileBindingIds`、`sourceGaps`、`independentReviewerReceiptSha256` |
+| `assessment` | `reviewStatus`、`reasonCodes`、`decision`、`actualConsumptionAuthenticated`、`readyToInstall`、`authorizedToMutateProduction` |
+
+规范化值型：SHA 为 64 位小写十六进制；列表有界、按 ID 去重；计数为非负严格整数，不能是 Boolean；`sequence`/`firstSeq`/`lastSeq` 为有界正整数；`coverageIds` 仅允许 COV-01..COV-10；`reasonCodes` 仅允许下文 §9.5.4 的原因码；`reviewStatus` 为 `CANDIDATE_REVIEWED` 或 `REJECTED`；`decision` 固定 `BLOCKED`，最后三项布尔值固定 `false`。`startWitnessed/endWitnessed/childrenCovered` 等声称性布尔不得自行产生授信。`observedStartUtc/observedEndUtc` 只在各自时钟域内有意义，不作跨机先后结论；`timeMonotonic` 采用观察器原始单时钟域的非负整数 tick 和该域声明，无法界定单位时禁止时间关联。
+
+`kind`/`eventType`/`classification` 等枚举按本节明确列值；每个 `object` 必须是带 `kind`、`identity`、`fileBindingRef` 三键的对象（不适用字段允许 null，但必须说明 uncertainty）。`rawReference` 必须是带 `artifactId`、`startByte`、`endByte` 三键的对象，区间为 `[startByte,endByte)`，对应真实原件字节范围、`0≤startByte<endByte≤byteCount`；不能只凭解释文本。`processIdentity` 是由 pid namespace + PID + 不可复用进程代际标记形成的稳定键，不允许仅用 PID 推导。
+
+**取值为 null 或 `UNKNOWN` 不等于满足覆盖**：必须产生对应 gap/原因码并阻止后续完整认证；`CANDIDATE_REVIEWED` 只对结构合规的离线候选开放，不表示上述声明已经技术独立验真。内部字段若仍需细化（如 `fileBindingRef` 的完整传输编码），2B 必须在编写解释器前提交明确 schema 修订并审阅，不能自行增加信任或改变 `BLOCKED` 判定。
+
+**Event 最低字段（不得把 open 当作 consume）**：`sequence`（从 1 连续递增）、`timeMonotonic`（单时钟域；跨 Host/Guest UTC 不排序）、`captureId`、`processIdentity`（pid/tid + process-start discriminator + namespace）、`parentProcessIdentity`（若适用）、`eventType`（白名单见下）、`result`（`SUCCESS/FAILURE/UNKNOWN`）、`object`（明确 file/FD/mapping/module/child 类型与身份；不适用时 null）、`rawReference`（可证明对应原始事件区段）、`coverageIds`（满足的具体 COV）、`uncertainty`（非空/空但不能省略）。事件顺序不等于因果闭包；缺关联 raw bytes → `BLOCKED`。
+
+**Event type v1 词表**：`OBSERVATION_START`、`PROCESS_FORK`、`PROCESS_CLONE`、`PROCESS_EXEC`、`PROCESS_EXIT`、`FILE_OPEN`、`FILE_READ`、`FILE_MMAP`、`FILE_IDENTITY`、`PYTHON_IMPORT`、`PYTHON_CODE`、`ELF_LOADER`、`NATIVE_LOAD`、`NATIVE_UNLOAD`、`EVENT_LOSS`、`OBSERVATION_END`。复用同一 `processIdentity` 需证明进程代际一致，若 PID 复用无法区分一律 gap。该词表为**归一化事件类别**，不是承诺 Linux 单一跟踪技术能提供全部信号。
+
+**File binding 最低字段**：`logicalPath`、`observedPath`（皆可为受限未知而非伪造路径）、`mountNamespace`、`mountId`、`device`、`inode`、`fdIdentity`（含使用区间/进程和 FD 代际）、`size`、`sha256`、`byteEvidenceSource`、`firstEvent`、`lastEvent`、`moduleOrNativeOrigins`、`aliasChain`、`packageOrApprovedNonpackageSource`、`mutabilityGuardEvidence`、`classification`（`DISCOVERED_ONLY`、`MATCHED_UNAUTHENTICATED`、`INDEPENDENTLY_AUTHENTICATED` 或 `GAP`）。**分类不可单凭 sha 一致升级**；依赖来源、consumer→FD 内容、不可污染窗口须分别有原始独立证据。
+
+#### 9.5.2 证明等级，不允许默默提升
+
+| 等级 | 含义 | 是否支持 C1 PASS |
+| --- | --- | --- |
+| `OBSERVED` | 观察器报告了带原始索引的事件 | 否 |
+| `DISCOVERY_COMPLETE_CANDIDATE` | 在固定预算内未声明丢失、并记录所有已知场景/子进程；未独立核验 | 否 |
+| `SOURCE_MATCHED_SCOPED` | 有限文件 SHA 与独立包/源码 pin 核对通过，缺执行时字节保护或完整覆盖 | 否 |
+| `CONSUMPTION_AUTHENTICATED` | **仅供未来另批独立 C1 裁定合同**；必须有同候选、完整覆盖/来源/消费字节/保护与独立复核 | 本 v1 禁止输出或宣称 |
+
+`assessment` 的 `CANDIDATE_REVIEWED` 仅表示候选格式和局部证据满足离线评审的限定条件，不是 `sourceProvenanceAuthenticated`、`dynamicClosureVerified` 或 `C1 PASS`。v1 不允许结果 `PASS`、`READY`、`AUTHORIZED`；不可用传入 true 授信。
+
+#### 9.5.3 精确编码、配额与不可变原件
+
+- v1 离线归一化封套编码：UTF-8 JSON 对象，键字典序、`separators=(',', ':')`、`ensure_ascii=True`、`allow_nan=False`；字节级 SHA256 小写 hex。拒绝重复 JSON key、未知字段、NaN/Infinity、非精确整数、过长文本、不合格 SHA、重复 identity 或跨封套引用。原始日志不用二次转码代替原件。
+- **初始候选预算（2B 必须落实，后续真实平台实测前可提交独立变更评审）**：事件 ≤32768、进程 ≤64、文件绑定 ≤512、场景每份 ≤1、raw artifact 件数 ≤64、事件归一化封套 ≤32 MiB、单条 event 序列化 ≤16 KiB、单路径 ≤256 个 ASCII 字符、证据引用 ID ≤128 个 ASCII 字符。超预算必须 `REJECTED/BLOCKED`，严禁静默截尾、抽样后宣称完整。这些是 **v1 离线合同限额**，不取代现有 B3A/B3B1 manifest/FD 文件读取的更严格限额，也不是对生产更新耗时的批准。
+- 每个 artifact 记录 `sha256`、准确 `byteCount`、`producer`、`custodyRef`、`collectionScope` 和 `completeness`；无原件或原始退出码非已知时必须作为 gap。源 hash 和审核 hash 不能都由同一不受信的采集器产生；保留独立基线的证据位置与权限。
+- 非包执行源码、bootstrap、effect adapters、观察器与其工具、系统解释器/ld.so/native 闭包都应纳入同一个受限来源审阅，不得仅校验消费者而把观察器提升为天然可信。
+- **不在 Git 存储**真实 Guest UUID、boot/ns、Root/Host 现场路径、原始回执、登录材料、令牌、原始 env 或生产秘密。日志受预算约束并作保密分级；脱敏报告必须保留审计所需的独立保管原件哈希与批准的读取路径，不能通过删掉原件伪称完成。
+
+#### 9.5.4 Fail-closed 规范
+
+任一以下条件直接拒绝，且记录**一项或多项可机器处理原因码**：`START_NOT_WITNESSED`、`END_NOT_WITNESSED`、`CHILD_UNTRACED`、`PROCESS_IDENTITY_AMBIGUOUS`、`EVENT_LOST`、`EVENT_ORDER_INVALID`、`EVENT_BUDGET_EXCEEDED`、`ARTIFACT_MISSING_OR_MISMATCHED`、`RAW_REFERENCE_MISSING`、`IMPORT_ORIGIN_UNKNOWN`、`NATIVE_LOAD_UNMAPPED`、`FILE_BINDING_AMBIGUOUS`、`BYTE_CONSUMPTION_UNPROVEN`、`SOURCE_UNAUTHENTICATED`、`FILE_MUTABILITY_UNCONTROLLED`、`CANDIDATE_CHANGED`、`SCENARIO_COVERAGE_GAP`、`OBSERVER_DEPENDENCY_UNKNOWN`、`UNSUPPORTED_PLATFORM_OR_NAMESPACE`、`SCHEMA_INVALID`、`EXECUTION_INTERRUPTED_OR_UNKNOWN`。
+
+若观察状态未知、部分归档失败、进程被强制终止、真实执行 `rc=0` 但事件未全覆盖，`completeness` 只能记 `INCOMPLETE/UNKNOWN`，不能称完整；离线 reviewer 输出 `REJECTED` 与固定 `decision=BLOCKED`。任何碰触真实状态的阶段，仍遵守 R1C-1 fail/UNKNOWN/事故冻结；观察器不能发出业务放行或重新启动命令。
+
+### 9.6. R1C-2B 聚焦实现/测试矩阵
+
+R1C-2B 首先只写 **无执行、无 filesystem/Guest/root/网络、仅 caller-supplied bytes** 的离线 validator/reviewer；不得自动从 PATH、procfs、VM、URL 或 Repo 读取现场原件，也不得通过 import/exec 执行候选源码。应与既有 `root_python_dependency_offline_review.py` 保持独立模块/独立 v1 格式（旧 BLOCKED 合同不改）。
+
+| 测试组 | 最小正向合成/负例 |
+| --- | --- |
+| 结构与编码 | 合成最小完整封套仅获 `CANDIDATE_REVIEWED/BLOCKED`；错 schema、重复 key、类型、字段、大小、顺序、UTF8、hash、event/raw 引用均拒绝 |
+| 进程完整性 | start/exec/exit/observer end 闭合；启动晚、后代漏捕、PID 复用、命名空间漂移、退出未知、跟踪器挂掉拒绝 |
+| Python/ELF | .py/pyc/zip/native/builtin/frozen 分型；动态 import、自定义 loader、`DT_RUNPATH`/dlopen、未绑定 ELF/扩展拒绝 |
+| 文件身份与内容 | 相同路径不同 inode、fd 重用、硬链接/软链接/bind mount、open 后替换、二次 hash 相同但无持续保护、mmap 未观察全部拒绝 |
+| 外部独立来源 | 错包 SHA、同 collector 自给 expected、未认证非包文件/观察工具、来源缺项均拒绝 |
+| 原件与预算 | 事件丢失/超限、重复/跳 seq、原件 hash 漂移、原始 rc 缺失、尾部丢失、跨主体时钟不一致但错误强行排序拒绝 |
+| 候选/场景 | 同 SHA 源码但不同 bootstrap/argv/env/effect adapters、场景 ID 错配、失败路径遗漏、模拟轨迹充当正式候选拒绝 |
+
+**2B 允许验证的最高状态**：`OFFLINE CONTRACT/PARSER TESTS CI VERIFIED`；不代表`OBSERVATION COMPLETE`、`ACTUAL CONSUMPTION VERIFIED` 或 `S6 C1 PASS`。
+
+### 9.7. R1C-2C/2D 后续门禁与公开未决点
+
+- **2C 技术选型**：核实准确 C2 Guest 的现有 trace 工具/版本、kernel 约束、ptrace_scope/capabilities/namespace、工具自身动态依赖、实际记录的系统调用/mmap/import 映射覆盖、非侵入与失败冻结。当前只允许提出候选方案，不安装、不提权、不运行。所需新增依赖、策略权限或架构行为变更必须按 AGENTS 取得用户独立授权。
+- **bootstrap/import 策略**：R1C-1 `-I -S -B` 隔离参数需要与 import 路径/既有 .pyc/c-extension/自定义 loader 的真实语义逐项核实；不能仅靠 `-B` 就推定所有 .pyc 读取被禁止；完整启动源码与 import 入口必须在 S6 前冻结并重审。
+- **真实字节污染窗口**：ptrace/系统调用追踪是发现线索，仍缺“实际已消费 byte stream”和执行前/期间保护。此项若无法证明，最终 C1 永远 BLOCKED；不得用环境中的假设性 `read-only`、fd 同 inode 或运行后 hash 简化证明。
+- **同一最终候选**：2D 前需要真实 bootstrap + R1C-1 同核心 + 完整 effect adapters + 每个可能子进程的准确 argv/来源及 scenarios，真实观察和认证都须基于该冻结候选；不能以仅 hello/import 演示替代。真实维护、AWS、安装按 R2/R3/R4/R5 的独立门禁。
+- **来源与独立裁定**：基于全部实际发现加载对象完成外部可信发行/非包来源原件复核和第三方离机审阅；未获证据仅作 `DISCOVERY`。S6 真实执行命令、使用的 root/Guest、权限、环境和失败事故保管另交明确审批；不继承 S5 一次 root-only 批准。
+
+### 9.8. 本批审阅、CI 与停点
+
+本批仅将合同附入既有 R1-C 工作包 §9，并同步 [依赖图状态](current-dependency-graph.md) 与 [worklog](worklog.md)。保留历史“NOT RUN/NOT PUSHED”为各自当时记录，不把它冒充 R1C-1 的最新状态。无新增代码/运行入口或自动化测试；MCP-workspace 无 lint/build/test 权限，未运行；GitHub Actions 未针对本批执行。待用户审阅本地合同后另授权 PR→dev，依最终 head CI 全绿合并；2B 另批启动。
+
+**冻结的是设计契约，不是 S6 实测认证。** 本批最高状态为 `R1C-2A CONTRACT AUTHORED / REVIEW PENDING`；R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 LIMITED CLOSED。
 
 
 
