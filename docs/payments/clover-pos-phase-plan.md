@@ -4,6 +4,12 @@
 **日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
+### 2026-10-20 — Phase E Compact Refund Canonical 零小费与设备 Welcome 收口（LOCAL SOURCE / REVIEW PENDING）
+
+- **事故证据（操作员 MacBook Test Merchant，非生产）**：SanQ Order `ca7b752120375ddd92af0cb55` 原 Sale `WKQYSCVH8TSJW`，2026-10-20 08:52 EDT 从 POS 发起一笔 CAD $5.65 完整退款。REST Pay Display `/connect/v1/payments/{paymentId}/refunds` 返回 HTTP 200，Platform v3 `/refunds/WD51H52NKNDBM` 返回 HTTP 200；Clover Test Merchant Dashboard 已显示对应 Refund ID、CAD $5.65、Tip $0.00 和原 Payment 关联。MacBook 本地退款 Payment `UNKNOWN`，`failureCode=CLOVER_PLATFORM_REFUND_TIP_MISMATCH`，原 Sale `refundedAmountCents=0`、Order 仍 `completed`。平台退款数据 keys 未包含 `tipAmount`；Compact 屏幕持续转圈，但只读 `/pos/payments/card/availability` 显示明确 `providerState=IDLE`、`providerStateExplicit=true`。Clover 有 Refund 记录不等于 SanQ 已完成 Canonical finality；设备重启由操作员自行处理，完成状态未从回执证实。
+- **受控修复（独立分支 `fix/clover-compact-refund-canonical-welcome-20261020`，仅 MCP 本地源码，未执行/未合并）**：仅在被冻结的原 Sale `expectedTipRefundCents=0` 且退款资源确实**省略** `tipAmount` 时将退款 tip 视作零；明确的非零/非法数值仍严格校验，保留 Refund ID、原 Payment ID、退款基本金额、货币、附加费/客户总额的既有 Canonical 验证；对退款资源中明确 `voided` 或未识别的非成功 `status` 继续 UNKNOWN。收到 Terminal 正向 Refund ACK 且具有 Refund ID 后，经过同进程设备操作序列化，额外只读检查 Compact **明确空闲**，才可尽力发送一次纯显示 `/device/welcome`；设备忙、无状态、请求失败则跳过，且 Welcome 失败绝不改变资金状态或额外发起退款。保留原 `UNKNOWN -> RECONCILING` 同 Attempt 查询恢复；绝不强制改 DB 或重发 REFUND。
+- **验证/发布门禁**：聚焦模拟回归涵盖零小费缺失、非零小费缺失、未完成/已撤销状态、设备 IDLE/无状态/BUSY、Welcome 失败及无新增退款。MCP-workspace 不具备 lint/build/test 权限，未运行；等待用户审阅、授权远端 PR、GitHub CI 全绿后再由用户在隔离 MacBook 更新部署和受控读取已有 Refund Attempt，严格确认只对原 Refund ID `WD51H52NKNDBM` 做 GET 对账，不重试 Clover 退款 POST。当前 **PHASE E REFUND ACCEPTANCE BLOCKED / MACBOOK RECOVERY PENDING / PRODUCTION DEFERRED**。无 Prisma/schema/migration、锁文件、公共合同/导入边界、生产 Web Ecommerce、AWS VM 代码或数据更改；当前 Runtime 分支不受影响。
+
 ## 0. 总体原则
 
 所有阶段必须遵守以下硬性原则：
