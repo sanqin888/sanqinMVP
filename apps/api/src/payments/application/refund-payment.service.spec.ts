@@ -226,6 +226,38 @@ describe('RefundPaymentService', () => {
     expect(provider.getPaymentStatus.mock.calls).toHaveLength(2);
   });
 
+  it('recovers an acknowledged UNKNOWN refund through the original canonical read without another refund POST', async () => {
+    const { sale, provider, service, input } = await createHarness();
+    const refundInput: StartOrRecoverRefundInput = {
+      ...input,
+      operation: 'REFUND',
+    };
+    provider.getPaymentStatus
+      .mockResolvedValueOnce(saleCanonical(sale))
+      .mockImplementation((request) =>
+        Promise.resolve(reversalCanonical(refundInput, request.paymentId)),
+      );
+    provider.refundPayment.mockResolvedValue({
+      status: 'UNKNOWN',
+      providerPaymentId: 'CLOVERPAY001',
+      providerRefundId: 'CLOVERREF001',
+      resultCode: 'CLOVER_REFUND_ACKNOWLEDGED',
+      failureCode: 'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    });
+
+    const uncertain = await service.startOrRecover(refundInput);
+    expect(uncertain.status).toBe('UNKNOWN');
+    expect(uncertain.toSnapshot().providerRefundId).toBe('CLOVERREF001');
+    const recovered = await service.startOrRecover(refundInput);
+
+    expect(recovered.id).toBe(uncertain.id);
+    expect(recovered.status).toBe('SUCCEEDED');
+    expect(recovered.toSnapshot().providerRefundId).toBe('CLOVERREF001');
+    expect(provider.refundPayment.mock.calls).toHaveLength(1);
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(2);
+  });
+
   it('blocks a new managed reversal when Clover already reports refund activity', async () => {
     const { sale, provider, service, input } = await createHarness();
     provider.getPaymentStatus.mockResolvedValue(

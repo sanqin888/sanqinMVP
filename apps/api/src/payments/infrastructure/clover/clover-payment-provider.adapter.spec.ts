@@ -1488,6 +1488,142 @@ describe('CloverTerminalTransport', () => {
     expect(JSON.parse(init.body)).toEqual({ fullRefund: true });
   });
 
+  it('shows Welcome after an acknowledged refund only when the device reports explicit IDLE', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            refund: { id: 'refund-1', payment: { id: 'payment-1' } },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ state: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerRefundId: 'refund-1',
+    });
+    expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+      'https://clover.example.test/connect/v1/payments/payment-1/refunds',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+    expect(fetchSpy.mock.calls[1]?.[1]?.method).toBe('GET');
+    expect(fetchSpy.mock.calls[2]?.[1]?.method).toBe('POST');
+  });
+
+  it.each([{ state: 'BUSY' }, {}])(
+    'does not force Welcome without an explicitly idle refund device: %p',
+    async (deviceState) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              refund: { id: 'refund-1', payment: { id: 'payment-1' } },
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(deviceState), { status: 200 }),
+        );
+      const transport = createTerminalTransport();
+
+      await expect(
+        transport.refundPayment({
+          paymentId: 'refund-internal-1',
+          attemptId: 'refund-attempt-1',
+          source: 'POS_TERMINAL',
+          idempotencyKey: 'refund-idempotency-1',
+          operation: 'REFUND',
+          providerPaymentId: 'payment-1',
+          amountCents: 2000,
+          currency: 'CAD',
+        }),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        providerRefundId: 'refund-1',
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('preserves refund execution evidence when display-only Welcome fails', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            refund: { id: 'refund-1', payment: { id: 'payment-1' } },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'AVAILABLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerRefundId: 'refund-1',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not attempt Welcome after an unconfirmed refund execution', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ code: 'DEVICE_BUSY' }), { status: 503 }),
+      );
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({ status: 'UNKNOWN' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('sends USER_CANCEL void to the original Clover payment', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -2200,6 +2336,117 @@ describe('Clover Platform Payments Gateway', () => {
     expect(url).toContain('/v3/merchants/merchant-1/refunds/clover-refund-1');
     expect(url).toContain('expand=');
   });
+
+  it('confirms a zero-tip full refund when Clover omits tipAmount and additionalCharges', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'clover-refund-1',
+          amount: 2000,
+          payment: { id: 'clover-payment-1' },
+          status: 'SUCCESS',
+          voided: false,
+        }),
+        { status: 200 },
+      ),
+    );
+    const gateway = createPlatformGateway();
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'clover-payment-1',
+      providerRefundId: 'clover-refund-1',
+      refundedAmountCents: 2000,
+      tipCents: 0,
+      chargedTotalCents: 2000,
+    });
+  });
+
+  it('keeps zero-tip inference fail-closed for a missing nonzero tip', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'clover-refund-1',
+          amount: 2000,
+          payment: { id: 'clover-payment-1' },
+          status: 'SUCCESS',
+          voided: false,
+        }),
+        { status: 200 },
+      ),
+    );
+    const gateway = createPlatformGateway();
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 400,
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    });
+  });
+
+  it.each([
+    [
+      { status: 'PENDING', voided: false },
+      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    ],
+    [
+      { status: 'FAILED', voided: false },
+      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    ],
+    [
+      { status: 'unrecognized', voided: false },
+      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    ],
+    [
+      { status: 'SUCCESS', voided: true },
+      'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+    ],
+    [
+      { status: 'SUCCESS', voided: 'false' },
+      'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+    ],
+  ] as const)(
+    'does not confirm a refund with nonfinal or voided provider facts %p',
+    async (facts, failureCode) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'clover-refund-1',
+            amount: 2000,
+            payment: { id: 'clover-payment-1' },
+            ...facts,
+          }),
+          { status: 200 },
+        ),
+      );
+      const gateway = createPlatformGateway();
+
+      await expect(
+        gateway.getCanonicalReversal({
+          ...platformRequest,
+          operation: 'REFUND',
+          providerRefundId: 'clover-refund-1',
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 0,
+        }),
+      ).resolves.toMatchObject({ status: 'UNKNOWN', failureCode });
+    },
+  );
 
   it('keeps canonical refund UNKNOWN when provider tip does not match the original sale', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(

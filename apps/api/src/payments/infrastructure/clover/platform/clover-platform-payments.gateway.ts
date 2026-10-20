@@ -457,7 +457,14 @@ const mapPlatformRefund = (
 
   const providerRefundId = stringValue(refund, 'id');
   const amountCents = integerValue(refund, 'amount');
-  const tipCents = integerValue(refund, 'tipAmount');
+  // Clover Platform may omit tipAmount for a zero-tip refund. Only infer zero
+  // when the original frozen canonical Sale explicitly had no tip; a missing
+  // nonzero tip or a malformed supplied value remains UNKNOWN.
+  const tipCents =
+    integerValue(refund, 'tipAmount') ??
+    (refund.tipAmount === undefined && request.expectedTipRefundCents === 0
+      ? 0
+      : undefined);
   const payment = asRecord(refund.payment);
   const providerPaymentId = stringValue(payment, 'id');
   if (!providerRefundId) {
@@ -491,6 +498,31 @@ const mapPlatformRefund = (
       request,
       'CLOVER_PLATFORM_REFUND_AMOUNT_MISMATCH',
       'Clover Platform refund amount does not match the requested full refund',
+      providerRefundId,
+    );
+  }
+  // An existing refund ID/HTTP 200 is not financial finality when Clover
+  // explicitly reports a pending, failed or subsequently voided refund.
+  if (refund.voided !== undefined && refund.voided !== false) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+      'Clover Platform refund has been voided or has an invalid voided flag',
+      providerRefundId,
+    );
+  }
+  const refundStatus = stringValue(refund, 'status');
+  if (
+    refund.status !== undefined &&
+    (!refundStatus ||
+      !['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'REFUNDED'].includes(
+        refundStatus.toUpperCase(),
+      ))
+  ) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+      'Clover Platform refund does not report a recognized completed status',
       providerRefundId,
     );
   }

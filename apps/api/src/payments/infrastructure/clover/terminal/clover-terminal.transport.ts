@@ -961,35 +961,55 @@ export class CloverTerminalTransport {
       };
     }
 
-    const attempt = await this.request(
-      `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`,
-      {
-        method: 'POST',
-        idempotencyKey: request.idempotencyKey,
-        body: { fullRefund: true },
-      },
-    );
-    if (attempt.kind === 'credential_unavailable') {
-      return {
-        status: 'FAILED',
-        terminalId,
-        failureCode: attempt.failureCode,
-        failureMessage: attempt.failureMessage,
-      };
-    }
-    if (attempt.kind === 'uncertain') {
-      return uncertain(
-        'CLOVER_REFUND_REQUEST_UNCERTAIN',
-        'Clover Terminal refund request did not receive a response',
-        terminalId,
+    return this.withDeviceMutation(async () => {
+      const attempt = await this.request(
+        `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`,
+        {
+          method: 'POST',
+          idempotencyKey: request.idempotencyKey,
+          body: { fullRefund: true },
+        },
       );
-    }
-    return mapTerminalReversalResponse(
-      attempt.result,
-      request,
-      terminalId,
-      'REFUND',
-    );
+      if (attempt.kind === 'credential_unavailable') {
+        return {
+          status: 'FAILED' as const,
+          terminalId,
+          failureCode: attempt.failureCode,
+          failureMessage: attempt.failureMessage,
+        };
+      }
+      if (attempt.kind === 'uncertain') {
+        return uncertain(
+          'CLOVER_REFUND_REQUEST_UNCERTAIN',
+          'Clover Terminal refund request did not receive a response',
+          terminalId,
+        );
+      }
+      const outcome = mapTerminalReversalResponse(
+        attempt.result,
+        request,
+        terminalId,
+        'REFUND',
+      );
+      // REST Pay Display keeps spinning until Welcome. This is strictly
+      // display-only: require explicit device IDLE and a refund execution ID;
+      // a Welcome failure must never rewrite or infer financial finality.
+      if (outcome.status === 'SUCCEEDED' && outcome.providerRefundId) {
+        try {
+          const welcomed = await this.welcomeWhenIdle(1);
+          if (!welcomed) {
+            this.logger.warn(
+              '[CloverTerminalTransport] refund Welcome deferred: device was not explicitly idle or Welcome failed',
+            );
+          }
+        } catch (error) {
+          this.logger.warn(
+            `[CloverTerminalTransport] refund Welcome unavailable: ${this.errorMessage(error)}`,
+          );
+        }
+      }
+      return outcome;
+    });
   }
 
   private async request(
