@@ -9,11 +9,13 @@ from pathlib import Path
 import sys
 import tarfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from root_python_b21_deb_members import (  # noqa: E402
     DebMemberBlocked, review_candidate_deb_members,
+    _ar_parts,
 )
 
 REGULAR = "usr/bin/python3.12"
@@ -26,9 +28,9 @@ def sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def ar_member(name: str, data: bytes) -> bytes:
+def ar_member(name: str, data: bytes, *, slash: bool = True) -> bytes:
     # Standard Debian/GNU short-name ar members only.
-    name_field = (name + "/").ljust(16)
+    name_field = (name + ("/" if slash else "")).ljust(16)
     header = (
         name_field + "0".ljust(12) + "0".ljust(6)
         + "0".ljust(6) + "100644".ljust(8)
@@ -76,6 +78,8 @@ def tar_payload(entries=None, *, compression="xz"):
                 raise AssertionError(kind)
             stream.addfile(info, io.BytesIO(content) if kind == "file" else None)
     data = raw.getvalue()
+    if compression == "raw":
+        return data
     return (lzma.compress(data, format=lzma.FORMAT_XZ)
             if compression == "xz" else gzip.compress(data))
 
@@ -255,6 +259,130 @@ class CandidateDebMembersTests(unittest.TestCase):
         self.data["externalSourceAuthenticated"] = True
         with self.assertRaises(TypeError):
             self.check()
+
+
+def raw_zstd_frame(raw: bytes, *, known_size=True) -> bytes:
+    # RFC 8878 frame with one uncompressed raw block: synthetic and inert.
+    assert len(raw) < 128 * 1024
+    if not known_size:
+        header = b"\x00\x38"  # 128 KiB declared window; unknown content size.
+    elif len(raw) < 256:
+        header = b"\x20" + bytes([len(raw)])
+    elif len(raw) < 65792:
+        header = b"\x60" + (len(raw) - 256).to_bytes(2, "little")
+    else:
+        header = b"\xa0" + len(raw).to_bytes(4, "little")
+    block = ((len(raw) << 3) | 1).to_bytes(3, "little")
+    return b"\x28\xb5\x2f\xfd" + header + block + raw
+
+
+def zstd_bundle(frame=None):
+    payload = raw_zstd_frame(tar_payload(compression="raw")) if frame is None else frame
+    # Match real Ubuntu short ar names, including a zstd control envelope.
+    return b"!<arch>\n" + b"".join(
+        ar_member(name, data, slash=False)
+        for name, data in [
+            ("debian-binary", b"2.0\n"),
+            ("control.tar.zst", b"INERT CONTROL ENVELOPE"),
+            ("data.tar.zst", payload),
+        ]
+    )
+
+
+class RealDebFormatCompatibilityTests(unittest.TestCase):
+    def test_short_ar_names_with_or_without_slash_and_mixed_forms(self):
+        parts = [("debian-binary", b"2.0\n"),
+                 ("control.tar.gz", b"MOCK"), ("data.tar.xz", tar_payload())]
+        for flags in ((True, True, True), (False, False, False), (True, False, True)):
+            with self.subTest(flags=flags):
+                raw = b"!<arch>\n" + b"".join(
+                    ar_member(n, b, slash=s) for (n, b), s in zip(parts, flags)
+                )
+                self.assertEqual(review_candidate_deb_members(**claimed(raw))["decision"], "BLOCKED")
+
+    def test_slash_normalization_cannot_hide_duplicate_ar_names(self):
+        raw = bundle() + ar_member("data.tar.xz", tar_payload(), slash=False)
+        with self.assertRaisesRegex(DebMemberBlocked, "duplicate"):
+            review_candidate_deb_members(**claimed(raw))
+
+    def test_bsd_and_gnu_longname_schemes_stay_rejected(self):
+        for name in ("#1/12", "//", "/"):
+            with self.subTest(name=name), self.assertRaises(DebMemberBlocked):
+                _ar_parts(b"!<arch>\n" + ar_member(name, b"not a normal name", slash=False))
+
+    def test_zstd_raw_and_unknown_size_frames_are_bounded_candidates(self):
+        for known_size in (True, False):
+            raw = zstd_bundle(raw_zstd_frame(tar_payload(compression="raw"), known_size=known_size))
+            if sys.version_info < (3, 14):
+                with self.assertRaisesRegex(DebMemberBlocked, "compression.zstd"):
+                    review_candidate_deb_members(**claimed(raw))
+            else:
+                receipt = review_candidate_deb_members(**claimed(raw))
+                self.assertEqual(receipt["candidateFileSha256"][REGULAR], sha256(BODY))
+                self.assertEqual(receipt["candidateSymlinkText"][LINK], TARGET)
+                self.assertEqual(receipt["decision"], "BLOCKED")
+                for key in ("readyToInstall", "authorizedToMutateProduction",
+                            "filePinsIndependentlyAuthenticated",
+                            "ubuntuReleaseSignatureIndependentlyAuthenticated",
+                            "actualDynamicPythonElfDlopenConsumptionWitnessed"):
+                    self.assertIs(receipt[key], False)
+
+    def test_stdlib_compressed_blocks_and_checksum_on_supported_host(self):
+        if sys.version_info < (3, 14):
+            with self.assertRaisesRegex(DebMemberBlocked, "compression.zstd"):
+                review_candidate_deb_members(**claimed(zstd_bundle()))
+            return
+        # Positive zstd execution is required on 3.14+, never skipped/mock decoded.
+        from compression import zstd
+        raw = tar_payload(compression="raw")
+        frame = zstd.compress(raw, options={zstd.CompressionParameter.checksum_flag: 1})
+        self.assertLess(len(frame), len(raw))
+        self.assertEqual(review_candidate_deb_members(**claimed(zstd_bundle(frame)))["decision"], "BLOCKED")
+        corrupted = frame[:-1] + bytes([frame[-1] ^ 1])
+        with self.assertRaises(DebMemberBlocked):
+            review_candidate_deb_members(**claimed(zstd_bundle(corrupted)))
+
+    def test_missing_stdlib_capability_blocks_without_external_fallback(self):
+        real_import = __import__
+        def missing(name, *args, **kwargs):
+            if name == "compression":
+                raise ModuleNotFoundError("forced absent stdlib codec")
+            return real_import(name, *args, **kwargs)
+        with mock.patch("builtins.__import__", side_effect=missing):
+            with self.assertRaisesRegex(DebMemberBlocked, "compression.zstd"):
+                review_candidate_deb_members(**claimed(zstd_bundle()))
+            self.assertEqual(review_candidate_deb_members(**claimed())["decision"], "BLOCKED")
+
+    def test_zstd_truncation_concatenation_and_trailing_bytes_rejected(self):
+        frame = raw_zstd_frame(tar_payload(compression="raw"))
+        for altered in (frame[:4], frame[:5], frame[:-1], frame + frame,
+                        frame + b"trailing"):
+            with self.subTest(size=len(altered)), self.assertRaises(DebMemberBlocked):
+                review_candidate_deb_members(**claimed(zstd_bundle(altered)))
+
+    def test_zstd_skippable_dictionary_and_oversized_window_rejected(self):
+        frames = [
+            b"\x50\x2a\x4d\x18" + b"\x00" * 4,
+            b"\x28\xb5\x2f\xfd\x21\x01\x00\x01\x00\x00",
+            # Unknown content size, 128 MiB window (WD exponent 17), empty last block.
+            b"\x28\xb5\x2f\xfd\x00\x88\x01\x00\x00",
+        ]
+        for frame in frames:
+            with self.subTest(frame=frame.hex()), self.assertRaises(DebMemberBlocked):
+                review_candidate_deb_members(**claimed(zstd_bundle(frame)))
+
+    def test_zstd_known_and_unknown_output_budgets_rejected(self):
+        for known_size in (True, False):
+            frame = raw_zstd_frame(tar_payload(compression="raw"), known_size=known_size)
+            with mock.patch("root_python_b21_deb_members.MAX_TAR_BYTES", 1024):
+                with self.assertRaises(DebMemberBlocked):
+                    review_candidate_deb_members(**claimed(zstd_bundle(frame)))
+
+    def test_zstd_wrong_member_digest_still_rejected(self):
+        data = claimed(zstd_bundle())
+        data["proposed_file_sha256"][REGULAR] = "0" * 64
+        with self.assertRaises(DebMemberBlocked):
+            review_candidate_deb_members(**data)
 
 
 if __name__ == "__main__":

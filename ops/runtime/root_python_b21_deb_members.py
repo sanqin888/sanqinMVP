@@ -72,12 +72,12 @@ def _ar_parts(deb: bytes) -> dict[str, bytes]:
             size_str = header[48:58].decode("ascii").strip()
         except UnicodeError as exc:
             raise DebMemberBlocked("non-ASCII ar header") from exc
-        _require(name.endswith("/") and name != "/"
-                 and _PART_NAME.fullmatch(name[:-1]) is not None
+        name = name[:-1] if name.endswith("/") else name
+        _require(0 < len(name) <= 15
+                 and _PART_NAME.fullmatch(name) is not None
                  and size_str.isdecimal() and size_str.isascii()
                  and 0 < len(size_str) <= 10,
                  "unexpected GNU ar name/size or longname scheme")
-        name = name[:-1]
         size = int(size_str)
         _require(name not in parts and 0 <= size <= len(deb) - offset,
                  "duplicate or truncated ar member")
@@ -95,12 +95,52 @@ def _ar_parts(deb: bytes) -> dict[str, bytes]:
              and list(parts)[2].startswith("data.tar."),
              "noncanonical/missing Debian control or data member order")
     data_name = next(k for k in parts if k.startswith("data.tar."))
-    _require(data_name in {"data.tar.xz", "data.tar.gz"},
-             "unsupported data.tar compression (zstd requires separate review)")
+    _require(data_name in {"data.tar.xz", "data.tar.gz", "data.tar.zst"},
+             "unsupported data.tar compression")
     return parts
 
 
+def _zstd_tar_payload(data: bytes) -> bytes:
+    # Optional stdlib capability, never a third-party/CLI/ctypes fallback.
+    # Older review hosts retain xz/gzip support and explicitly block zstd.
+    try:
+        from compression import zstd
+    except ImportError as exc:
+        raise DebMemberBlocked(
+            "zstd review requires Python stdlib compression.zstd (3.14+)"
+        ) from exc
+    _require(len(data) >= 6 and data.startswith(b"\x28\xb5\x2f\xfd"),
+             "truncated/nonstandard/skippable zstd frame")
+    try:
+        info = zstd.get_frame_info(data)
+        descriptor = data[4]
+        _require(descriptor & 0x18 == 0, "reserved/unused zstd descriptor bits")
+        if not descriptor & 0x20:
+            window_descriptor = data[5]
+            base = 1 << (10 + (window_descriptor >> 3))
+            window = base + (base >> 3) * (window_descriptor & 7)
+            _require(window <= 64 * 1024 * 1024,
+                     "zstd declared window exceeds bounded budget")
+        _require(info.dictionary_id == 0, "zstd dictionary is not permitted")
+        _require(info.decompressed_size is None
+                 or info.decompressed_size <= MAX_TAR_BYTES,
+                 "zstd frame content exceeds bounded budget")
+        decoder = zstd.ZstdDecompressor(
+            options={zstd.DecompressionParameter.window_log_max: 26},
+        )
+        raw = decoder.decompress(data, max_length=MAX_TAR_BYTES + 1)
+        _require(len(raw) <= MAX_TAR_BYTES,
+                 "tar inflation exceeds bounded budget")
+        _require(decoder.eof and not decoder.unused_data,
+                 "incomplete/concatenated/trailing zstd payload")
+    except (EOFError, zstd.ZstdError) as exc:
+        raise DebMemberBlocked("malformed or over-window zstd payload") from exc
+    return raw
+
+
 def _tar_payload(data: bytes, name: str) -> bytes:
+    if name == "data.tar.zst":
+        return _zstd_tar_payload(data)
     try:
         if name.endswith(".xz"):
             decoder = lzma.LZMADecompressor(format=lzma.FORMAT_XZ)

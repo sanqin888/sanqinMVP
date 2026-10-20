@@ -43,3 +43,32 @@ B2-1B 只核对调用方提供的 Ubuntu Release→Packages→.deb 整体候选�
 本地审阅结束即停止，不推远端、不执行真实取证，等待用户审阅并授权。
 
 **后续交付状态（2026-10-18）：**以上 LOCAL/未推送为本批初始审阅时点。后经用户单独授权，PR #2870 / CI #7371 success，Merge commit `3c623b88a20962a820d6269ab330e6b6c48552f3` 已进入 dev；仅合成 CI GREEN，不改变真实来源和 Guest/root 取证权限。
+
+## 4. 2026-10-20 — 真实 Ubuntu 格式适配源码准备
+
+**SOURCE/TESTS AUTHORED / REMOTE DELIVERY AUTHORIZED / CI PENDING。** 首版已完成本地静态审阅；用户于 2026-10-20 明确要求“提交远端”，本批按最终 head 的 GitHub Actions 门禁交付 dev。 前置文档 PR [#2882](https://github.com/sanqin888/sanqinMVP/pull/2882) 最终 head `e45065e910cf70e04006777960dd28031bf0d105` 经 [CI #7398](https://github.com/sanqin888/sanqinMVP/actions/runs/39440447717) success 后 squash merge `5223c08fc2dc9d3e4316f5af1bb6567e9e8b5f15`。该 doc-only CI 只选中 ci-change-scope，其余按范围 skipped，不是本次源码测试结果。来源实包的有界重算与人工文档 LIMITED 见 [S1 §9](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。
+
+### 4.1 已观察差异与实现方式
+
+本轮七个 deb 实际短 ar 名无尾斜杠，control/data 均为 zstd；Debian deb(5) 允许这些格式。旧 §1–2 是 2026-10-18 的实现历史，不回写成当时已支持。本次只在既有 Runtime/Ops 的纯内存候选审阅器中：
+- 将短 ar 名的一个可选尾斜杠标准化后，再做原有名称、长度、重复、顺序、版本、大小和 padding 检查；BSD/GNU 长名扩展及标准化后重名仍拒绝。
+- 增加 data.tar.zst 的显式分支，使用 **Python 3.14+ 可选标准库 compression.zstd** 的增量解码器，检查标准 magic、descriptor 保留位、dictionary ID、已声明 content size、声明窗口及 decoder window_log_max=26、max_length、eof 和 unused_data；限定单标准帧，无字典，无拼接/尾随/截断。
+- 普通未知内容长度帧在声明窗口≤64 MiB 和实际输出≤64 MiB 内允许；已知内容长度超预算在解码前拒绝。checksum 损坏由标准库报错并归为 DebMemberBlocked。
+- xz/gzip 行为与现有 API/SCHEMA/receipt 权限字段不变。control.tar.zst 在本模块仍仅为不执行的容器信封，**不声称解析或认证 control/维护脚本**。
+
+第三方依赖、CLI、ctypes/native-library 搜索、进程或自动安装均未新增；缺 compression.zstd（包括 Python 3.12/3.13）时，zstd 请求明确 BLOCKED，仍可使用原 xz/gzip 能力。该标准库要求属于**离机审阅环境**，不升级当前 Ubuntu Guest 的 Python、不改变生产安装器解释器或 17 Bundle，也不把项目代码放入 Mac 外置辅助包。
+
+### 4.2 预算、测试与接续
+
+既有 .deb≤32 MiB、展开 tar≤64 MiB、≤8192 条目、regular≤64 个/单个32 MiB/合计64 MiB、symlink≤8 个及路径/元数据拒绝规则保留；zstd 新设窗口≤64 MiB。任何候选成功仍 BLOCKED；GPG、外部 pin、Guest FD 和实际动态消费认证字段不翻转。
+
+新增聚焦合成测试覆盖有/无/混合尾斜杠、标准化后重名、长名拒绝、zstd 已知/未知长度 raw-frame、实际 compressed-block+checksum（3.14+ 环境）、标准库缺失明确拒绝且 xz 不受影响、截断/拼接/尾随、skippable/dictionary/超窗口、已知/未知输出超预算和错误成员 pin。测试无真实包、网络、磁盘解包或可执行 Guest 字节；旧 mock zstd 负例继续拒绝，不改成宽松 fallback。Python 3.14+ 的正向 compressed-block 测试直接使用真实标准库，不 mock/skip；较旧宿主只验证能力缺失的拒绝路径，不冒称 zstd 解码通过。
+
+分类 **A 类内部能力扩展**：同 owner、同函数入口及 v1 receipt schema；B2-1D 只导入既有 SCHEMA，调用方无需修改；没有并行旧/新 owner、过渡 facade 或双读迁移，因此没有新增过渡兼容登记。源模块、聚焦测试、本合同、current-dependency-graph 和同批 worklog 同步；应用 owner/import/依赖图/SCC/scanner、CI、依赖清单/锁文件、Prisma/migration、Bundle、备份与生产行为不变。
+
+**本地未执行 lint/build/test，也未在其他环境偷跑仓库测试。** 下批远端交付仍以本源码最终 head 的 GitHub Actions 为准；现有 ci.yml 的 ubuntu-26.04 / ops-checks 运行 Runtime 全套离线测试，届时核对真实结果。官方 runner 镜像清单列有 Python 3.14，但清单不能替代该 PR 实际 CI 证据。当前未在新实现中重跑私有七包，不把前批 dpkg-deb/外置读取结果冒称此代码验收。
+
+本地静态审阅及源码批报告已完成，用户已授权本批 push/PR 与 CI 全绿后的 dev 合并；本条不预先声称 CI 或合并完成。需要真实原件回归、R1-B root/FD 或生产执行时，保留各自准确目标/版本/权限/命令门禁。
+
+参考：[Python compression.zstd](https://docs.python.org/3.14/library/compression.zstd.html)、[RFC 8878](https://www.rfc-editor.org/rfc/rfc8878.html)、[Debian deb(5)](https://manpages.debian.org/unstable/dpkg-dev/deb.5.en.html)、[GitHub Ubuntu 26.04 镜像清单](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md)。
+
