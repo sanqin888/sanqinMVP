@@ -4,6 +4,13 @@
 **日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
+### 2026-10-20 — Phase E 独立真 VOID Canonical 补证修复（LOCAL SOURCE REVIEW / REMOTE NOT AUTHORIZED）
+
+- **真实受控验收事实**：操作者在隔离 MacBook Test Merchant `CS9XWTR0QST51` 用 Compact `C081UG43510334` 发起唯一新 Sale：SanQ Order `cf9bc132eafae6a569d9d31db`、原 Clover Payment `0KXYYAQYNPQAW`、CAD $5.65、Tip 0，Checkout `COMPLETED` / Sale `SUCCEEDED`。13:42:40 EDT 单次 REST Pay Display `POST /payments/{paymentId}/void` HTTP 200，随后的 Welcome HTTP 200；Platform 单笔 Payment v3 查询 HTTP 200，但约 1 秒后仍未见 `result=voided` / Refund，原 reversal Attempt `refund_8f61333d8b54a313f8538f1e3ab26f4897ef5804a89eb753` 为 `operation=VOID / status=UNKNOWN / CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE`，原 Sale 已退金额 0、Order `making`、FULL_REFUND Amendment 0 条。操作者之后提供 Test Merchant Dashboard `Voids` 明确记录 Void `EXXAZJM0C1VE4`、原 Payment `0KXYYAQYNPQAW`、CAD $5.65；这是真实 **Dashboard VOID 供应商证据**，不等于本地 Canonical/Orders 已结案。
+- **缺口及证据界限**：原 `CloverPlatformPaymentsGateway.getCanonicalReversal()` 只根据 Payment 的 `result=voided` 或关联 Refund 判断，未读取独立 Void 关联。Clover [Payment reconciliation 指南](https://docs.clover.com/dev/docs/payment-reconciliation-and-recovery) 指示 `GET /payments?filter=externalPaymentId=...&expand=voids`；[单笔 Payment API 参数表](https://docs.clover.com/dev/reference/paygetpayment) 未列出 `voids` 展开。因此只在原单笔 Payment 尚未确认 VOID 且无 Refund 时，使用现有 merchant OAuth 对同一 external identity 做 **只读、上限分页的 collection 补证**；不改变 Sale/Refund 的单笔 Payment 查询。
+- **局部实现边界**：在 Payments/Clover Platform infrastructure owner 内，真 VOID 接受 `result=voided`、原 Payment 显式 `voided=true`，或 exact Payment 的唯一可信 `voids` 关联，并保留原金额、币种、Tip、附加费及 Refund 冲突校验。collection 未完全读尽、行/身份不一致、Void 关联缺 ID/冲突/非终态、付款/Refund 事实矛盾时保持 `UNKNOWN`；不以 Terminal ACK、Dashboard 截图或单独 Void ID 强制成功，不伪造 Refund ID。不新增 route/schema/migration/依赖/跨 owner、无设备/资金写调用。仅追加聚焦 Provider Gateway 回归，覆盖原 SUCCESS 与独立 Void、可核验 Boolean、冲突/不完整分页/旧 Refund 路径。
+- **门禁**：从 `origin/dev@09354818` 建立独立 `fix/clover-phase-e-void-canonical-evidence-20261020`；MCP-workspace 不具备 lint/build/Jest 执行权，尚未验证真实 `expand=voids` collection 的实际 payload/权限兼容性。当前仅为 LOCAL SOURCE；待本地差异审阅→用户另行授权 PR→CI 全绿→隔离 MacBook 对该 **原 VOID Attempt 的已存在身份** 做不发新 VOID/REFUND 的 Canonical-only 恢复专门授权及只读前后审计。所有其他 VOID、Sale 和 Refund 保持 **NO-GO**；不可用本次截图代替恢复最终资金判定。
+
 ### 2026-10-20 — Phase E VOID Readiness 最小修复（SOURCE CI VERIFIED / DEVICE ACCEPTANCE PENDING）
 
 - **授权/基线**：用户审阅只读 VOID Readiness Report 后明确批准代码修改，暂停后于同日恢复；从最新 `origin/dev@ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a` 建立 `fix/clover-phase-e-void-readiness-20261020`。本地审阅完成后，用户同日明确授权提交远端、PR、CI 修复及全绿后合并 `dev`；**源码 CI 已通过，最终文档 head 仍受 CI 门禁；未执行设备金融操作**。
