@@ -365,7 +365,7 @@ def _events(records: Any, envelope: dict, artifacts: dict,
             require(ident(item["identity"]), "NATIVE_LOAD_UNMAPPED")
             origin = files[item["fileBindingRef"]]["observedPath"]
             require(item["kind"] == "NATIVE" and type(origin) is str
-                    and re.search(r"\\.so(?:\\.[0-9]+)*\\Z", origin) is not None,
+                    and re.search(r"\.so(?:\.[0-9]+)*\Z", origin) is not None,
                     "NATIVE_LOAD_UNMAPPED")
         if event["eventType"] in ("PROCESS_FORK", "PROCESS_CLONE"):
             require(item["identity"] in processes and
