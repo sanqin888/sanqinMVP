@@ -3177,10 +3177,9 @@ describe('Clover Platform Payments Gateway', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify(platformPayment({ result: 'VOIDING' })),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(platformPayment({ result: 'VOIDING' })), {
+          status: 200,
+        }),
       )
       .mockResolvedValueOnce(
         new Response(

@@ -290,7 +290,8 @@ export class CloverPaymentProviderAdapter
         expectedAdditionalChargeRefundCents:
           request.expectedAdditionalChargeRefundCents,
       };
-      let canonical = await this.platform.getCanonicalReversal(canonicalRequest);
+      let canonical =
+        await this.platform.getCanonicalReversal(canonicalRequest);
       // A successful Terminal ACK is not finality. Only a narrowly defined
       // propagation delay can justify bounded GET-only rechecks. Any invalid
       // facts, conflict or uncertain query must stop without another write.
@@ -303,13 +304,13 @@ export class CloverPaymentProviderAdapter
           if (
             canonical.status !== 'UNKNOWN' ||
             canonical.evidence !== 'CANONICAL' ||
-            canonical.failureCode !==
-              'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE'
+            canonical.failureCode !== 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE'
           ) {
             break;
           }
           await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-          canonical = await this.platform.getCanonicalReversal(canonicalRequest);
+          canonical =
+            await this.platform.getCanonicalReversal(canonicalRequest);
         }
       }
       return this.mergeTerminalObservation(execution, canonical);
