@@ -72,3 +72,12 @@ B2-1B 只核对调用方提供的 Ubuntu Release→Packages→.deb 整体候选�
 
 参考：[Python compression.zstd](https://docs.python.org/3.14/library/compression.zstd.html)、[RFC 8878](https://www.rfc-editor.org/rfc/rfc8878.html)、[Debian deb(5)](https://manpages.debian.org/unstable/dpkg-dev/deb.5.en.html)、[GitHub Ubuntu 26.04 镜像清单](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md)。
 
+## 5. 2026-10-20 — 最终合并与真实封存七包回归（有界）
+
+以上 §4 的合并前状态已后续完成：PR #2883 最终 head `15e6ff4bb3643303d522cdc5634d1a3dfb082c4e` / [CI #7401](https://github.com/sanqin888/sanqinMVP/actions/runs/39442850626) success，squash merge dev `ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a`。最终 Runtime 436 tests、release 45 tests OK。
+
+Mac 非 root Python 3.14.8 / zstd 1.5.7 对固定合并源码执行外置 replay：七包 ar/data.tar.zst 全部解码并匹配前批独立技术复核的完整 data.tar SHA，四包的三个既有 regular 及三条链接候选匹配；其余三包没有新增成员 pin 审阅。回执 SHA `a8b33d5defcc9408ccc275b15b24006c60fd08781339c8cabfa0a1ce3d0de8bf`。已取得 13,813-byte 原件，五文件 manifest、交付脚本、参考 pins、冻结 Git 源码快照均重算匹配；不在审阅环境代跑仓库测试，也不把该原件复核冒称第二次 Runtime 实际执行。
+
+**结论只关闭本次限定格式回归差异。** receipt 的 BLOCKED/false 保留；Guest root/FD、完整传递依赖和实际动态消费未完成，R1/C1 OPEN、G2 NO-GO。新 R1-B 只读采集器当前仅本地源码/测试准备，无 CI/root 执行；见 [R1-B S4 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。
+
+
