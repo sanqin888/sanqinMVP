@@ -20,6 +20,11 @@ import {
 import { CloverPlatformPaymentsGateway } from './platform/clover-platform-payments.gateway';
 import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
 
+// After a positive Terminal VOID ACK, Platform may briefly lag the terminal.
+// Retry only read-only canonical queries for this specific not-yet-visible state.
+// These delays are bounded; no subsequent Terminal VOID/Refund is permitted.
+const VOID_CANONICAL_RECHECK_DELAYS_MS = [500, 1000, 2000, 3000] as const;
+
 const unsupportedSource = (source: string): PaymentProviderOutcome => ({
   status: 'FAILED',
   failureCode: 'CLOVER_UNSUPPORTED_PAYMENT_SOURCE',
@@ -271,7 +276,7 @@ export class CloverPaymentProviderAdapter
       if (execution.status === 'FAILED' || execution.status === 'CANCELLED') {
         return execution;
       }
-      const canonical = await this.platform.getCanonicalReversal({
+      const canonicalRequest = {
         paymentId: request.paymentId,
         attemptId: request.attemptId,
         idempotencyKey: request.idempotencyKey,
@@ -280,11 +285,34 @@ export class CloverPaymentProviderAdapter
         providerRefundId: execution.providerRefundId,
         amountCents: request.amountCents,
         currency: request.currency,
-        operation: 'VOID',
+        operation: 'VOID' as const,
         expectedTipRefundCents: request.expectedTipRefundCents,
         expectedAdditionalChargeRefundCents:
           request.expectedAdditionalChargeRefundCents,
-      });
+      };
+      let canonical =
+        await this.platform.getCanonicalReversal(canonicalRequest);
+      // A successful Terminal ACK is not finality. Only a narrowly defined
+      // propagation delay can justify bounded GET-only rechecks. Any invalid
+      // facts, conflict or uncertain query must stop without another write.
+      if (
+        execution.status === 'SUCCEEDED' &&
+        execution.evidence === 'EXECUTION' &&
+        execution.providerPaymentId === request.providerPaymentId
+      ) {
+        for (const delayMs of VOID_CANONICAL_RECHECK_DELAYS_MS) {
+          if (
+            canonical.status !== 'UNKNOWN' ||
+            canonical.evidence !== 'CANONICAL' ||
+            canonical.failureCode !== 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE'
+          ) {
+            break;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+          canonical =
+            await this.platform.getCanonicalReversal(canonicalRequest);
+        }
+      }
       return this.mergeTerminalObservation(execution, canonical);
     }
     return Promise.resolve({
