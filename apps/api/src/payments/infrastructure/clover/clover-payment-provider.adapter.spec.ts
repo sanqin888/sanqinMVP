@@ -2991,12 +2991,14 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('confirms VOID from voided=true despite SUCCESS', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify(platformPayment({ result: 'SUCCESS', voided: true })),
-        { status: 200 },
-      ),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(platformPayment({ result: 'SUCCESS', voided: true })),
+          { status: 200 },
+        ),
+      );
     await expect(
       createPlatformGateway().getCanonicalReversal({
         ...platformRequest,
@@ -3212,22 +3214,21 @@ describe('Clover Platform Payments Gateway', () => {
       },
       'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
     ],
-  ] as const)(
-    'fails closed for %s',
-    async (_name, facts, failureCode) => {
-      jest.spyOn(global, 'fetch').mockResolvedValue(
+  ] as const)('fails closed for %s', async (_name, facts, failureCode) => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
         new Response(JSON.stringify(platformPayment(facts)), { status: 200 }),
       );
-      await expect(
-        createPlatformGateway().getCanonicalReversal({
-          ...platformRequest,
-          operation: 'VOID',
-          expectedTipRefundCents: 0,
-          expectedAdditionalChargeRefundCents: 48,
-        }),
-      ).resolves.toMatchObject({ status: 'UNKNOWN', failureCode });
-    },
-  );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({ status: 'UNKNOWN', failureCode });
+  });
 
   it('keeps ordinary Refund query expansion unchanged', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(

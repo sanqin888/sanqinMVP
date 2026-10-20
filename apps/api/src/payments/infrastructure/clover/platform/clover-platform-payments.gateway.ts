@@ -943,25 +943,25 @@ export class CloverPlatformPaymentsGateway {
         }
         // The expansion is scoped to this exact payment. Supplied relations,
         // amounts and currency must agree. No independent Void ID is invented.
-        if (
-          voids.length > 1 ||
-          (voids.length === 1 &&
-            (!stringValue(voids[0], 'id') ||
-              (voids[0].payment !== undefined &&
-                stringValue(asRecord(voids[0].payment), 'id') !==
-                  providerPaymentId) ||
-              (voids[0].paymentId !== undefined &&
-                stringValue(voids[0], 'paymentId') !== providerPaymentId) ||
-              (voids[0].status !== undefined &&
-                !['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'VOIDED'].includes(
-                  stringValue(voids[0], 'status')?.toUpperCase() ?? '',
-                )) ||
-              (voids[0].amount !== undefined &&
-                integerValue(voids[0], 'amount') !== request.amountCents) ||
-              (voids[0].currency !== undefined &&
-                stringValue(voids[0], 'currency')?.toUpperCase() !==
-                  request.currency.toUpperCase()))))
-        ) {
+        const voidEntry = voids.length === 1 ? voids[0] : null;
+        const invalidVoidEntry =
+          voidEntry !== null &&
+          (!stringValue(voidEntry, 'id') ||
+            (voidEntry.payment !== undefined &&
+              stringValue(asRecord(voidEntry.payment), 'id') !==
+                providerPaymentId) ||
+            (voidEntry.paymentId !== undefined &&
+              stringValue(voidEntry, 'paymentId') !== providerPaymentId) ||
+            (voidEntry.status !== undefined &&
+              !['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'VOIDED'].includes(
+                stringValue(voidEntry, 'status')?.toUpperCase() ?? '',
+              )) ||
+            (voidEntry.amount !== undefined &&
+              integerValue(voidEntry, 'amount') !== request.amountCents) ||
+            (voidEntry.currency !== undefined &&
+              stringValue(voidEntry, 'currency')?.toUpperCase() !==
+                request.currency.toUpperCase()));
+        if (voids.length > 1 || invalidVoidEntry) {
           return reversalUnknown(
             request,
             'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
