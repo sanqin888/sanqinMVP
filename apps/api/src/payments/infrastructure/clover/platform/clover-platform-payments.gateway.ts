@@ -763,8 +763,7 @@ export class CloverPlatformPaymentsGateway {
       if (!result?.ok) return null;
       const rawRows = result.body?.elements;
       const rows =
-        Array.isArray(rawRows) &&
-        rawRows.length <= PAYMENT_COLLECTION_PAGE_SIZE
+        Array.isArray(rawRows) && rawRows.length <= PAYMENT_COLLECTION_PAGE_SIZE
           ? recordsFromArray(rawRows)
           : null;
       if (!rows) return null;
@@ -906,8 +905,7 @@ export class CloverPlatformPaymentsGateway {
       const voided = expandedVoided ?? payment?.voided;
       if (
         !voids ||
-        (expandedVoided !== undefined &&
-          typeof expandedVoided !== 'boolean') ||
+        (expandedVoided !== undefined && typeof expandedVoided !== 'boolean') ||
         (payment?.voided !== undefined &&
           expandedVoided !== undefined &&
           payment.voided !== expandedVoided)
@@ -919,9 +917,7 @@ export class CloverPlatformPaymentsGateway {
         );
       }
       const hasVoidEvidence =
-        normalizedResult === 'CANCELLED' ||
-        voided === true ||
-        voids.length > 0;
+        normalizedResult === 'CANCELLED' || voided === true || voids.length > 0;
       if (hasVoidEvidence) {
         if (knownRefundId || refunds.length > 0) {
           return reversalUnknown(
