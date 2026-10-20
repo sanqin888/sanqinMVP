@@ -151,3 +151,103 @@ Runner 若真实验签成功，**只代表候选公钥下的签名与限定 Rele
 建议 **R1-A（来源 R1-S2 + 必要 S0/S3）→ R1-B（S4/S5）→ R1-C（S6 + 独立 C1 裁定）**。依 R0 D1/D5，旧故障机自举 clean reinstall 的专用完整依赖重建链已退出首版关键路径，无需重复；正式正常更新执行器的来源、完整依赖和实际消费仍是强制门禁。R2 只读 readiness 可并行，正式批次仍按 R1 → R2 → R3 → R4 → R5；新的 Guest/root/生产/AWS 实测与源码扩权必须另获批准。
 
 **总状态：R1 OPEN / C1 OPEN；C2 CLOSED（isolated synthetic / N-07 limited accepted）；R2–R5 未开始正式实施；C5-G2 NO-GO；S2 daily 扩充 PAUSED。** 本次仅补文档与证据索引，不变更 17 Bundle、CI、Ops 源码、凭据、运行环境或机器权限。
+
+> 本节为 2026-10-19 历史停点；2026-10-20 的原件重算与有限人工确认见下方 §9。
+
+## 9. 2026-10-20 — R1-A 七包来源原件离机重算与有限人工文档确认
+
+**当前有限结论：R1-A EXACT-OBJECT SOURCE BYTES TECHNICALLY VERIFIED / HUMAN DOCUMENT REVIEW LIMITED；R1-A 整体正式验收仍 OPEN，Runtime R1/C1 OPEN、C5-G2 NO-GO。** 本节更新 §8.4 的历史停点，不追溯修改旧回执、既有 W1 限定审批或 B2-1A/B/C/D 永久 BLOCKED 语义。可以继续 B2-1C 格式适配及 R1-B 源码/审批材料准备；没有新增 Guest/root/生产执行许可。
+
+### 9.1 取得原件、审阅方法与证据索引
+
+操作员在原审批包冻结的恢复实验资产上完成 Host 五条、Guest 原九条及八条补充非 root 只读查询，随后在 Mac 外置材料中保留签名、完整索引、七包和指定成员。采集、封存工具按用户要求只通过独立下载交付，**不进入仓库、CI 或 Runtime Bundle**。原始归档、完整审阅报告与 .eml 继续私有保存；公开仓库仅登记以下摘要及范围，不存 IP/MAC、机器实际路径、邮件地址、原始终端或凭据。
+
+| 对象 / 有界证据 ID | bytes / SHA256 |
+| --- | --- |
+| R1A-20261020-ARCHIVE-001（私有封存归档） | 53,612,982 bytes；`7ebd8a8fabf78c586ad0055b4c4049f0f99e14f06d91020e2150d7ec802e453a` |
+| operator seal | `904afb5d7f15b9729415aa07e7fa27f08416fbcfc0f4dfda5284fedc349f727f` |
+| frozen review scope | `c22c545080fe23db105c976b75a6d46a16ebbd10b2bcd7af53adac6565325550` |
+| R1A-20261020-CODEX-BYTE-REVIEW-001（私有技术报告） | `38ceafc2b04f8b9487a06d61faf0528d479c3d2caf15bf769ab37ecc73bb81e3` |
+| R1A-DOC-CONFIRM-ORIGINAL（原邮件，正文日期笔误） | 14,461 bytes；`e61dc05c5d4e1c71a10a36f0c2cede8eb1fdc47f7a340e1c4e2a403669d456d7` |
+| R1A-DOC-CONFIRM-CORRECTION（更正邮件） | 22,438 bytes；`0358dd3c394ba2eb274897bf63059a64dbfcd5a81d4fca8f51d2ba021a4205bb` |
+
+助手实际收到并读取归档，整体 SHA 与上传前操作员提供值一致；268 个归档载荷均为安全相对路径普通文件。六批原件共 **261 files / 92,751,937 bytes**，逐批原 SHA256SUMS、回执、来源代码 digest、跨阶段引用和副本一致性均已重算，未发现缺件或清单外文件。外层 PAYLOAD-SHA256SUMS 的 266 项与另绑定的自身/operator seal 共构成 268 个文件，不把此清单称为数字签名或 WORM。
+
+| 原批次 | 清单匹配项（不含 SHA256SUMS 自身） | receipt.json SHA256 |
+| --- | ---: | --- |
+| HOST-RUNNING-001 | 15 | `453f22f3e107042cab52cffb6529f2206f09564eeb0c39661f06ea1f0faae901` |
+| GUEST-RUNNING-001 | 45 | `cb618ce3f1ee90dbbe2598e6efe4a3ec8d0b97725b8fbc7c5361b4311de67952` |
+| SOURCE-INDEX-UPDATES-001 | 18 | `5a0e54e9b5a07f85d9ed42766316ee63b607b2abe87bdaaf41b76f448dc30435` |
+| DEBS-UPDATES-001 | 35 | `9429d9b1af3dd929a09ff6933b2f004611ee77be1dd7b98a65c9c6074d156881` |
+| MEMBERS-UPDATES-001 | 92 | `1e1a2c4500efabfba00c821b7a1340adbaa5664bd34513112a84ce96ff5d060d` |
+| BASEFILES-001 | 50 | `35255ccdef262979f017d08c2b8aced81448fd4bcc62cc8610f5bb259ad47374` |
+
+本次技术重算发生在独立于采集 Mac/被测 Guest 的会话审阅环境，使用另写的解析代码，**未执行上传的采集程序或 Guest ELF**。采集辅助程序与本轮审阅代码均由同一 Codex 助手编写，不称为另一个主体的独立技术见证。环境 Python 3.12.14、gpgv 2.4.4、python-zstandard 0.25.0 / libzstd 1.5.7、dpkg-deb 1.22.6、readelf 2.42。七包 control/data 的 14 条 tar 流另用 dpkg-deb 只读接口交叉核对，均逐字节相同；不安装软件、不执行包控制脚本。该检查不是 MCP-workspace 项目测试，不冒称运行了仓库测试或原 B2-1C。
+
+### 9.2 精确 Ubuntu 来源链
+
+沿用 §8.1 准确 keyring SHA `80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31`。本次用独立新建私有 homedir、显式 keyring 重新运行 gpgv，rc=0，实际单一 VALIDSIG 指纹为 `F6ECB3762474EDA9D21B7022871920D1991BC93C`；另与 Ubuntu 官方 HTTPS 文档公布的完整 Archive 2018 指纹核对。没有重新建立或扩大旧 W1 的人工批准范围。
+
+| 签名链对象 | 本次原件重算 |
+| --- | --- |
+| Release / Release.gpg SHA256 | `5657d348e3ee3de1ab63346ffc48661ed67398783c0b00f9d988a935ce72bf39` / `cc82339ef3f88e743952ca235ee097c81fb783e1a764fc4bf7a8273203875c75` |
+| Suite / Codename / Release Date | noble-updates / noble / 2026-10-20 02:31:53 UTC；采集开始 03:25:05 UTC，晚于签发时间 |
+| main/binary-amd64/Packages.xz | 1,397,112 bytes；`424e9966d4d549da3f08f0737b0cefbcfffd76464ba25efee146647b198bd6f5` |
+| 完整解压 Packages | 7,559,949 bytes / 6,993 stanza；`adb6cd7b58823ed0d7b4d2cf2859c29e47a9696942196c14a4a0513e4946b5df` |
+
+压缩与完整解压索引的 Size/SHA 均匹配签名 Release，七个精确版本/amd64 分别唯一命中，未使用筛选 stanza 摘录冒充完整索引。保留 Release 无 Valid-Until 字段；核对了签发与采集时间，不虚构到期字段，不代表未来安装新鲜度已批准。此次准确版本均命中该冻结索引，无须为这七个对象另找 Snapshot。
+
+| 包 | 版本 | deb bytes | deb SHA256 |
+| --- | --- | ---: | --- |
+| python3.12 | 3.12.3-1ubuntu0.17 | 650732 | `6745c9463432e619d7402b117ad4ac86c31dcd3999ba20daa9e395f6f9909d86` |
+| python3.12-minimal | 3.12.3-1ubuntu0.17 | 2334634 | `d452689b9660845345a4c3e05e4ad82c082d5474e04031b7aa47f1a6d5610a6e` |
+| libpython3.12-minimal | 3.12.3-1ubuntu0.17 | 838536 | `d646ad7112b5adec21ba0e1af015f04ae8ca7f5efdc619622547dd6673c4c14b` |
+| libpython3.12-stdlib | 3.12.3-1ubuntu0.17 | 2070530 | `45d3f530ba1f9d6e879ad46b92046fabab13fe50a82450e4f65557a3bbad1489` |
+| libc6 | 2.39-0ubuntu8.9 | 3264314 | `ff5557d99b51f761c4b7c92368b9cc45565eda17df9bf9eb4b134d09825008be` |
+| libc-bin | 2.39-0ubuntu8.9 | 682164 | `066398a06ef1a218d4109461d4c636eafe83322ad19b179de9ef7af42b3fec58` |
+| base-files | 13ubuntu10.5 | 73220 | `87e8c41e62f61625fb78a982d0bc0a70f40ef8375bc313b154914d1b3759c823` |
+
+合计 **9,914,130 bytes**。各原始 deb 的 Filename、Size、SHA、control Package/Version/Architecture 均匹配完整索引与冻结范围，包成员路径没有被重打包或重新压缩来适应旧解析器。
+
+### 9.3 三个普通成员、根别名与 Guest 关联
+
+| 角色 / 包内路径 | 来源包 | bytes / uid:gid:mode | 原始成员 SHA256 |
+| --- | --- | --- | --- |
+| Python / usr/bin/python3.12 | python3.12-minimal | 8020928 / 0:0:0755 | `e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f` |
+| os.py / usr/lib/python3.12/os.py | libpython3.12-minimal | 39786 / 0:0:0644 | `316d1b7307fd851bded3423c9d437e0a383c725d993f0fcff2e8b749fe560b62` |
+| loader / usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 | libc6 | 236616 / 0:0:0755 | `c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da` |
+
+三个 regular 成员在本次七包范围内各有唯一归属，共 8,297,330 bytes，重算字节与保存的 selected 副本一致。**这不是从 Guest root-held FD 读出的 SHA，也不是全系统唯一归属证明。**
+
+| 包内 symlink | 来源包 | 原始 link text / SHA256（不含换行） |
+| --- | --- | --- |
+| lib | base-files | `usr/lib` / `bb40df61b3e0947109adb2e4d4ec41261d2c50580463391f34d67b5f30712176` |
+| lib64 | base-files | `usr/lib64` / `1a8dcebf89cf73748aa1a3c88dd1ecc2a040ffabb45a10d9231a642e1a89913b` |
+| usr/lib64/ld-linux-x86-64.so.2 | libc6 | `../lib/x86_64-linux-gnu/ld-linux-x86-64.so.2` / `bb9802014f1e2bee7c7edb539ab3cbe7f3ebcfaa7921cc321b81169602cc5768` |
+
+三者 0:0:0777，与 Guest 保留的 readlink 输出文本相符；包内无换行 link text 与命令 stdout 的换行分开处理。base-files 前缀链接 + libc6 叶链接归一到上述 loader regular member；不用伪造 `lib64/ld-linux-x86-64.so.2` 包内成员。readelf 只读确认包内 Python 为 ELF64/x86-64，PT_INTERP 正是 `/lib64/ld-linux-x86-64.so.2`。
+
+已核对五条 Host、十七条 Guest 记录的原始字节/rc/UTC/摘要与 wire packet：Host 直接执行 inner rc=0、outer rc=null；Guest inner/SSH outer rc 均为 0。冻结恢复资产关联匹配，Host 原始及 Guest 前后记录的 running/hostonlynetwork、其余 NIC none、clipboard/draganddrop disabled、无报告共享文件夹一致；旧源快照的双向 clipboard 仍单列历史事实。会话内 boot-id/mount namespace 文本相同；完整 installed inventory 695 行，七包 installed 身份一致。准确包归属和版本不能单独证明 Guest 文件未被改写；Host/Guest 原件自报与 SSH 关联不等于物理来源或受损内核的独立认证。`guestRouteAuthenticated=false` 继续保留。
+
+base-files 控制脚本只作为数据读取，未运行，也不从 dpkg-divert/安装脚本提示推断历史现场行为。Python 静态 DT_NEEDED 见 libm.so.6、libz.so.1、libexpat.so.1、libc.so.6；七包与这三个起始成员不是完整 CPython/ELF/dlopen 依赖闭包，后续属于 R1-C，不在此扩展采集。
+
+### 9.4 邮件确认的准确性质及下一步
+
+更正邮件于 2026-10-20 10:25:17 -0400 发出，明确上一封日期有误，正文署名日期从未来的 2026-10-26 更正为 2026-10-20；两份原件分别保存，归档 hash 引用正确。原邮件 SHA 与操作员 Mac 回传一致；更正邮件 SHA 由助手对上传原件计算，**尚无更正件 Mac 端单独 hash 回传，不冒称双端重算已核对**。
+
+邮件明确「人工文档审阅」「技术结果依据报告」「未自行运行验签或软件包校验」，并排除 root/生产安装/上线批准。故只登记 **HUMAN DOCUMENT REVIEW LIMITED / ACKNOWLEDGED FOR DEVELOPMENT PREPARATION**；不是另一主体已独立重验七包/签名的证明，不能填为 FULL INDEPENDENT TECHNICAL WITNESS PASS。没有另证发件人与采集人的主体独立性、服务端 MIME 同源或数字签章；邮箱头认证声明不在本批冒充独立验证。
+
+| 门禁 / 实施项 | 最新有限状态与接续 |
+| --- | --- |
+| 本批指定来源对象的原件技术检查 | PASS FOR EXACT FROZEN OBJECTS；补齐“未取得并重算原件”的缺口，不自动扩大旧 W1 |
+| 必要 S0/S3 | 原始回执 COLLECTED / TECHNICALLY CROSS-CHECKED；平台真实性及独立 Host witness 仍 LIMITED |
+| 人工确认 | 文档审阅 LIMITED；只同意作为后续开发准备依据 |
+| B2-1C 真实格式兼容 | OPEN；七包实为无尾斜杠 ar + control/data.tar.zst，旧解析器拒绝；Mac 外置读取不代表 Runtime 已适配 |
+| R1-B S4/S5 | 可准备有限源码、测试与准确权限/命令包；真正 root/FD collector 尚未实施/执行，执行仍需另批精确命令 |
+| R1-C / C1 | OPEN；真实正常更新执行器的完整依赖与实际消费尚未验证 |
+| Runtime R1 / G2 / S2 daily | OPEN / NO-GO / PAUSED；C2 维持既有有限 CLOSED，R2–R5 门禁不变 |
+
+先提交本次 doc-only 续记并经 PR/CI 合并，再开始 B2-1C 最小格式适配；保留 budgets、拒绝边界与永久 BLOCKED 权限语义。格式/解码依赖与纯内存 owner 边界须在实施前核对，不能静默引入第三方依赖或外部执行。原件、Mac 辅助脚本及实际 Guest/root/生产行为均不属于本次仓库交付。
+
+参考：[Ubuntu 指纹核验](https://documentation.ubuntu.com/security/software-integrity/image-verification/)、[Noble Archive key 示例](https://ubuntu.com/chisel/docs/latest/reference/chisel-releases/chisel.yaml/)、[Debian deb(5)](https://manpages.debian.org/unstable/dpkg-dev/deb.5.en.html)。网页用于身份/格式佐证，本次包事实来自上传原件重算。
+

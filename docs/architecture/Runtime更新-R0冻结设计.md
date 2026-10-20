@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-20 R1-A 原件复核续记：**已读取六批封存原件（261 files），在独立于采集 Mac/Guest 的环境重验 noble-updates Release 签名、完整索引、七个 deb、三个普通成员及三条链接，准确来源对象技术检查通过；另收到更正日期后的人工文档确认，明确未自行验签/解析，故为 LIMITED，不冒充另一主体的独立技术见证。准确 hash、保管与剩余缺口见 [S1 §9](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。R1-A 整体正式验收仍 OPEN，原回执 BLOCKED、guestRouteAuthenticated=false、R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。文档 PR 合并后先做 B2-1C optional ar slash/zstd 的最小格式适配，再准备 R1-B；本次没有 root/生产执行授权。下面 2026-10-19 及更早续记均保留历史时间范围。
+
 **2026-10-19 R1 取证状态续记（本次仅本地文档待审）：**S1-W1 可信公钥取得限定独立审批，S1-R1 Hosted Runner 的准确 `noble` Release 签名原件和 S1-D1 加密归档/读回已核对；详见 [S1 §8](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。**仅关闭 R1 内部这组有限取证子项，Runtime R1 / C1 总体继续 OPEN**。R1-A/B/C 仍需推进；R2 MAINT-RESTART-01 依然是下一正式总批次、目前未实施。旧 §3/§5 的历史“未执行”记录不追溯修改；本次没有新源码/Guest/root/AWS/生产授权。
 
 **2026-10-18 两项修订交付：**[PR #2864](https://github.com/sanqin888/sanqinMVP/pull/2864) → `dev`；CI/合并以此 PR 最终 head 的 Checks/事件为准，原 PR #2853 仅为初始 R0 历史交付。
