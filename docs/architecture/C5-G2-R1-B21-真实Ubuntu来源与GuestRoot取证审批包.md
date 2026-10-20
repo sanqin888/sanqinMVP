@@ -1,5 +1,7 @@
 # C5-G2 / R1 — Ubuntu 独立来源与隔离 Guest/root 真实取证审批（第一轮）
 
+> **2026-10-20 最新续记：**S0/S3 非 root 原始回执和 R1-S2 指定七包来源原件已采集，助手已对上传原件离机重算；具体来源对象技术检查通过、人工邮件只确认文档审阅 LIMITED。完整证据索引及边界见 [S1 §9](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)。本文件下方“未采集/未授权”的旧段落保留其原日期；本轮新增采集按会话逐批推进，不回写旧回执或扩大旧 W1。独立 Host/主体见证与真实 root FD 仍未完全认证；S4/S5 实际 root 执行仍须冻结代码及精确命令后另批批准，S6/C1/G2 保持原门禁。Mac 工具与原件不入仓库，下一步先处理 B2-1C 实包格式兼容。
+
 **2026-10-18 America/Toronto。基线：**B2-1D PR #2871 / CI #7373 success / dev merge e5f2e64376251f9f03edb1ebf337f74fab820d90。
 **首次审批文档编写：**docs/c5-g2-r1-b21-real-provenance-root-approval-20261018；**LOCAL DOCUMENT REVIEW ONLY / NOT PUSHED / NO REAL SOURCE SIGNATURE VERIFIED / NO HOST/GUEST/ROOT EXECUTED**。用户随后明确批准 S0 身份预核对及 S1 独立 Ubuntu 来源验签的范围，执行结果见第 8 节；**S2/S3/S4–S6 不在本次批准内**。
 
