@@ -350,47 +350,151 @@ describe('CloverPaymentProviderAdapter', () => {
     },
   );
 
-  it('keeps a VOID acknowledgement UNKNOWN until canonical truth and uses read-only recovery', async () => {
+  it('waits for late Canonical VOID finality with GET-only rechecks after one Terminal ACK', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValueOnce({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'payment-1',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        })
+        .mockResolvedValueOnce({
+          status: 'SUCCEEDED',
+          evidence: 'CANONICAL',
+          paymentId: voidRequest.paymentId,
+          attemptId: voidRequest.attemptId,
+          idempotencyKey: voidRequest.idempotencyKey,
+          providerPaymentId: 'payment-1',
+          amountCents: 2000,
+          currency: 'CAD',
+          refundedAmountCents: 2000,
+          tipCents: 0,
+          chargedTotalCents: 2048,
+          resultCode: 'CLOVER_VOID_CONFIRMED',
+        });
+      const pending = adapter.voidPayment(voidRequest);
+      await jest.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          operation: 'VOID',
+          providerPaymentId: 'payment-1',
+          idempotencyKey: voidRequest.idempotencyKey,
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns UNKNOWN after bounded VOID read-only rechecks when finality never appears', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'payment-1',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        });
+      const pending = adapter.voidPayment(voidRequest);
+      await jest.advanceTimersByTimeAsync(6500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(5);
+      // Later manual recovery reuses the same identity without another VOID.
+      read.mockResolvedValueOnce({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        providerPaymentId: 'payment-1',
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+      });
+      await expect(
+        adapter.getPaymentStatus(voidRequest),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(6);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    'CLOVER_PLATFORM_REVERSAL_QUERY_UNCERTAIN',
+    'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
+  ])(
+    'does not recheck an unsafe canonical observation: %s',
+    async (failureCode) => {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          failureCode,
+        });
+      await expect(adapter.voidPayment(voidRequest)).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('never rechecks a Terminal VOID response with a mismatched provider Payment ID', async () => {
     const { adapter, terminal, platform } = createAdapter();
     const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
       status: 'SUCCEEDED',
       evidence: 'EXECUTION',
-      providerPaymentId: 'payment-1',
+      providerPaymentId: 'different-payment',
     });
     const read = jest
       .spyOn(platform, 'getCanonicalReversal')
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         status: 'UNKNOWN',
         evidence: 'CANONICAL',
-        providerPaymentId: 'payment-1',
         failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
-      })
-      .mockResolvedValueOnce({
-        status: 'SUCCEEDED',
-        evidence: 'CANONICAL',
-        providerPaymentId: 'payment-1',
-        refundedAmountCents: 2000,
-        tipCents: 0,
-        chargedTotalCents: 2048,
-        resultCode: 'CLOVER_VOID_CONFIRMED',
       });
     await expect(adapter.voidPayment(voidRequest)).resolves.toMatchObject({
       status: 'UNKNOWN',
     });
-    await expect(adapter.getPaymentStatus(voidRequest)).resolves.toMatchObject({
-      status: 'SUCCEEDED',
-      evidence: 'CANONICAL',
-      resultCode: 'CLOVER_VOID_CONFIRMED',
-    });
     expect(send).toHaveBeenCalledTimes(1);
-    expect(read).toHaveBeenCalledTimes(2);
-    expect(read).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        operation: 'VOID',
-        providerPaymentId: 'payment-1',
-        idempotencyKey: voidRequest.idempotencyKey,
-      }),
-    );
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   it('canonicalizes an uncertain VOID response without claiming a failure', async () => {
@@ -3067,6 +3171,55 @@ describe('Clover Platform Payments Gateway', () => {
       'filter=externalPaymentId=external-1',
     );
     expect(decodeURIComponent(collectionUrl)).toContain('expand=voids');
+  });
+
+  it('probes a VOIDING payment collection but never treats an in-flight payment as final', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(platformPayment({ result: 'VOIDING' })),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            elements: [
+              platformPayment({
+                result: 'VOIDING',
+                voids: {
+                  elements: [
+                    {
+                      id: 'clover-void-1',
+                      payment: { id: 'clover-payment-1' },
+                      amount: 2000,
+                      currency: 'CAD',
+                      status: 'COMPLETED',
+                    },
+                  ],
+                },
+              }),
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      decodeURIComponent(fetchRequestUrl(fetchSpy.mock.calls[1][0])),
+    ).toContain('expand=voids,refunds');
   });
 
   it.each([

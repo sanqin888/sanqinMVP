@@ -887,20 +887,27 @@ export class CloverPlatformPaymentsGateway {
       // Clover records a separate void. Only a bounded, exact-identity
       // collection result may supplement its reversal evidence.
       const singlePaymentVoids = elementRecords(payment, 'voids');
-      const expandedVoidPayment =
-        normalizedResult === 'SUCCEEDED' &&
+      const externalPaymentId = stringValue(payment, 'externalPaymentId');
+      const paymentVoiding = resultCode?.trim().toLowerCase() === 'voiding';
+      const shouldReadVoidCollection =
+        (normalizedResult === 'SUCCEEDED' || paymentVoiding) &&
         payment?.voided !== true &&
         singlePaymentVoids?.length === 0 &&
         refunds.length === 0 &&
-        !knownRefundId
-          ? await this.readExpandedVoidPayment(
-              merchantId,
-              providerPaymentId,
-              stringValue(payment, 'externalPaymentId'),
-              request.amountCents,
-            )
-          : null;
+        !knownRefundId &&
+        Boolean(externalPaymentId);
+      const expandedVoidPayment = shouldReadVoidCollection
+        ? await this.readExpandedVoidPayment(
+            merchantId,
+            providerPaymentId,
+            externalPaymentId,
+            request.amountCents,
+          )
+        : null;
       const voids = elementRecords(expandedVoidPayment ?? payment, 'voids');
+      this.logger.debug(
+        `[CloverPlatformPaymentsGateway] VOID canonical state=${normalizedResult} collection=${shouldReadVoidCollection ? (expandedVoidPayment ? 'matched' : 'unconfirmed') : 'skipped'} externalIdentity=${externalPaymentId ? 'present' : 'missing'} voidCount=${voids?.length ?? 'invalid'}`,
+      );
       const expandedVoided = expandedVoidPayment?.voided;
       const voided = expandedVoided ?? payment?.voided;
       if (
@@ -929,7 +936,9 @@ export class CloverPlatformPaymentsGateway {
         }
         if (
           voided === false ||
-          (normalizedResult !== 'CANCELLED' && normalizedResult !== 'SUCCEEDED')
+          (!paymentVoiding &&
+            normalizedResult !== 'CANCELLED' &&
+            normalizedResult !== 'SUCCEEDED')
         ) {
           return reversalUnknown(
             request,
@@ -962,6 +971,15 @@ export class CloverPlatformPaymentsGateway {
             request,
             'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
             'Clover void relation does not uniquely match the original payment',
+          );
+        }
+        // VOIDING is never financial finality even if a unique void appears;
+        // later GETs must confirm an allowed final payment state.
+        if (paymentVoiding) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+            'Clover payment is still voiding; canonical finality is not yet visible',
           );
         }
         const tipCents = integerValue(payment, 'tipAmount');

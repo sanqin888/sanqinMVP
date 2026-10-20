@@ -38,6 +38,14 @@ This is an **append-only post-Phase-6 operational safety note**, not reopening t
 
 **Test and active verification gate:** Jest regressions cover incomplete RELEASE for both `DECLINED/FAILED`, good RELEASE + ready Welcome, good RELEASE + unavailable Welcome, and late checkpoint completion before prompt decision. Tests are **AUTHORED, NOT RUN locally or in CI** at this review point. After user approves dev PR and CI green, run real S5-B2 nonzero points+balance+coupon+card on isolated MacBook API/DB/Web + Test Merchant Compact. Collect original Attempt, immutable tender, separate Benefits HOLD→COMMIT or definitive unpaid RELEASE facts, canonical Clover payment/amount, unique Order, Checkout and terminal fence; do not force card cancellation based only on ACK/timeout and do not use production data. Owner verification matrix `docs/payments/clover-pos-phase-plan.md` §S5-B1 and S5-B2. **No active device run performed in this slice.**
 
+### 2026-10-20 — Phase E VOID 首次同步确认加固（LOCAL SOURCE / CI PENDING）
+
+承接两笔 MacBook Test Merchant 真 VOID（CAD $5.65 和 $11.30）的有界验收：Terminal VOID 均 HTTP 200、Dashboard 分别显示独立 Void，首次 POS 返回 UNKNOWN，稍后对**原相同** Attempt 只读 Canonical 恢复均达到 `SUCCEEDED / VOIDED`，原 Sale 累计撤销、Order `refunded`、FULL_REFUND Amendment 与 Financial Reversal Event 均一致且唯一。此证据只关闭 **后续 Canonical Recovery**，不代表首次 POS E2E 同步确认成功。
+
+本批修复在现有 **Payments/Clover infrastructure 内部**：终端肯定 ACK 后，若首次 Canonical 是唯一可重查的 `CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE`，用固定 500/1000/2000/3000ms 延迟至多追加四次纯只读 Platform GET；转为最终 Canonical 事实时才继续原有 Payment/Order 收口，其余失败、冲突、超时或无证据都停在 UNKNOWN。原单笔 Payment 原始 `VOIDING` 可触发只读 Collection 诊断但仍不可被认作资金完成，记录脱敏状态/查询触发证据供下次实机核对。无新补发 VOID/REFUND、无独立后台任务，Web Ecommerce、POS HTTP/UI、Orders/Benefits、Webhook/Reverse Sync、schema/migration、依赖和部署拓扑保持不变。Owner、直接跨上下文导入边、SCC、架构 baseline、兼容注册和依赖图计数均不变。
+
+按 AGENTS 受控关键路径 **C 类有限修复**进行，不声称完整外部切换或生产就绪；POS Terminal 保持原 Sandbox/功能开关隔离、UNKNOWN 原身份恢复和 legacy fallback。MCP-workspace 未开放 lint/build/test，当前仅聚焦 Jest 回归编写、静态差异审阅；待单独远端授权、最终 head GitHub CI 全绿后才可另行审批独立真机 Sale/单次 VOID 复测。Clover 传播可能超过 6.5 秒等待预算，仍须保留未决。详细见 [Phase E 验收与修复包](../payments/clover-pos-phase-plan.md)。
+
 ## Goal
 
 Phase 6 continues the approved Payments / POS modularization after Phase 5 Commerce / Orders / Fulfillment reached `PRODUCTION VERIFIED / CLOSED`. The phase contracts remaining Payments/POS deep imports toward owner public capabilities while preserving the guarded production Web Clover Ecommerce path, POS Terminal payment truth, refund/reconciliation semantics, and existing transaction boundaries.
