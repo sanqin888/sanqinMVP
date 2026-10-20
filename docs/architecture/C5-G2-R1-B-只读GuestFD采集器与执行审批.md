@@ -1,6 +1,7 @@
 # R1-B S4 — 只读 Guest FD 采集器与执行审批
 
-**日期：2026-10-20；状态：LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED / ROOT EXECUTION NOT APPROVED。**
+**日期：2026-10-20；状态：SOURCE IMPLEMENTED / SOURCE CI VERIFIED / ROOT EXECUTION NOT APPROVED。**
+[PR #2885](https://github.com/sanqin888/sanqinMVP/pull/2885) 源码 head `523a973caa38b863ba9cee2f584fbf42756c96bb` / [CI #7404](https://github.com/sanqin888/sanqinMVP/actions/runs/39455452477)：ops-checks 已成功，Runtime 465 项与 paired-image release 45 项测试均 OK；最终文档 head 仍须通过 CI 后才可合并。
 分支：`feat/runtime-r1b-readonly-guest-capture-20261020`，基线 dev `ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a`。
 本批只实现可审阅候选源码和合成测试。它不是正常更新执行器、可信加载器、安装器或已获授权的 root 命令。
 
@@ -46,7 +47,7 @@ proposal v1 字段为 schema、sessionClaims、manifest、manifestSha256、fileP
 新增 tests/test_root_python_r1b_guest_capture.py：临时非 root Linux 目录中的不可执行虚构 bytes，真实 B1→B3B1 FD 交接、两个 loader links、额外 /lib FD、元数据和摘要漂移、namespace/root 身份错、root link 替换、保留 unused-link 拒绝、错误 root FD、来源 index/全文件 hash/路径约束、重复/非有限 JSON、有界读取、私有权限/硬链接/owner 拒绝、普通用户 CLI 拒绝、失败回执，以及 mock root CLI 的完整成功 packet 组装且所有 authority false。
 
 测试不会执行真实 Guest/root、包内字节、sudo、网络或生产目录写入。合成正向只证明程序内部行为，不是实际 root 来源认证。
-**MCP-workspace 未运行 lint/build/test，也未在外部环境代跑；当前无本批 CI、无真实 root 采集。**
+**MCP-workspace 未运行 lint/build/test，也未在外部环境代跑仓库测试；上述 GitHub Actions 已实际验证源码 head 的 Runtime 465 项和 release 45 项。没有真实 Guest root 采集。**
 授权远端后由现有 ci.yml ops-checks 运行全部 Runtime 离线测试，不新增/削弱 CI 或依赖。
 
 分类 A 类新增内部候选工具：同 Runtime/Ops owner，不改既有 B1/B3A/B3B1/Guest v1 入口与语义，外层新 v1 receipt 没有现役消费者。无双读、过渡 facade 或兼容登记新增；无 owner/应用导入/依赖边/SCC/scanner baseline、Prisma/migration、lockfile 或 17 Bundle 变化。

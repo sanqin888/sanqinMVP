@@ -253,7 +253,7 @@ base-files 控制脚本只作为数据读取，未运行，也不从 dpkg-divert
 
 ## 10. 2026-10-20 — B2-1C 实包回归原件复核与 R1-B S4 源码准备
 
-**最新有限状态：B2-1C MERGED / REAL-PACKAGE REPLAY MATCHED；R1-B S4 LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED；S5 ROOT EXECUTION NOT APPROVED。** 本节更新 §9.5 的格式兼容停点，不修改历史回执或人工文档 LIMITED 的性质。
+**最新有限状态：B2-1C MERGED / REAL-PACKAGE REPLAY MATCHED；R1-B S4 SOURCE IMPLEMENTED / SOURCE CI #7404 VERIFIED (Runtime 465 + release 45; source head 523a973c); FINAL DOC HEAD/MERGE PENDING；S5 ROOT EXECUTION NOT APPROVED。** 本节更新 §9.5 的格式兼容停点，不修改历史回执或人工文档 LIMITED 的性质。
 
 PR #2883 final head `15e6ff4bb3643303d522cdc5634d1a3dfb082c4e` / CI #7401 success / squash dev `ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a`；Runtime 436 与 release 45 测试 OK。Mac 固定该版本实测七条 data.tar 与既有独立复核匹配，四包的三个目标 regular / 三条 link text 匹配。已实际读取五文件回归原件、重算校验并与交付脚本/参考 pins/冻结源码比对；回执 SHA `a8b33d5defcc9408ccc275b15b24006c60fd08781339c8cabfa0a1ce3d0de8bf`。这证明限定版本在操作员 Mac 的包读取回归，不证明 Guest 同一字节、解码器完整依赖认证或新独立人工技术签认。
 
