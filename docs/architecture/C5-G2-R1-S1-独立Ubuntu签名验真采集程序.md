@@ -1,6 +1,6 @@
 # C5-G2 / R1 S1 — Ubuntu Archive 真实签名原件采集程序与独立信任根门禁
 
-**2026-10-20 最新续记见 §11：R1-B 源码已合并，S5 单次 root 采集与原件一致性审阅 PASS_SCOPED；开始 R1-C 就绪准备。** 下文带日期的源码准备/历史未执行状态保留原范围，S6/C1 未完成，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
+**2026-10-20 最新续记见 §12：S5 单次 root 采集及原件一致性 PASS_SCOPED 保留；R1C-1 正常更新核心/启动材料与场景测试已编写，尚未运行或推送。** 下文带日期的源码准备/历史未执行状态保留原范围，S6/C1 未完成，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
 
 **日期：**2026-10-18（America/Toronto）；**基线：**S0 审批 PR #2872 / CI #7375 success / dev merge `001d7c345bff43f8c29391fdf9da45286c57fb81`。  
 **分支：**`docs/c5-g2-r1-s1-real-ubuntu-signature-evidence-20261018`。  
@@ -280,5 +280,16 @@ PR #2883 final head `15e6ff4bb3643303d522cdc5634d1a3dfb082c4e` / CI #7401 succes
 | R1/R2–R5 / G2 / S2 | R1/C1 OPEN；后续批次未执行；G2 NO-GO / S2 daily PAUSED；C2 有限 CLOSED |
 
 全部原始回执 BLOCKED/false 不变，不将 root collector 成功等同三文件覆盖完整 Python/native 闭包。本轮在最新 origin/dev 上仅收口文档并新增 [R1-C 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)：先冻结同一正常更新核心/入口和场景，再选择覆盖 bootstrap/import/native/子进程的观察方案、补齐来源与独立裁定；后续新现场命令有独立准确执行门禁。MCP-workspace 未运行 lint/build/test，用户已授权本批文档远端交付；最终 CI/合并以本批 PR 的准确 head 检查与事件为准。
+
+## 12. 2026-10-20 — R1C-1 正常更新流程核心与场景源码准备
+
+前置 PR #2886 最终 head `4e31bd703442a3c546ad26952935dfabf47e8f0f` / CI #7411 success / dev merge `09354818c37dc5fa649b65ac466448dc5d64494b`；纯文档 lane 选择不等于本批 Runtime 源码测试。用户随后要求开始 R1C-1，在最新 origin/dev `fa6513a7` 新功能分支编写 `normal_runtime_update.py`、`normal_runtime_launch.py` 与 18 个聚焦合成测试；详细工作包见 [R1-B/R1-C §8](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#8-r1c-1-正常更新流程核心与执行场景)。
+
+同一个 NormalUpdateFlow.run 驱动严格来源/准备/记录原状态/维护冻结/快照/冻结复核/交接/安装验证/精确恢复/恢复验证/最后放行顺序。完整能力须先齐备；每步绑定请求、前驱、证据与原策略/快照/保留状态，失败及两类可捕获中断后只留事故回执，不自动重试、restore 或 journal resume。部分 handoff/release 可能已发生的效果记 UNKNOWN，不自证仍然冻结；事故记录失败保留原 cause。内存 Lock 只防实例并发/重入，真实持久准入和连续屏障尚未实现。
+
+启动材料仅对输入 bytes 求 SHA，固定候选平台/隔离参数/路径/环境并绑定逐文件清单及子进程声明，不执行 bootstrap 或授信。这是 R1C-1 源码核心，不是完整正式更新器/S6 已通过；真实 adapter、完整依赖和来源、bootstrap、动态观察及独立 C1 裁定仍 OPEN。旧 B1/B3A/B3B1/Guest v1/Kit 合同、17 Bundle、C2 已有限关闭事实均保持原边界。
+
+**LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED。** MCP-workspace 未运行 lint/build/test，也未在外部环境代跑本批实现/测试；远端 CI 尚未触发，无 Guest/root/云/生产动作。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
 
 

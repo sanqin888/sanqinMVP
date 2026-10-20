@@ -1,5 +1,7 @@
 # R1-B S4/S5 只读 Guest FD 采集与 R1-C S6 准备
 
+**2026-10-20 R1C-1 最新源码状态：LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED。** 正常更新流程核心与启动材料冻结器已在 MCP-workspace 编写，真实 bootstrap、Host/AWS/安装适配器和 S6 消费见证尚未接线。最新实现见 §8；§6 的 S5 有界验收保持不变，§7 保留 PR #2886 就绪准备范围。
+
 **2026-10-20 最新状态：SOURCE MERGED / S5 CAPTURE COMPLETED / ORIGINAL-EVIDENCE REVIEW PASS_SCOPED；R1/C1 OPEN。**
 [PR #2885](https://github.com/sanqin888/sanqinMVP/pull/2885) 最终 head `0533c209a9a34a2f33902ef9731a9a5053f9537c` / [CI #7405](https://github.com/sanqin888/sanqinMVP/actions/runs/39455730047) success，squash merge dev `8a99c99eb17a3ff27552e3b0f611204691e72984`。此前源码 head `523a973c` / CI #7404 的 Runtime 465 与 release 45 测试只记录合成软件验证。
 **§1–§5 保留源码准备时的历史状态和执行前要求；其“未取原件/未执行/未批准”停点已由 §6 的实际批准、执行和离机复核续记更新。** 原源码分支为 `feat/runtime-r1b-readonly-guest-capture-20261020`，基线 dev `ac5fcfef`；本次文档续记不修改采集器或原回执。
@@ -188,5 +190,73 @@ R1C-1 的有限核心软件测试可以先准备，但 **C1 的真实关闭必�
 同步 R1-B、S1、R0、B2-1C、current-dependency-graph 和 worklog；原件、Mac wrapper、密码、现场 UUID/boot/ns/私有路径不进入 Git。MCP-workspace 未运行 lint/build/test，未在外部环境代跑仓库实现或测试。按现行 change_scope，纯 docs Markdown 不选择应用/Runtime 测试 lane，实际授权后 CI 才是交付证据，不把预期跳过记为测试成功。
 
 本地差异已审阅，用户已明确要求“提交远端”，授权本批 [PR #2886](https://github.com/sanqin888/sanqinMVP/pull/2886) → dev、必要 CI 修复及全绿后合并；最终交付以该 PR 实际 head 的 CI 与合并事件为准。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
+**该准备批次随后已完成交付：**最终 head `4e31bd703442a3c546ad26952935dfabf47e8f0f` / CI #7411 success / dev merge `09354818c37dc5fa649b65ac466448dc5d64494b`。以下 §8 为另一批经用户要求开始的源码实施，不继承其远端交付或现场执行授权。
+
+## 8. R1C-1 正常更新流程核心与执行场景
+
+### 8.1 实施与所有权
+
+**LOCAL SOURCE/TESTS AUTHORED / TESTS NOT RUN / USER REVIEW PENDING / NOT PUSHED。**
+前置 doc-only PR #2886 最终 head `4e31bd703442a3c546ad26952935dfabf47e8f0f` / [CI #7411](https://github.com/sanqin888/sanqinMVP/actions/runs/39472256317) success，dev merge `09354818c37dc5fa649b65ac466448dc5d64494b`；该纯文档 CI 的 Runtime/应用 lane 按范围跳过，不算本批新源码测试。用户随后明确要求开始 R1C-1；分支 `feat/runtime-r1c1-normal-update-flow-20261020` 从最新 origin/dev `fa6513a71451309898ffc4ab3c720b8c63458511` 创建，不修改并行 Payments 工作。
+
+新增 Runtime/Ops 内部模块：
+- `ops/runtime/normal_runtime_update.py`：`NormalUpdateFlow.run(UpdateRequest, UpdateCapabilities)` 是后续 R4 计划复用的唯一流程核心；本批调用方只有聚焦合成测试。
+- `ops/runtime/normal_runtime_launch.py`：`freeze_launch_materials` 从调用方提供的不可变源码 bytes 形成排序元数据和完整启动提案；不读取或执行这些文件。
+- `ops/runtime/tests/test_normal_runtime_update.py`：同一核心上的有状态合成资源与 18 个测试方法，含 11 阶段 × 前/后 × 普通异常/KeyboardInterrupt/SystemExit 的 66 个失败子场景。
+
+既有 `runtime_update_contract.py` / `trusted_root_operator_gate.py` 的历史 Kit/clean-reinstall 模型和 lab installer/maintenance guard 均不修改、不放宽。本核心按照现行 R0 D1–D5/AWS 快照方案编排，不把旧模型的布尔通过结果当作执行能力。
+
+### 8.2 阶段顺序与能力合同
+
+| 阶段 | 狭窄能力 | 必须完成的真实责任（本批仅合成） |
+| --- | --- | --- |
+| VERIFY_SOURCE | admit_and_verify_source | 持久事务准入；认证执行来源/平台/完整依赖、当前及目标 Archive/17 成员与保留状态；拒绝未明事故、同版本和无 Runtime 成员变化 |
+| PREPARE_PRIVATE | prepare_private | 只准备来源已核对的完整 root-private 候选，活跃树未写 |
+| RECORD_ORIGINAL | record_original_state | 在策略变化之前持久化并离机记录准确原容器/服务/任务状态 |
+| FREEZE_MAINTENANCE | freeze_maintenance | 业务入口/写入者禁入、准确 restart=no/正常停止、持续维护；保留管理通道 |
+| SNAPSHOT_READY | create_and_verify_snapshot | 唯一准确创建/等待 available、来源/覆盖盘与离机轻量清单，不选 latest、不盲重试 |
+| RECHECK_FROZEN | recheck_frozen | 核对快照后保护窗口仍连续冻结 |
+| HANDOFF | handoff | 持续冻结下按准确 FD/权限/同设备/持久化边界进行目标交接 |
+| VERIFY_INSTALLED | verify_installed | 完整安装/Manifest 与应用、DB、Uploads、配置等保留状态复验，业务仍禁入 |
+| RESTORE_POLICIES | restore_original_policies | 只按原记录恢复准确策略/任务；健康启动仍保留业务屏障 |
+| VERIFY_RESTORED | verify_restored | 独立核对原状态、健康和单写者/外部对账，尚不放行业务 |
+| RELEASE_BUSINESS | release_business | 最后单独放行业务，不与策略恢复合并 |
+| 失败旁路 | record_abort | 只保存本次尝试的事故证据，不启动服务、不覆盖唯一恢复点、不重放 journal，不取消其他 owner 的事务 |
+
+所有方法在首个 callback 前检查齐备并固定 bound method；缺能力不先做半套准备。请求固定 upgrade、Runtime/root/project/DB/Uploads 身份，绑定当前/目标 Runtime SHA/Archive digest、当前/上一应用 SHA、保留状态摘要及启动材料摘要。普通同版本和同 Archive 拒绝；实际 Manifest/安装完整性由准入适配器核验，当前没有这样的真实适配器。
+
+每个 `StepCompletion` 只接受明确 COMPLETE、准确阶段/请求摘要/前驱记录摘要、证据与保留状态摘要；原策略记录、快照离机记录一旦获得就在后续阶段保持同值。记录规范编码为不可变 bytes 后交给下一步，不保留适配器返回对象的可变引用。snapshotRecordSha256 指轻量记录 bytes 的 SHA，不虚构快照整盘或 ARN 哈希。
+
+**类型和摘要绑定只证明内部关联，不能认证 callback。** 所有实际认证、独占权、连续屏障和持久化由后续经过审阅的真实能力实现持有；核心不会因为调用方提交 typed completion 而产生 root/安装权限。实例级 Lock 只防本实例并发/重入和再次使用，不是跨进程排他；新进程/新实例同 txid 的拒绝依赖适配器持久事务准入，尚未实现。
+
+### 8.3 失败、中断与未知结果
+
+先登记 attempted，再调用能力；仅返回并通过验证的阶段进入 completed。异常、KeyboardInterrupt 或 SystemExit 后，不运行后续阶段、不重试、不自动恢复策略/业务、不回滚或删证据，抛出带有限回执的 NormalUpdateAborted，并保留原异常 cause。回执不序列化异常消息/参数，事故记录再次失败也不覆盖原 cause。
+
+- 快照调用可能创建后超时：无合格完成记录则不能交接，已有唯一对象留给准确查询/事故处置。
+- HANDOFF 可能已改活跃树但未返回：handoffState=UNKNOWN；不把非零/超时等同“没写入”。
+- 策略恢复中断：不继续 verify/release，业务屏障仍须由能力持续持有；核心回执不自证实际冻结。
+- 最后 release 调用可能部分成功：businessReleaseState=UNKNOWN、maintenanceState=UNVERIFIED，不能声称业务一定仍冻结；留证并转独立事故处理，不自动重发 release。
+- record_abort 成功只记 REPORTED_RECORDED；失败/未知单列 FAILED_OR_UNKNOWN，不假装证据已经落盘或离机保存。
+
+实例成功或失败后均不重入，没有从 receipt/journal 恢复阶段的入口。真实 SIGKILL/掉电与跨进程持久化未实现/未验证，本批内存异常场景不替代 R2/R4/R5 的真实中断证据。
+
+### 8.4 启动材料与边界
+
+LaunchMaterials 绑定调用方准确 source commit、txid、排序逐文件 SHA/大小、另列 bootstrap、完整 interpreter/argv/env/cwd/uid/gid 和显式子进程 argv。源码限 3–64 个平铺 .py 文件，必须包括本批两份核心源码与独立 bootstrap；单文件≤64 KiB、总源码≤512 KiB。子进程≤16，每条≤32 个有界 ASCII 参数，拒绝控制字符、相对/逃逸程序路径和重复声明。
+
+提案固定 Python 3.12.3 平台入口路径 `/usr/bin/python3.12`、`-I -S -B`、root-private 来源目录、HOME/LANG/LC_ALL/PATH/TZ 白名单及 uid/gid=0。**这些是待审启动提案，不是现场已验证的权限或可复制执行指令。** 本批尚未实现 bootstrap/真实 CLI，不创建目录，不调用子进程；传入 bootstrap bytes 只作数据哈希，不编译/导入或执行。最终源码/启动值必须在最终 CI 后与完整真实适配器一起冻结；不沿用 S5 计划/批准，不声称整个 Python/native 依赖清单已齐。
+
+流程完成仅表示所有能力按序返回相关联 COMPLETE；回执永久 decision=BLOCKED、adapterEvidenceIndependentlyAuthenticated/actualConsumptionVerified/readyToInstall/authorizedToMutateProduction=false、journalReplayAllowed=false。启动材料的来源/动态闭包/launchAuthorized 均 false。
+
+### 8.5 测试、文档和接续
+
+已编写来源/输入拒绝、缺能力、完整正常流程、各阶段异常/两类中断、原策略包括原本 inactive/disabled 的精确恢复、快照超时不交接、部分 handoff/release 未知、错请求/前驱/原策略/快照/保留状态、typed/dict/boolean 伪回执拒绝、abort 二次失败、实例/ledger 单次使用、并发/重入拒绝、已接纳对象突变隔离、源码/启动材料预算和 Bundle/导入边界测试。全部资源为内存合成字典/字符串，无 Guest、root、云、网络或活跃路径写入。
+
+分类 A 类新增内部编排核心；新内部依赖为 normal_runtime_update → normal_runtime_launch，同 Runtime/Ops owner，未接入任何现役调用方或 17 Bundle。12-context 的 owner/跨上下文边/直接导入债务/SCC/scanner baseline、公共持久化合同、兼容登记、Prisma/migration、CI/依赖锁和生产行为不变；没有设置新的执行权限。同步 S1/R0、current-dependency-graph 和 worklog，保留旧回执与原证据。
+
+MCP-workspace 未开放 lint/build/test，未运行，也未在外部环境代跑本批源码或测试。授权远端后的 ci.yml ops-checks 会选择 Runtime unittest discovery 和 paired-image release 测试；当前 **CI NOT RUN / NOT PUSHED**。下一步先完成本批审阅/源码 CI，再准备完整候选适配器及 R1C-2 观察方案；最终 S6 需真实同候选消费与独立裁定。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
 
 
