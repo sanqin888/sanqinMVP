@@ -469,8 +469,10 @@ export type ManagedCardRefundResult<T> = {
     | "FAILED"
     | null;
   operation: "REFUND" | "VOID" | null;
+  reversalOutcome?: "VOIDED" | "REFUNDED" | null;
   order: T;
   refundedCardBaseCents: number | null;
+  refundedTipCents: number | null;
   refundedAdditionalChargeCents: number | null;
   refundedCustomerTotalCents: number | null;
   failureCode: string | null;

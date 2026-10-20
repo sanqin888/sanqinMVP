@@ -4,6 +4,18 @@
 **日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
+### 2026-10-20 — Phase E VOID Readiness 最小修复（LOCAL SOURCE / TESTS AUTHORED / NOT RUN）
+
+- **授权/基线**：用户审阅只读 VOID Readiness Report 后明确批准代码修改，暂停后于同日恢复；从最新 `origin/dev@ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a` 建立 `fix/clover-phase-e-void-readiness-20261020`。本地审阅完成后，用户同日明确授权提交远端、PR、CI 修复及全绿后合并 `dev`；**远端交付进行中、CI 待验证，未执行设备金融操作**。
+- **资金安全**：Terminal reversal 共用 mapper 对 400/401/403/415/501 明确拒绝保留 FAILED，其余不确定 HTTP（含 408/502/未知错误）保留 UNKNOWN，不能因此自动派生新金融身份；VOID adapter 在发送前校验原 amount/currency/tip/additional facts。原 UNKNOWN 仍复用同 Attempt/operation/idempotency 只读 Provider 对账，不为跨过 25 分钟变更命令。时间选择捕获一次 age，边界仍为 0～25 分钟含端点，依据本地 completedAt，不声称等同 Clover 结算时间。
+- **Canonical 两种结果**：v3 明确 voided 且无矛盾退款事实才确认真 VOID；VOID 已知 Refund ID 也先读原 Payment，要求唯一关系匹配再读该 Refund，缺失/多条/冲突保持 UNKNOWN；退款显式 currency 冲突拒绝。保留 requested operation=VOID，通过 Payments 领域只读派生 `reversalOutcome=VOIDED|REFUNDED|null`，不修改 schema/历史 operation、不向 POS 暴露 Clover wire resultCode。
+- **设备显示**：VOID 全程进入既有同进程设备队列；只有明确关联原 Payment 的 `SENT_TO_SERVER` ACK 或退款 ACK，且随后设备显式 IDLE/READY/AVAILABLE，才尝试 Welcome。无状态/BUSY/丢失回执不强清屏；Welcome 失败不改变资金状态、不重发 VOID/REFUND。此为单实例队列，**不是持久化/多实例/其他客户端的设备排他证明**。
+- **原 Sale/订单/权益**：首次 preflight 只验证 Canonical 与本地累计事实，不再将零退款观察写回原 Sale，避免迟到读覆盖已完成 reversal；已有本地撤回事实阻止创建新 reversal。成功后既有原 Sale 累计记录及 Orders/Amendment/Benefits 收口顺序保留；未修改 Orders/Benefits 实现。原 Sale 保持 SUCCEEDED；真 VOID 可无 providerRefundId。真实权益竞争和完整 exactly-once 仍 PENDING。
+- **POS**：原 managed refund response 增加可选 provider-neutral `reversalOutcome`，Web 类型补齐已有 `refundedTipCents`；叶子通知模块区分真 VOID、VOID 转 Refund、普通 Refund、未决与明确未完成。Managed HTTP 响应丢失提示核验原交易、禁止重复提交；未改 legacy/CASH/Web fallback。旧 API 缺少新字段时显示中性的“款项退回已确认”，不从 requested VOID 猜真 VOID。
+- **聚焦回归（仅编写）**：HTTP 不确定分类/Canonical read-back、发送前缺 facts、VOID ACK/显式空闲/Welcome失败/与新 Sale 串行、voided与Refund冲突、已知ID关系、币种/费用不符、25分钟边界及UNKNOWN跨窗口、迟到零观察不写回、实际结果派生与POS中英提示。**MCP-workspace 未运行 lint/build/Jest/架构扫描；格式整理不算验证，GitHub最终head CI仍待执行验证。**
+- **交付边界**：C类既有 POS Terminal 受控安全修复；既有 Payments/Clover owner、Orchestration协调、Orders/Benefits owner不变，无新增跨上下文导入/依赖边/架构allowance/scanner baseline；不新增数据库/迁移、依赖/锁文件、Phase F/G/recovery-only入口/多实例锁、生产Web Ecommerce或AWS部署。关联 [Phase 6本地准备](../architecture/phase-6-payments-pos-closeout.md)。
+- **真机门禁继续关闭**：本地审阅及远端授权已完成；仍需PR/全部应运行CI全绿/合并→MacBook准确版本及Test Merchant/loopback DB/device身份只读核验→用户再次授权“一笔全新Sale与其单次VOID”。首笔限定Guest、零tip、无points/balance/coupon、单API/单操作员，两种Sale时间年龄均不足5分钟；任何UNKNOWN/冲突STOP，只读原交易，禁止补发VOID/REFUND。转换Refund只能关闭转换分支；真VOID仍需其自身证据。**不重复 `WD51H52NKNDBM`、`76C5ZPZBS0DZT`；第二笔旧Refund独立DB最终审计仍待补；FULL PHASE E OPEN。**
+
 ### 2026-10-20 — Phase E Compact Discover Credit Refund 有界验收（SANDBOX VERIFIED / SCOPED CLOSED；FULL PHASE E OPEN）
 
 - **初始事故证据（当时的操作员 MacBook Test Merchant，非生产）**：SanQ Order `ca7b752120375ddd92af0cb55` 原 Sale `WKQYSCVH8TSJW`，2026-10-20 08:52 EDT 从 POS 发起一笔 CAD $5.65 完整退款。REST Pay Display `/connect/v1/payments/{paymentId}/refunds` 返回 HTTP 200，Platform v3 `/refunds/WD51H52NKNDBM` 返回 HTTP 200；Clover Test Merchant Dashboard 已显示对应 Refund ID、CAD $5.65、Tip $0.00 和原 Payment 关联。MacBook 本地退款 Payment `UNKNOWN`，`failureCode=CLOVER_PLATFORM_REFUND_TIP_MISMATCH`，原 Sale `refundedAmountCents=0`、Order 仍 `completed`。平台退款数据 keys 未包含 `tipAmount`；Compact 屏幕持续转圈，但只读 `/pos/payments/card/availability` 显示明确 `providerState=IDLE`、`providerStateExplicit=true`。Clover 有 Refund 记录不等于 SanQ 已完成 Canonical finality；设备重启由操作员自行处理，完成状态未从回执证实。
