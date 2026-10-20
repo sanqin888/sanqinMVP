@@ -1602,9 +1602,11 @@ describe('CloverTerminalTransport', () => {
   });
 
   it('does not attempt Welcome after an unconfirmed refund execution', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ code: 'DEVICE_BUSY' }), { status: 503 }),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ code: 'DEVICE_BUSY' }), { status: 503 }),
+      );
     const transport = createTerminalTransport();
 
     await expect(

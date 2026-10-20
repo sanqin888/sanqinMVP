@@ -253,9 +253,9 @@ describe('RefundPaymentService', () => {
     expect(recovered.id).toBe(uncertain.id);
     expect(recovered.status).toBe('SUCCEEDED');
     expect(recovered.toSnapshot().providerRefundId).toBe('CLOVERREF001');
-    expect(provider.refundPayment).toHaveBeenCalledTimes(1);
-    expect(provider.voidPayment).not.toHaveBeenCalled();
-    expect(provider.getPaymentStatus).toHaveBeenCalledTimes(2);
+    expect(provider.refundPayment.mock.calls).toHaveLength(1);
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(2);
   });
 
   it('blocks a new managed reversal when Clover already reports refund activity', async () => {
