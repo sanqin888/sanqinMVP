@@ -811,11 +811,11 @@ describe('CloverPaymentProviderAdapter', () => {
           providerRefundId: canonicalRefundId,
           failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
         });
-      await expect(
-        adapter.refundPayment(refundRequest),
-      ).resolves.toMatchObject({
-        status: 'UNKNOWN',
-      });
+      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject(
+        {
+          status: 'UNKNOWN',
+        },
+      );
       expect(send).toHaveBeenCalledTimes(1);
       expect(read).toHaveBeenCalledTimes(1);
     },
@@ -842,11 +842,11 @@ describe('CloverPaymentProviderAdapter', () => {
             failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
           };
         });
-      await expect(
-        adapter.refundPayment(refundRequest),
-      ).resolves.toMatchObject({
-        status: 'UNKNOWN',
-      });
+      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject(
+        {
+          status: 'UNKNOWN',
+        },
+      );
       expect(send).toHaveBeenCalledTimes(1);
       expect(read).toHaveBeenCalledTimes(1);
     } finally {
