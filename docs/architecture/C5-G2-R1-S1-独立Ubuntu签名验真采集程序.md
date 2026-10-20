@@ -1,5 +1,7 @@
 # C5-G2 / R1 S1 — Ubuntu Archive 真实签名原件采集程序与独立信任根门禁
 
+**2026-10-20 最新续记见 §11：R1-B 源码已合并，S5 单次 root 采集与原件一致性审阅 PASS_SCOPED；开始 R1-C 就绪准备。** 下文带日期的源码准备/历史未执行状态保留原范围，S6/C1 未完成，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
+
 **日期：**2026-10-18（America/Toronto）；**基线：**S0 审批 PR #2872 / CI #7375 success / dev merge `001d7c345bff43f8c29391fdf9da45286c57fb81`。  
 **分支：**`docs/c5-g2-r1-s1-real-ubuntu-signature-evidence-20261018`。  
 **状态：LOCAL SOURCE/TESTS/DOC AUTHORED / TESTS NOT RUN / NO GPGV SUCCESS / NOT PUSHED / USER REVIEW PENDING。**
@@ -262,5 +264,21 @@ PR #2883 final head `15e6ff4bb3643303d522cdc5634d1a3dfb082c4e` / CI #7401 succes
 本轮新增只读 Guest FD 候选采集器 `root_python_r1b_guest_capture.py` 和聚焦测试：六份 root-owned 冻结源码/index/proposal、三个文件、原 B1→B3B1 held-FD 交接、单独 /lib symlink FD、严格 context/权限/哈希拒绝、现有 Guest packet 组装与永久 false/BLOCKED。无现役接线、源码授权或实际 sudo。Mac SSH/原始 RC/保管 wrapper 仍需在此代码经授权 PR/CI 后独立准备，真实提权须冻结准确源码/SHA/boot/argv/env/路径再审批。
 
 详细实际证据、接口/限制、合成测试和后续执行准备统一见 [R1-B S4 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。本批 MCP-workspace 未运行 lint/build/test；不是“root 采集已完成”。R1-A 整体正式验收与 R1/C1 仍 OPEN，G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
+## 11. 2026-10-20 — R1-B S5 原件有界验收与 R1-C 就绪
+
+此节更新 §10 当时的未合并/未取原件/未执行停点。PR #2885 最终 head `0533c209a9a34a2f33902ef9731a9a5053f9537c` / CI #7405 success，dev merge `8a99c99eb17a3ff27552e3b0f611204691e72984`。用户明确批准 S5 暂存与一次 root 只读取证；PREP 原件及失败 001 原件已离机核对，001 root SSH 认证失败未启动远端命令。002 仅有操作员摘要，原件未独立复核；003 复用 incoming 后完成这一次 root 采集，不再重跑。
+
+成功归档 SHA256 `7d33106d340df9727276a969f12925852f6ab9ecc5542ff6ab88b9e8a3300ab9`，27 项 manifest 全部重算一致；SSH/root command/collector RC 均 0。准确 plan/wrapper/root-command/六份源码、index/proposal 与回执链匹配。三个 FD 共 8,297,330 bytes、两条 loader used-links 及单独 /lib alias 与 §9.3 外部包成员基线一致。Guest collector real/effective uid/gid 全 0，Host/Guest 原生预检与 FD context 匹配；详见 [R1-B §6](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。
+
+| 子项 | 当前有界结论 |
+| --- | --- |
+| S4 源码 | MERGED / SOURCE CI VERIFIED；CI 是合成验证 |
+| S5 操作员现场采集与原件一致性 | PASS_SCOPED；root 进程已执行、退出成功，离机原件核对完成 |
+| 平台/独立 witness | 原先有限前提保留；无新增完整路由或物理来源认证，两端 UTC 有偏差 |
+| S6 / C1 | OPEN；正式正常更新执行器、完整动态依赖及实际消费尚未完成 |
+| R1/R2–R5 / G2 / S2 | R1/C1 OPEN；后续批次未执行；G2 NO-GO / S2 daily PAUSED；C2 有限 CLOSED |
+
+全部原始回执 BLOCKED/false 不变，不将 root collector 成功等同三文件覆盖完整 Python/native 闭包。本轮在最新 origin/dev 上仅收口文档并新增 [R1-C 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)：先冻结同一正常更新核心/入口和场景，再选择覆盖 bootstrap/import/native/子进程的观察方案、补齐来源与独立裁定；后续新现场命令有独立准确执行门禁。MCP-workspace 未运行 lint/build/test，用户已授权本批文档远端交付；最终 CI/合并以本批 PR 的准确 head 检查与事件为准。
 
 
