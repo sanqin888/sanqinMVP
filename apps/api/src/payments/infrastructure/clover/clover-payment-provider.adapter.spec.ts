@@ -811,7 +811,9 @@ describe('CloverPaymentProviderAdapter', () => {
           providerRefundId: canonicalRefundId,
           failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
         });
-      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject({
+      await expect(
+        adapter.refundPayment(refundRequest),
+      ).resolves.toMatchObject({
         status: 'UNKNOWN',
       });
       expect(send).toHaveBeenCalledTimes(1);
@@ -831,7 +833,7 @@ describe('CloverPaymentProviderAdapter', () => {
       });
       const read = jest
         .spyOn(platform, 'getCanonicalReversal')
-        .mockImplementation(async () => {
+        .mockImplementation(() => {
           jest.setSystemTime(Date.now() + 13_000);
           return {
             status: 'UNKNOWN',
@@ -840,7 +842,9 @@ describe('CloverPaymentProviderAdapter', () => {
             failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
           };
         });
-      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject({
+      await expect(
+        adapter.refundPayment(refundRequest),
+      ).resolves.toMatchObject({
         status: 'UNKNOWN',
       });
       expect(send).toHaveBeenCalledTimes(1);
@@ -3043,9 +3047,11 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('keeps a just-acknowledged Refund ID UNKNOWN when Platform returns 404', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 }),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 }),
+      );
     await expect(
       createPlatformGateway().getCanonicalReversal({
         ...platformRequest,
