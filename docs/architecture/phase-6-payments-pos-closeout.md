@@ -4,13 +4,13 @@ Start date: 2026-09-07
 Current implementation base: `origin/dev@fcc0b7c1`  
 Current status: **MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE; TERMINAL DEVICE ACCEPTANCE + WEB CUTOVER DEFERRED**
 
-## Post-closeout Phase E VOID Readiness 修复（2026-10-20；LOCAL / TESTS NOT RUN）
+## Post-closeout Phase E VOID Readiness 修复（2026-10-20；SOURCE CI VERIFIED / DEVICE PENDING）
 
 从 `origin/dev@ac5fcfef` 建立 `fix/clover-phase-e-void-readiness-20261020`，经用户明确代码授权修复 VOID 前资金未知分类、发送前事实校验、单进程设备队列与显式空闲后 Welcome。Platform v3 仍是最终资金事实：真 VOID 与转换 Refund 各自核验，已知 Refund ID 的 VOID 仍校验原 Payment 关系，矛盾事实保持 UNKNOWN。Payments-owned 原 Sale preflight 改为验证而非写回零退款观察，避免降级并发已记录累计事实。
 
 HTTP 原路由仅增加可选 `reversalOutcome`（Payments领域派生）；既有Orchestration投影，POS叶子模块展示，不将Clover resultCode带入UI、不改变Orders/Benefits owner或新增深层导入。C类受控POS Terminal修复；无Prisma/migration、依赖/锁文件、架构allowance/SCC/scanner baseline、生产Web Ecommerce、AWS/Runtime、Phase F/G变化。无需改变Phase 6既有模块化收口；本次是独立设备验收前准备。
 
-聚焦测试已编写，**MCP本地未运行lint/build/Jest/架构检查，GitHub最终head CI待验证，未进行真实设备操作**。本地静态差异/格式审阅后，用户已明确授权提交远端、PR、CI修复及全绿后合并dev；金融验收仍须另行授权。单进程设备队列不证明多实例排他，员工recovery-only入口/Provider时间持久化/权益真实并发不在此批。详见 [Phase E当前准备与真机门禁](../payments/clover-pos-phase-plan.md)；FULL PHASE E仍OPEN，两个完成Refund不得重复执行。
+聚焦测试已编写并通过源码CI。[PR #2884](https://github.com/sanqin888/sanqinMVP/pull/2884) 源码 head `06eb1a7ddf8ed0c3e7da767055a1cd7ba69fb04f` / [CI #7407](https://github.com/sanqin888/sanqinMVP/actions/runs/39458387167) SUCCESS：API lint/build/strict、shared strict、架构 baseline gate、API Jest（532 suites / 3438 tests 通过，既有2 suites / 2 tests跳过）、Web lint/build/strict/Jest（81 suites / 354 tests）、Browser E2E（13 passed）及API汇总均通过。本次文档续记后的最终head仍须CI全绿，合并事件以PR为准。 **MCP本地未运行lint/build/Jest/架构检查，未进行真实设备操作**。本地静态差异/格式审阅后，用户已明确授权提交远端、PR、CI修复及全绿后合并dev；金融验收仍须另行授权。单进程设备队列不证明多实例排他，员工recovery-only入口/Provider时间持久化/权益真实并发不在此批。详见 [Phase E当前准备与真机门禁](../payments/clover-pos-phase-plan.md)；FULL PHASE E仍OPEN，两个完成Refund不得重复执行。
 
 ## Post-closeout PEM — 通用付款异常案件、审批与受控恢复（2026-10-17；LOCAL / MIGRATION REQUIRED）
 

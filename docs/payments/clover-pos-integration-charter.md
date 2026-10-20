@@ -188,7 +188,7 @@ POS 请求退款
 
 不得在 Clover 未确认退款成功时提前把 Order 标记为 refunded。
 
-**Phase E VOID 安全约束（2026-10-20，本地实现待CI/设备验收）：**
+**Phase E VOID 安全约束（2026-10-20，PR #2884源码CI #7407通过；最终head门禁/设备验收仍独立）：**
 
 - 请求的 `operation=VOID` 与 Provider 实际执行的撤销/退款属于两个事实。实际类别由 Payments 对已确认 reversal 派生，经既有编排向 POS 兼容新增可选 `reversalOutcome`，不能靠 UI 的25分钟计算或 Clover ACK猜成功，也不重写历史 operation/伪造 Refund ID。
 - 不确定的 Terminal reversal HTTP/网络结果保持 UNKNOWN；只有明确拒绝可终态失败。原UNKNOWN/RECONCILING使用原身份查询，不因本地窗口过期或响应丢失获得新幂等key。首发前校验完整金额/币种/tip/additional facts，preflight不写回零退款观察覆盖已记录累计。
