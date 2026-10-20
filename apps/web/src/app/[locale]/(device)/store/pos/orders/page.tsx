@@ -38,6 +38,10 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { fetchPosStoreContext } from "@/lib/api/pos-session";
 import {
+  managedRefundNotice,
+  managedRefundUncertainNotice,
+} from "./managed-refund-notice";
+import {
   parseBackendDate,
   utcRangeForYmdInTimeZone,
   ymdInTimeZone,
@@ -1814,6 +1818,7 @@ export default function PosOrdersPage() {
 
     if (selectedAction === "full_refund") {
       void (async () => {
+        let managedCardRequestStarted = false;
         try {
           setIsSubmitting(true);
           const originalPaymentMethod =
@@ -1832,6 +1837,7 @@ export default function PosOrdersPage() {
             originalPaymentMethod === "CARD" &&
             !canWebRefundWithoutExternalPayment
           ) {
+            managedCardRequestStarted = true;
             const managed = await createManagedCardRefund<BackendOrder>(
               selectedOrder.stableId,
               {
@@ -1851,27 +1857,11 @@ export default function PosOrdersPage() {
               setOperatorDialogOpen(false);
               setOperatorName("");
 
-              if (managed.status === "SUCCEEDED") {
-                showToast(copy.refundSuccess, "success");
-                return;
-              }
-              if (
-                managed.failureCode === "POS_MANAGED_CARD_REFUND_REQUIRES_CARD"
-              ) {
-                showToast(copy.managedCardRequiresCard, "error");
-                return;
-              }
-              if (
-                managed.status === "PROCESSING" ||
-                managed.status === "UNKNOWN" ||
-                managed.status === "RECONCILING"
-              ) {
-                showToast(copy.refundReconciling, "error");
-                return;
-              }
-              showToast(managed.failureMessage || copy.refundFailed, "error");
+              const notice = managedRefundNotice(managed, locale);
+              showToast(notice.message, notice.tone);
               return;
             }
+            managedCardRequestStarted = false;
           }
 
           const result = await createFullRefund<BackendOrder>(
@@ -1903,7 +1893,12 @@ export default function PosOrdersPage() {
           );
         } catch (error) {
           console.error("Failed to refund order:", error);
-          showToast(copy.refundFailed, "error");
+          if (managedCardRequestStarted) {
+            const notice = managedRefundUncertainNotice(locale);
+            showToast(notice.message, notice.tone);
+          } else {
+            showToast(copy.refundFailed, "error");
+          }
         } finally {
           setIsSubmitting(false);
         }

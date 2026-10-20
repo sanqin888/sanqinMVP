@@ -357,9 +357,14 @@ const mapTerminalReversalResponse = (
       stringValue(result.body, 'code') ??
       stringValue(asRecord(result.body?.error), 'code') ??
       `CLOVER_${operation}_HTTP_${result.httpStatus}`;
-    const uncertainStatus = [500, 503, 504].includes(result.httpStatus);
+    // Only documented validation/authorization/unsupported-operation refusals
+    // prove that no reversal was performed. A gateway error (including 502),
+    // timeout or an unrecognized response must not grant a fresh financial key.
+    const definitiveRejection = [400, 401, 403, 415, 501].includes(
+      result.httpStatus,
+    );
     return {
-      status: uncertainStatus ? 'UNKNOWN' : 'FAILED',
+      status: definitiveRejection ? 'FAILED' : 'UNKNOWN',
       providerPaymentId: request.providerPaymentId ?? undefined,
       terminalId,
       failureCode: code,
@@ -903,35 +908,64 @@ export class CloverTerminalTransport {
       };
     }
 
-    const attempt = await this.request(
-      `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/void`,
-      {
-        method: 'POST',
-        idempotencyKey: request.idempotencyKey,
-        body: { voidReason: 'USER_CANCEL' },
-      },
-    );
-    if (attempt.kind === 'credential_unavailable') {
-      return {
-        status: 'FAILED',
-        terminalId,
-        failureCode: attempt.failureCode,
-        failureMessage: attempt.failureMessage,
-      };
-    }
-    if (attempt.kind === 'uncertain') {
-      return uncertain(
-        'CLOVER_VOID_REQUEST_UNCERTAIN',
-        'Clover Terminal void request did not receive a response',
-        terminalId,
+    return this.withDeviceMutation<PaymentProviderOutcome>(async () => {
+      const attempt = await this.request(
+        `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/void`,
+        {
+          method: 'POST',
+          idempotencyKey: request.idempotencyKey,
+          body: { voidReason: 'USER_CANCEL' },
+        },
       );
-    }
-    return mapTerminalReversalResponse(
-      attempt.result,
-      request,
-      terminalId,
-      'VOID',
-    );
+      if (attempt.kind === 'credential_unavailable') {
+        return {
+          status: 'FAILED',
+          terminalId,
+          failureCode: attempt.failureCode,
+          failureMessage: attempt.failureMessage,
+        };
+      }
+      if (attempt.kind === 'uncertain') {
+        return uncertain(
+          'CLOVER_VOID_REQUEST_UNCERTAIN',
+          'Clover Terminal void request did not receive a response',
+          terminalId,
+        );
+      }
+      const outcome = mapTerminalReversalResponse(
+        attempt.result,
+        request,
+        terminalId,
+        'VOID',
+      );
+      const refund = asRecord(attempt.result.body?.refund);
+      const returnedPaymentId =
+        stringValue(asRecord(refund?.payment), 'id') ??
+        stringValue(attempt.result.body, 'paymentId') ??
+        stringValue(asRecord(attempt.result.body?.payment), 'id');
+      const acknowledged =
+        returnedPaymentId === providerPaymentId &&
+        (normalized(stringValue(attempt.result.body, 'voidStatus')) ===
+          'SENT_TO_SERVER' ||
+          Boolean(outcome.providerRefundId));
+      // An acknowledgement permits display cleanup only after explicit device
+      // IDLE. It never establishes financial finality; the adapter still reads v3.
+      if (outcome.status === 'SUCCEEDED' && acknowledged) {
+        try {
+          const welcomed = await this.welcomeWhenIdle(1);
+          if (!welcomed) {
+            this.logger.warn(
+              '[CloverTerminalTransport] void Welcome deferred: device was not explicitly idle or Welcome failed',
+            );
+          }
+        } catch (error) {
+          this.logger.warn(
+            `[CloverTerminalTransport] void Welcome unavailable: ${this.errorMessage(error)}`,
+          );
+        }
+      }
+      return outcome;
+    });
   }
 
   async refundPayment(

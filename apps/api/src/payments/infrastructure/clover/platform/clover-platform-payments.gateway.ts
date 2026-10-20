@@ -457,6 +457,18 @@ const mapPlatformRefund = (
 
   const providerRefundId = stringValue(refund, 'id');
   const amountCents = integerValue(refund, 'amount');
+  if (
+    refund.currency !== undefined &&
+    stringValue(refund, 'currency')?.toUpperCase() !==
+      request.currency.toUpperCase()
+  ) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_CURRENCY_MISMATCH',
+      'Clover Platform refund currency conflicts with the original payment',
+      providerRefundId,
+    );
+  }
   // Clover Platform may omit tipAmount for a zero-tip refund. Only infer zero
   // when the original frozen canonical Sale explicitly had no tip; a missing
   // nonzero tip or a malformed supplied value remains UNKNOWN.
@@ -739,13 +751,11 @@ export class CloverPlatformPaymentsGateway {
     }
 
     const knownRefundId = request.providerRefundId?.trim();
-    if (knownRefundId) {
+    if (knownRefundId && request.operation !== 'VOID') {
       return this.getCanonicalRefundById(
         request,
         knownRefundId,
-        request.operation === 'VOID'
-          ? 'CLOVER_VOID_CONVERTED_TO_REFUND'
-          : 'CLOVER_REFUND_CONFIRMED',
+        'CLOVER_REFUND_CONFIRMED',
       );
     }
 
@@ -789,9 +799,25 @@ export class CloverPlatformPaymentsGateway {
       );
     }
 
+    const refunds = elementRecords(payment, 'refunds');
+    if (!refunds) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_REFUNDS_INVALID',
+        'Clover Platform returned invalid reversal refund facts',
+      );
+    }
     const resultCode = stringValue(payment, 'result');
     const normalizedResult = normalizePlatformResult(resultCode);
     if (request.operation === 'VOID' && normalizedResult === 'CANCELLED') {
+      if (knownRefundId || refunds.length > 0) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
+          'Clover reports both a voided payment and refund activity; manual review is required',
+          knownRefundId,
+        );
+      }
       const tipCents = integerValue(payment, 'tipAmount');
       if (
         tipCents === undefined ||
@@ -853,16 +879,8 @@ export class CloverPlatformPaymentsGateway {
       };
     }
 
-    const refunds = elementRecords(payment, 'refunds');
-    if (!refunds) {
-      return reversalUnknown(
-        request,
-        'CLOVER_PLATFORM_REVERSAL_REFUNDS_INVALID',
-        'Clover Platform returned invalid reversal refund facts',
-      );
-    }
     if (refunds.length === 0) {
-      if (normalizedResult === 'FAILED') {
+      if (normalizedResult === 'FAILED' && !knownRefundId) {
         return {
           ...canonicalBase(request),
           status: 'FAILED',
@@ -893,6 +911,14 @@ export class CloverPlatformPaymentsGateway {
         request,
         'CLOVER_PLATFORM_REVERSAL_REFUND_ID_MISSING',
         'Clover Platform refund relation is missing its refund id',
+      );
+    }
+    if (knownRefundId && discoveredRefundId !== knownRefundId) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_REFUND_IDENTITY_CONFLICT',
+        'The original payment refund relation does not match the acknowledged refund',
+        knownRefundId,
       );
     }
     return this.getCanonicalRefundById(

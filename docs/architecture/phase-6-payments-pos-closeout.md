@@ -4,6 +4,14 @@ Start date: 2026-09-07
 Current implementation base: `origin/dev@fcc0b7c1`  
 Current status: **MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE; TERMINAL DEVICE ACCEPTANCE + WEB CUTOVER DEFERRED**
 
+## Post-closeout Phase E VOID Readiness 修复（2026-10-20；SOURCE CI VERIFIED / DEVICE PENDING）
+
+从 `origin/dev@ac5fcfef` 建立 `fix/clover-phase-e-void-readiness-20261020`，经用户明确代码授权修复 VOID 前资金未知分类、发送前事实校验、单进程设备队列与显式空闲后 Welcome。Platform v3 仍是最终资金事实：真 VOID 与转换 Refund 各自核验，已知 Refund ID 的 VOID 仍校验原 Payment 关系，矛盾事实保持 UNKNOWN。Payments-owned 原 Sale preflight 改为验证而非写回零退款观察，避免降级并发已记录累计事实。
+
+HTTP 原路由仅增加可选 `reversalOutcome`（Payments领域派生）；既有Orchestration投影，POS叶子模块展示，不将Clover resultCode带入UI、不改变Orders/Benefits owner或新增深层导入。C类受控POS Terminal修复；无Prisma/migration、依赖/锁文件、架构allowance/SCC/scanner baseline、生产Web Ecommerce、AWS/Runtime、Phase F/G变化。无需改变Phase 6既有模块化收口；本次是独立设备验收前准备。
+
+聚焦测试已编写并通过源码CI。[PR #2884](https://github.com/sanqin888/sanqinMVP/pull/2884) 源码 head `06eb1a7ddf8ed0c3e7da767055a1cd7ba69fb04f` / [CI #7407](https://github.com/sanqin888/sanqinMVP/actions/runs/39458387167) SUCCESS：API lint/build/strict、shared strict、架构 baseline gate、API Jest（532 suites / 3438 tests 通过，既有2 suites / 2 tests跳过）、Web lint/build/strict/Jest（81 suites / 354 tests）、Browser E2E（13 passed）及API汇总均通过。本次文档续记后的最终head仍须CI全绿，合并事件以PR为准。 **MCP本地未运行lint/build/Jest/架构检查，未进行真实设备操作**。本地静态差异/格式审阅后，用户已明确授权提交远端、PR、CI修复及全绿后合并dev；金融验收仍须另行授权。单进程设备队列不证明多实例排他，员工recovery-only入口/Provider时间持久化/权益真实并发不在此批。详见 [Phase E当前准备与真机门禁](../payments/clover-pos-phase-plan.md)；FULL PHASE E仍OPEN，两个完成Refund不得重复执行。
+
 ## Post-closeout PEM — 通用付款异常案件、审批与受控恢复（2026-10-17；LOCAL / MIGRATION REQUIRED）
 
 用户正式授权在 Payments 现有所有权内扩展通用案件、证据、Approval、Execution 四个 additive-only Prisma 模型，并同步调整 AGENTS.md 第 14 节隔离 Sandbox 的精确允许项。STAFF 在 POS 的 Store 范围内申请；Sandbox 免 ADMIN 审批但保留完整开发/Test Merchant/回环 DB/原 Compact/Canonical/CAS 安全门禁，Production 默认关闭，按 STAFF 申请 + ADMIN/MFA 审批，只对已有最终失败的原付款 RELEASE，未知资金保持调查状态。旧 R2 flag/504 资格不变；历史 ALL_ATTEMPTS_FAILED 仅能经已记录的 Sandbox PEM 案件进入操作员确认未收款，不能伪造原始 209，也不能对生产开启此例外。案件写入由 Payments 负责，Orchestration 复用 Checkout/Benefits/Terminal Owners，POS/Admin 只提供入口。共享金融事实仍不可人为改写、生产 Web Ecommerce 不切换。源代码和测试已写/未运行、无 PR/CI/实测；用户需本地生成 additive-only Prisma migration，配套迁移合入 dev 前禁止进 main/生产。详细门禁、工作流及历史 CAD $16.95 验收：docs/payments/支付异常管理-PEM.md。

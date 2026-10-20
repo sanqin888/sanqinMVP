@@ -243,15 +243,32 @@ export class CloverPaymentProviderAdapter
             'Terminal void was not sent because Platform v3 canonical reversal read is not configured',
         };
       }
-      const execution = await this.terminal.voidPayment(request);
       if (
-        execution.status === 'FAILED' ||
-        execution.status === 'CANCELLED' ||
         request.amountCents === undefined ||
+        !Number.isSafeInteger(request.amountCents) ||
+        request.amountCents <= 0 ||
         !request.currency ||
+        !/^[A-Z]{3}$/.test(request.currency) ||
         request.expectedTipRefundCents === undefined ||
-        request.expectedAdditionalChargeRefundCents === undefined
+        !Number.isSafeInteger(request.expectedTipRefundCents) ||
+        request.expectedTipRefundCents < 0 ||
+        request.expectedAdditionalChargeRefundCents === undefined ||
+        !Number.isSafeInteger(request.expectedAdditionalChargeRefundCents) ||
+        request.expectedAdditionalChargeRefundCents < 0
       ) {
+        return {
+          status: 'FAILED',
+          paymentId: request.paymentId,
+          attemptId: request.attemptId,
+          idempotencyKey: request.idempotencyKey,
+          providerPaymentId: request.providerPaymentId,
+          failureCode: 'CLOVER_VOID_EXPECTED_FACTS_MISSING',
+          failureMessage:
+            'Terminal void requires original amount, currency, tip and additional-charge facts before execution',
+        };
+      }
+      const execution = await this.terminal.voidPayment(request);
+      if (execution.status === 'FAILED' || execution.status === 'CANCELLED') {
         return execution;
       }
       const canonical = await this.platform.getCanonicalReversal({
