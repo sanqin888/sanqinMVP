@@ -251,3 +251,16 @@ base-files 控制脚本只作为数据读取，未运行，也不从 dpkg-divert
 
 参考：[Ubuntu 指纹核验](https://documentation.ubuntu.com/security/software-integrity/image-verification/)、[Noble Archive key 示例](https://ubuntu.com/chisel/docs/latest/reference/chisel-releases/chisel.yaml/)、[Debian deb(5)](https://manpages.debian.org/unstable/dpkg-dev/deb.5.en.html)。网页用于身份/格式佐证，本次包事实来自上传原件重算。
 
+## 10. 2026-10-20 — B2-1C 实包回归原件复核与 R1-B S4 源码准备
+
+**最新有限状态：B2-1C MERGED / REAL-PACKAGE REPLAY MATCHED；R1-B S4 LOCAL SOURCE/TESTS AUTHORED / NOT RUN / NOT PUSHED；S5 ROOT EXECUTION NOT APPROVED。** 本节更新 §9.5 的格式兼容停点，不修改历史回执或人工文档 LIMITED 的性质。
+
+PR #2883 final head `15e6ff4bb3643303d522cdc5634d1a3dfb082c4e` / CI #7401 success / squash dev `ac5fcfef2ab43489a9b35be7048c93b1b2d31b6a`；Runtime 436 与 release 45 测试 OK。Mac 固定该版本实测七条 data.tar 与既有独立复核匹配，四包的三个目标 regular / 三条 link text 匹配。已实际读取五文件回归原件、重算校验并与交付脚本/参考 pins/冻结源码比对；回执 SHA `a8b33d5defcc9408ccc275b15b24006c60fd08781339c8cabfa0a1ce3d0de8bf`。这证明限定版本在操作员 Mac 的包读取回归，不证明 Guest 同一字节、解码器完整依赖认证或新独立人工技术签认。
+
+操作员随后提交新 Host/Guest 非 root 预检摘要：开机后 UUID/盘/隔离相符，Guest boot/ns 在一次采集前后稳定，rootfs/链接与包版本未变。两批原件尚未上传到本次审阅环境，Guest manifest 校验输出尚未贴回，故只记 OPERATOR SUMMARY MATCHED；所有现场身份保存在私有材料，不进 Git。
+
+本轮新增只读 Guest FD 候选采集器 `root_python_r1b_guest_capture.py` 和聚焦测试：六份 root-owned 冻结源码/index/proposal、三个文件、原 B1→B3B1 held-FD 交接、单独 /lib symlink FD、严格 context/权限/哈希拒绝、现有 Guest packet 组装与永久 false/BLOCKED。无现役接线、源码授权或实际 sudo。Mac SSH/原始 RC/保管 wrapper 仍需在此代码经授权 PR/CI 后独立准备，真实提权须冻结准确源码/SHA/boot/argv/env/路径再审批。
+
+详细实际证据、接口/限制、合成测试和后续执行准备统一见 [R1-B S4 工作包](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。本批 MCP-workspace 未运行 lint/build/test；不是“root 采集已完成”。R1-A 整体正式验收与 R1/C1 仍 OPEN，G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+
+
