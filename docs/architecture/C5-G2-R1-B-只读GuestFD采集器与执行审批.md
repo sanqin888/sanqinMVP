@@ -187,6 +187,6 @@ R1C-1 的有限核心软件测试可以先准备，但 **C1 的真实关闭必�
 
 同步 R1-B、S1、R0、B2-1C、current-dependency-graph 和 worklog；原件、Mac wrapper、密码、现场 UUID/boot/ns/私有路径不进入 Git。MCP-workspace 未运行 lint/build/test，未在外部环境代跑仓库实现或测试。按现行 change_scope，纯 docs Markdown 不选择应用/Runtime 测试 lane，实际授权后 CI 才是交付证据，不把预期跳过记为测试成功。
 
-本地差异已审阅，用户已明确要求“提交远端”，授权本批 PR、必要 CI 修复及全绿后合并 dev；最终交付以 PR 实际 head 的 CI 与合并事件为准。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
+本地差异已审阅，用户已明确要求“提交远端”，授权本批 [PR #2886](https://github.com/sanqin888/sanqinMVP/pull/2886) → dev、必要 CI 修复及全绿后合并；最终交付以该 PR 实际 head 的 CI 与合并事件为准。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 有限 CLOSED。
 
 
