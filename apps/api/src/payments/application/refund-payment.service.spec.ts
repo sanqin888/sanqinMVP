@@ -381,8 +381,8 @@ describe('RefundPaymentService', () => {
       refundedAmountCents: 2000,
       providerRefundId: 'CLOVERREF001',
     });
-    expect(provider.voidPayment).not.toHaveBeenCalled();
-    expect(provider.refundPayment).not.toHaveBeenCalled();
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
   });
 
   it('blocks new reversal execution when local cumulative reversal facts already exist', async () => {
@@ -397,9 +397,9 @@ describe('RefundPaymentService', () => {
     await expect(service.startOrRecover(input)).rejects.toMatchObject({
       failureCode: 'PAYMENT_ORIGINAL_ALREADY_REFUNDED',
     });
-    expect(provider.getPaymentStatus).not.toHaveBeenCalled();
-    expect(provider.voidPayment).not.toHaveBeenCalled();
-    expect(provider.refundPayment).not.toHaveBeenCalled();
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(0);
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
   });
 
   it('returns the saved final reversal on duplicate requests without executing again', async () => {

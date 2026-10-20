@@ -167,7 +167,10 @@ describe('PaymentTransaction', () => {
     const sale = PaymentTransaction.create(baseInput)
       .transitionTo('PROCESSING')
       .applyProviderOutcome({ status: 'SUCCEEDED', providerPaymentId: 'sale' });
-    const unknown = PaymentTransaction.create({ ...baseInput, operation: 'VOID' })
+    const unknown = PaymentTransaction.create({
+      ...baseInput,
+      operation: 'VOID',
+    })
       .transitionTo('PROCESSING')
       .applyProviderOutcome({
         status: 'UNKNOWN',

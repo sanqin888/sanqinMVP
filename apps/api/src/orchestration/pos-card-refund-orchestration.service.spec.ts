@@ -318,11 +318,15 @@ describe('PosCardRefundOrchestrationService', () => {
     );
     harness.transactions.findByAttemptId.mockResolvedValue(existing);
     harness.refunds.startOrRecover.mockResolvedValue(existing);
-    await harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-      reason: 'Recover original',
-      operatorName: 'Staff',
-      refundMethod: PaymentMethod.CARD,
-    });
+    await harness.service.refundFullOrder(
+      '4750_Yonge_Street',
+      'order_stable_1',
+      {
+        reason: 'Recover original',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
+      },
+    );
     expect(harness.refunds.startOrRecover).toHaveBeenCalledWith(
       expect.objectContaining({
         operation: 'VOID',
