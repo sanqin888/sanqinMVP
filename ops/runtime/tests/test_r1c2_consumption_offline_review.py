@@ -268,7 +268,7 @@ class OfflineReviewerTest(unittest.TestCase):
 
     def test_sequence_raw_reference_and_events(self):
         variants = [
-            ("sequence", 3, "EVENT_ORDER_INVALID"),
+            ("sequence", 4, "EVENT_ORDER_INVALID"),
             ("timeMonotonic", -1, "EVENT_ORDER_INVALID"),
             ("processIdentity", "untraced", "PROCESS_IDENTITY_AMBIGUOUS"),
             ("result", "UNKNOWN", "EXECUTION_INTERRUPTED_OR_UNKNOWN"),
