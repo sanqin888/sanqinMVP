@@ -4,6 +4,32 @@
 **日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
+### 2026-10-21 — Phase E 第二批 Credit Refund + Points + Store Balance 混合退款验收（SANDBOX PROVIDER + DB VERIFIED / SCOPED CLOSED）
+
+**验收来源与边界：** 操作员提供隔离 MacBook 的 `restaurant` PostgreSQL 退款前/后两次 `BEGIN TRANSACTION READ ONLY` 查询及成功 `COMMIT`、Nest/Terminal 请求日志、Clover Test Merchant `sanqin` 的 Refund 详情和当日完整 Refunds 列表截图；**不是 MCP 生产 VM 数据库结果**。订单 `c27b98812c9e756e5c4738c68` 于 **2026-10-16** 原已完成统一三方混合付款；本次仅对这张**既有订单**在 **2026-10-21 10:03（Dashboard 本地展示时间）**进行一次受控实机全额退款，没有为测试重新创建 Sale。
+
+| 身份 / 金额（CAD，权益积分另记） | 本次经核对的原始事实 |
+| --- | --- |
+| Order | `c27b98812c9e756e5c4738c68`；`completed -> refunded`；`totalCents=1582`、`paymentTotalCents=1582`、优惠券抵扣 0 |
+| Unified Checkout | Attempt `d9f4383f-95ae-4b0c-baa2-0bb56624479c`，`COMPLETED`，原外部银行卡 `externalAmountCents=1482` |
+| Clover Sale | `2YSC88CHESKS2`，原 `SALE/SUCCEEDED`，`amountCents=1482`，退款后原 Sale `refundedAmountCents=1482` |
+| Clover Refund | `WZGHWZ8YHRQYE`，原 Payment 对应 `2YSC88CHESKS2`，**CAD 14.82**，Discover 6668；本地 `REFUND/SUCCEEDED/CLOVER_REFUND_CONFIRMED`，唯一 Refund Attempt `refund_328b77a0c859a2ae579b96de459c372693d8320235948f21` |
+| 原支付权益 | 积分抵扣 1 pt（报价抵扣价值 CAD 1.00），储值余额支付 CAD 1.00，Clover Card 支付 CAD 14.82；LoyaltyTenderReservation 为 `COMMITTED`（积分/余额各 1,000,000 micro） |
+| 原奖励积分 | `EARN_ON_PURCHASE/POINTS/ORDER` +140,000 micro = **0.14 pt** |
+| 退款权益 | `REFUND_RETURN_REDEEM/POINTS/FULL_REFUND` +1,000,000 micro = **+1 pt**；`REFUND_RETURN_REDEEM/BALANCE/FULL_REFUND_BALANCE` +1,000,000 micro = **+CAD 1.00**；`REFUND_REVERSE_EARN/POINTS/FULL_REFUND` −140,000 micro = **−0.14 pt** |
+| 订单事件 | 恰好 **1 条** `RETENDER / FULL_REFUND / CONFIRMED` Amendment，`refundCents=1582`、`deltaCents=-1582`；恰好 **1 条** `order.financial_reversal.v1` Event，`REVERSAL/FULL_REFUND`、唯一 `idempotencyKey` |
+
+**读回结果与计数：**
+
+- **Clover 官方 Test Merchant 详情**显示 Refund ID `WZGHWZ8YHRQYE`、**CAD 14.82**、原 Payment ID `2YSC88CHESKS2`、Discover 6668、零 Tip/Tax/Fee；同日 `2026/10/21 00:00—23:59` Dashboard Refunds 总表显示 **1 条、CAD 14.82、无下一页**。只能确认该商户/日期/当前筛选内无额外退款记录，不能推出所有日期/商户或未来并发的全局 Exactly-once。
+- **SanQ 原支付 + 退款**仅有 **1 条 SALE + 1 条 REFUND**，两者均 `SUCCEEDED`，Provider Refund ID 和原 Payment ID 精确一致；退款前原 Sale `refundedAmountCents=0`，退款后 `1482`。从未对旧订单再次请求退款，**禁止对这笔已经完成的 Refund 重发 POST**。
+- **LoyaltyLedger 实际为 6 条**：原积分抵扣、原余额抵扣、原消费奖励各 **1 条**；退款返还积分、返还余额、反冲奖励各 **1 条**。退款前会员 `pointsMicro=998280000`、`balanceMicro=48000000`、`lifetimeSpendCents=2600`、BRONZE；退款后依次 `999140000`、`49000000`、`1300`、BRONZE。对应本次净积分 **+0.86 pt**、余额 **+CAD 1.00**、累计消费 **−CAD 13.00**，未将会员当前余额误当作订单专属账本证据。累计消费回退的独立政策计算/跨等级场景不由此一例全面证明。
+- **金额语义**：Order `totalCents=1582` 已扣除价值 CAD 1.00 的积分；退款资金分别为 **外部银行卡 CAD 14.82 + 内部储值 CAD 1.00 = CAD 15.82**，故 Amendment `refundCents=1582` 与 Clover `1482` **不矛盾**。积分单独返还 1 pt，不再计入现金/储值退款合计。
+- **设备/平台请求**：同一 `reqId=mvi6njaj-sf8o0g`，原 Payment Platform GET 200，Terminal Refund POST 200，device/status GET 200、自动 Welcome POST 200，已知 Refund ID Platform GET 200，最终 SanQ `POST /api/v1/pos/payments/card/orders/c27b98812c9e756e5c4738c68/full-refund` **HTTP 201（9373 ms）**。真实环境下首次请求完成，但请求日志只显示 response keys，不证明 #2892 针对 **404/PENDING/尚不可见**的额外有界 Canonical GET 分支曾实际触发；这一子场景继续独立 `DEVICE PENDING`。
+- **本批裁定**：`Phase E / Credit Refund + Points + Store Balance / SANDBOX PROVIDER + DEVICE + DATABASE VERIFIED / SCOPED CLOSED`。这是指定订单**一次正常全额退款**与各类 Ledger **各 1 条**的有界证明，**不是**重复调用/并发竞争、崩溃恢复、Interac、Accounting Journal posting、清算或生产验证。未对 Loyalty 推荐奖励冲回、阶梯跨等级变化等额外子场景升级到实机通过。
+
+**POS 优惠券边界已按操作员确认排除：** 当前 POS 店员**不能代顾客调用可用优惠券**，本次第二批不测试优惠券的消费及退款返券；该项**不是**本批阻塞项，**不**授权增加店员操作权限、修改券使用/返还策略，亦不表示整个系统的优惠券退款能力已验收。第三批 Interac Debit 和第四批故障、重启、并发等仍待独立 Readiness + 授权测试；完整 Phase E 保持 `OPEN`。本次仅**追加验收文档**，不修改资金/权益/订单实现、持久化合同、CI、迁移、发布或 Runtime。
+
 ### 2026-10-21 — Phase E 第一批历史 Refund/VOID 只读证据收口（SANDBOX VERIFIED / SCOPED CLOSED）
 
 本节是 **2026-10-20 旧阶段/待测记录的最新状态续记**；下面旧文案只记录当时证据，不应再次把已经验过的首次 VOID 或旧版 Refund 源码 CI 判为 PENDING。本次审计来自操作员提供的隔离 MacBook `restaurant` 数据库只读事务（`transaction_read_only=on`、成功 `COMMIT`）、Clover Test Merchant Dashboard Refund/Voids 日期范围 **2026/10/10 00:00—2026/10/21 23:59**（界面显示；具体 reporting timezone 未独立校准）及三张 Void 详情。没有发起新的资金请求，未从生产 VM 读取或替代 Sandbox 事实。
@@ -1002,7 +1028,7 @@ POS request refund
 
 full refund、void、failure、timeout、reconciliation、duplicate refund、restart、Interac、loyalty once only、Order refunded once only。
 
-## 2026-10-21 Phase E 验收矩阵（2026-10-20 旧结论已按新增证据更新）
+## 2026-10-21 Phase E 验收矩阵（第一批 + 第二批已核对证据；历史待测条目按最新结果更新）
 
 | 场景 / 门禁 | 截至 2026-10-21 的证据 | 裁定 |
 | --- | --- | --- |
@@ -1011,13 +1037,15 @@ full refund、void、failure、timeout、reconciliation、duplicate refund、res
 | True VOID 1/2（CAD 5.65 / 11.30） | 唯一 Terminal VOID POST，两个独立 Dashboard Void ID `EXXAZJM0C1VE4` / `THOSWEBX4K7Q8`；历史 UNKNOWN 同 Attempt Canonical 恢复；2026-10-21 本地及完整 Dashboard 列表核对 | **LATE CANONICAL RECOVERY / SANDBOX VERIFIED / SCOPED CLOSED**；两次首次请求 **仍为 UNKNOWN 的历史事实** |
 | True VOID 3 首次 POS 同步确认（CAD 16.95） | PR #2890 / CI #7422；一次 Terminal VOID、3 次只读 Canonical GET（PROCESSING→CANCELLED），POS 首次 HTTP 201；MacBook DB 完整闭环与独立 Clover Void `7E4C9BMT18R5Y` | **FIRST-REQUEST FINALITY / SANDBOX VERIFIED / SCOPED CLOSED**（旧矩阵 `PENDING` 已被此独立新交易证据关闭） |
 | 五笔历史资金撤销与订单一致性 | Sandbox MacBook 10 条 PaymentTransaction（每笔 1 SALE + 1 REFUND/VOID）、5 Order `refunded`、5 条 `FULL_REFUND / CONFIRMED` Amendment、5 条唯一 `order.financial_reversal.v1`；Clover Refund 列表 2 笔 CAD 16.95、Voids 列表 3 笔 CAD 33.90（计算）且均无下一页；合计 CAD 50.85 | **HISTORICAL PROVIDER + LOCAL DB RECONCILIATION / SANDBOX VERIFIED / SCOPED CLOSED**；仅限指定日期/筛选/商户，不保证未来并发 |
-| Refund GET-only 延迟传播重查（PR #2892） | CI #7430 SUCCESS，合并 `dev@424df7be`；新机制尚无独立更新后 Compact Refund 的首次响应证据 | **SOURCE + CI VERIFIED / DEVICE PENDING** |
+| Credit Refund + Points + Store Balance 全额回滚（第二批） | Order `c27b98812c9e756e5c4738c68`；Clover Sale `2YSC88CHESKS2` / Refund `WZGHWZ8YHRQYE` CAD 14.82；当日供应商列表唯一条目；1 Sale + 1 Refund `SUCCEEDED`、6 条准确 LoyaltyLedger（积分、余额、奖励及相应返还/撤销各 1）、Amendment + Event 各 1，Order `refunded`，无券 | **SANDBOX PROVIDER + DEVICE + DATABASE VERIFIED / SCOPED CLOSED**；不证明并发/重启或 Accounting Journal |
+| Refund GET-only 延迟传播重查（PR #2892） | CI #7430 SUCCESS，合并 `dev@424df7be`；第二批新增单次真实 Compact Refund 在首次 POS HTTP 201 / Canonical GET 200 下成功，但没有看到 404/PENDING/尚不可见而触发额外 GET 的真实证据 | **NORMAL DEVICE REFUND VERIFIED / DELAYED-RETRY BRANCH DEVICE PENDING** |
 | Interac Debit Refund + 原卡/PIN | Credit Refund/VOID 无法替代 | **PENDING** |
 | 失败、超时、断网、API restart、重复点击/多 POS exactly-once | Jest/CI 有聚焦覆盖；缺各场景独立受控故障/真机与持久化证据 | **FAULT / REAL-DEVICE PENDING** |
-| Loyalty / Balance / Coupon 回滚 | 五笔 Amendment 和 OpsEvent 已独立核对，不等于积分/余额/券账本扣回与返还正确 | **BENEFITS LEDGER PENDING**；第二批先只读 readiness |
+| Loyalty / Balance 回滚（第二批，不含优惠券） | 同订单积分返还 +1 pt、余额返还 +CAD 1.00、奖励反冲 −0.14 pt；Ledger 六类型各一；账户对应净变化 +0.86 pt / +CAD 1.00；会员累计消费 −CAD 13.00、BRONZE 不变 | **SCOPED LEDGER VERIFIED / CLOSED**；跨等级、推荐奖励和并发场景不扩大认定 |
+| POS 优惠券消费与退款返券 | 店员无法代顾客调用券；操作员明确要求本次 Phase E POS 范围先跳过券，不变更权限/券政策 | **OUT OF SCOPE FOR PHASE E POS BATCH 2**；不是券功能总体 CLOSED |
 | Accounting Journal posting/结算与 Web Ecommerce/生产切流 | `order.financial_reversal.v1` OpsEvent 是财务事实通知，不直接证明 Journal 分录或外部结算；仅隔离 Test Merchant | **JOURNAL EVIDENCE PENDING / PRODUCTION NOT AUTHORIZED** |
 
-**裁定原则：** 仅第一批五笔历史 Refund/VOID 的供应商与 SanQ 本地事实对账关闭；此前三笔 VOID 和两笔 Refund 不再发起新金融动作。旧“首次 VOID 待测”、旧“第二笔 Refund 数据库待补”、旧“Refund CI 未跑”均按本节最新真实证据更新。完整 Phase E 仍 **`OPEN / ADDITIONAL TEST MATRIX PENDING`**，不得提前启用生产 POS 新链路、删 legacy CARD refund 或将 Phase F/G/H 完成状态提前认定。
+**裁定原则：** 第一批五笔历史 Refund/VOID 对账，以及第二批**单笔**非零积分/余额/Credit Card 联合全额 Refund 的 Clover/本地账本对账，分别 `SCOPED CLOSED`；两批已完成的旧交易**均不得再次发起资金命令**。最新验收已补充旧“首次 VOID 待测”、旧“第二笔 Refund 数据库待补”、旧“Refund CI 未跑”的后续结论。Refund 传播延迟重查、Interac、故障/并发、独立 Accounting Journal posting 和生产授权仍有独立门禁。完整 Phase E **`OPEN / ADDITIONAL TEST MATRIX PENDING`**；不得提前启用生产 POS 新链路、删 legacy CARD refund 或将 Phase F/G/H 完成状态提前认定。
 
 ## VM 部署
 
