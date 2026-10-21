@@ -643,6 +643,46 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 **当前裁定：**`NATIVE-003 INDEPENDENT RAW MATCH / NATIVE-002 OPERATOR-REPORTED SHA MATCH / KNOWN STATIC DT_NEEDED LIMITED / C0 OPEN / C1 DYNAMIC OPEN / C5-G2 NO-GO`。
 
+## 15. 2026-10-21 — R1C-2C-C / C0 身份与保管链实际执行证据补录（非重新取证）
+
+**补录性质：**本节依据 2026-10-20～21 已执行的 `R1C2C-B-004` 采集、操作员摘要复核、独立见证回邮/署名 PDF 和随后独立离线 ZIP 结构审核，整理**实际发生的工作**。它补充 §11、§13、§14 当时的阶段记录，不回写历史门禁、不声明新执行了 Host/Guest 命令。准确区分两层状态：
+
+- **工作已做：**`C0 CAPTURE / OPERATOR MANIFEST RECHECK / WITNESS LIMITED STATEMENT / OFFLINE RAW ZIP STRUCTURE REVIEW = EXECUTED`；不再把这些活动笼统描述成“尚未进行”。
+- **认证未关闭：**`C0 IDENTITY & END-TO-END CUSTODY ATTESTATION = OPEN / LIMITED`。独立见证人的 `LIMITED`、原件一致及后验 SHA 相同，不构成采集前身份 pin、现场 Guest 来源、介质连续保管或真实 Runtime 消费认证；不能写 `C0 PASS`。
+
+### 15.1 历史实际操作与可公开证据索引
+
+| 证据/时间 | 已执行的工作与明确结果 | 验证层级与不得外推的范围 |
+| --- | --- | --- |
+| `R1C2C-B-003` / 2026-10-20 | Mac Host v3 自动预检 17/17；由后续 `004` 的 Host/Guest 采集继续形成见证包。 | Host 工具/操作员现场自报，不能跨批次证明 Guest 精确身份；`003` 不充当 `004` 的完整独立见证。 |
+| `R1C2C-B-004` / 2026-10-20 | Host/Guest 只读采集已执行；Guest SSH outer rc `0`、非 root UID `1000`、23 项中 20 项 rc `0`；DMI UUID 读取 `rc=1`（Permission denied），两条 `readelf` `rc=127`（command not found）；Guest 结果为 `DISCOVERY_ONLY`，保留 combined-channel warning。 | 已记录现场命令结果及异常，不视为所有身份/隔离要求通过；没有安装、提权或执行 `strace` 追踪。 |
+| 操作员 `SHA256SUMS.host` / `SHA256SUMS.guest` 复算 | 两份清单逐件 `OK`；形成供后续转交及核验的原件。 | 证明操作员现有文件与其本地清单一致，**不是独立事前摘要固定或来源见证**；完整逐项命令与 rc 未从见证人一方独立取得。 |
+| 私有原件 `R1C2C-B-004-witness.zip` | 原始归档 SHA-256：`d1bc78e709591eade7df67584e7340b6c6cc14edae5b9f49b597c866f544139b`；PDF 中的原件值/其记载的预期值与该值相同。 | PDF 的预期值来源及其是否**在采集前经独立第二渠道冻结**未有可审计原始记录；后验相同不补足该门禁。 |
+| `R1C2C-B-004-WITNESS-EMAIL-001` / 2026-10-21 收取 | 已收到独立见证人回邮 `.eml` 和同封签署 PDF；邮件及 PDF 选择 `LIMITED`，认领对所收到材料及可复算一致性的有限见证。 | **见证流程实际已执行并回复**，但签署表没有给出完整 Host/Guest 逐项复算命令/退出码、准确原件数量及签署 UTC；不可将该声明改写为全链独立验真。 |
+| `SanQ-R1C2C-B-004-Witness-Signature.pdf` | PDF SHA-256：`85440dc4d25600d7dadd5334c304d08a4cad46715b1c96136fafc89f4fccf166`；邮件正文声明值、邮件附件实际摘要、先前单独上传的同名 PDF 字节相符。 | 是**附件字节和回邮陈述的一致性**；`pdfsig` 未发现嵌入式数字证书签名，邮件头 `dkim/spf/dmarc=pass` 为头部声明，未在此完成独立密码学验证或发件人控制权认证。 |
+| 独立离线 ZIP reviewer / 2026-10-21 | 在独立于采集 Mac/Guest 的只读分析环境实际读取上述 `004` 私有 ZIP：Host manifest 23 项、Guest manifest 97 项、payload 98 个普通文件；Host 17/17、Guest 23 项原始 SSH JSON/解码字节一致，异常 rc 保留；无路径穿越成员或 symlink。结果 `OFFLINE_SELF_CONSISTENCY_CHECKED / BLOCKED`，`externalPrePinnedArchiveShaMatched=false`。 | **这一步已独立读取并复核 ZIP 内部原件**，纠正此前“该审阅会话未获 ZIP”的时间性描述；但 reviewer 未获得采集前由独立渠道冻结的 expected pin，也不能替见证人补作现场身份或连续保管认证。 |
+
+邮件/PDF 的有限结论是 `LIMITED` 而不是 `NOT DONE`；独立离线 reviewer 对 ZIP 内部结构的检查已经执行，但其 `BLOCKED` 仍是来源授权判定。两种复核不是同一执行主体、同一时间的证明，不应混合成单一 `PASS`。见证签署表标记 `DISCOVERY_ONLY / NOT AN EXECUTION AUTHORIZATION`。
+
+### 15.2 C0 身份与保管链逐门禁登记
+
+| 门禁 | 执行/证据状态 | C0 认证裁定及仍缺的材料 |
+| --- | --- | --- |
+| 原件采集与本地双清单核验 | **EXECUTED** — `004` Host/Guest 原始材料及两份 SHA 清单核过 | `CHECKED / LIMITED`；操作者清单匹配不等于采集时 Host/Guest 独立认证。 |
+| 见证人接收、审阅、回邮与署名 PDF | **EXECUTED** — `WITNESS-EMAIL-001` 和 PDF 已收取；附件字节一致 | `WITNESS STATEMENT LIMITED`；见证人逐项原件验证的命令/rc、签署准确 UTC 和独立签名凭据未建立。 |
+| 独立只读原件结构审核 | **EXECUTED** — 独立分析环境实际读取 `004` ZIP | `C0-OFFLINE-STRUCTURE CHECKED`；这是离线自洽性而非现场 provenance。 |
+| 采集**之前** Host/Guest/VM/VDI/SSH known_hosts 身份的第二渠道 pin | **NOT ESTABLISHED** — 工具输出、同批 host/guest 自报及后验归档值已有 | `OPEN`；缺采集前批准的独立身份、host key 指纹来源、当次 boot/ns/UTC 对照与跨批次连续性见证。 |
+| 原件离机交付、独立渠道 expected hash 与保管人/交接时间 | **PARTIALLY DOCUMENTED** — 有 ZIP 标识/哈希、邮件/PDF 回执 | `OPEN`；缺交付介质、各跳交接/接收人及准确 UTC、事前 expected pin 的独立渠道凭据；不得据回邮反推完整连续保管链。 |
+| 当前后续 C1-HOST-001～005 各会话身份 | **SEPARATE BATCHES / NOT INFERRED** | `OPEN`；不得用 `004` 的 witness 或其中一次 17/17 自动门禁跨会话覆盖；详见 §14.2。 |
+
+### 15.3 C0 补录收口与下游限制
+
+- **C0 执行记录补录：完成（文档层）。** 历史采集、复算、见证回邮/署名 PDF、离线原件结构审核均已明示为实际执行；不要求为“补文档”重跑既有采集。
+- **C0 身份/全链保管认证：仍 `OPEN / LIMITED`。** 如需升级裁定，优先审阅**已有私有**独立渠道事前 pin、原始见证复算命令/rc、准确身份与交接 UTC/介质凭据；确实缺失则标为缺失，不能事后制造采集前证明。任何后续新 Host/Guest/SSH 操作须另审准确命令并获明确授权。
+- **后续边界不变：** `C1 DYNAMIC CONSUMPTION OPEN / C2 LIVE TRACE NOT AUTHORIZED / R1-C1 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`；任何 `strace`、root、正常更新、VM、AWS 或生产动作均未因 C0 文档补录获准。
+
+**保存与隐私：** `004` ZIP、原始 stdout/stderr、SSH/VM/VDI/host key/boot/network 识别信息、EML 完整头、PDF 及见证人身份仅留独立私有档案；Git 只登记脱敏 ID、摘要、范围和负面/有限结论。此次为类别 A 的 docs-only 状态补录，不改变 Runtime/Ops 代码、合同、权限、17 Bundle、CI、依赖、schema、架构边界或生产。MCP-workspace 不执行 lint/build/test，先供用户本地审阅，远端推送/PR/CI 需单独授权。
+
 
 
 
