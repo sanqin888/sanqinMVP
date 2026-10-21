@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-21 — Runtime R1C-2C-C 真实动态观察实验就绪审计与执行审批草案
+
+**LOCAL DOCS-ONLY DRAFT / LIVE TRACE NOT AUTHORIZED / REVIEW PENDING / NOT PUSHED。** R1C-2C-B 文档 PR #2893 / CI #7432 SUCCESS，合并 `dev@7638832a` 后，按用户要求启动后续 R1C-2C-C 的**实施设计和审批准备**；不是 Guest 执行批准。复核 `normal_runtime_update.py` / `normal_runtime_launch.py` 与 2B 的纯内存 reviewer，确认 `strace 6.8` / `ptrace_scope=1` 仅为能力候选；当前真实 bootstrap、effect adapters 与持续消费字节保护尚未具备。新建 [R1-C §12：2C-C 就绪与执行审批草案](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#12-r1c-2c-c-真实动态观察实验就绪与执行审批包待审草案)，分层提出 C0–C5：独立原件及目标身份、观察器和无副作用 synthetic 候选来源、准确命令/权限另审、非 root tracing、离机原件复核、v1 合同适配裁定；登记真实 Linux 进程事件/namespace/预算/原件类别和内容绑定与现有 v1 的差距。此处**不修改冻结 v1 合同，不伪造 PROCESS_EXEC，不安装 readelf，不提升权限，不执行 strace/root/正常更新**；后续如需 v2、工具/权限变更必须另获授权。没有代码、CI/依赖、跨上下文架构或生产状态更改，本地未运行测试，远端尚未获授权。R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 LIMITED CLOSED。
+
 ## 2026-10-20 — Runtime R1C-2C-B 真实 Host/Guest 观察能力取证与独立见证准备
 
 **OPERATOR-REPORTED DISCOVERY CAPTURED / MANIFEST CHECKS OK / LIMITED WITNESS EMAIL RECEIVED / RAW-EVIDENCE INDEPENDENT VERIFICATION PENDING / NO 2C-C AUTHORIZATION。** R1C2C-B-001/002 为取证 Kit 的 VirtualBox host-only 解析误判、保持原始 BLOCKED；003 v3 Host 自动检查 17/17 SATISFIED；004 Guest SSH rc=0、UID 1000、23 个只读命令内 20 项 rc=0，确认 Ubuntu 24.04.5 / Python 3.12.3 / kernel 6.8.0-146 / `strace 6.8`、`ptrace_scope=1`。DMI 仅普通用户读权限不足（rc=1）；两条 `readelf` 查找命令不存在（rc=127），未安装依赖、未提权。操作员已执行 `SHA256SUMS.host` 与 `.guest` 双清单全部 `OK`，只表明按本地清单复算匹配，不是来源独立认证。`guest-review` 仍 `DISCOVERY_ONLY`、独立 Host/Guest 见证 false、SSH combined-channel warning true；004 Host 原件及准确回执仍待见证人独立确认。2026-10-21 已收到独立见证回邮 .eml 及 PDF 附件：邮件和 PDF 结论均为 `LIMITED`，附件文件 SHA-256 与邮件正文声明及此前同名上传 PDF 字节一致；邮件头声称 DKIM/SPF/DMARC pass，尚未独立验签。`pdfsig` 未检出证书签名，未获得本轮 `004` 私有归档供助手独立复算，亦无见证人原始核验命令/rc 与第二渠道预期 hash 来源原件；限定声明可记录，不能宣称独立来源/真实消费 VERIFIED。邮件及个人信息在私有档案保留、不入 Git。无源码、模块边界/依赖、数据库、部署/VM/生产更改；R1/C1 OPEN、G2 NO-GO、S2 PAUSED、C2 有界 CLOSED，2C-C 未批准。详见 [R1-C §11](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。
