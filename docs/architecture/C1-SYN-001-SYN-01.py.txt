@@ -1,0 +1,38 @@
+"""SanQ C1-SYN-001 SYN-01. Inert candidate; NOT an execution approval."""
+import hashlib
+import os
+import stat
+import sys
+
+BASE = "/tmp/sanq-c1-syn-001"
+INPUT = BASE + "/input.txt"
+EXPECTED = "8df9b096863665361212a14784dccabcc9de929bd524ec1529ed1eb2f1df6552"
+
+
+def main():
+    if os.geteuid() == 0 or os.getuid() != os.geteuid():
+        return 20
+    if sys.argv != [BASE + "/syn01.py", "SYN-01"]:
+        return 21
+    if os.getcwd() != BASE:
+        return 22
+    fd = os.open(INPUT, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid():
+            return 23
+        if info.st_size != 25 or info.st_nlink != 1:
+            return 24
+        data = os.read(fd, 25)
+        if os.read(fd, 1) != b"":
+            return 25
+    finally:
+        os.close(fd)
+    if hashlib.sha256(data).hexdigest() != EXPECTED:
+        return 26
+    print("SYN-01:READ-COMPLETE")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
