@@ -689,6 +689,13 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 **关键兼容性风险：**当前 v1 reviewer 强制非 observer 进程的首事件为唯一 `PROCESS_EXEC`、末事件为 `PROCESS_EXIT`，不能直接表达全部真实 fork-only/重 exec 时序；若实验发现不兼容，只能如实记录 `EVENT_ORDER_INVALID/CHILD_UNTRACED`，不得伪造事件、修改 v1 或把 `CANDIDATE_REVIEWED/BLOCKED` 提升为授权。既有 C0 `LIMITED` / C0 离线结构 CHECKED 被真实复用但不充当将来会话的独立身份/保管认证，C1-NATIVE-002 原始文件独立复算和观察器来源候选缺口仍在。**当前裁定：`C1-SYN-001 DESIGN PREPARED / NOT EXECUTED / C0 IDENTITY-CUSTODY LIMITED / C1 DYNAMIC OPEN / C5-G2 NO-GO`。** 下一批只可另行提交准确 A0–A2 审批材料；没有新 SSH、strace、root、Host/Guest、VM/AWS、更新执行、安装或生产授权。纯 docs-only 准备，MCP-workspace 不运行 lint/build/test，远端须用户审阅后另行授权。
 
+## 17. 2026-10-21 — C0-EVIDENCE-RECONCILIATION-001 独立身份与保管链原件复核（本地待审）
+
+在 PR #2901 / CI #7448 SUCCESS、`dev@144abbd1` 合并后开启独立 C0 分支，以 [C0 证据复核矩阵与后续材料清单](R1C-2C-C-C0独立身份与保管链证据复核.md) 继续 §15 历史操作补录之后的真实缺口追踪。本批**重新审阅邮件附件原始 PDF 字节**，SHA256 `85440dc4d25600d7dadd5334c304d08a4cad46715b1c96136fafc89f4fccf166` 与邮件正文一致；PDF 6 项首选由实心圆点标记（用户确认表示已选择），但见证时逐项命令/rc/差异原始凭据没有在表内填写，见证结论 `LIMITED`，介质声称 `email`，但没有事前第二渠道 expected hash 的消息原件或精确交接时间线。PDF 的本地生成元数据及邮件时间戳不构成采集前身份/授权证明。现已取得独立见证 ZIP 原件与 B-001～004 四批历史包并重新离线核查：B-001 Host 20/20、B-002 Host 23/23、B-003 Host 23/23 + Guest 28/28（SSH rc255）、B-004 Host 23/23 + Guest 97/97（SSH rc0，23 条记录）；B-004 98/98 项与旧 witness ZIP 逐字节一致。详情见新增证据复核文档 §5。后续现又取得完整 C1-HOST-001～005 原始包 `归档 2.zip`，逐批 Host 清单均 23/23、7/7 命令原始 receipt/标准流完整匹配；C1-HOST-001 仅 `vmRunning=false`、工具检查 16/17，C1-HOST-002～005 为 17/17。归档 SHA256 `2ef869603ae00cf62b195fe9b0d59abdf5c8978c89827a6a38bf443749acb0b8`，核验详情见新文档 §6。五批仍不具独立事前身份/SSH pin 与 Guest 绑定的证明。
+
+下一步只应先从已有私有原件中复核 Host/Guest/SSH 事前批准、known_hosts 来源、原始清单复算/rc、见证人历史工作底稿、每次封存/交接 UTC 以及 C1-HOST-001～005 的逐批凭据；缺失则诚实记录未建立，不要求事后伪造。既有 S1-W1/R1 的 Ubuntu 来源链可作为 C1 软件包来源历史材料，但不能替代 C0 平台身份。**裁定：`C0 CAPTURE EXECUTED / OFFLINE STRUCTURE HISTORICALLY CHECKED / WITNESS PDF CONTENT-HASH CHECKED / IDENTITY-CUSTODY OPEN-LIMITED`**。本批未运行 Guest/SSH/strace、未发信、未修改 v1/Runtime/生产；远端未提交，需用户另批。
+
+
 
 
 
