@@ -79,5 +79,3 @@
 五批原始 Host `VBoxManage` 回执中的 VM UUID、VDI UUID、MAC/NIC 和 Host-only 网络配置线索彼此一致；`001` 与后四批运行状态不同，符合原始时间线。五批自报相同的 `sourceSha256=c7a5d712…b32781`（Mac 采集器候选），`remoteSourceSha256=a7def6d8…70d13b` 与每批 `remote-guest-source.py.txt` 的原始字节 SHA256 一致；但这仍属同批操作者/工具提供的线索。每批 `host-review.json` 均明确 `historicalPinsAreComparisonOnly=true`、`operatorIsolationAndHostIdentityReviewStillRequired=true`、`authorizationGranted=false` 和 `classification=DISCOVERY_ONLY`。17/17 **不等于独立的身份签认或 Guest 观察授权**。
 
 **更新后的证据裁定：** `C1-HOST-001..005 RAW OFFLINE SELF-CONSISTENCY CHECKED`、`C1-HOST-001 CONDITION FAILURE PRESERVED`；原先因未获得五批 Host 原件而开放的“Host 文件缺失/逐项原始 rc 未核验”子项可以标记 **已补齐/已技术复核**。但仍缺各批**现场之前的独立 VM/VDI/SSH host key 批准凭据**、准确 Host/Guest boot/ns/SSH 连接会话绑定原件、独立于操作者的 expected pin 与离机各跳交接/见证记录；`C0 IDENTITY-CUSTODY OPEN / LIMITED` 不变。未执行任何 Guest/SSH/strace/VM/AWS 或生产动作。
-
-83:
