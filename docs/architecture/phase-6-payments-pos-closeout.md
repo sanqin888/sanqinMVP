@@ -4,7 +4,13 @@ Start date: 2026-09-07
 Current implementation base: `origin/dev@fcc0b7c1`  
 Current status: **MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE; TERMINAL DEVICE ACCEPTANCE + WEB CUTOVER DEFERRED**
 
-## Post-closeout Phase E Refund 即时 Canonical 确认加固（2026-10-20；LOCAL / CI PENDING）
+## Post-closeout Phase E 第一批历史资金事实核对（2026-10-21；SANDBOX VERIFIED / SCOPED CLOSED）
+
+隔离 MacBook 测试库只读 SQL 与 Clover Test Merchant Dashboard 日期范围 2026/10/10—10/21 的 Refunds、Voids 列表及三份 Void Details 对账完毕：两笔真正 Refund（CAD 5.65 + 11.30）+ 三笔真正 VOID（CAD 5.65 + 11.30 + 16.95），总计 CAD 50.85，分别对应 5 张 Order `refunded`、5 条金额匹配的 `FULL_REFUND / CONFIRMED` Amendment、5 条唯一 `order.financial_reversal.v1` OpsEvent，以及各自单独一条 REFUND/VOID PaymentTransaction `SUCCEEDED`。Clover Refund 列表共两条（CAD 16.95），Void 列表共三条、分页无下一页，各 Void Detail 关联原 Payment ID；新补第三笔 Void ID `7E4C9BMT18R5Y`。**在指定商户/日期/界面筛选范围内**没有额外的供应商 Refund/VOID 记录。第二笔 Refund 自动 Welcome 由本次独立本地数据库证据补齐；PR #2890 的首次同步 True VOID 已按 CAD 16.95 独立实机验收，不需要再次测试旧 VOID。
+
+Refund GET-only Canonical 重查修复 PR [#2892](https://github.com/sanqin888/sanqinMVP/pull/2892) 最终 Head `4b4628003e7235b6869752d7c07e2d2426f0e4d8`、[CI #7430](https://github.com/sanqin888/sanqinMVP/actions/runs/39491797533) SUCCESS、dev merge `424df7be5b95f93047afe83b6b59429ed7131a9f`，代码/CI 已完成但新增 Refund 同步重查 **真机独立验收尚未执行**。本结论只关闭 **Phase E 第一批历史 Sandbox 供应商/本地事实对账**；不证明 Accounting Journal posting、权益账本回滚、未来 exactly-once/并发、Interac、外部银行结算或生产切流。**Phase E 仍 OPEN**；原 Phase 6 模块化 owner、依赖边界保持 CLOSED，无新 schema/migration/公开合同/部署变更。后续第二批先只读审计 Benefits，资金交互另审批。参见 [Phase E 最新证据及矩阵](../payments/clover-pos-phase-plan.md)。
+
+## Post-closeout Phase E Refund 即时 Canonical 确认加固（2026-10-20；历史源码准备状态，最终 CI 见上方）
 
 在现有 Payments/Clover infrastructure 内对 POS Terminal Refund 增加**已知 Refund ID 优先**的有界 GET-only 重查：Terminal 正向资金 ACK 后仅 404、明确 PENDING、原 Payment 未出现 Refund 关联这三类可等待 Canonical UNKNOWN 进入最多两个短间隔 500/1000ms 的补读；严格原 Payment/Refund ID、金额/币种/Tip/附加费事实和单次 POST。明确 FAILED、未知状态、异常/冲突/身份不符立即保持未决不重读；与已有 VOID 有界 read-back 是分离逻辑，不调整 Ecommerce 生产路径。平台 PENDING 新增区分性诊断 failureCode，不修改公共字段形状。考虑 25 秒 BFF 上游超时，在 Terminal 开始时计时并设置 12 秒新 GET 启动截止；该门禁不覆盖单次 Platform 请求 10 秒上限或 OAuth 时间，因此仍可能 HTTP 超时，必须保留 UNKNOWN 和同一 Attempt 手动恢复。聚焦 Jest 已编写未执行，未授权远端、Sandbox 新 Refund 或生产变更。**C 类受控外部关键路径修复；无新的资金写命令、owner/跨上下文导入/依赖图债务、schema/Prisma/migration、HTTP 路由、订单/权益/会计归属、CI/锁文件/生产切流变更。** 完整 Phase E 仍 OPEN；详见 [Phase E 验收计划](../payments/clover-pos-phase-plan.md)。
 
