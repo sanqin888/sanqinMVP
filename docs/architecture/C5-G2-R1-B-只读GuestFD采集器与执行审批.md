@@ -579,6 +579,71 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 **本地停点**：本节仅为 Runtime/Ops 文档与证据摘要，不更改任何 Runtime code、observer、离线 reviewer、旧 evidence v1、CI、依赖、schema、Docker/AWS/VM；未运行 Guest 取证、trace 或更新。最高结论 `C0 STRUCTURE CHECKED; C0 IDENTITY OPEN; C1 FREEZE NOT READY; C2 TRACE NOT AUTHORIZED`。R1/C1 OPEN、C5-G2 NO-GO、S2 daily PAUSED。
 
+## 14. 2026-10-21 — C1 观察器静态 Native 来源续审与后续 C0 / C1-SYN-001 交接（本地待审）
+
+本节仅记录 §13 之后取得的操作员回执与独立离线审核原件；§13 保留当时状态，不追溯改写。原始 Guest ELF、SSH/Host 原始流、Ubuntu 包与可信 keyring 留存在私有离机证据档案，不提交仓库。后验归档 SHA、同一 boot ID、Host 17/17 自报、已签名发行索引的技术验证，均**不等于取证前经独立第二渠道固定的 Host/Guest 身份与保管链**。
+
+### 14.1 分批证据及来源限定裁定
+
+| 批次 | 已取得的证据 | 限制 |
+| --- | --- | --- |
+| `R1C2C-C1-PIN-001` | 已按另批非 root SSH 授权从 Guest 获取 `/usr/bin/strace`、`/usr/bin/python3.12`、`/lib64/ld-linux-x86-64.so.2`、`/lib/x86_64-linux-gnu/libc.so.6` 四份 ELF 原始文件，操作员 `SHA256SUMS` **13/13 OK**、SSH 外层 rc `0`；`dpkg-query -W` 内层 rc `0`，原路径 `dpkg-query -S` 内层 rc `1`，定位 libc 的 `/lib/` → `/usr/lib/` 路径别名问题 | `PIN_DISCOVERY_PARTIAL / BLOCKED`；不能因四份文件采集成功将整批改记 PASS；未在本审阅环境独立读取 PIN-001 的 Guest 原始 ELF、Host/Guest 身份或运行期消费 |
+| `R1C2C-C1-PIN-002` | 独立批准的补充**三项查询、无 ELF 再采集**：`dpkg-query -S -- /usr/lib/x86_64-linux-gnu/libc.so.6`、同命令查 `ld-linux-x86-64.so.2`、`dpkg-divert --list /lib64/ld-linux-x86-64.so.2`；三条内层 rc **0/0/0**，操作员 `SHA256SUMS` **12/12 OK**，解析 libc/loader 归属 `libc6:amd64` 与 loader diversion 线索 | `PIN002_DISCOVERY_CAPTURED / BLOCKED`；dpkg 数据只是 Guest 安装库线索，不是发行包来源信任根、独立身份见证或动态加载证据 |
+| `C1-SOURCE-STRACE-001` | Ubuntu `noble` 签名 `Release → Packages.xz → strace_6.8-0ubuntu2_amd64.deb → usr/bin/strace` 独立离线复验；包内 ELF SHA `28f957c227012de0b18d1bd7fff2d396cb693ea60ed8013be68de071e84b5001` 与 C1-PIN-001 操作员报告相符 | 冻结 `review_strace_offline.py` 对合法多 Stream XZ 误拒绝，**不能标记旧自动审核器 PASS**；Guest 字节与动态消费未经该项独立原始复算 |
+| `C1-SOURCE-LIBC` | 已保存 R1-A 的 `noble-updates` 签名索引、`libc6 2.39-0ubuntu8.9`、`python3.12-minimal 3.12.3-1ubuntu0.17` 的包成员离线复验与 Guest 报告 SHA 对照匹配 | R1-A keyring 的先前批准范围不消除 Host/Guest 独立身份缺口 |
+| `C1-OBSERVER-NATIVE-001` | 第一次 SSH 建连超时，rc `255`；操作员报告失败证据清单 6/6 OK，原目录保留 | `NATIVE_DISCOVERY_PARTIAL`，不是成功采集；不覆盖或删除 |
+| `C1-OBSERVER-NATIVE-002` | 单独批准的非 root Guest 只读采集，SSH rc `0`、三份 ELF `3/3 CAPTURED`、两项 `dpkg-query` rc `0`、Mac 自报清单 13/13 OK；安装版本 `libunwind8=1.6.2-3build1.1`、`liblzma5=5.6.1+really5.4.5-1ubuntu0.3`、`libc6=2.39-0ubuntu8.9` | **本离线审核环境没有收到 002 三份 Guest ELF 的原始归档**，只能称“操作员报告的 SHA 匹配”，不能称独立 raw PASS |
+| `C1-OBSERVER-NATIVE-SOURCE-001` | 经单独批准的两个准确 HTTPS GET，归档 SHA `7d983097398526b4537208c8586c791abcd712974ca39681979b7809aac3e9e0`；离线核验 11 个归档成员、Ubuntu `noble-updates` `Release.gpg`（`gpgv rc=0`、`VALIDSIG F6ECB3762474EDA9D21B7022871920D1991BC93C`）→ Packages → 两份准确 `.deb` → 三份包成员，SHA 与 002 报告相符 | 签名验真基于已封存/既定 keyring；不证明 002 原始 ELF 已在本环境独立复算，亦不证明取证机器身份 |
+| `C1-OBSERVER-NATIVE-003` | 单独授权仅采 `/usr/lib/x86_64-linux-gnu/libunwind.so.8` → `libunwind.so.8.0.1`；SSH rc `0`、非 root UID/EUID 1000、没有 dpkg 或 trace。原始归档 SHA `c8e58e483d5c667b83734fc28c8dc0b702f74b7e101bd02a3422f86334ad3cc4`；独立审核 8 个归档普通文件、内部 7/7 SHA、36/36 离线检查；从 SSH stdout 解码的 **63,776 B 原始 Guest ELF** 与归档及经签名索引绑定的 `libunwind8_1.6.2-3build1.1_amd64.deb` 成员**逐字节一致** | 仅该单文件可判独立 raw/source member MATCH；Host-005 17/17 和人工复核来自同批自报 `host-context`，不等于 C0 独立身份验收；未运行 `strace` |
+
+本次识别的 Native 成员摘要（前三项来自官方包内独立重算且匹配 **002 操作员报告**；第四项另获 **003 Guest 原始字节独立复算**）：
+
+| ELF | 字节 | SHA-256 | Guest 验证层级 |
+| --- | ---: | --- | --- |
+| `libunwind-ptrace.so.0.0.0` | 18,656 | `ec993e45c024b66ea0f17085be1333001428dc714bd9f0520f44a0cde18b921b` | 002 报告 SHA MATCH |
+| `libunwind-x86_64.so.8.0.1` | 67,672 | `70a88c376a1aced719ca7bdcd5cdd6c5d3bdce44b99f5ab2037fdad096bbf03d` | 002 报告 SHA MATCH |
+| `liblzma.so.5.4.5` | 202,904 | `696e868dd0700a19a6d65fc01608ec2d70d3cb91f65710e89180cd2e688f30cb` | 002 报告 SHA MATCH |
+| `libunwind.so.8.0.1` | 63,776 | `28e77a498f2f17f8cb883c91303f9901343ea0d8e34959d138dd462fcc9b201f` | 003 Guest raw + 包成员 BYTE-IDENTICAL |
+
+独立静态 ELF `DT_NEEDED` 分析：`strace` 引用 `libunwind-ptrace / libunwind-x86_64 / libc`；`libunwind-x86_64` 进一步引用 `libunwind.so.8 / liblzma / libc`，新补 `libunwind.so.8.0.1` 直接需要 `libc.so.6`、`ld-linux-x86-64.so.2`、`liblzma.so.5`。已识别的静态候选图中**未发现新的待补采 ELF**，可限定为 `KNOWN STATIC DT_NEEDED CANDIDATE: NO IDENTIFIED MISSING ELF (LIMITED)`；不等于完整 `dlopen`/CPython import/native 映射、真实读/执行时消费、不可替换窗口或 Runtime S6 的证明。
+
+### 14.2 C1-HOST 现场预检批次与 Observer 对象登记
+
+这些都是 **Mac Host 的现场只读取证/预检**，不是独立身份来源证明，也不是 Guest 追踪。使用的是已审阅的独立 Mac v3 工具 `collect_r1c2c_b.py`（SHA-256 `c7a5d712b7078edf31fefae5e5899449c478cd7b44495c777b6f5ee5b9b32781`），输出 Host 原始标准流/退出码、VM/VDI/Host-only 隔离线索及 `SHA256SUMS.host`。17/17 自动检查通过需要 23 份原始证据和人类独立身份复核；**自动通过 ≠ C0 PASS**。
+
+| C1-HOST 原件目录 | 对应取证批次与已知结果 | 独立核查状态 |
+| --- | --- | --- |
+| `R1C2C-C1-HOST-001` | C1-PIN-001 的新 Host 预检目录；批准计划要求独立 VM/VDI、Host-only/SSH 身份人工复核、17/17 自动检查 | 本轮未收到完整 HOST-001 原件/全部 rc，不回填 17/17 PASS 或独立身份认证 |
+| `R1C2C-C1-HOST-002` | C1-PIN-002 的新/有效期内 Host 预检；PIN-002 批次成功查询不消除原 PIN-001 部分失败 | 未取得 HOST-002 全量原始证据及独立事前 pin，不推断跨批次身份连续性 |
+| `R1C2C-C1-HOST-003` | C1-OBSERVER-NATIVE-001 前置 Host 预检；虽之前报告自动 17/17，Native-001 SSH 建连超时、未读取 ELF | Host 门禁自身不保证随后 SSH 可达；失败证据需原样保留；无 Host-003 独立全量复验 |
+| `R1C2C-C1-HOST-004` | Native-002 单次重试的新 Host 前置批次；Native-002 采集器通过了 Host 上下文门禁后取得三个 ELF 与两条 dpkg 查询 | 未在本轮取得 HOST-004 全量原件/第二渠道身份固定；不把采集成功倒推出 Host 身份认证 |
+| `R1C2C-C1-HOST-005` | Native-003 单文件补采前置新 Host；其已上传 `host-context.json` 自报 `automatedChecksPassed=17`、`manualReviewConfirmed=true` | 仅为 Native-003 附带的操作员/工具回执，**缺 HOST-005 全量原件独立复算与身份见证** |
+
+先前 `R1C2C-B-003/004` 属于另一批 Host/Guest 能力调查及有限见证，不能改名成 C1-HOST 或跨会话代替预检。Host 原件中的 VM/VDI/SSH/网络标识与真实路由、安全策略应留私有档案；后续 C0 审核应列出每批原始回执、采集前独立 pins、UTC、known_hosts 审批来源、介质交接和独立复核的缺失/满足项，不能仅做自动检查计数归档。
+
+**C1-OBSERVER 名称边界：**本轮仓库与现存本地资料没有可核实的独立 `C1-OBSERVER-001` 执行批次。已完成的「观察器来源」是 `C1-SOURCE-STRACE-001` 与 `C1-OBSERVER-NATIVE-SOURCE-001` 的官方签名包/成员静态核验；「观察器 Native Guest 文件」是 `C1-OBSERVER-NATIVE-001/002/003` 的失败、补采与有限独立原件审核。原 `R1C2C-B-004` 的 `strace -V` 仅为版本发现，**没有实际 strace trace**。不因为“OBSERVER”存在工具/来源准备就虚构已经运行观察器。真正 `C1-SYN-001` 和 C2 live trace 仍在方案审批前，不存在观察输出或消费 PASS。
+
+### 14.3 先前来源/取证测试的原始技术回执
+
+**基础四 ELF 的来源验证（C1-SOURCE-LIBC）：**独立审核者只读检查 `R1A-private-review.tar(1).gz`（归档 SHA-256 `7ebd8a8fabf78c586ad0055b4c4049f0f99e14f06d91020e2150d7ec802e453a`）；归档 268 个普通文件、`review/PAYLOAD-SHA256SUMS` 266/266 匹配，六批清单分别为 HOST 15、GUEST 45、SOURCE-INDEX 18、DEBS 35、MEMBERS 92、BASEFILES 50。重验原始 `noble-updates` `Release.gpg` 与 `Release`，`gpgv rc=0`、`VALIDSIG F6ECB3762474EDA9D21B7022871920D1991BC93C`，已冻结 keyring SHA-256 `80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31`；签名索引 `main/binary-amd64/Packages.xz` SHA `424e9966d4d549da3f08f0737b0cefbcfffd76464ba25efee146647b198bd6f5` 与原件一致。包内真实普通文件成员分别为：`libc.so.6`（2,129,424 B，SHA `3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf`）、`ld-linux-x86-64.so.2`（236,616 B，`c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da`）、`python3.12`（8,020,928 B，`e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f`）。这些官方原件**独立复算结果与 PIN-001 操作员报告一致**，不是对 PIN-001 Guest 原始文件重新读取，也不是 C0 身份证明。旧 PIN-001 `dpkg-query -S` 原始路径失败由 PIN-002 的补充查询解决，不删除旧失败回执。
+
+**观察器来源验证（C1-SOURCE-STRACE-001）：**经用户批准的官方对象只读取得、再上传独立审阅的 `C1-SOURCE-STRACE-001-review.tar.gz` 原始归档 SHA-256 `b5eee402222be4f9257b26411b55e4b49c8d76a49b5742c4bdb069f49a764cdc`；6/6 归档文件合规，内部 `SHA256SUMS` 5/5，`fetch-manifest.json` 4/4 下载对象字节吻合。使用已保存的既定 Ubuntu Archive keyring 对 `noble/main/amd64` `Release.gpg → Release` 验签：`gpgv rc=0`、单个准确 VALIDSIG，故意修改 Release 一个字节的负例被拒绝。Release `2024-04-25` 签名覆盖的 `Packages.xz` 为 1,401,160 B、SHA-256 `2a6a199e1031a5c279cb346646d594993f35b1c03dd4a82aaa0323980dd92451`；其中 `strace_6.8-0ubuntu2_amd64.deb` 为 584,172 B、SHA-256 `d588810ae26b06fee6678dc81e5b54f6efcde8e718e4589adb4d11d254b9820b`，包内 ELF `usr/bin/strace` 为 2,087,432 B、SHA-256 `28f957c227012de0b18d1bd7fff2d396cb693ea60ed8013be68de071e84b5001`，与 PIN-001 操作员报告 SHA 匹配。**原冻结自动审核器并没有 PASS：**该 `Packages.xz` 有合法的第二个空 XZ Stream（32 B），冻结的单 Stream `lzma.LZMADecompressor` 将其 `unused_data` 错当非法尾部，返回 `UNSAFE_OR_TRUNCATED_XZ / BLOCKED`；另外执行的 `xz --test` 和独立完整多 Stream 解压、索引/包 SHA 验证通过。此为**限定范围的独立来源技术核查 PASS**，不得把冻结审核器的 FAIL 更写成 PASS；后续如果修复，必须另审源码、恶意尾部/截断/预算负例和新 SHA。
+
+**Host / Session 关联：**PIN-001 与 PIN-002 的现场 Host v3 预检、以及随后 Native-001/002/003 使用的 HOST-003、HOST-004、HOST-005，为不同时间窗口的操作员批次，不允许用一批旧 17/17 替代下一批；每份 Host 结果需要核对完整原件、23 项证据清单、真实 17 个自动门禁、VM/VDI/Host-only 及人工身份见证、SSH known_hosts 预先批准指纹、当次 Boot ID/ns/UTC。当前仅记录操作员回执、采集器对 Host context 的门禁和 003 原件中 Host-005 的自报；**没有得到这几次 Host 全量原件的独立认证**。Native-001 失败是 TCP 建连超时（未经认证通道，未进入文件读取），Native-002/003 是后续各自独立新证据目录的成功只读采集；不同批次不可合并伪称一次连续受保护执行会话。
+
+### 14.4 保留门禁与后续审批拆分
+
+1. **C0-IDENTITY/CUSTODY = OPEN。** 复核既有 `R1C2C-B-004` raw 原件与有限 witness、Host-005 的完整原件/准确 VM/VDI/Host-only/SSH known_hosts/boot/ns/时间和证据交接记录；把采集器自身 `17/17`、后验 hash 与外部**事前冻结** pin 的第二渠道分别列明。没有的证据必须记为缺失，禁止事后伪造；先设计证据矩阵和见证方案，任何新 Guest/Host 采集另报准确命令并获批。
+2. **C1 静态来源 = 限定完成 / 原件复算仍有缺口。** 003 单文件 Guest raw 对签名包成员 PASS，002 三份 Guest 原始 ELF 未在本环境独立复验；补齐优先受控离机转交已有原件，不默认重新 SSH。不把静态 `DT_NEEDED` 收口扩大成运行期来源闭包或整体验收。
+3. **C1-SYN-001 = DESIGN PENDING / NOT EXECUTED。** 下一独立设计阶段按 §12–§13 分开冻结两个非业务、非 root、可丢弃 Guest 场景：`SYN-01` 精确 exec/open/read/exit 和 `SYN-02` fork/child exec/mmap/exit。设计须列出标准库探针真实源字节/SHA、输入 pins、完整 argv/env/cwd/UID/GID、子进程关系、UTC、stdout/stderr/内外 rc、超时/输出上限、失败保留和证据保管/隔离/见证；**先形成只读审批草案**，不直接运行 `strace` 或 synthetic 程序。
+4. **C1 动态消费 / v1 合同 = OPEN。** §12 记录的 fork-only、重 exec、namespace ID、预算和证据粒度限制继续有效。若确需 v1→v2、新依赖/权限/架构职责改变，说明原因、影响及不变更合同的限定 `DISCOVERY_ONLY` 备选方案，获独立授权后才实施。C2 精确 trace 命令仍未授权。
+5. **总门禁不变。** `R1/C1 OPEN`、`C5-G2 NO-GO`、`S2 DAILY PAUSED`；C2 限定合成恢复 CLOSED 不等于 C1 动态消费 PASS；R2–R5、S6、AWS、root、安装与生产均未被放行。
+
+**本地改动/交接边界：**此续记只同步文档证据与待审工作项，不修改 Runtime、观察器/离线审核器、v1 合同、测试、CI、依赖、schema、Docker/VM/AWS 或生产权限。本次没有新 SSH/trace/Guest/root 执行。依 `AGENTS.md` 先本地审阅，**远端 PR、CI 与合并须经用户在审阅后单独授权**；合并后再开始 C0 与 C1-SYN-001 **设计与审批准备**（非现场运行授权）。
+
+**当前裁定：**`NATIVE-003 INDEPENDENT RAW MATCH / NATIVE-002 OPERATOR-REPORTED SHA MATCH / KNOWN STATIC DT_NEEDED LIMITED / C0 OPEN / C1 DYNAMIC OPEN / C5-G2 NO-GO`。
+
+
 
 
 
