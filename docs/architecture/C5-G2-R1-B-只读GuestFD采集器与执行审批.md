@@ -473,6 +473,82 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 **停点：**本续记不修改任何 Runtime 源码/观察器、启动器、CI、依赖、Prisma、17 Bundle、部署、VM 或生产策略；没有 GitHub CI/2C-C 实验或任何新 root/Guest/生产授权。`R1/C1 OPEN`、`C5-G2 NO-GO`、`S2 daily PAUSED`、`C2 ISOLATED SYNTHETIC LIMITED CLOSED`，`R1C-2C-C NOT AUTHORIZED`。
 
+## 12. R1C-2C-C — 真实动态观察实验就绪与执行审批包（待审草案）
+
+**2026-10-21 / LOCAL DESIGN AUTHORED / LIVE TRACE NOT APPROVED / C1 OPEN。**
+
+### 1. 依据、边界与目标
+
+- 基线为 `origin/dev@7638832a322a61f5c4fde6f62a63ca037750afad`，承接 [R1-C §9–§11](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)、[R0 D1–D5/C1–C8](Runtime更新-R0冻结设计.md)、`AGENTS.md` 和现有 `ops/runtime/` 实现。PR #2891 只完成纯离线 v1 reviewer；PR #2893 / CI #7432 success 只登记 Host/Guest 能力调查与有限见证邮件，不认证真实消费。
+- **本工作包的当前目标是设计并冻结下一批审批所需的对象、威胁模型、候选观察技术、证据格式适配差距、准确执行条件和停止规则；不代表执行实验。**
+- Runtime/Ops 是唯一代码职责；不改变 17+Manifest、`NormalUpdateFlow`、`LaunchMaterials`、现役 Docker/部署拓扑、业务模块、Prisma、CI/依赖锁或生产策略。R2 的维护排他与 R3 AWS 快照不因观察研究而自动生效。
+- 当前上限：`2C-C READINESS DESIGN / NOT READY FOR LIVE EXECUTION`。不新建 Guest 用户、权限/挂载、交换介质；不运行 `strace`/候选源码；不安装 `binutils`、不改 `ptrace_scope`、不使用 sudo/root、不接触 AWS 或生产。
+
+### 2. R1C-2C-B 已取得的有限证据与剩余缺口
+
+| 项目 | 已知范围 | 不得推论 |
+| --- | --- | --- |
+| Host | 批次 `003` v3 自动预检 17/17；`004` Host/Guest 操作员逐文件 SHA256SUMS 核对返回 OK | `003` 预检不能代替同次 `004` 的完整人工平台见证或持续隔离 |
+| Guest | `004` SSH outer rc 0；UID 1000；23 项命令中 20 项 rc 0；Ubuntu 24.04.5 x86_64、kernel 6.8.0-146、Python 3.12.3、rootfs ext4 | 仅 SSH 返回 0/Guest 自报值，不证明可信 host key/Guest boot/mount namespace 的独立保管 |
+| Observer | `strace` 6.8（命令 rc 0）、`ptrace_scope=1`、有效 capability 为零；无被批准的 tracing 执行 | 没有真实 fork/exec/clone/线程/映射 coverage 结果；普通用户不能推断可完整跟踪 root |
+| 已知失败 | DMI UUID 普通用户读取 rc 1 / Permission denied；`readelf` 两项 rc 127 / executable not found；共享挂载和默认 IPv4 路由查询未命中 | 不自动提权、安装工具、声明无外联/无所有共享资产 |
+| Witness | `R1C2C-B-004-WITNESS-EMAIL-001` 邮件和附件可有限匹配，结论 `LIMITED`；邮件头声明 DKIM/SPF/DMARC pass | 无独立完整 ZIP 原件复算/跨渠道 expected hash 来源及签署证书验证；不升级 Host/Guest provenance verified |
+
+原始 SSH combined-channel warning 仍在，`004` 的准确 Host 状态、离机 witness 命令与回执仍待独立核对。若下一步审批依赖这些身份与保管链，须先补证；不能用模板字段 `verified=true` 代替。
+
+### 3. 观察技术与信任分层
+
+| 层级 | 候选职责 | 缺口 / 拒绝条件 |
+| --- | --- | --- |
+| 启动前进程/系统调用观察 | 经来源审阅的 `strace 6.8` 作为实验候选；观察 fork/clone/vfork/exec、open/read/mmap/exit、追踪器起止/子进程集合 | 它尚未运行；strace 本身及 loader/native 闭包未独立认证，trace 也不能证明实际消费的每个文件字节 |
+| CPython 模块线索 | 附加且必须明确启动时点的 import/audit/origin 元数据，覆盖 `.py`、`.pyc`、zip、自定义 importer、builtin/frozen、`exec` | 后装 hook 无法回溯 Python/loader 启动；`-I -S -B` 不保证未读旧 `.pyc` |
+| ELF/native 辅助 | 复用已有 `root_python_elf_static_hints.py` 等离线线索，实际 `PT_INTERP`、`DT_NEEDED`、`RUNPATH`、`dlopen` 必须映射到已消费对象 | Guest `readelf` 不存在；静态提示不是实际映射，也不能为了补齐表格擅自安装 |
+| 来源及字节保护 | 基于独立 Ubuntu Release→Packages→deb/member、批准的非包源码与观察器来源 pin，绑定读/映射时 FD/文件身份及持续不可替换窗口 | 同路径/同 inode/执行前后两次 hash 不证明消费时未污染；真实保障方案尚未冻结 |
+| 独立离机审核 | 接受真实 raw bytes 与独立保管 pins，调用现有 `r1c2_consumption_offline_review.py` 作结构审阅 | 现有 v1 永久 `decision=BLOCKED`，`CANDIDATE_REVIEWED` 不代表认证或允许安装 |
+
+技术选型暂推荐**pre-exec 受控系统调用发现 + Python/ELF 补充 + 独立内容来源与文件保护 + 离线复核**。不采用事后单 PID `strace -p` 代替从启动前全量观察，也不通过虚构 `PROCESS_EXEC` 等方式让不符合实际的 trace 通过 reviewer。
+
+### 4. v1 合同对接问题：必须在现场格式改变前复核
+
+| 编号 | 源码已存在的限制 | 真实记录影响 | 允许的下一动作 |
+| --- | --- | --- | --- |
+| CONTRACT-01 | `_events` 对每个非观察器进程要求首个为 `PROCESS_EXEC`、末个为 `PROCESS_EXIT` 且 `PROCESS_EXEC` **恰一次** | fork-only child、clone/线程、重 exec 或退出丢失无法按真实内核时序归一化 | 先记录 raw 和 `EVENT_ORDER_INVALID/CHILD_UNTRACED`，不补造 exec；如确需支持真实语义，提交 v1→v2 合同修订另授权 |
+| CONTRACT-02 | `session` namespace 与 `startDiscriminator` 要求 ASCII `ID=[A-Za-z0-9._:-]`，进程身份还要求固定拼接 `ns:pid:gen` | Linux 原始 namespace 常见 `mnt:[N]` / `pid:[N]` 不可直接填充 | 原始 readlink 作为独立 raw artifact；如果正规化，单独提出无损映射来源/冲突校验合同，未经批准不改变既有 reviewer |
+| CONTRACT-03 | 原件最多 64 份、单件 ≤32 MiB、总计 ≤64 MiB；events ≤32768、封套 ≤32 MiB | 完整追踪可能超出预算 | 超出立刻 `EVENT_BUDGET_EXCEEDED/BLOCKED`；缩小**新批准的实验范围**，不截尾伪称完整；扩大预算需另授权 |
+| CONTRACT-04 | v1 `rawArtifacts` 仅通用 kind 字段，`_raw_artifacts` 无按类别强制 stdout/stderr/rc 各有原件的细粒度保证 | 即使结构审阅成功，也不能用它证明全部标准流与内外退出码齐全 | 外部原件清单逐项独立核查；如欲程序自动强制，先审计并单独批准合同/校验增强 |
+| CONTRACT-05 | `_files` 以 `fdIdentity` 作抽象引用，要求 `file.sha256==rawArtifact.sha256`、`size==byteCount` | 某些 trace 字节仅是 read 子范围/栈映射线索，不能等价于完整文件已消费 | 没有完整 raw 实际文件原件与独立持久保护时标 `BYTE_CONSUMPTION_UNPROVEN`，不将日志映射到伪文件原件 |
+| CONTRACT-06 | `PROCESS_EXEC` 等 event / `PYTHON_IMPORT` / `ELF_LOADER` 需严格绑定文件与起止事件 | `strace` 一种信号不足以产生全部语义事实 | 保留 `IMPORT_ORIGIN_UNKNOWN`、`NATIVE_LOAD_UNMAPPED`，不推断不存在动态行为 |
+
+**授权分界：**上述为差距登记，不是自动批准修改 `sanq.runtime.r1c2-consumption-evidence.v1`、解析器、数据预算或 Runtime 的 owner。两个备选路径：A) 只做不改变 v1 的有限 `DISCOVERY_ONLY` 生数据实验，未经承认证明就停；B) 在独立样本证据支持后，另审严谨的 v2 合同与其失败路径，获明确授权才修改。默认先 A；如果不能保证 A 的身份、预算和退出规则，也必须停在本工作包。
+
+### 5. 分段实施与独立门禁（未授权，不得直接执行）
+
+| Gate | 交付物 / 独立复核标准 | 当前状态 |
+| --- | --- | --- |
+| C0 — 原件与 Host/Guest 绑定 | 复核 `004` Host 与 Guest、准确 VM/VDI、Host-only、ssh host key、boot/ns、非生产资产和原始归档；形成不可由采集器自行签认的 pin/保管证据 | `LIMITED`；缺独立 raw 原件复算 |
+| C1 — 完整实验候选固定 | 精确观察器 binary/loader/包版本/来源、独立来源 pins；准确拟观察的**无业务副作用、非 root** synthetic 子进程源字节/SHA、完整 argv/env、Guest 账号和 cwd | `NOT READY`；只有 strace version discovery |
+| C2 — 精确实验批准 | 先交人类审阅：实际 VM/Host 管理通道、SSH known_hosts pin、起止 UTC、实验命令逐条 argv、cwd/env、UID、隔离检查、资源/超时/日志配额与事故停止方式；另获**准确命令和权限的明确授权** | `NOT APPROVED` |
+| C3 — 受控无副作用 tracing | 仅在 C0–C2 成立后开展非 root、disposable Guest synthetic 程序 fork/exec/open/read/mmap discovery；观察器先于被测子进程启动、子进程退出后保全全部 stream/rc | `NOT RUN`；不触碰 Runtime root 核心或生产 |
+| C4 — 离机与结构审阅 | 保留每个真实命令的 stdout/stderr 和 inner/outer rc、UTC、丢失/截断、父子关系、原始 namespace、budget、原始 file IDs、raw bytes 与独立来源 hash；用严格 reviewer 检查，任何不能表达或来源不明一律 `BLOCKED` | `NOT RUN` |
+| C5 — 下一决策 | 比对观察器覆盖与 v1 合同、决定是否必须另提 v2 或 2D 完整候选准备；不得把 synthetic 正向路径当作完整 S6 | `PENDING` |
+
+**建议的第一批现场实验最大边界（提案、不是当前授权）：**只允许普通用户的非 root synthetic 子进程；不设置内核策略、不用 `sudo`、不执行实际更新、不访问生产连接；单次 wall-time 上限建议 30 秒，raw trace 单份上限建议 8 MiB，并受既有 v1 更严格总配额和保密要求限制。超时/超预算的进程终止策略、证据受损与回滚仍须在准确命令审批中说明；不预先承诺事故自动恢复或 Guest 数据完全无变化。日志在 Guest 上的创建属于写操作，必须明确批准路径、umask、quota、离机转移与保留方式。
+
+### 6. 真正 S6/C1 继续缺少的材料（不能由 synthetic 取代）
+
+1. 冻结同一最终候选的**真实 bootstrap、全部 `UpdateCapabilities` effect adapters、配置与每个外部命令 argv/来源**；目前 `normal_runtime_launch.py` 仅 hash-only 提案，`NormalUpdateFlow` 是 in-process 核心，不是已准生产的安装器。
+2. 经独立来源认证的 Python/loader、observer/辅助工具、非包模块和 native 闭包；真实读取或映射时文件身份与字节的持续不可替换保护。
+3. 真实成功、拒绝和中断的全场景可达性、后代/namespace 完整覆盖与离机原件独立验证；当前 2B 结构审核仍永久 `BLOCKED`。
+4. R2 持续维护禁入、R3 精确 AWS 快照、R4 正式安装/root 授权和 R5 同候选故障/恢复矩阵，仍独立开放；C2 限定 CLOSED 不能转化为生产 AWS 许可。
+
+### 7. 本次交付停点和下一次需要的授权
+
+本文件是 **docs-only readiness/approval draft**；不包含可立即运行的 `strace` 命令或 root/sudo 执行许可。实际实验命令必须在 C0/C1 身份与源码 pins、C2 操作员/独立见证/失败保全确定后，作为后续**单独精确审批包**提交，不继承 S5 或 2C-B 的 SSH 授权。
+
+需要用户下一批明确决定：是否先解决 `004` 独立 raw ZIP 复算及准确 Guest identity；是否批准以后编制 C1–C2 的**非 root synthetic strace 精确命令**；任何证据 v1→v2、工具安装/运行权限变更或扩大范围都需要另授权。本文件本身**没有申请执行权限**。
+
+本地 MCP-workspace 未开放测试/lint/build，本工作包没有代码或测试改动，也没有执行 Guest/VM/root/AWS/生产操作；GitHub CI 只在本文件经用户审阅、单独授权推送 PR 后才进行。**R1/C1 OPEN、C5-G2 NO-GO、S2 daily PAUSED、C2 ISOLATED SYNTHETIC LIMITED CLOSED、2C-C LIVE TRACE NOT AUTHORIZED。**
+
 
 
 
