@@ -683,6 +683,12 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 **保存与隐私：** `004` ZIP、原始 stdout/stderr、SSH/VM/VDI/host key/boot/network 识别信息、EML 完整头、PDF 及见证人身份仅留独立私有档案；Git 只登记脱敏 ID、摘要、范围和负面/有限结论。此次为类别 A 的 docs-only 状态补录，不改变 Runtime/Ops 代码、合同、权限、17 Bundle、CI、依赖、schema、架构边界或生产。MCP-workspace 不执行 lint/build/test，先供用户本地审阅，远端推送/PR/CI 需单独授权。
 
+## 16. 2026-10-21 — R1C-2C-C / C1-SYN-001 受控动态观察设计与审批准备（本地待审）
+
+承接 §14.4 与 §15，已从最新 `origin/dev@0fc583b0` 审阅 v1 离线 reviewer、对应聚焦测试、`normal_runtime_launch.py` 与既有 R0/2C-C 边界。在不改变 v1、Runtime owner、Guest/权限或生产的前提下，准备了 [C1-SYN-001 精确设计及逐项审批草案](R1C-2C-C-C1-SYN-001受控观察设计与审批草案.md)，以及两个不具执行权限的 `.py.txt` 纯文本 source 候选和一份固定合成输入；分别针对 `SYN-01 exec/open/read/exit`、`SYN-02 fork/child exec/mmap/exit`。草案记录原始字节大小/SHA、拟议准确 argv/env/cwd、身份与来源 pin 的缺口、观察预算、失败保全、独立见证和未来授权门禁。仅文档源候选，未运行、未向 Guest 转交。
+
+**关键兼容性风险：**当前 v1 reviewer 强制非 observer 进程的首事件为唯一 `PROCESS_EXEC`、末事件为 `PROCESS_EXIT`，不能直接表达全部真实 fork-only/重 exec 时序；若实验发现不兼容，只能如实记录 `EVENT_ORDER_INVALID/CHILD_UNTRACED`，不得伪造事件、修改 v1 或把 `CANDIDATE_REVIEWED/BLOCKED` 提升为授权。既有 C0 `LIMITED` / C0 离线结构 CHECKED 被真实复用但不充当将来会话的独立身份/保管认证，C1-NATIVE-002 原始文件独立复算和观察器来源候选缺口仍在。**当前裁定：`C1-SYN-001 DESIGN PREPARED / NOT EXECUTED / C0 IDENTITY-CUSTODY LIMITED / C1 DYNAMIC OPEN / C5-G2 NO-GO`。** 下一批只可另行提交准确 A0–A2 审批材料；没有新 SSH、strace、root、Host/Guest、VM/AWS、更新执行、安装或生产授权。纯 docs-only 准备，MCP-workspace 不运行 lint/build/test，远端须用户审阅后另行授权。
+
 
 
 

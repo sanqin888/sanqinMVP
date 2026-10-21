@@ -1,0 +1,57 @@
+"""SanQ C1-SYN-001 SYN-02. Inert candidate; NOT an execution approval."""
+import hashlib
+import mmap
+import os
+import stat
+import sys
+
+BASE = "/tmp/sanq-c1-syn-001"
+INPUT = BASE + "/input.txt"
+SOURCE = BASE + "/syn02.py"
+PYTHON = "/usr/bin/python3.12"
+EXPECTED = "8df9b096863665361212a14784dccabcc9de929bd524ec1529ed1eb2f1df6552"
+CHILD_ENV = {"HOME": BASE, "LANG": "C", "LC_ALL": "C",
+             "PATH": "/usr/bin:/bin", "TZ": "UTC"}
+
+
+def allowed():
+    return os.geteuid() != 0 and os.getuid() == os.geteuid() and os.getcwd() == BASE
+
+
+def child():
+    fd = os.open(INPUT, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid():
+            return 30
+        if info.st_size != 25 or info.st_nlink != 1:
+            return 31
+        with mmap.mmap(fd, 25, access=mmap.ACCESS_READ) as mapped:
+            actual = hashlib.sha256(mapped[:]).hexdigest()
+    finally:
+        os.close(fd)
+    if actual != EXPECTED:
+        return 32
+    print("SYN-02:CHILD-MMAP-COMPLETE", flush=True)
+    return 0
+
+
+def main():
+    if not allowed():
+        return 33
+    if sys.argv == [SOURCE, "SYN-02-CHILD"]:
+        return child()
+    if sys.argv != [SOURCE, "SYN-02"]:
+        return 34
+    pid = os.fork()
+    if pid == 0:
+        os.execve(PYTHON, [PYTHON, "-I", "-S", "-B", SOURCE, "SYN-02-CHILD"], CHILD_ENV)
+    got, status = os.waitpid(pid, 0)
+    if got != pid or not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+        return 35
+    print("SYN-02:PARENT-WAIT-COMPLETE")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
