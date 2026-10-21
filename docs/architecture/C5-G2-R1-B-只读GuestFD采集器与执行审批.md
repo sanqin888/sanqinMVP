@@ -459,6 +459,20 @@ R1C-2B 首先只写 **无执行、无 filesystem/Guest/root/网络、仅 caller-
 
 MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/差异审阅，**不得声称新测试已经通过**；须等待首次远端提交授权后的 GitHub Actions Runtime CI 结果。新增源码与测试必须随本批 PR 一起交付；不能只提交文档。若 MCP-workspace 的 `git add` 无法暂存新文件，须经用户远端交付授权后通过同一功能分支补齐完整文件，并在创建 PR 前核对全部五个文件确已在远端。没有 Guest/root/AWS/生产访问或执行。R1/C1 OPEN、C5-G2 NO-GO、S2 daily PAUSED、C2 LIMITED CLOSED。首次远端 PR 提交与后续阶段须分别按 AGENTS 批准。
 
+## 11. 2026-10-20 — R1C-2C-B MacBook / VirtualBox Ubuntu 观察能力只读取证（操作员报告；独立见证待审）
+
+**范围与来源：**操作员在 Mac Host 上使用独立的 R1C2C-B ReadOnly Kit v1/v2/v3 对指定可丢弃 VirtualBox 恢复 Guest 做只读调查。`R1C2C-B-001` 因 v1 未识别 `nic1=hostonlynetwork` 而 `BLOCKED`；`002` 因 v2 错把 VM 绑定名称 `HostNetwork` 与 `VBoxNetworkName=hostonly-HostNetwork` 等同而 `BLOCKED`；`003` v3 Host 自动预检 **17/17 SATISFIED（仍需人工复核）**。`004` 为新一次 Host/Guest 原件批次；其 Host 清单和 Guest 清单由操作员分别执行 `shasum -a 256 -c SHA256SUMS.host` / `SHA256SUMS.guest` 并贴回所有 `OK`，**不视为独立 witness**。本次仅基于操作员提供的终端摘要与错误原件摘录登记；尚未收到 `004` 离机全量原件并独立复算。`004` 的 Host 逐项预检 JSON 未在本轮聊天逐项展示，不能把 `003` 的 17/17 直接冒充 `004` 的同次独立结果。
+
+**Guest 实际调查（`R1C2C-B-004`）：**SSH outer `rc=0`、`guest-review.json.result=DISCOVERY_ONLY`、`guestSelfReportedUid=1000`、`remoteDataDecoded=true`、`remoteCommandCount=23`。23 项内 20 项 `rc=0`；DMI UUID 查询 `rc=1`、stderr 为普通用户 `/sys/class/dmi/id/product_uuid: Permission denied`；`readelf_interpreter` 与 `readelf_needed` 均 `rc=127`，stderr 为 `No such file or directory: 'readelf'`。`installed_packages` 查询中 `binutils` 仅有名称、无版本，不能单凭这一项认定精确安装状态。其余可读观察包括 Ubuntu 24.04.5 LTS / Linux 6.8.0-146-generic x86_64、Python 3.12.3、rootfs ext4、`strace 6.8`（版本命令 `rc=0`）、`ptrace_scope=1`、`perf_event_paranoid=4`、`unprivileged_bpf_disabled=2`、`unprivileged_userns_clone=1`、当前采集进程 `CapEff=0` / `Seccomp=0`。未报告所查询的 vboxsf/NFS/CIFS 挂载和 IPv4 默认路由；这些单项阴性结果**不是完整网络、namespace、Host 资产或持续隔离证明**。`guest-review.json` 仍声明 `sshCombinedChannelWarning=true`、`hostIndependentWitnessVerified=false`、`guestIdentityIndependentlyAuthenticated=false`。
+
+**技术裁定：**`2C-B CAPABILITY DISCOVERY CAPTURED / OPERATOR MANIFEST MATCHED / WITNESS PENDING`；当前组合存在 `strace` 候选，但只证明工具发现和有限配置，不证明 ptrace 实际可跟踪目标 Runtime/root 全部进程，不证明字节消费、不可替换窗口、Python `.pyc`/native/`dlopen` 全闭包或第三方可信发行来源。`readelf` 缺失留作已知技术缺口；本轮不得为清理状态而 `sudo`、安装 binutils、改 ptrace 参数、重启/重配 Guest、执行真实 trace 或维护更新。若 2C-C 需要合同表达变更、新增依赖、精确 Guest 操作或权限，须另行申请逐项授权，不得改变 §9 v1 fail-closed 合同。
+
+**待独立见证：**见证人须在**独立环境**取得 `004` 的离机私有原件与准确清单，逐件复算 Host/Guest SHA-256、读取 Host/Guest/SSH 内外 rc 和 UTC、审阅已知 `rc!=0` 与复合通道缺口、记录原始归档 hash 和通过独立渠道预冻结的预期 hash（缺失如实标记）。电子签名须列明见证人身份、签署 UTC、所审核对象、`LIMITED/BLOCKED/NOT REVIEWED`、未证明范围及签署后文档 hash；仅收到摘要或签字本身不得升级 Guest 独立认证或真实采集时平台真实性。私有原件、Guest UUID/IP、Host 绝对路径、密钥、原始 stdout/stderr 不纳入 Git；仓库仅存脱敏证据 ID 与限制。见证回执由操作员从独立见证人邮箱收取，核对后再单独续记审阅状态。
+
+**2026-10-21 回邮续记（证据已收到，未升级认证）：**操作员提交一份 Gmail 格式的独立见证回邮原件 `R1C2C-B-004-WITNESS-EMAIL-001`（.eml，含 PDF 附件），邮件正文声明见证结论为 `LIMITED`。离线解析确认：邮件声明的签署 PDF SHA-256、同封附件实际 SHA-256 与操作员此前上传的同名 PDF 字节一致；邮件认证头声称 `dkim/spf/dmarc=pass`，**本轮未独立密码学验证 DKIM 或发件人真实控制权**。PDF 中限定结论标记 `LIMITED`，但 `pdfsig` 检查未找到嵌入式数字签名，电子签名栏没有可验证证书/平台凭证；见证人六项选择使用实心圆点，仍缺独立复算原始 Host/Guest 清单的准确命令/rc、跨渠道预期 hash 来源记录、原件完整数量与签署时间精确 UTC。邮件所述与 PDF 附件是可保留的有限见证声明，**不能代替对本批私有 ZIP 原件的独立访问和逐件复算**；本审阅会话未获该 ZIP 字节。结论仅 `WITNESS EMAIL RECEIVED / PDF ATTACHMENT HASH MATCHED / LIMITED CLAIM RECORDED / INDEPENDENT RAW-EVIDENCE VERIFICATION NOT ESTABLISHED`，不得提升成 `VERIFIED` 或 `C1 PASS`。EML、PDF、完整邮件头和个人信息仅留私有档案，不入 Git。
+
+**停点：**本续记不修改任何 Runtime 源码/观察器、启动器、CI、依赖、Prisma、17 Bundle、部署、VM 或生产策略；没有 GitHub CI/2C-C 实验或任何新 root/Guest/生产授权。`R1/C1 OPEN`、`C5-G2 NO-GO`、`S2 daily PAUSED`、`C2 ISOLATED SYNTHETIC LIMITED CLOSED`，`R1C-2C-C NOT AUTHORIZED`。
+
 
 
 
