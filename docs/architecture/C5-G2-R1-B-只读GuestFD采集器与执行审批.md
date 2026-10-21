@@ -549,6 +549,36 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 本地 MCP-workspace 未开放测试/lint/build，本工作包没有代码或测试改动，也没有执行 Guest/VM/root/AWS/生产操作；GitHub CI 只在本文件经用户审阅、单独授权推送 PR 后才进行。**R1/C1 OPEN、C5-G2 NO-GO、S2 daily PAUSED、C2 ISOLATED SYNTHETIC LIMITED CLOSED、2C-C LIVE TRACE NOT AUTHORIZED。**
 
+## 13. 2026-10-21 — R1C-2C-C / C0 原件离线复核与 C1 观察器候选冻结就绪（本地待审）
+
+### 13.1. C0 实际原件复核：已通过的内容与未成立的身份认证
+
+在**独立于采集 Mac/Guest 的只读文件分析环境**读取操作员提供的原归档 `R1C2C-B-004-witness.zip`，归档 SHA-256 为 `d1bc78e709591eade7df67584e7340b6c6cc14edae5b9f49b597c866f544139b`，与此前见证表中记录值相同。执行既有独立 C0 ZIP reviewer（无 Guest、SSH、VirtualBox、root、网络或原件更改），报告 `OFFLINE_SELF_CONSISTENCY_CHECKED / BLOCKED`：`hostManifestEntries=23`、`guestManifestEntries=97`、`payloadFileCount=98`、Host 17/17 自动检查真、Guest 23 个记录与 SSH 原始 JSON/解码文件字节一致、非零回执仅 DMI rc 1 和两条 readelf rc 127。归档无路径穿越成员或 symlink。核验报告 `externalPrePinnedArchiveShaMatched=false`，因为调用时未传独立前置签定 expected pin，后验跨文件相等**不能被替换为来源独立认证**。
+
+**限定关闭**：`C0-OFFLINE-STRUCTURE = CHECKED`，但 `C0-IDENTITY/CUSTODY = OPEN`。Host 自动回执仍 `classification=DISCOVERY_ONLY`、`authorizationGranted=false`、`operatorIsolationAndHostIdentityReviewStillRequired=true`；Guest `result=DISCOVERY_ONLY`、`hostIndependentWitnessVerified=false`、`guestIdentityIndependentlyAuthenticated=false`、`sshCombinedChannelWarning=true`。见证邮件/PDF 声明 `LIMITED` 并有归档 hash，但尚缺独立采集前预冻结 pin 的渠道证明、见证人运行的逐项复算命令/退出码、准确 Host/Guest 现场身份及保管链。**不宣布 C0 全部 PASS，不从有限签名推导平台真实性。**
+
+### 13.2. C1 当前已有来源与无法冻结的对象
+
+| 角色 / 检查 | 来自真实 004 原件的已知事实 | C1 缺失的准确 pin / 下一步证据 |
+| --- | --- | --- |
+| trace observer | Guest 回执 `argv=['/usr/bin/strace','-V']`，rc 0，版本 `strace 6.8`；`ptrace_scope=1`，采集进程 `CapEff=0` | **准确 strace ELF 文件 bytes/SHA、device/inode、symlink 链、dpkg 包归属与发行原件关联、解释器/依赖 ELF/native、观察器实际启动权限**均未认证；不能由 `-V` 推导完整闭包 |
+| guest Python / loader | Ubuntu 24.04.5、kernel 6.8.0-146、Python 3.12.3、rootfs ext4、`/lib64/ld-linux-x86-64.so.2` link 可读 | `/usr/bin/python3.12`、真实 loader/库字节、PT_INTERP/NEEDED/RUNPATH、包/member 独立 pins 与映射关系；原 Guest `readelf` 不存在，不安装 |
+| synthetic 场景候选 | 预定 **non-root + disposable Guest + 非业务程序**，仅用于有限进程/syscall discovery | 尚无冻结的 source bytes/sourceCommit、scenarioID、完整 argv/env、cwd、uid/gid、读取目标的独立 pins、精确预期事件、日志预算/离机路径；暂不生成可直接运行的现场命令 |
+| 身份与独立见证 | Host 17/17 自报检查、Guest 23 项非 root 取证，原件内部字节完整 | 现场前**重新确认** Host/Guest/VDI、SSH host key、Host-only/无 shares、boot ID/namespace/时间、介质交付与第二渠道 expected pins；`004` 旧会话不能证明将来会话身份 |
+| 合同承载 | `r1c2_consumption_offline_review.py` 是纯离线、fail-closed v1，仅 `CANDIDATE_REVIEWED/BLOCKED` | 真实 clone/fork/re-exec 事件可能与恰一次 `PROCESS_EXEC`、ns ID 传输、byteEvidenceSource、raw stdout/stderr/rc 证据粒度或预算冲突；不得补造/截尾/放宽 v1 |
+
+**C1 裁定**：`C1 PROPOSED OBJECTS IDENTIFIED / FREEZE BLOCKED BY MISSING BYTES, SOURCE PINS AND SESSION AUTHENTICATION`。可以继续**准备**下一轮只读来源材料采集审批，不允许将 `strace 6.8` 的版本号标记为 `OBSERVER_PINNED`，也不允许把 `ptrace_scope=1` 当作已验证 tracing 功能。需确认可追溯的 Ubuntu signed Release→Packages→deb/member 以及另外批准的非包源码来源；仅 Guest `dpkg-query` 不构成可信来源。
+
+### 13.3. 最小 C1 后续计划与授权分割
+
+**C1-PIN-001（建议单独只读审批）**：在唯一准确 Guest/Host 目标经操作员重新确认后，只采集 `/usr/bin/strace` / Python / loader/native 的真实文件身份、有限文件 SHA256/ELF 原件、安装包状态/准确归属、当前 boot/ns/权限、rootfs/mount 与 SSH provenance，保留每一命令完整 argv、原始 stdout/stderr/退出码、UTC、大小上限和 off-Guest custody。采集器只可使用已审 argv 白名单、普通用户与 SSH strict host key；涉及文件读取/网络传输的具体路径、复制大小、敏感环境边界必须写入**新的逐项执行审批**。不使用 `sudo`、不读 root-only DMI、不 `apt install`、不触发 `strace` 跟踪、不更改 VM/Guest/config。单独说明 Guest 不可读的 ELF/依赖字节会使 C1 继续 BLOCKED，不以宽权限绕过。
+
+**C1-SYN-001（可先离线编制，尚未冻结/执行）**：从最新审定源码基线选一个标准库 Python 极小非业务探针，并明确两个独立场景：SYN-01 精确 exec/open/read/exit，SYN-02 fork/child exec/mmap/exit；预先冻结**实际源代码字节**、预期读取输入的原件哈希、完整 argv/env/cwd/UID、允许子进程、事件/时间/文件尺寸配额与失败/信号退出规则。执行前必须保证使用对象的时间窗口保护和离机证据保管；synthetic 观察永远不能替代最终 Runtime bootstrap + effect adapters 的真实 S6 同候选证明。
+
+**C2 执行审批（单独）**：只有 C0-IDENTITY/CUSTODY 与 C1-PIN/SYN 的冻结材料达到可审阅状态，才能提交精确的 pre-exec non-root `strace`  argv、现场读取和写入路径、隔离复核/清理策略、事故中断、资源预算、独立回执给用户另批明确授权。凡需新增依赖/修改内核 ptrace/合同 v1→v2/跨 owner 变更，**先说明原因、影响、替代方案，另获明确授权，修改之前停**。
+
+**本地停点**：本节仅为 Runtime/Ops 文档与证据摘要，不更改任何 Runtime code、observer、离线 reviewer、旧 evidence v1、CI、依赖、schema、Docker/AWS/VM；未运行 Guest 取证、trace 或更新。最高结论 `C0 STRUCTURE CHECKED; C0 IDENTITY OPEN; C1 FREEZE NOT READY; C2 TRACE NOT AUTHORIZED`。R1/C1 OPEN、C5-G2 NO-GO、S2 daily PAUSED。
+
 
 
 
