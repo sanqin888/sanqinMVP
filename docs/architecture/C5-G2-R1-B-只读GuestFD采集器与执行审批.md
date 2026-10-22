@@ -751,6 +751,12 @@ A2 下一步应在不碰 v1 reviewer、不改正常 Runtime、不加 root/包依
 
 PR #2908 已在 CI #7463 SUCCESS 后 squash 合并 `dev@80f970bd6a1845a376fdd520d832a7a3ceead0c0`，A2-I 的非 root 实验室采集核心与 Mac 私有封存器完成 Git/CI 验证，但仍禁止真实 SYN/strace。新建本地 `feat/runtime-c1-syn001-a2-resource-gates-20261022`，针对**硬 8MiB 全输出与 detached 后代/SSH 断线无孤儿**做只读机制选型：`RLIMIT_FSIZE` 只能保障单文件；`strace -ff -o` 每 PID 分别落文件；cgroup v2 delegated 子树可作为包含 setsid 子进程的进程级杀灭候选，需核实委托权限；ext4 project quota/专有 filesystem 容量可能需要特权配置且约束物理 blocks 不等于逻辑字节精确额度；`strace 6.8` 可能支持 `--kill-on-exit` 但添加选项本身改变冻结 argv；将 `-ff` 改为单 `-f -o` 更改 PID 原始证据形状。**不允许未经批准启用 quota/cgroup/mount/root，或削弱硬限额到纯后验检测。** 现场仅冻结 R01–R06 只读能力检查候选（cgroup/controllers/mount/observer version/boot/UID），尚无 Guest 执行审批或回执。详见 [A2-II 技术选型](R1C-2C-C-C1-SYN-001-A2-II资源隔离与进程生命周期技术选型.md)。状态 `A2-II FEASIBILITY REVIEWED / ENV READ-ONLY APPROVAL OPEN / A2-S/A3/A4 NO-GO / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。无运行时代码/生产/Guest 修改，停在本地审阅。
 
+## 26. 2026-10-22 — A2-II-R 现场只读能力取证审批包（LOCAL PREPARED / GUEST NOT AUTHORIZED）
+
+在 PR #2909 CI #7466 SUCCESS 并合并 `dev@2dc710c93fec998c5766a6680bbf5ca26f8297c5` 后，创建本地 `docs/runtime-c1-syn001-a2iir-readonly-probe-20261022`，针对上一批 R01–R06 冻结 Mac Host S00–S05 和 Guest 8 条 read-only 子命令、准确 argv、限额、SSH ED25519 控制台先验 pin、必须匹配 A1 UID/GID 1000/boot、原始 stdout/stderr/rc/UTC/SHA256SUMS 和失败冻结。单独准备不进 Git 的 Mac 私有脚本 `A2-II-R-Guest-ReadOnly-20261022.py` SHA256 `d6e8b37a095ff12167db4ae533f45b9beff02313c91816e693697ac27489b7ca`，已在隔离环境做语法与只读命令白名单/正负例核查，**从未执行 SSH、Guest、VM 或 strace**。脚本固定所有审批字段为 false，不把 controller list 或 mount options 自动解释成已经具有 8MiB 硬 quota/cgroup.kill 写权限。见 [A2-II-R 现场只读审批包](R1C-2C-C-C1-SYN-001-A2-II-R现场只读取证审批包.md)。
+
+**状态：`A2-II-R LOCAL OPERATOR PREPARED / GUEST R01–R06 EXECUTION NOT AUTHORIZED / C1 OPEN / A3/A4 NO-GO / C5-G2 NO-GO / S2 DAILY PAUSED`。** 需用户明确批准精确 SSH/Guest 只读行为后才能让操作员在 Mac 运行；本批只改本地审计文档，未推远端。
+
 
 
 

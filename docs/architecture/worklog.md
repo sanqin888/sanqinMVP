@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — C1-SYN-001 A2-II-R 现场只读能力取证操作包准备
+
+**LOCAL DOC-ONLY / READ-ONLY GUEST AUTHORIZATION PENDING / NO PR OR VM ACCESS。** PR #2909 CI #7466 SUCCESS，squash 合并 `dev@2dc710c93fec998c5766a6680bbf5ca26f8297c5`。新本地分支 `docs/runtime-c1-syn001-a2iir-readonly-probe-20261022` 复核 AGENTS、A0 Host/Guest strict SSH、A1 现场 pin 和 A2-II 技术选型，新增 [A2-II-R 现场只读取证审批包](R1C-2C-C-C1-SYN-001-A2-II-R现场只读取证审批包.md)。固定 Host S00–S05、Guest R01–R06 共 8 条小范围只读 argv，含私有 ED25519 控制台 pin/既有 VM/VDI/boot/UID/GID 准确绑定、超时/字节预算和原始回执。单独本地生成 Mac read-only 操作脚本 SHA256 `d6e8b37a095ff12167db4ae533f45b9beff02313c91816e693697ac27489b7ca`，语法及纯离线正/负例检查通过，无 SSH/VM/Guest/strace/生产操作；原始 Guest 身份/key/boot 数据不进入仓库。`A2-II-R EXECUTION NOT AUTHORIZED / C1 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地文档审阅后停止，不推远端。
+
 ## 2026-10-22 — C1-SYN-001 A2-II 硬预算与子进程隔离可行性审计
 
 **LOCAL DOC REVIEW / NO GUEST EXECUTION / NO PUSH。** PR #2908 已完成 CI #7463 SUCCESS，squash merge `dev@80f970bd6a1845a376fdd520d832a7a3ceead0c0`；基于最新 dev 新建 `feat/runtime-c1-syn001-a2-resource-gates-20261022`。在 AGENTS/Runtime Ops、A2 冻结合同和现有采集/封存实现约束下，查核官方 Linux cgroup v2、Ubuntu quotactl、strace 6.6+ 资料，确认当前 RLIMIT_FSIZE 与 process group 不能直接证明 `-ff` 多 PID 原始文件总计硬 8MiB 和 detached 子进程终止。新增 [A2-II 资源与生命周期技术选型](R1C-2C-C-C1-SYN-001-A2-II资源隔离与进程生命周期技术选型.md)；冻结候选 R01–R06 的 cgroup/mount/strace version/UID/boot **只读**核验目的和禁止推论。任何 cgroup delegation、quota/mount 特权准备、`--kill-on-exit` 或 `-ff` 改造影响已有冻结合同/权限，必须精确说明后分别取得用户批准，不能借本轮授权实现或执行。未修改 Runtime 源码、运行 SYN/strace、操作 VM/Guest/Mac/生产、迁移或依赖；`A2-II ENV CAPABILITY UNKNOWN / A2-S/A3/A4 NOT AUTHORIZED / C1 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。待用户审阅后停止，本分支不推远端。
