@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — C1-SYN-001 A2-II 硬预算与子进程隔离可行性审计
+
+**LOCAL DOC REVIEW / NO GUEST EXECUTION / NO PUSH。** PR #2908 已完成 CI #7463 SUCCESS，squash merge `dev@80f970bd6a1845a376fdd520d832a7a3ceead0c0`；基于最新 dev 新建 `feat/runtime-c1-syn001-a2-resource-gates-20261022`。在 AGENTS/Runtime Ops、A2 冻结合同和现有采集/封存实现约束下，查核官方 Linux cgroup v2、Ubuntu quotactl、strace 6.6+ 资料，确认当前 RLIMIT_FSIZE 与 process group 不能直接证明 `-ff` 多 PID 原始文件总计硬 8MiB 和 detached 子进程终止。新增 [A2-II 资源与生命周期技术选型](R1C-2C-C-C1-SYN-001-A2-II资源隔离与进程生命周期技术选型.md)；冻结候选 R01–R06 的 cgroup/mount/strace version/UID/boot **只读**核验目的和禁止推论。任何 cgroup delegation、quota/mount 特权准备、`--kill-on-exit` 或 `-ff` 改造影响已有冻结合同/权限，必须精确说明后分别取得用户批准，不能借本轮授权实现或执行。未修改 Runtime 源码、运行 SYN/strace、操作 VM/Guest/Mac/生产、迁移或依赖；`A2-II ENV CAPABILITY UNKNOWN / A2-S/A3/A4 NOT AUTHORIZED / C1 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。待用户审阅后停止，本分支不推远端。
+
 ## 2026-10-22 — R1C C1-SYN-001 A2-I Guest 采集与 Mac 私有封存核心开发
 
 **LOCAL CODE + TESTS PREPARED / EXECUTION NOT AUTHORIZED / NO PUSH。** 用户确认 PR #2907 已 CI #7461 `SUCCESS` 并合并 `dev@16dfab28c5daad40690277002b9cede4642b23fd` 后，基于最新 origin/dev 创建新分支 `feat/runtime-c1-syn001-a2-collector-offline-20261022`。只在 `ops/runtime` 内新增 Guest non-root A1 三源精确 SHA/uid/mode/nlink 检查、固定 SYN argv/预算声明、实验室 fixture 受限双流 capture/30s 以内 watchdog/单文件 RLIMIT_FSIZE/TERM→KILL 与非 PASS 的部分失败回执，以及 Mac 仅本地 receipt-pin/严格成员/权限 SHA/独占私有封存器；新增两份 unittest 覆盖源码/输出负例和本地 Guest→Mac 归档联动。现有 `run_scenario` 恒 `BLOCKED`，当前 8MiB 原始总量硬限和子进程 detached/SSH 断线生命周期不能声称受保证；**绝无真实 SYN/strace 操作授权**。未改既有 approval/reviewer v1、Runtime core、生产/AWS/VM/SSH/依赖/数据库，也没有 MCP 本地执行测试的权限。同步 [A2 §6](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md)、R1-C §24、R0；仅内部 A 类新增，不改变公共 owner/依赖基线。`A2-I LOCAL REVIEW / A2-S/A3/A4 NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地审阅后停止，未推 PR。
