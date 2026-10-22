@@ -697,6 +697,15 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 下一步只应先从已有私有原件中复核 Host/Guest/SSH 事前批准、known_hosts 来源、原始清单复算/rc、见证人历史工作底稿、每次封存/交接 UTC 以及 C1-HOST-001～005 的逐批凭据；缺失则诚实记录未建立，不要求事后伪造。既有 S1-W1/R1 的 Ubuntu 来源链可作为 C1 软件包来源历史材料，但不能替代 C0 平台身份。**裁定：`C0 CAPTURE EXECUTED / OFFLINE STRUCTURE HISTORICALLY CHECKED / WITNESS PDF CONTENT-HASH CHECKED / IDENTITY-CUSTODY OPEN-LIMITED`**。本批未运行 Guest/SSH/strace、未发信、未修改 v1/Runtime/生产；远端未提交，需用户另批。
 
+## 18. 2026-10-22 — C1-SYN-001 A0–A2 离线预检与逐项审批源代码准备（本地待审）
+
+**依据：**2026-10-22 最新 `dev@9845e698`（PR #2903）已将历史 C0 按新 R0 §4.1 **`CLOSED / LIMITED-ACCEPTED`** 限定关闭；上述 §14–§17 为准确时间范围内的旧审阅记录，不再把缺第三方签署/逐跳交接当作 A0–A2 必须重做历史 C0 的理由。R0 只要求与 Runtime 安全/稳定/可恢复有关的最小必要证据，既有 C1-SYN-001 两场景属于可丢弃 VM 上的**专项动态观察**，不要求无条件追踪全部 Python/ELF/dlopen 来源。
+
+**新工作：**在 Runtime/Ops owner 内新增只消费调用方 `bytes` 的 `c1_syn001_approval_offline.py` 与聚焦 `unittest`，校验既有三个 inert 源文件的固定 SHA256/大小、现场声明精确字段和身份/SSH 摘要一致性，仅生成 SYN-01 和 SYN-02 的准确 `argv`、白名单环境、cwd/umask、30s/8MiB/4MiB 预算与失败保全方案。代码不打开路径、不运行命令、不连接 Guest/SSH、不提升权限；即使全部声明匹配也仅 `CLAIMS_CONSISTENT_ONLY`，`a0Approved/a1Approved/a2ExecutionAuthorized/guestExecutionAllowed/readyToInstall/productionAuthorized=false`。实际 Host/VM/VDI/SSH trust 仍须执行前从受控来源核对，不能靠同一输入自报成功。精确方案和门禁见 [C1-SYN-001 A0–A2 审批包](R1C-2C-C-C1-SYN-001-A0-A2离线预检与执行审批.md)。
+
+**没有新增观察权限**：A0 现场检查、A1 现场文件投送与 native/source pin、A2 真实采集器/写路径/受控执行命令都需逐项批准；A3 SYN-01 与 A4 SYN-02 的真实 strace 更需分别批准。本批不改 `r1c2_consumption_offline_review.py`/v1、Runtime 正常更新核心、Root/AWS、CI/依赖/Prisma 或生产。CI 应在用户授权提交远端后按现有 Runtime unittest lane 核实；MCP-workspace 不运行 lint/build/test。**状态：`C0 CLOSED LIMITED-ACCEPTED / C1-SYN-001 D0 MATERIALS PROPOSED / A0–A2 APPROVAL OPEN / A3–A5 NOT EXECUTED / C5-G2 NO-GO`。**
+
+
 
 
 
