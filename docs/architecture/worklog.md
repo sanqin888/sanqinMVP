@@ -1,5 +1,17 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — A1-SOURCE-001 真实写入与独立回执限定复核
+
+**LOCAL DOCUMENTATION / A1 TECHNICAL PASS_SCOPED / A2 NOT AUTHORIZED / NO PUSH。** 收到 `A1-SOURCE-001-20261022T161938Z.zip`，原包 SHA256 `fc288a8cf804283d9aecc3ae8506511626f4b58b791a42d6597fe0c525db942c`；独立只读核验 54 ZIP 成员（1 目录、53 文件），52/52 清单逐字节匹配、25/25 Host/Guest 操作 rc0/原始 stdout/stderr receipt 长度及 SHA 匹配、无超时或预算问题。复核受控 SSH pin、VM/VDI、Guest boot 与 mount/pid ns 相对 A0-GUEST 原件相同，`/tmp` ext4、本次目标先验不存在，目录 0700 非 root 1000/1000、三份 `dd` 独占传入与 `stat/sha256sum` Guest 读回符合三冻结摘要、mode 0400/nlink1/准确大小。ZIP 不含 Guest 三文件独立封存的完整字节；`a1Approved/a2Authorized/traceAuthorized=false` 原始字段不改，不冒充完整动态执行证明；未重新连接 Guest 或重跑投送。同步 [A1-SOURCE §7](R1C-2C-C-C1-SYN-001-A1-SOURCE-001安全投送与冻结审批.md)、R1-C §22 和 R0，下一步 A2 需要单独批准采集器/时限/原始写路径，不运行 SYN/strace。旧 C0 LIMITED-ACCEPTED、A0 PASS_SCOPED、C1 OPEN、C5-G2 NO-GO、S2 DAILY PAUSED。当前仅本地文档，未提交远端。
+
+## 2026-10-22 — A1-SOURCE-001 用户授权与受控 Mac 执行准备
+
+**USER AUTHORIZED / LOCAL OPERATOR PREPARED / SITE NOT EXECUTED / NO REMOTE PUSH。** 用户继 A1 方案审阅后明确准许在原已核验 Guest 中以非 root 身份单次创建 `/tmp/sanq-c1-syn-001` 和放入固定三源、逐项核对文件权限、owner、nlink、SHA；明确不包含实验脚本/`strace` 执行。离线备好 Mac 程序 `A1-SOURCE-001-Mac-Guest-Placement-20261022.py` SHA256 `51a3c2942ca728b3deab74e22bceebef200f13877e9157d07bbd6eeded8f8267`，嵌入 Git 提交 `d7f57ff2` 的精确三份字节，按现场控制台 SSH pin/VM/VDI/boot/ns/UID 与目录未存在强制 fail-closed，以已有 GNU coreutils `mkdir`、`dd conv=excl oflag=nofollow`、`stat`、`sha256sum` 实现，**无 Guest helper、无 sudo、无覆盖/清理**。已执行无网络/无 Guest 的离线模拟与小目录独占写安全语义测试；待用户在 Mac 上执行回传。更新 A1 §6、R1-C、R0，未推远端。
+
+## 2026-10-22 — C1-SYN-001 / A1-SOURCE-001 安全投送与冻结审批准备
+
+**LOCAL DOC-ONLY / GUEST WRITE NOT AUTHORIZED / A1 NOT EXECUTED。** 继 PR #2905 CI #7456 SUCCESS、dev squash `d7f57ff23814168a38d9eb4ea2d3489e2fee6965`，新建本地 `docs/runtime-c1-syn001-a1-delivery-plan-20261022` 分支，遵循 R0 §4.1 和已合并 A0 Host/Guest `PASS_SCOPED` 状态。检查现有 SYN-01、SYN-02 惰性源码及 input 的路径、固定 SHA 和 bytes、既有 Runtime 纯内存 `c1_syn001_approval_offline.py`，无重复造模块必要。新增 [A1-SOURCE-001 安全投送冻结/审批包](R1C-2C-C-C1-SYN-001-A1-SOURCE-001安全投送与冻结审批.md)，冻结 3 份合计 2694 字节到唯一 Guest `/tmp/sanq-c1-syn-001`（目录 0700、普通文件 0400、非 root、非 symlink、独占创建），严格绑定当前 VM/VDI/SSH key/boot 与源/目标 SHA，所有不符停，不盲目重试或删失败原件。精确 SSH/辅助写文件程序命令及副作用仍须审阅并获用户逐项授权；**本批未运行 Host/SSH/Guest/VM/strace、未写入文件、未改 v1/Runtime 源码、CI、依赖、Prisma/migration、生产环境。** `A1 PLAN PREPARED / EXECUTION NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地审阅后停，未推远端。
+
 ## 2026-10-22 — C1-SYN-001 / A0-GUEST-001 只读身份原件复核
 
 **LOCAL DOCUMENTS / NO REMOTE DELIVERY / A0-GUEST PASS_SCOPED / A1 OPEN。** 用户先在同一 VirtualBox Ubuntu 控制台取得 SSH ED25519 host key，再执行前获授权的 G01–G07 非 root 严格 SSH 检查；本轮独立读取 `A0-GUEST-001-20261022T145533Z.zip` (SHA256 `f309e9a96c6cda5c79d7e0fdf452606c53ab6b32237656e387f5fc6e653f70ec`)，28/28 原件清单、S00–S05 6/6 + G01–G07 7/7 rc0、13 份原始命令 stdout/stderr 的 bytes/hash/UTC 匹配。扫描 SSH 公钥、`known_hosts.approved` 同字节，从原始 Base64 重算指纹与先前控制台 pin 严格相同；UID/GID=1000，boot/ns 有效、ptrace_scope=1，`strace/Python/loader` SHA 与既存已验 Ubuntu 候选相同。历史首次漏输 `SHA256:` 导致格式拒绝，非 SSH 信任失配；S05 stderr 仅版本 banner。原 `guestAuthenticated/a0Approved/traceAuthorized/readyToInstall=false` 不倒改；本次 A0 scoped 技术要求满足，不授予 A1 投送、A2 执行或 A3/A4 trace 权限。新增 [A0-GUEST 专项复核文档](R1C-2C-C-C1-SYN-001-A0-GUEST-001只读身份复核.md)并同步 R1-C/R0/A0-SITE；无新现场命令、代码、CI、schema、依赖或生产变更，`C0 CLOSED/LIMITED-ACCEPTED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地审阅后停，不推远端。
