@@ -1,5 +1,7 @@
 # R1-B S4/S5 只读 Guest FD 采集与 R1-C S6 准备
 
+> **2026-10-22 R0 取证规则更新 + C0 限定收口（本地待审）：**后续 R1-B/C、C0–C5、C1-SYN、Host/Guest/Native 的**第三方见证人员、PDF、邮件、签署和复算底稿均取消**，仅保留 [R0 §4.1](Runtime更新-R0冻结设计.md) 定义的目标 VM/SSH、源码/输入、执行权限、实际结果和内部技术比对。按新标准，**历史 [C0 §7](R1C-2C-C-C0独立身份与保管链证据复核.md) = `CLOSED / LIMITED-ACCEPTED`**（本批与新 R0 同时合并方生效）；旧 §14–§17 `OPEN / LIMITED`、B-004 见证和失败回执保留当时真实结论，不追索见证底稿。未来 VM/VDI/SSH host key 实际核对是 C1-SYN A0 新会话 Preflight，**不是重新开放历史 C0**。Guest/root/strace 仍需单独用户授权，审阅器 `BLOCKED` 不自动放行。
+
 **2026-10-20 最新接续：R1C-1 SOURCE MERGED / SOURCE CI VERIFIED；R1C-2A LOCAL CONTRACT AUTHORED / USER REVIEW PENDING。** R1C-1 已通过 [PR #2888](https://github.com/sanqin888/sanqinMVP/pull/2888) / [CI #7417](https://github.com/sanqin888/sanqinMVP/actions/runs/39478774789) SUCCESS，并合并 `dev@54638f2e`；§8 留存当时本地实现状态。R1C-2A 的观察覆盖、威胁模型及独立 v1 证据合同见本文件 §9；尚未实现观察器/真实 bootstrap/effect adapters、实际 S6 或独立 C1 验收。§6 S5 PASS_SCOPED 不变，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
 
 **2026-10-20 最新状态：SOURCE MERGED / S5 CAPTURE COMPLETED / ORIGINAL-EVIDENCE REVIEW PASS_SCOPED；R1/C1 OPEN。**

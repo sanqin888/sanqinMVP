@@ -1,5 +1,7 @@
 # R1C-2C-C — C1-SYN-001 受控动态观察实验设计与审批草案
 
+> **2026-10-22 取证规则更新及 A0 责任迁移（本地待审）：**C1-SYN-001 的 A0–A5 取消第三方人员见证、签署 PDF、外部 SHA 通知和跨主体 ZIP 交接强制要求，保留批准的 VM/VDI/SSH 对象、执行者权限、源码/输入 SHA、真实结果和必要日志，以及与采集器自报分离的 SanQ 内部技术核验。依据 [C0 §7](R1C-2C-C-C0独立身份与保管链证据复核.md)，**历史 C0 已拟定 `CLOSED / LIMITED-ACCEPTED`，A0 尚为 `OPEN`，只针对下一次现场实验的执行前安全核对**；不要求把 B-004 重新采集或补签。下文旧日期草案中的“见证人签认后”不再作为未来执行前置；历史 B-004 LIMITED 和 v1 `BLOCKED` 保留。详情见 [R0 §4.1](Runtime更新-R0冻结设计.md)，执行 `strace` 仍须另获授权。
+
 **2026-10-21 / LOCAL DESIGN + EXACT SOURCE CANDIDATES PREPARED / NOT EXECUTED / C2 LIVE TRACE NOT AUTHORIZED。** 此文属于 Runtime/Ops 的 C1 离线设计切片，继承 [R1-C 主工作包 §9–§15](C5-G2-R1-B-只读GuestFD采集器与执行审批.md) 和 [R0 冻结决策](Runtime更新-R0冻结设计.md)。源码审计基线 `origin/dev@0fc583b071bf92a62d645fe5153051ccb37d525b`（PR #2900）。本批不变更生产 Runtime、真实 bootstrap、17+Manifest、evidence v1、离线 reviewer、VM/Guest/SSH、AWS 或权限。
 
 ## 1. 审计事实与授权边界
@@ -55,21 +57,21 @@ SYN-02:
 | 单场景 wall time | 建议 30s，包括 observer、所有后代与完整 flush；超时需终止**本次已批准的私有实验进程树**并登记信号、退出态、可能存活后代；不假设 kill 后即完成无污染 |
 | 原始写入预算 | 每场景拟议 raw 总量最多 8 MiB、单文件最多 4 MiB；每个 PID trace、stdout、stderr、observer stderr、argv/env 脱敏回执、内外 rc、时间/身份回执单独计数；不允许静默截尾以伪称覆盖 |
 | v1 上限 | 同时严格服从事件 32768、进程 64、file 512、artifacts 64、单 raw 32 MiB、raw 总计 64 MiB 和封套 32 MiB；任何更严的存储配额优先，超额 BLOCKED |
-| 留存与交接 | 原始 stdout/stderr、全部 trace.*、内部/外部 rc、启动前与结束后 UTC/monotonic 域、process tree/namespace 标识、文件 stat/mount、SHA256SUMS、原件封存/每跳交接 UTC、独立第二渠道接收前 expected SHA；敏感信息仅私有归档 |
-| 单场景负例 | 启动点缺失、child 未跟踪、exec 事件缺失或重排、input 改字节/size/mode、SHA 不符、unknown native import、日志截断/丢失、clock 跨域不可信、旧 C0 事前 pin 不存在；逐项记 `BLOCKED`，不尝试合成缺失 event |
-| 日志完整性限制 | `strace -o` 自身不会自动生成独立 stdout/stderr/rc/保管链。必须由**另行批准的采集外壳**完成精确原始留存；在该外壳未冻结前标记 `CAPTURE PLAN INCOMPLETE`。没有 out-of-band 完整性证明，不能确认消费时防替换 |
-| 清理与中断 | 异常时先停止实验并保全，禁止自动恢复/删除失败原件；仅在独立见证人确认封存后，另行批准清理私有目录。运行结束不意味着隔离/时间窗口全部得到认证 |
+| 留存与交接 | 保存实验源码与输入 SHA、准确 VM/Guest、相关 trace、stdout/stderr、内外 rc、异常时必要系统状态及私有归档 SHA；无需每跳 ZIP 交接证明、第三方签认或独立渠道通知 |
+| 单场景负例 | 启动点缺失、child 未跟踪、exec 事件缺失或重排、input 改字节/size/mode、SHA 不符、unknown native import、日志截断/丢失、现场 VM/SSH 身份核对失败；技术异常按真实结果记录，不伪造缺失事件 |
+| 日志完整性限制 | `strace -o` 本身不保存完整 stdout/stderr/rc；应由经批准的采集器保存本场景必要日志/退出状态并计算归档摘要。无需外部见证或第二渠道哈希通知；但仅凭日志完整性不能证明被观察文件在实际消费时不可替换 |
+| 清理与中断 | 异常时先停止实验并保全，禁止自动恢复/删除失败原件；完成内部归档与必要 SHA 核对后，再按批准范围清理私有目录。运行结束不意味着隔离/时间窗口全部得到认证 |
 
 审批时将 stdout 期望视为单纯程序行为候选，而非健康证明；非零退出、部分成功、raw 缺失也要留下逐项证据。前置静态源 hash 与尾随复算只能佐证文件完整性，不证明观察时段不可替换。
 
 ## 5. 分阶段批准矩阵（不可跨门禁）
 
-| Gate | 所需交付/独立签认 | 当前 |
+| Gate | 所需交付/内部技术核验 | 当前 |
 | --- | --- | --- |
-| D0 离线方案与纯文本 source | 本文、两份确切文本候选、固定 input 长度与 SHA、当前 v1 限制/负例；核对仓库源码和字节 | `PREPARED FOR LOCAL REVIEW`；未经独立源头签认 |
-| A0 现场 C0 单次绑定 | 新会话准确 VM/VDI/Host-only/SSH 事前 pin、boot/ns/UID/GID、时钟与保管人；沿用历史 C0 LIMITED 但不跨会话授信 | `OPEN` |
+| D0 离线方案与纯文本 source | 本文、两份确切文本候选、固定 input 长度与 SHA、当前 v1 限制/负例；核对仓库源码和字节 | `PREPARED FOR LOCAL REVIEW`；现场输入/执行尚未完成验证 |
+| A0 现场 C0 单次绑定 | 实验前核对 SanQ 批准的 VM/VDI、Host-only、SSH host key、boot/ns/UID/GID；受控 Mac/VirtualBox 与既有 SSH 记录可作为可信来源，不要求第三方身份批准 | `OPEN` |
 | A1 observer/source/实验输入冻结 | 现场 observer/Python/native 真实原件及签名来源、全部 source/fixture hash、只读输入身份、不可替换窗口措施；C1-NATIVE-002 raw 缺口独立登记 | `PARTIAL / BLOCKED` |
-| A2 逐条执行审批 | 用户审阅完整 Host/SSH/Guest 的 argv、cwd/env、实际 UID/GID、创建/写入路径、超时/配额、kill/失败留存、SSH/离机传输/独立见证与精确时间 | `NOT REQUESTED / NOT AUTHORIZED` |
+| A2 逐条执行审批 | 用户审阅完整 Host/SSH/Guest argv、cwd/env、UID/GID、限定写入路径、超时/日志配额与失败保留；在 SanQ 内部保存输出，不要求第三方人员见证或签署 | `NOT REQUESTED / NOT AUTHORIZED` |
 | A3 SYN-01 live discovery | A0–A2 成立后单独运行、收全 raw，不碰生产；局部结构分析可 REJECTED | `NOT EXECUTED` |
 | A4 SYN-02 live discovery | 同上，重点保留 fork-only child 的真实 first event、child exec、mmap、exit；不能压平 v1 | `NOT EXECUTED` |
 | A5 独立离机结果判定 | 离机 raw 核验与逐场景对照，判断 v1 的表达缺口；如需 v2、观测器补丁、依赖/权限、平台策略变更，另提交影响与替代方案获授权 | `NOT EXECUTED` |

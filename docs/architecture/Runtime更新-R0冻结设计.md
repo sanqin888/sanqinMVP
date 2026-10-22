@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+> **2026-10-22 全阶段取证规则修订及 C0 限定收口（本地待审）：**用户已明确批准：R0–R5、C1–C8、G2 A–F 的**所有环节取消第三方人员见证、签名 PDF、见证邮件、第三方原始复算底稿以及多主体逐跳交接作为验收门禁**。适用于隔离 VM/Guest、Ubuntu 来源、Root 执行、维护停写、AWS 快照、安装、恢复及生产复验。由 SanQ 内部授权、可信系统来源、必要哈希/签名和分离的内部技术复核替代；独立技术核验不意味着必须有外部人士。基于此新标准，历史 [C0 工作包](R1C-2C-C-C0独立身份与保管链证据复核.md#7-2026-10-22--新-r0-最小必要取证标准下的-c0-限定收口) 拟裁定 **`CLOSED / LIMITED-ACCEPTED`**，旧失败/见证与 LIMITED/BLOCKED 原结论原样保留；新会话 VM/VDI/SSH host key 的安全确认转为 C1-SYN A0 Preflight。正式生效以本次 PR 合并 dev 为准。真实执行精确用户授权、发布完整性、维护冻结、快照/恢复、数据一致性和安全失败停止仍为强制条件。**本次仅修订文档，不解锁现有 reviewer 或生产执行权限。**
+
 **2026-10-21 C0-EVIDENCE-RECONCILIATION-001 本地原件复核：**PR #2901 / CI #7448 全绿已合并 `dev@144abbd1`，C1-SYN-001 设计材料已进入 dev，实际动态实验仍未授权。在独立 C0 分支重新只读复核既有见证回邮与原始签署 PDF（SHA-256 `85440dc4d25600d7dadd5334c304d08a4cad46715b1c96136fafc89f4fccf166`），其 6 项首选由实心圆点标记、但当时实际复算命令/rc 与交接原始回执未填，有限结论 `LIMITED`；PDF 与邮件的 hash 一致不构成采集前独立 Host/Guest/SSH 身份 pin。本轮重新取得旧 witness ZIP 和 B-001～004 四批原件并复算清单（Host 20/23/23/23、Guest 003=28、004=97 全匹配；B-004 的 98 个见证原件与 ZIP 内对应项逐字节一致）；另收到 C1-HOST-001～005 全部 Host 原始包 `归档 2.zip`，五批 23/23 SHA 清单和 7/7 命令回执匹配，001 的 VM 关机导致 16/17，002～005 为 17/17；仍缺独立采集前身份/SSH pin 及跨主体交接证明；新增 [C0 实证矩阵与旧证据复用/材料缺口清单](R1C-2C-C-C0独立身份与保管链证据复核.md)。当前 `C0 IDENTITY-CUSTODY OPEN-LIMITED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`；没有 SSH/Guest/strace/VM/AWS/生产动作，本地文档待审、远端未推送。
 
 **2026-10-21 R1C-2C-C / C1-SYN-001 本地设计准备（非现场授权）：**在 `origin/dev@0fc583b0` 审阅离线 reviewer v1/测试和 R1-C/C0 最新证据后，新增 [C1-SYN-001 受控动态观察设计与逐项审批草案](R1C-2C-C-C1-SYN-001受控观察设计与审批草案.md)及 SYN-01、SYN-02 两份带候选 SHA256 的纯文本源码和固定无业务输入；覆盖 pre-exec、open/read、fork/child exec/mmap、预算、完整原始输出/退出码/交接及负面场景。它仅是 `DISCOVERY_ONLY` 候选，未执行程序、strace 或 Guest 操作，也不改变 v1 合同的 fork-only 事件顺序限制。**复用 C0 已执行但 `LIMITED` 的历史见证/原件信息，不将其解释为新会话身份已认证**；现场 A0–A2 身份 pin、observer/source/保护与逐条命令执行审批仍 OPEN。`C1-SYN-001 DESIGN PREPARED / NOT EXECUTED / C0 IDENTITY-CUSTODY OPEN-LIMITED / R1/C1 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本批只改本地文档和不具执行入口的源候选文本；远端须另授权。
@@ -36,7 +38,7 @@
 
 | 决策 | 现行方案 | 固定边界与完成条件 |
 | --- | --- | --- |
-| D1 信任模型与平台 | 有限、独立认证的实际 Linux/Python/loader/native 平台及正常更新执行器，AWS 控制面/受控账户、内核和受控 root 管理是明示信任前提 | 目标原 Archive、准确发布 proof、完整执行依赖与输入来源仍验证，未知拒绝；不递归自证内核。仅为旧故障主机恢复自举而设的 Python/ELF 重建链不再作为 AWS 恢复前置，不放宽现有模型 guard。 |
+| D1 信任模型与平台 | 以受控 Linux/Ubuntu、Python/loader、受保护的正常更新执行器及必要关键依赖为有限信任前提；AWS 控制面/受控账户、内核和受控 root 管理仍为明示信任前提 | 目标原 Archive、准确发布 proof、正式执行器/解释器及**影响安全和稳定性的关键依赖/输入来源**须验证；发生未知可执行依赖/异常动态加载才按 §4.1 追加专项消费取证，不默认完整重建全部 Python/ELF 动态依赖闭包、不要求第三方见证。不递归自证内核；旧故障机恢复自举闭包不再作为 AWS 前置。现有代码 guard 不因合同修订自动放行。 |
 | D2 有限维护（MAINT-RESTART-01） | 先确认管理通道，记录原状态；准确容器临时 `restart=no` 并正常停止，阻止 systemd/cron/Compose/MCP/deploy 重新启动，持续停写直到最终放行 | 停用状态进入快照、跨 Docker/VM 重启及新实例首启有效；验证 namespace/持有者/新消费者禁入；不能仅 stop、flock 或空扫描。不得改受 Manifest 校验的 Compose 文件。成功才按原状态恢复，事故保持冻结。 |
 | D3 更新前恢复点（RUNTIME-SNAPSHOT-01） | 由受限代码创建唯一 Lightsail 手动整机快照，等待准确对象 `available`，核对源账户/Region/ARN/时间/盘和 txid，离机保存轻量清单 | 替代同次 mandatory crypt/Drive Kit、双旧/新 Archive 解密读回前置；不是人手点控制台。快照覆盖不足、错误、碰撞或未知结果均阻止安装。手动对象明确保留，不自动清理。 |
 | D4 备份与实施顺序 | 现役日常备份健康/独立 DR、持续维护冻结、本次可用快照先于活跃安装；S2 daily 扩充在 v1/C5 后另批 | 日常 DB/Uploads/配置/TLS/roles/escrow 保留，S2 PAUSED 不表示停用现役 timer；本批没有部署新 helper、sudoers 或 AWS 凭据。 |
@@ -62,7 +64,7 @@
 
 | 门禁 | 关闭条件 | 当前状态及主要后续 |
 | --- | --- | --- |
-| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器外部 pins、实际解释器/loader/完整依赖及真实消费核验；当前安装健康/完整性绑定快照 | OPEN：R1；旧版恢复专用自举闭包和双 Archive 不再重复强制 |
+| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器及关键运行环境/依赖可信来源、实际执行位置/权限及必要的完整性核验；遇到未知动态加载、来源或路径替换风险才按 §4.1 专项追踪；当前安装健康与完整性绑定快照 | OPEN：R1；**不再默认要求全量 Python/ELF/dlopen 逐字节消费闭包或第三方见证**；旧版恢复专用自举闭包和双 Archive 不重复强制 |
 | C2 生产模式可恢复的隔离环境 | 在无生产资产、隔离且独立核实身份的 Guest 上，从**已认证指定 Snapshot 创建独立新实例**，依 [C2-02 N-01–N-07（C2-CHANGE-02）](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 核验 A Snapshot 身份和来源、实际 clone rc、新 VM/VDI、选定 Guest 稳定基线及明确的运行时差异、合成服务、离机归档与独立审阅；**不要求原机 restore / Marker A/B / 新快照** | **CLOSED — ISOLATED SYNTHETIC RECOVERY ONLY / N-07 LIMITED-ACCEPTED（2026-10-18）**：两份已独立核对的归档 SHA/内部清单、22 项 Guest 比对（19 同值/3 预期差异）、准确 Snapshot `showvminfo` rc=0、独立 VM/base VDI `showmediuminfo` rc=0、Host-only 合成 HTTP 接管/停止共同证明该可丢弃隔离实验环境的指定恢复流程。**N-07 风险接受仅适用于这些准确合成资产**：原始 Mac Host 无独立签认、历史 SSH 外层 rc 缺失、本轮 Host 输出未另作离机封存，按 [B2B2 §9.6](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 如实保留，不补造值。不能据此认证真实 AWS 平台、新代码可信来源、持续维护冻结、数据库/Uploads/供应商恢复或授权 Guest/root 操作；C1/C3–C8 仍独立，C5-G2 NO-GO |
 | C3 应用与存储一致性 | 本次 current/previous/env/running image、17+Manifest、C4、project/DB/Uploads 及外部安装副本相容，无 pending/未明事故 | OPEN：R3/R4，生产前另做当前主机核对 |
 | C4 维护排他与禁入 | 原策略离机记录→准确容器 no/正常停止→所有启动/写入入口持续禁入；跨 reboot/快照首启仍冻结，namespace/持有者覆盖完整，成功精确恢复 | OPEN：R2；按 MAINT-RESTART-01，不修改 Manifest Compose |
@@ -71,14 +73,27 @@
 | C7 同候选端到端矩阵 | 同一最终候选/平台完成正常更新、拒绝、中断、外部恢复、重复中断、原状态恢复及独立核对 | OPEN：R5，不能拼接不同版本局部 PASS |
 | C8 精确生产交付 | C1–C7 后，准确主机/版本/快照/窗口/操作者/原策略和停止条件获 G2-E 许可；执行后 G2-F 独立复验 | NOT REQUESTED / NO-GO：本批仅文档，无生产/AWS 操作 |
 
-每份新增证据须登记 candidate 完整 SHA/执行 hash、平台和 Guest 身份、操作/授权定位、UTC 与执行顺序、原始 stdout/stderr/JSON、进程/FD/对象身份、退出码、失败/清理/恢复状态、原始字节离机 hash 对照及独立 witness 来源。runner 自写报告的再次读取不是独立见证。不得仅凭报告勾选或 `authorized=true` 接纳权限。
+### 4.1 最小必要取证与风险分级（2026-10-22）
+
+**只记录会影响 Runtime 安全、稳定、可恢复和维护决策的事实。** 不再默认逐条留存所有 stdout/stderr、全量进程/FD/namespace、反复校验同一稳定依赖、第三方签署及多跳归档。每次操作应可追溯到准确对象/版本、授权范围、关键检查、实际结果和失败原因；与当前候选/环境仍匹配的 CI、可信平台或内部技术验收结果直接复用。
+
+| 环节 | 必要证据 | 只有异常或专项风险时增加 |
+| --- | --- | --- |
+| 非 root、离线/可丢弃 VM 实验 | 准确 VM/VDI/SSH 身份和隔离状态、实验源码/关键输入 hash、操作结果与真实退出状态 | 目标异常、源码差异、测试失败时保留必要原始错误和 trace；不要求外部见证人 |
+| R1/C1 可信执行 | 目标 17+Manifest 与发布证明、真实执行器/解释器及关键依赖的可信来源、执行位置与权限 | 未知可执行依赖、可疑动态导入或路径替换才定向做 FD/ELF/进程跟踪；不强制穷举每个系统库的每次消费 |
+| R2/C4 维护冻结 | 原容器/任务策略、批准的业务及后台写入入口实际禁入、跨重启持续冻结结果 | 遇未知写入者/新消费者才深入查询对应 FD/namespace；单次空扫描不是停写证明 |
+| R3/C5 AWS 快照 | 账户/Region/源实例/覆盖盘、本次快照 ARN/状态/txid、故障 VM 外恢复清单与一次可复用的真实隔离恢复验收 | API 未知状态或恢复失败时保存相关请求 ID/响应；不虚构整盘 hash |
+| R4/C6、R5/C7 安装/验收 | 同一候选版本和完整性、安装状态转换、权限、应用/DB/Uploads 一致性、关键成功/拒绝/中断/恢复场景 | 故障、差异、事故时保存相关原始错误/上下文；不重做无关合成试验 |
+| C8/G2 生产授权/放行 | SanQ 明确授权的对象/版本/窗口、备份/快照就绪、停写、安装后关键健康与资金/订单必要对账、恢复原策略和最终业务放行状态 | 任一结果未知必须停在维护并保留必要诊断，**不需要第三方签名或见证** |
+
+**独立核对是技术性质，不是第三方身份要求：**可由 SanQ 内部从 GitHub 发布/CI、官方签名、AWS API、受控 VM/SSH 配置和实际原始状态对照被审核程序的自报。只凭 `authorized=true` 或同一程序自报成功不能授权生产。过去缺少第三方见证所导致的 LIMITED 记录不倒改，但不得据此要求未来重复第三方签署；已存在的 fail-closed `BLOCKED` 代码需要另行审阅和批准才能修改。
 
 ## 5. R0–R5 执行队列与依赖
 
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
 | R0 | D1–D5、两项批准修订、C1–C8、矩阵及文档收口 | 本次文档审阅通过且远端交付已授权；不重复请求两项设计批准 |
-| R1 | B4B-3B/3C：真实执行基线、完整依赖/来源采集和独立消费见证 | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 已合并 PR #2855（dev `2db85d32`），提供仅内存 AST/ELF 静态线索；B4B-3B-2B1 已合并 PR #2857 / CI #7344（run `39098295751`）/ dev `1a82caff`，仅实现严格 no-follow 的候选目录 FD 逐段开启与合成测试；B4B-3B-2B2 设计已由 PR #2858 / CI #7346 合并（dev `c9db47b7`），其 2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`；CI #7348 / run `39101080529` 选中作业成功，Runtime 281 / Release 45 合成 tests OK；dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`），仅纯内存 alias 声明、不放宽已有 `O_NOFOLLOW`；2B2-B 受限真实路径/FD 解析及 C2 可恢复隔离 Guest 就绪已形成[专项评审和操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，**B2B2-B1 独立受限 nofollow alias FD 候选解析器及合成测试已由 PR #2861 / CI #7352 (run `39103592288`) 合并 dev `5d69eb81`；B2B2-B2 真实可信 root-anchor / Guest FD、独立外部 pin 未实施；C2-0 实际 Host/Guest 只读观察与 C2-1A–D 新实例恢复合成演练由操作员报告已完成，但按已批准 C2-CHANGE-01，按 C2-CHANGE-02 N-02/N-03/N-05 的 A/B 证据规则不再强制 marker，现有归档与最终 Host 只读核对已证实可丢弃隔离新实例恢复，N-07 历史来源局限已获限定风险接受，C2 隔离实验前置项 CLOSED（但真实 AWS 同平台验收/维护冻结仍未做）**，真实可信 alias/root-anchor 仍另审，仍无真实 Guest / `/'` 锚点证明、系统 symlink/realpath 认证、完整动态 Python/ELF/dlopen 闭包、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md)、[B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md) 与 [B4B-3B-2B2 设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) |
+| R1 | B4B-3B/3C：正式执行器关键来源/平台与必要风险取证（按 §4.1 精简，不默认完整依赖消费或第三方见证） | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 已合并 PR #2855（dev `2db85d32`），提供仅内存 AST/ELF 静态线索；B4B-3B-2B1 已合并 PR #2857 / CI #7344（run `39098295751`）/ dev `1a82caff`，仅实现严格 no-follow 的候选目录 FD 逐段开启与合成测试；B4B-3B-2B2 设计已由 PR #2858 / CI #7346 合并（dev `c9db47b7`），其 2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`；CI #7348 / run `39101080529` 选中作业成功，Runtime 281 / Release 45 合成 tests OK；dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`），仅纯内存 alias 声明、不放宽已有 `O_NOFOLLOW`；2B2-B 受限真实路径/FD 解析及 C2 可恢复隔离 Guest 就绪已形成[专项评审和操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，**B2B2-B1 独立受限 nofollow alias FD 候选解析器及合成测试已由 PR #2861 / CI #7352 (run `39103592288`) 合并 dev `5d69eb81`；B2B2-B2 真实可信 root-anchor / Guest FD、独立外部 pin 未实施；C2-0 实际 Host/Guest 只读观察与 C2-1A–D 新实例恢复合成演练由操作员报告已完成，但按已批准 C2-CHANGE-01，按 C2-CHANGE-02 N-02/N-03/N-05 的 A/B 证据规则不再强制 marker，现有归档与最终 Host 只读核对已证实可丢弃隔离新实例恢复，N-07 历史来源局限已获限定风险接受，C2 隔离实验前置项 CLOSED（但真实 AWS 同平台验收/维护冻结仍未做）**，真实可信 alias/root-anchor 仍另审，仍无真实 Guest / `/'` 锚点证明、系统 symlink/realpath 认证、完整动态 Python/ELF/dlopen 闭包、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md)、[B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md) 与 [B4B-3B-2B2 设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) |
 | R2 | MAINT-RESTART-01：原策略/任务持久化、no/正常停止、跨重启维护与禁入、精确恢复 | PLANNED；先真实生产清单/接口评审；真实操作另行授权，不重构全消费者协议 |
 | R3 | RUNTIME-SNAPSHOT-01：受限 API 创建/等待/验证本次手动快照，离机轻量恢复清单、未知结果处理与保留 | PLANNED；准确 AWS 账户/Region/权限/盘先审，快照前必须 R2 持续冻结 |
 | R4 | 正式 Runtime installer + 准确快照→独立新 AWS 实例，首启冻结/数据/身份核对、单写者与人工切流 | PLANNED；组合正常执行来源、R2/R3；不部署旧故障主机自举链，不隐藏改外部 helper |
