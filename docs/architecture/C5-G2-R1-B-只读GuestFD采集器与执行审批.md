@@ -747,6 +747,10 @@ A2 下一步应在不碰 v1 reviewer、不改正常 Runtime、不加 root/包依
 
 `8MiB` 总 trace/raw 的硬事前 quota 与 detached 进程/SSH 断线确保无孤儿仍没有实现；代码明确 `aggregateHardLimitEnforced=false`、`detachedDescendantsExcluded=false`，任何真实 SYN 入口一律 fail-closed。无 local MCP tests 权限，CI 尚未执行；测试源码已覆盖文件篡改/权限/symlink、超时、预算、双流和 Mac pin/manifest/重复封存。新最高状态 `A2-I LAB CORE BUILT LOCAL ONLY / RESOURCE SAFETY GATES OPEN / A2-S/A3/A4 NOT AUTHORIZED / C1 OPEN / C5-G2 NO-GO / S2 PAUSED`。详见 [A2 §6](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md)。本地审阅停点，**没有远端交付**。
 
+## 25. 2026-10-22 — A2-II 资源隔离与进程终止机制可行性审计（LOCAL / NO GUEST ACTION）
+
+PR #2908 已在 CI #7463 SUCCESS 后 squash 合并 `dev@80f970bd6a1845a376fdd520d832a7a3ceead0c0`，A2-I 的非 root 实验室采集核心与 Mac 私有封存器完成 Git/CI 验证，但仍禁止真实 SYN/strace。新建本地 `feat/runtime-c1-syn001-a2-resource-gates-20261022`，针对**硬 8MiB 全输出与 detached 后代/SSH 断线无孤儿**做只读机制选型：`RLIMIT_FSIZE` 只能保障单文件；`strace -ff -o` 每 PID 分别落文件；cgroup v2 delegated 子树可作为包含 setsid 子进程的进程级杀灭候选，需核实委托权限；ext4 project quota/专有 filesystem 容量可能需要特权配置且约束物理 blocks 不等于逻辑字节精确额度；`strace 6.8` 可能支持 `--kill-on-exit` 但添加选项本身改变冻结 argv；将 `-ff` 改为单 `-f -o` 更改 PID 原始证据形状。**不允许未经批准启用 quota/cgroup/mount/root，或削弱硬限额到纯后验检测。** 现场仅冻结 R01–R06 只读能力检查候选（cgroup/controllers/mount/observer version/boot/UID），尚无 Guest 执行审批或回执。详见 [A2-II 技术选型](R1C-2C-C-C1-SYN-001-A2-II资源隔离与进程生命周期技术选型.md)。状态 `A2-II FEASIBILITY REVIEWED / ENV READ-ONLY APPROVAL OPEN / A2-S/A3/A4 NO-GO / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。无运行时代码/生产/Guest 修改，停在本地审阅。
+
 
 
 
