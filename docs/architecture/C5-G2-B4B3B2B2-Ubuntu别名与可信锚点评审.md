@@ -1,5 +1,7 @@
 # C5-G2 / R1 B4B-3B-2B2 — Ubuntu usrmerge 别名与可信根锚设计评审
 
+> **2026-10-22 取证规则更新（本地待审）：**本合同对新 C2/Guest/来源试验中第三方见证、PDF、个人签署和跨主体交接的强制要求，均依 [R0 §4.1](Runtime更新-R0冻结设计.md) **取消**；改用准确 VM/盘/SSH 身份、隔离与结果的 SanQ 内部技术复核。C2 既有有限 CLOSED 和历史记录不改，未执行的真实 AWS/root 操作不因此获授权。
+
 > **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
 
 **日期：**2026-10-18（America/Toronto）。**设计交付：**PR #2858 / CI #7346 / dev merge `c9db47b74854c96e71879b38a69a1e2fe8e8d91a`。**后续 B4B-3B-2B2-A：**已由 PR #2859 合并至 dev `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`；final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`，CI #7348 / run `39101080529` 合成检查通过。B2B2-B 实际路径/FD 解析仍需独立专项评审。  

@@ -1,5 +1,7 @@
 # Runtime 更新：AWS 整机快照与维护冻结方案
 
+> **2026-10-22 取证规则更新（本地待审）：**R2/R3/R4/R5 的维护冻结、AWS 快照、安装和替代实例恢复，不再要求第三方见证、签署文件、见证邮件或外部人员验收；按 [R0 §4.1](Runtime更新-R0冻结设计.md) 留存受控 AWS 对象、维护状态、恢复清单、数据一致性与 SanQ 内部可重复技术核验。不得省略实际恢复测试、故障冻结和生产授权。
+
 **状态：DESIGN APPROVED / DOCUMENTATION DELIVERY AUTHORIZED / IMPLEMENTATION NOT STARTED / AWS ACCEPTANCE NOT RUN / C5-G2 NO-GO。**
 **文档交付：**[PR #2864](https://github.com/sanqin888/sanqinMVP/pull/2864) → `dev`；最终 head 的 GitHub Checks 与合并事件为权威，本文不预先声明 CI 或实际 AWS 验收通过。
 **批准日期：**2026-10-18（America/Toronto）；用户明确批准“采用这两个方式（AWS整机快照+docker容器在更新前改为不自动重启并生成快照），更新现有文档”。

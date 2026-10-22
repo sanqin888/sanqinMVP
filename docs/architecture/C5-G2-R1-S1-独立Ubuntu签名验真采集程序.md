@@ -1,5 +1,7 @@
 # C5-G2 / R1 S1 — Ubuntu Archive 真实签名原件采集程序与独立信任根门禁
 
+> **2026-10-22 取证规则更新（本地待审）：**S1–S6 来源核验不再要求第三方见证人、签署 PDF、见证邮件或第三方复算原件。改以 Canonical/Ubuntu 官方签名、可信 keyring、签名索引/包成员来源及 SanQ 内部独立技术比对作为必要验证，详见 [R0 §4.1](Runtime更新-R0冻结设计.md)。历史 S1-W1 见证与 LIMITED 结论保留，现有 `BLOCKED` 守卫不自动改变。
+
 **2026-10-20 最新续记见 §12：S5 单次 root 采集及原件一致性 PASS_SCOPED 保留；R1C-1 正常更新核心/启动材料与场景测试已编写，尚未运行或推送。** 下文带日期的源码准备/历史未执行状态保留原范围，S6/C1 未完成，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
 
 **日期：**2026-10-18（America/Toronto）；**基线：**S0 审批 PR #2872 / CI #7375 success / dev merge `001d7c345bff43f8c29391fdf9da45286c57fb81`。  

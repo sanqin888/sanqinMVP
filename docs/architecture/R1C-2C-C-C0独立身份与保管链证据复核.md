@@ -1,5 +1,8 @@
 # R1C-2C-C — C0 独立身份与保管链证据复核（历史材料优先）
 
+
+> **2026-10-22 最新裁定（本地待审；以 R0 新取证标准生效为前提）：`C0 HISTORICAL EVIDENCE = CLOSED / LIMITED-ACCEPTED`。** 本裁定替代本文 2026-10-21 的历史 **C0 OPEN / LIMITED** 作为后续计划的当前状态；旧矩阵、旧证据缺口、`BLOCKED` 或失败原件均是当时真实记录，**不回写旧批次 PASS**。依据 [R0 §4.1 最小必要取证](Runtime更新-R0冻结设计.md) 和 [G2 新规则](c5-g2-trusted-runtime-contract-2026-10-13.md)，无需第三方见证人签名、见证 PDF 补签、旧工作底稿、事前另一人员批准 VM/VDI 或 ZIP 每跳交接回执。**不能将历史 C0 限定收口等同为 SSH 主机密钥首次可信来源已认证、Guest 每次连接已授权或真实 Runtime 动态执行已验收**。下一次现场 VM/VDI/Host-only 与 SSH host key、Guest 身份、UID/权限的核对转为 C1-SYN-001 A0 的当次 Preflight；首次 key 信任建立须利用 SanQ 控制的 VM 控制台或可信既有记录，不能在未知连接上盲目接受新 key。没有新 Guest/SSH/strace/root/AWS/生产授权。详见本文 §7。
+
 **2026-10-21 / C0-EVIDENCE-RECONCILIATION-001 / LOCAL DOCUMENT REVIEW / C0 OPEN-LIMITED。**
 
 本批从 `dev@144abbd1fb2fd1640d388e4765cca8fd515589f0` 开始，承接 [R1-C §14–§16](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。目的不是重新做已经发生的 C0，而是在**只读、逐原件**基础上证明其实际支持范围、找出独立身份与交接证据断点；若旧件确实无法补证，为**下一次尚未获批准**的 C1-SYN 会话准备前置来源与保管审查标准。
@@ -79,3 +82,20 @@
 五批原始 Host `VBoxManage` 回执中的 VM UUID、VDI UUID、MAC/NIC 和 Host-only 网络配置线索彼此一致；`001` 与后四批运行状态不同，符合原始时间线。五批自报相同的 `sourceSha256=c7a5d712…b32781`（Mac 采集器候选），`remoteSourceSha256=a7def6d8…70d13b` 与每批 `remote-guest-source.py.txt` 的原始字节 SHA256 一致；但这仍属同批操作者/工具提供的线索。每批 `host-review.json` 均明确 `historicalPinsAreComparisonOnly=true`、`operatorIsolationAndHostIdentityReviewStillRequired=true`、`authorizationGranted=false` 和 `classification=DISCOVERY_ONLY`。17/17 **不等于独立的身份签认或 Guest 观察授权**。
 
 **更新后的证据裁定：** `C1-HOST-001..005 RAW OFFLINE SELF-CONSISTENCY CHECKED`、`C1-HOST-001 CONDITION FAILURE PRESERVED`；原先因未获得五批 Host 原件而开放的“Host 文件缺失/逐项原始 rc 未核验”子项可以标记 **已补齐/已技术复核**。但仍缺各批**现场之前的独立 VM/VDI/SSH host key 批准凭据**、准确 Host/Guest boot/ns/SSH 连接会话绑定原件、独立于操作者的 expected pin 与离机各跳交接/见证记录；`C0 IDENTITY-CUSTODY OPEN / LIMITED` 不变。未执行任何 Guest/SSH/strace/VM/AWS 或生产动作。
+
+## 7. 2026-10-22 — 新 R0 最小必要取证标准下的 C0 限定收口
+
+**适用前提：**[R0 §4.1](Runtime更新-R0冻结设计.md) 取消第三方人员见证、第二渠道外部预签、多跳 ZIP 交接默认门禁的修订须与本裁定**同一 PR 经 CI 合并 dev 后**生效；合并前仅为本地待审裁定。旧 §1–§6 是截至 2026-10-21 的事实与旧门禁评估，保留原样，不能将旧 `NOT ESTABLISHED` 涂改为实际曾通过。
+
+| 项目 | 现有事实与本次认可边界 | 现行裁定 |
+| --- | --- | --- |
+| 历史采集/执行结果 | B-001～004 完整历史失败与成功回执保留；B-004 Host 17/17，Guest SSH outer rc 0，23 命令中 20 rc0、DMI 1、readelf 127×2 | `HISTORICAL CAPTURE EXECUTED` |
+| Host/Guest 原件与摘要 | B-004 98/98 同字节；B-001～004 原始 Host/Guest 清单复核；C1-HOST-001～005 总 115/115 哈希、35/35 原始命令回执，001=16/17，002～005=17/17 | `OFFLINE INTEGRITY / LIMITED SCOPE CHECKED` |
+| VM/VDI/Host-only/Guest | 历史 VBoxManage 中 VM/VDI/NIC 配置线索相互一致、隔离条件限定验证；没有每次 SSH 会话的外部独立事前身份授权 | **接受历史限定核对**；不宣称事前独立认证 |
+| SSH host key | 历史成功 SSH 及 Guest raw 存在，但 `known_hosts` 首次可信指纹来源/当次连接严格比对尚未由现存证据完整证明 | **保留历史限制**，不阻止历史 C0 限定收口；**未来每次连接前必须核对** |
+| 外部见证人/独立 expected pin/ZIP 逐跳交接 | 旧 B-004 邮件/PDF LIMITED 已收，历史命令底稿与精确交接 UTC 部分缺失 | 新标准**不作为收口门禁**；不追索、不补造、不删除旧记录 |
+| 下游依赖 | C1-SYN-001 A0 实验现场准确 VM/VDI/Host-only/SSH key/boot/权限仍未执行；真实 strace 动态消费、Root 与 AWS 更新都未授权 | 转入新会话 **Preflight / C1**，不是重开历史 C0 |
+
+**最终状态：`C0 HISTORICAL EVIDENCE = CLOSED / LIMITED-ACCEPTED`。** 关闭的是旧 Host/Guest 采集与私有原件技术复核工作包，不是认证了每次 Guest SSH 来源、真实 Runtime Python/ELF/dlopen 完整执行消费，更不是生产放行资格。新 C1-SYN-001 的 A0 须核对**已由 SanQ 认可的** Mac/VirtualBox VM/VDI 与 host-only、SSH 公钥指纹（首次建立信任时从受控 VM 控制台确认，拒绝未知 key 的自动信任）、目标 Guest 身份/权限和命令范围；相关用户授权仍为每次现场执行的前置条件。无需第三方签名。
+
+**后续状态：`C1 DYNAMIC OPEN / R1 SOURCE & EXECUTION OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。** 任何原有 `decision=BLOCKED` 只代表其既定旧合同下真实结果，必须经单独代码/合同审查才可改变；C0 的本次限定收口不自动覆盖或跳过这一保护。
