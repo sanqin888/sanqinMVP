@@ -705,6 +705,20 @@ MCP-workspace 未授权本地 lint/build/test，本批仅可进行静态代码/�
 
 **没有新增观察权限**：A0 现场检查、A1 现场文件投送与 native/source pin、A2 真实采集器/写路径/受控执行命令都需逐项批准；A3 SYN-01 与 A4 SYN-02 的真实 strace 更需分别批准。本批不改 `r1c2_consumption_offline_review.py`/v1、Runtime 正常更新核心、Root/AWS、CI/依赖/Prisma 或生产。CI 应在用户授权提交远端后按现有 Runtime unittest lane 核实；MCP-workspace 不运行 lint/build/test。**状态：`C0 CLOSED LIMITED-ACCEPTED / C1-SYN-001 D0 MATERIALS PROPOSED / A0–A2 APPROVAL OPEN / A3–A5 NOT EXECUTED / C5-G2 NO-GO`。**
 
+## 19. 2026-10-22 — C1-SYN-001 / A0-SITE-001 Mac Host 现场只读命令审批范围（本地待审）
+
+PR #2904 / CI #7454 已针对离线审批模块与 15 项测试通过并 squash 合并 `dev@035480312048b2af91ab24d3e184397cab2873a2`，仅说明**代码和离线测试已合格**，不代表真实 VM/SSH 已经检查。已基于此最新 `origin/dev` 创建独立文档分支，编写 [A0-SITE-001 Mac/VirtualBox Host 只读检查的准确 argv 候选和后续 Guest 门禁](R1C-2C-C-C1-SYN-001-A0-SITE-001现场只读审批包.md)：八条 Mac 读取类命令分别定位已批准 VM/VDI、运行状态、Host-only 网络与转发设置；只用占位标识，操作者须在私有环境从已认可来源核对准确 UUID/网络，禁止自动挑“最新”。Guest/SSH 的 boot/UID/ns/host-key 检查属于后续单独审批，暂不连接；首次 SSH 主机 key 须从受控 VM 控制台确立信任，绝不盲目 accept-new。所有 raw/真实设备标识留私有、不进 Git。
+
+**2026-10-22 实测离线复核续报（本地待审）**：后续取得 `A0-SITE-001-20261022T143528Z.zip`，SHA256 `c6407f37c73ad98286ee62b8256fa7039e5081ea09b2670c713416972ca95ae7`；逐份独立复算 `SHA256SUMS.txt` 17/17，8 条命令 rc0、原始 stdout/stderr 长度/摘要逐项一致、无 timeout/预算溢出。H01–H04 的目标 VM 运行中、VDI 与已定候选相连、nic1 Host-only/nic2–8 关闭、无剪贴板/拖放；H06 `HostNetwork=Enabled`，H07/H08 IPv4/IPv6 forwarding 均为 0；H05 `hostonlyifs` stdout **为空**，不能声称其单独接口验证通过。最终仅 `A0-SITE-001 HOST RAW OFFLINE REVIEW=PASS_SCOPED`，未验证 Guest SSH key、boot/ns、现场来源，`a0Approved=false` 与 `traceAuthorized=false` 原件值保留。私有原件未入 Git，详细见新 A0-SITE 审批包 §6；A0-GUEST/A1/A2 仍 OPEN，A3/A4 未授权。
+
+**2026-10-22 用户后续明确批准 H01–H08 Host 只读检查范围。** 审批不包含 Guest/SSH、startvm/modifyvm/snapshot、strace/root、未知 VM 自动选择或生产。依据 `C1-HOST-005` 历史回执，`/usr/local/bin/VBoxManage` 和既有 VM/VDI 身份可作为当次核查比对目标；**尚无实时 Mac 连接或现场结果**。现为 `A0-SITE-001 H01–H08 EXECUTION SCOPE USER APPROVED / OPERATOR RESULTS PENDING`。此前阶段裁定为：`A0-SITE-001 COMMAND CANDIDATES PREPARED / NO LIVE HOST OR GUEST EXECUTION / USER APPROVAL OPEN`。 历史 C0 仍 `CLOSED/LIMITED-ACCEPTED`，C1-DYNAMIC OPEN、G2 NO-GO、S2 DAILY PAUSED。无 Host/Guest/SSH/strace、VM/权限/AWS/生产动作，也不改 reviewer v1、Runtime core、CI/依赖/数据库。下一步待准确对象/命令/预算经用户审阅后，才可以触发本次 Host 现场只读取证；本批仅本地文档，未推送远端。
+
+## 20. 2026-10-22 — A0-GUEST-001 实测原始身份与来源技术复核（本地待审）
+
+用户在已核对的隔离 VM 控制台预先采集 ED25519 host-key 指纹，再运行受控 Mac 严格 SSH（无自动信任、不使用 sudo）。本轮收到 `A0-GUEST-001-20261022T145533Z.zip`，原包 SHA256 `f309e9a96c6cda5c79d7e0fdf452606c53ab6b32237656e387f5fc6e653f70ec`；独立复算 28/28 原始文件摘要、Host S00–S05 6/6 + Guest G01–G07 7/7 真实 rc0、13 组 stdout/stderr 长度和 SHA 一致。重新解码 SSH keyscan 原始 ED25519 公钥计算 SHA256 指纹，与控制台给定 pin 和 `known_hosts.approved` 一致；Guest UID/GID 1000/1000、boot ID/ns 形式有效、ptrace_scope=1，`strace`/Python3.12/loader 三个 SHA256 与本工作包 §14.3 已验 Ubuntu 来源包成员候选一致。S05 stderr 中 60 B SSH banner 原样保留；不宣称本轮重新执行 GPG 签名验证。单独回执仍 `guestAuthenticated=false`、`a0Approved=false`、`traceAuthorized=false`、`readyToInstall=false`，不可因离线证据校验更写。结合 A0-SITE Host PASS_SCOPED，当前 `A0-GUEST RAW REVIEW PASS_SCOPED / A0 SYNTHETIC NON-ROOT PREFLIGHT TECHNICALLY SATISFIED`，并非 C1 动态认证或真实 strace 许可。详情见 [A0-GUEST-001 新审计文档](R1C-2C-C-C1-SYN-001-A0-GUEST-001只读身份复核.md)。A1、A2 仍 OPEN；A3/A4 不得执行，生产 C5-G2 NO-GO、S2 daily PAUSED。原始 ZIP 仅存私有文件；本批无新现场命令和远端交付。
+
+
+
 
 
 
