@@ -79,3 +79,37 @@
 | C1 / C5-G2 / S2 | **OPEN / NO-GO / PAUSED** | 不继承任何生产安装许可 |
 
 **本批交付仅是 A2 安全/架构差距审计和执行合同草案**：无生产变更、无 Guest 或 Mac 动作、无 `strace`、无文件投送、无架构边界/模块职责变更；不推送远端。下一步不应该立即执行 A3，而应先审阅并决定 A2 的**硬总量上限如何技术强制**及**Guest 端断线/进程树退出保证的具体方式**；在这些关键约束确定且必要代码具备真实可审凭据后，才进入 A2-I。
+
+## 6. 2026-10-22 — A2-I 非 root 采集核心与 Mac 本地封存核心（本地代码审阅）
+
+**本节是 §5 之后的新实施阶段；§5 是当时尚未实现的历史记录，不倒改。** 本批在 PR #2907 已经 CI #7461 `SUCCESS` 并合并 `dev@16dfab28c5daad40690277002b9cede4642b23fd` 的基础上，新建 `feat/runtime-c1-syn001-a2-collector-offline-20261022`，**只修改 ops/runtime + 内部测试/文档，不部署 Guest、不运行 strace、不操作 Mac/VM/AWS/生产**。
+
+### 6.1 实际新增的代码与边界
+
+| 文件 | 已实现能力 | 有意未开放 |
+| --- | --- | --- |
+| `ops/runtime/c1_syn001_guest_capture.py` | 固定 SYN-01/02 原始 argv/预算/白名单环境常量；非 root Guest A1 三文件 `O_NOFOLLOW`、0700/0400、uid/nlink/大小/SHA 只读核验；有限 `raw/` trace 文件名、归属、权限、4 MiB 单项与 8 MiB **事后读取检测**；实验室隔离进程组 stdout/stderr 同步排空、单文件 `RLIMIT_FSIZE`、wall watchdog、TERM→KILL 与退出态/原始流摘要、仅测试输出 `receipt.json`。 | 公开 `run_scenario()` **始终抛出 `A2_EXECUTION_NOT_AUTHORIZED`**，脚本直接运行也 BLOCKED；实验室例程仅接受当前解释器的受限 `-c` fixture 形态，拒绝冻结 SYN/strace argv、实验脚本路径和固定真实 Guest 路径；其调用者仍须是受控本地单元测试。无 Guest 第四份 helper 投送、无真实 SYN/strace 启动。 |
+| `ops/runtime/c1_syn001_mac_seal.py` | **只操作 Mac 已存在的本地文件**，不连接网络/SSH：必须提供严格格式的预先固定 `receipt.json` SHA256；检查唯一 receipt + raw 目录、私有 0700、regular/owner/0600 或 0400/nlink、逐项 SHA/size 与 receipt 中的声明、双 stdout/stderr 必备、文件名白名单、4 MiB 单项/8 MiB 总 raw；向 `~/sanq-r1c-private` 下独占创建 0700 的封存目录，以 0600 保存精确 bytes、只读回检、附 SHA256SUMS 和 `seal-review.json`。 | 不把自述 SHA 当成独立来源认证；`siteAuthenticated=false`、`executionAuthorized=false`；不自动连接 Guest、不自动删除或覆盖旧包；输入 receipt/raw 按原始字节私有保存，采集前应检查并避免含 SSH key、凭据或生产数据。 |
+| `ops/runtime/tests/test_c1_syn001_guest_capture.py`、`test_c1_syn001_mac_seal.py` | 本地非 root 合成临时目录（非原 Guest）、源字节失配/权限/symlink/额外文件、模拟 stdout/stderr、wall timeout、总量超出导致 BLOCKED、真实 SYN 拒绝、重复封存拒绝、receipt pin 失败、raw 内容/manifest 篡改、Mac 封存端到端数据流等负例。 | 不使用真实 `strace`、VirtualBox 或现有 A1 Guest 目录；CI 尚未运行，不宣称测试结果通过。 |
+
+本次属 **A 类内部原子新增**，不迁移公共合同、持久化 schema、API、数据库或部署单元；沿用 Runtime/Ops 单一所有者，没有重复原 `c1_syn001_approval_offline.py` 的审批权限。原纯内存离线审批器、冻结 evidence v1 reviewer、Runtime 正常更新主线均原样保留。
+
+### 6.2 安全能力还没闭合（故意 fail-closed）
+
+1. `RLIMIT_FSIZE` 只约束写它的子进程**单个文件**；`strace -ff` 实际会创建多个 PID trace，无法借它单独强制 **8 MiB 全文件总和的瞬时硬上限**。现有 `review_raw()` 和实验室 byte counter 只是检测或 fail-stop，不是硬 quota；超出时会保留**部分 raw**并标记 `BLOCKED`，明确 `captureFullyPreserved=false`。需要讨论已冻结 8 MiB 硬合同与可信资源隔离机制，未经授权不改为弱阈值。
+2. Python 本地进程组 TERM/KILL/reap 只能覆盖**仍属于原 group 的进程**，无法独立保证自行 `setsid()`/detach 的后代或 SSH 异常断线情况下没有孤儿进程。代码将 `detachedDescendantsExcluded=false` 固定，并且实验室 `LAB_CAPTURED_CANDIDATE_ONLY` 从不赋予真实执行许可。
+3. 当前 Mac 组件消费的是**已经通过单独授权、其他受控方式移交到 Mac 的原始证据目录**，不是 SSH 运输实现。原始 `receipt` pin 如由同一不可信来源自报，仍只能证明内部一致，不构成独立 C0/A0 provenance。
+4. 当前完整 trace 采集还缺精确 Guest-local 执行入口、当次 boot/namespace/observer/Python/loader 绑定、捕获所有 trace PID 输出的 supervisor 集成、异常断线生命周期证明，以及经同意的 `raw/` 写入/现场命令。**这些需要分批审阅，不允许因为 Mac 能封存 raw 就认为 trace 已获准**。
+
+### 6.3 验证、下一批准与当前裁定
+
+MCP-workspace 无 test/build 命令执行权限，本批新增聚焦 unittest 与 **CI 预期执行命令**：`python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'`。**尚无本分支 GitHub Actions 结果，也无 Guest 实测**；不得标记 `PASS` 或 `READY_TO_EXECUTE`。测试例程仅在 CI 的非 root 临时环境中运行，脚本提供的独立真正 Guest execution entrypoint 一直是 BLOCKED。
+
+当前最高状态：
+
+- `A0/A1 PASS_SCOPED`（已合并历史证据）。
+- `A2-I INTERNAL LAB CAPTURE + MAC PRIVATE SEAL IMPLEMENTED FOR LOCAL REVIEW / LAB TESTS WRITTEN, NOT RUN / HARD AGGREGATE AND DETACHED CHILD GATES OPEN`。
+- `A2-S GUEST TRANSFER NOT AUTHORIZED / A3/A4 LIVE SYN STRACE NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。
+
+**下一步需解决的设计门禁：**在不新增 root/service、改变 Runtime/Ops 边界或削弱 30s/4MiB/8MiB 合同的前提下，是否能在允许的可丢弃 Guest 上使用真实可核实的子进程与 I/O 资源隔离；如果必须新增 cgroup/平台配置或改为“越界 BLOCKED 但不保证硬总量”，应先说明原因、影响和替代方案并取得用户专门授权。若原严格要求无法实现，就继续 BLOCKED。本分支在本地完成首次代码报告后停止，不授权推送、PR、Guest 现场操作或真实 trace。
+
