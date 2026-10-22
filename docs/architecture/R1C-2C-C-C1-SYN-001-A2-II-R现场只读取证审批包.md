@@ -56,3 +56,29 @@ Mac 操作器已在隔离工具环境进行 Python 语法编译、允许命令�
 下一步需要用户的**准确现场操作授权**：允许在既有 VM/VDI/SSH ED25519 pin 均匹配的隔离 Guest 中，经 Mac 严格 host-key SSH 以 UID/GID 1000 **仅读取 R01–R06**，Mac 本地保存有限原始回执，不能新建 Guest 文件、不能运行 strace trace、不能修改 quota/cgroup/系统设置。不获授权则保持此阶段停止。此处不影响 `C0 CLOSED/LIMITED-ACCEPTED / A0/A1 PASS_SCOPED / A2 REAL TRACE NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。
 
 **本地分支只提交上述文档与同步日志，未经下一次远端交付授权，不推送 PR。**
+
+## 5. 2026-10-22 — 现场原始回执离机复核与限定裁定（后续新增）
+
+**本节是 §1–4 原“待执行”阶段之后的真实结果，不追改先前历史状态或原始 receipt 的权限字段。** PR #2910/CI #7468 SUCCESS，squash 合并 `dev@d25f7a334671a4ab52e6bcc9b1b2c552ab91d6f0`；用户按受控 Host-only Mac 操作器在原 Ubuntu VM 控制台确认用户、IP 和 ED25519 fingerprint，并以非 root SSH 执行 R01–R06 共 8 条读取。用户回传 `A2-II-R-20261022T183900Z.zip`，本批离机**直接打开完整原始 ZIP 并复核**，非仅依赖终端自报。
+
+**原始文件识别：**整体 ZIP SHA256 `fba18c72a6df84cd88cbb3a0fdbe11873778933d22a3a1dfb5e72a5030234689`、压缩包 13,835 B，32 条目（1 个私有目录、31 个 ordinary files，含 30 个被校验文件与 `SHA256SUMS.txt`）；ZIP CRC 全通过，没有路径穿越、重复路径或 symlink。SHA256SUMS 有 **30/30** 原始文件 digest 独立重算一致，精确覆盖 14 组 Host/Guest 命令的 stdout/stderr 28 文件以及 `receipt.json`、`known_hosts.approved`。原 `receipt.json` 中有序 14/14 命令记录，真实 stdout/stderr 原始长度与 SHA256 全部交叉一致；14/14 **rc=0**、`candidateMatch=true`、`timedOut=false`、`overBudget=false`、`gap=null`。起止时间约 2026-10-22 18:39:00.986Z–18:39:09.473Z。唯独 S05 ssh-keyscan stderr 60B 为 OpenSSH 握手 banner，原样保留且 rc0。
+
+**身份绑定独立验证：**程序原文件 SHA256 `d6e8b37a095ff12167db4ae533f45b9beff02313c91816e693697ac27489b7ca` 与冻结值一致；当前 `S05-keyscan-stdout` 与 `known_hosts.approved` 94/94 字节相同，解码 SSH ED25519 wire 公钥并独立计算 SHA256 后与此前在受控控制台确认的 fingerprint 一致；同一公钥、Guest boot ID、UID/GID 原始 stdout 与早前 A0-GUEST、A1-SOURCE 两批独立保存的原始 ZIP **逐字节完全一致**。Host 回执显示原 VM/VDI UUID 与历史一致，VM running、nic1 hostonlynetwork、其余 NIC none、clipboard/draganddrop disabled；HostNetwork Enabled，IPv4/IPv6 forwarding 各为 0。此处的证据边界仍是**两批/三批带哈希原件与当次受控命令的一致性**，不能声称未来资源动态执行窗口始终不可替换。
+
+| 只读命令 | 完整原始观察 | 严格解释与不可推论 |
+| --- | --- | --- |
+| R01 `/proc/self/cgroup` | `0::/user.slice/user-1000.slice/session-34.scope` | 可确认本次登录读进程位于 cgroup v2 的 user session scope；**不是**已确认可独立创建 delegated cgroup |
+| R02 `cgroup.controllers` | `cpuset cpu io memory hugetlb pids rdma misc` | cgroup v2 root 对应控制器名称存在，不代表用户有写权限 |
+| R03 根 `cgroup.subtree_control` | `cpu memory pids` | 根节点仅报告这些 enabled controllers，不是 `session-34.scope` 授权清单 |
+| R04 A1 `findmnt` | `/ /dev/sda2 ext4 rw,relatime` | Guest A1 目录在已审本地 root ext4，mount output **没有**显示 quota 选项；无法据此判定 project quota 已启用或根本不可能启用 |
+| R05 `strace --version` | `strace -- version 6.8`，可选 `libunwind` stack trace/stack demangle、m32/mpers 等 | 确认版本号与选项显示；**没有**验证 `--kill-on-exit` 已生效、没有任何实际 ptrace/SYN |
+| R06a/b/c | UID/GID = `1000/1000`，boot ID 与此前 A0/A1 原件完全相同 | 单次非 root 与目标 Guest 生命周期比对通过；不能给 trace 执行许可 |
+
+**权限原件不可修改：**上传 `receipt.json` 仍为 `classification=READONLY_CAPABILITY_RECORDED_CANDIDATE_ONLY`、`a2iirSiteReadonlyApproved=false`、`capabilityOrDelegationProven=false`、`a2ExecutionAuthorized=false`、`traceAuthorized=false`、`a3Authorized=false`、`a4Authorized=false`、`hardAggregateQuotaProven=false`、`detachedDescendantsExcluded=false`。独立技术审阅用新增文档判断而**绝不倒改**原始自报 false。
+
+**最终限定技术裁定：`A2-II-R READONLY EVIDENCE / IDENTITY = PASS_SCOPED`**。本轮仅能确认 cgroup v2 基础设施与普通 user session 存在、strace 6.8 可读、A1 所在 ext4 root 挂载参数可见；**仍没有**可信的 non-root cgroup delegated subtree / `cgroup.kill` 权限证明，也**没有**全 raw **8MiB 硬 quota** 或断线后的全子进程无孤儿证明。
+
+**后续最小方案，不自动执行：**优先另批设计 **R07 委托路径能力只读审计**（基于当次 `/proc/self/cgroup` 解析实际层级，再准确 `stat`/读取 relevant `cgroup.procs`、`cgroup.kill`、`cgroup.subtree_control` 与目录 owner/mode；不得使用写入权限测试来模拟读取、不得扫描不相关进程），以及 **R08 只读配额可行性检查**（已安装能力、准确挂载参数和受控卷/目录的配额候选；禁止 mount/quotactl 设置）。注意操作器中没有 R07/R08 的已授权 argv；新的数据来源、输出预算、路径派生、缺失目录的处理必须先审批。若 Guest 不具备两种能力，再走前述 A2-II 的 A/B/C 技术选型升级门禁，不暗中改冻结 `-ff`、30s/4MiB/8MiB 或取消孤儿保护。
+
+`A0/A1 PASS_SCOPED / A2-II-R PASS_SCOPED / A2 RESOURCE CONTAINMENT AND 8MiB HARD QUOTA BLOCKED / A2-S/A3/A4 NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本次仅本地更新文档、没有新 SSH/Guest/VM 操作；用户独立审阅后授权才会推远端。
+

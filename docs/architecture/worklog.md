@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — C1-SYN-001 A2-II-R 现场只读原件离机复核
+
+**LOCAL DOCS / GUEST READONLY PASS_SCOPED / HARD QUOTA & CHILD CONTAINMENT OPEN / NO PUSH。** 用户上传 `A2-II-R-20261022T183900Z.zip`（整体 SHA256 `fba18c72a6df84cd88cbb3a0fdbe11873778933d22a3a1dfb5e72a5030234689`），直接离线读取 ZIP 32 条目（1 目录、31 文件）、CRC OK、SHA256SUMS 30/30 匹配；14/14 Host+Guest 原始命令 rc0/no timeout/overBudget/gap，receipt stdout/stderr 各字节长度/SHA 与 ZIP 一致。操作器 SHA `d6e8b37a095ff12167db4ae533f45b9beff02313c91816e693697ac27489b7ca`，控制台 SSH ED25519 公钥 wire 指纹重新计算与批准 pin 匹配；与 A0-GUEST/A1-SOURCE 两批私有原始包交叉证实 Guest host key、UID/GID、boot 原始记录相同。Guest 当前 `0::/user.slice/user-1000.slice/session-34.scope`、root controllers `cpuset cpu io memory hugetlb pids rdma misc`、root subtree `cpu memory pids`、A1 ext4 root mount `rw,relatime`、strace 6.8、非 root 1000/1000；这些只证明现场读到的能力候选，不证明 delegated subtree/cgroup.kill、已配置 project quota、8MiB 全量硬限制或 SSH 断线所有 tracee 清退。独立限定裁定 `A2-II-R READONLY EVIDENCE PASS_SCOPED / RESOURCE GUARANTEES BLOCKED`，所有 operator 原始授权字段 false 不改。将结果同步 A2-II-R §5、R1-C §27、R0；下一阶段提议 R07/R08 更有针对性的**只读**权限和 quota 核验，待新命令范围获独立审批。**未执行额外 Guest/SSH/VM 操作，未推远端，C1 OPEN/C5-G2 NO-GO/S2 DAILY PAUSED。**
+
 ## 2026-10-22 — C1-SYN-001 A2-II-R 现场只读能力取证操作包准备
 
 **LOCAL DOC-ONLY / READ-ONLY GUEST AUTHORIZATION PENDING / NO PR OR VM ACCESS。** PR #2909 CI #7466 SUCCESS，squash 合并 `dev@2dc710c93fec998c5766a6680bbf5ca26f8297c5`。新本地分支 `docs/runtime-c1-syn001-a2iir-readonly-probe-20261022` 复核 AGENTS、A0 Host/Guest strict SSH、A1 现场 pin 和 A2-II 技术选型，新增 [A2-II-R 现场只读取证审批包](R1C-2C-C-C1-SYN-001-A2-II-R现场只读取证审批包.md)。固定 Host S00–S05、Guest R01–R06 共 8 条小范围只读 argv，含私有 ED25519 控制台 pin/既有 VM/VDI/boot/UID/GID 准确绑定、超时/字节预算和原始回执。单独本地生成 Mac read-only 操作脚本 SHA256 `d6e8b37a095ff12167db4ae533f45b9beff02313c91816e693697ac27489b7ca`，语法及纯离线正/负例检查通过，无 SSH/VM/Guest/strace/生产操作；原始 Guest 身份/key/boot 数据不进入仓库。`A2-II-R EXECUTION NOT AUTHORIZED / C1 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地文档审阅后停止，不推远端。
