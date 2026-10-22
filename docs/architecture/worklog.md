@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — R1C C1-SYN-001 A2-I Guest 采集与 Mac 私有封存核心开发
+
+**LOCAL CODE + TESTS PREPARED / EXECUTION NOT AUTHORIZED / NO PUSH。** 用户确认 PR #2907 已 CI #7461 `SUCCESS` 并合并 `dev@16dfab28c5daad40690277002b9cede4642b23fd` 后，基于最新 origin/dev 创建新分支 `feat/runtime-c1-syn001-a2-collector-offline-20261022`。只在 `ops/runtime` 内新增 Guest non-root A1 三源精确 SHA/uid/mode/nlink 检查、固定 SYN argv/预算声明、实验室 fixture 受限双流 capture/30s 以内 watchdog/单文件 RLIMIT_FSIZE/TERM→KILL 与非 PASS 的部分失败回执，以及 Mac 仅本地 receipt-pin/严格成员/权限 SHA/独占私有封存器；新增两份 unittest 覆盖源码/输出负例和本地 Guest→Mac 归档联动。现有 `run_scenario` 恒 `BLOCKED`，当前 8MiB 原始总量硬限和子进程 detached/SSH 断线生命周期不能声称受保证；**绝无真实 SYN/strace 操作授权**。未改既有 approval/reviewer v1、Runtime core、生产/AWS/VM/SSH/依赖/数据库，也没有 MCP 本地执行测试的权限。同步 [A2 §6](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md)、R1-C §24、R0；仅内部 A 类新增，不改变公共 owner/依赖基线。`A2-I LOCAL REVIEW / A2-S/A3/A4 NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地审阅后停止，未推 PR。
+
 ## 2026-10-22 — C1-SYN-001 / A2-CAPTURE-001 受控采集和失败保全差距审计
 
 **LOCAL DOC-ONLY / A2 DRAFTED NOT AUTHORIZED / A3-A4 NOT EXECUTED。** 用户批准的 A1 证据已通过 PR #2906、CI #7459 success、squash `dev@d746698145a1f340cccacd464f5ddd21249c6519`；基于最新 dev 新建本地 `docs/runtime-c1-syn001-a2-capture-safety-20261022`，核查仓库 AGENTS/CI、A0/A1 受限技术裁定、C1 SYN D0 原始 argv 与 `c1_syn001_approval_offline.py`/tests。发现代码中的 30s/8MiB/4MiB 仅属计划数据、**不存在**具资源强制的实际 Guest collector，也没有 SSH 意外断开时父子进程可靠终止、stdout/stderr/rc 保全实现。新增 [A2-CAPTURE-001 受控采集审批草案](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md) 冻结两场景分离、非 root/cwd/env/原 trace argv/预算、专属 `raw/`、Guest-local 进程组监护与 Mac 回执、源与身份紧前 pin、失败冻结，明确**硬总量上限和断线无孤儿保证仍缺实现**，先做可信本地负例测试再申请执行。保持已投三源和原始 A1/A0 false 回执，不更改 v1/Runtime core、依赖、schema、CI、VM/Guest/AWS/生产；未运行 strace。`C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。新文档与三个进度文件均本地待审，未经用户再次授权不推远端。

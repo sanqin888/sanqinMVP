@@ -741,6 +741,12 @@ PR #2905 经 CI #7456 success，squash merge `dev@d7f57ff23814168a38d9eb4ea2d348
 
 A2 下一步应在不碰 v1 reviewer、不改正常 Runtime、不加 root/包依赖的前提下，审阅仅限现有 Ubuntu Guest 的 **Guest-local 非 root collector + Mac 私有归档** 技术路线；精确两个场景 argv 仍保持既有冻结值、分批批准；仅建议不执行。**尚需证明**总 raw 8 MiB 的真正执行前硬约束与断线时所有 tracee 的退出/无孤儿保证，不允许用事后发现超限或 Mac SSH timeout 伪称已实现强制策略。独占 `raw/` 的创建/collector 代码投送/执行均须单独批准；已落地 A1 三源原样保留，不自动清理/重送。本轮结论 `A2 POLICY DRAFTED / EXECUTABLE COLLECTOR NOT IMPLEMENTED / A2-A4 NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。仅本地文档，未推远端。
 
+## 24. 2026-10-22 — A2-I Guest 采集核心 + Mac 私有封存核心本地实施（NOT EXECUTION READY）
+
+核实 PR #2907 已由用户合并，CI #7461 `SUCCESS`，最新 `dev@16dfab28c5daad40690277002b9cede4642b23fd`；在新的本地 `feat/runtime-c1-syn001-a2-collector-offline-20261022` 分支新增 `ops/runtime/c1_syn001_guest_capture.py`、`ops/runtime/c1_syn001_mac_seal.py` 和两份重点 unittest。Guest 核心能只读核验 A1 源字节/0700/0400/owner/nlink 和原 trace 目录安全属性，并在**非 root 本地单用途实验室 fixture** 中监督独立进程组，捕获双流和真实 rc、强制单文件 RLIMIT_FSIZE、超时 TERM→KILL、保留 BLOCKED 部分证据及冻结 receipt；实际 `run_scenario` 和 Guest CLI **均固定 `A2_EXECUTION_NOT_AUTHORIZED`**，不运行 strace。Mac 组件仅封存**已经在本地存在的**私有 receipt/raw，以外部提供的 receipt SHA 为必须 pin，验证文件归属/权限/链接/受控名字/大小/receipt manifest，独占写入私有目录和 SHA256SUMS；不 SSH、不认证现场、不提升授权。严格保护既有离线审批/证据 v1/正常 Runtime 模块边界和 A1 Guest 原件。
+
+`8MiB` 总 trace/raw 的硬事前 quota 与 detached 进程/SSH 断线确保无孤儿仍没有实现；代码明确 `aggregateHardLimitEnforced=false`、`detachedDescendantsExcluded=false`，任何真实 SYN 入口一律 fail-closed。无 local MCP tests 权限，CI 尚未执行；测试源码已覆盖文件篡改/权限/symlink、超时、预算、双流和 Mac pin/manifest/重复封存。新最高状态 `A2-I LAB CORE BUILT LOCAL ONLY / RESOURCE SAFETY GATES OPEN / A2-S/A3/A4 NOT AUTHORIZED / C1 OPEN / C5-G2 NO-GO / S2 PAUSED`。详见 [A2 §6](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md)。本地审阅停点，**没有远端交付**。
+
 
 
 
