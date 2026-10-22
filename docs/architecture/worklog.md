@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — C1-SYN-001 / A2-CAPTURE-001 受控采集和失败保全差距审计
+
+**LOCAL DOC-ONLY / A2 DRAFTED NOT AUTHORIZED / A3-A4 NOT EXECUTED。** 用户批准的 A1 证据已通过 PR #2906、CI #7459 success、squash `dev@d746698145a1f340cccacd464f5ddd21249c6519`；基于最新 dev 新建本地 `docs/runtime-c1-syn001-a2-capture-safety-20261022`，核查仓库 AGENTS/CI、A0/A1 受限技术裁定、C1 SYN D0 原始 argv 与 `c1_syn001_approval_offline.py`/tests。发现代码中的 30s/8MiB/4MiB 仅属计划数据、**不存在**具资源强制的实际 Guest collector，也没有 SSH 意外断开时父子进程可靠终止、stdout/stderr/rc 保全实现。新增 [A2-CAPTURE-001 受控采集审批草案](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md) 冻结两场景分离、非 root/cwd/env/原 trace argv/预算、专属 `raw/`、Guest-local 进程组监护与 Mac 回执、源与身份紧前 pin、失败冻结，明确**硬总量上限和断线无孤儿保证仍缺实现**，先做可信本地负例测试再申请执行。保持已投三源和原始 A1/A0 false 回执，不更改 v1/Runtime core、依赖、schema、CI、VM/Guest/AWS/生产；未运行 strace。`C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。新文档与三个进度文件均本地待审，未经用户再次授权不推远端。
+
 ## 2026-10-22 — A1-SOURCE-001 真实写入与独立回执限定复核
 
 **LOCAL DOCUMENTATION / A1 TECHNICAL PASS_SCOPED / A2 NOT AUTHORIZED / NO PUSH。** 收到 `A1-SOURCE-001-20261022T161938Z.zip`，原包 SHA256 `fc288a8cf804283d9aecc3ae8506511626f4b58b791a42d6597fe0c525db942c`；独立只读核验 54 ZIP 成员（1 目录、53 文件），52/52 清单逐字节匹配、25/25 Host/Guest 操作 rc0/原始 stdout/stderr receipt 长度及 SHA 匹配、无超时或预算问题。复核受控 SSH pin、VM/VDI、Guest boot 与 mount/pid ns 相对 A0-GUEST 原件相同，`/tmp` ext4、本次目标先验不存在，目录 0700 非 root 1000/1000、三份 `dd` 独占传入与 `stat/sha256sum` Guest 读回符合三冻结摘要、mode 0400/nlink1/准确大小。ZIP 不含 Guest 三文件独立封存的完整字节；`a1Approved/a2Authorized/traceAuthorized=false` 原始字段不改，不冒充完整动态执行证明；未重新连接 Guest 或重跑投送。同步 [A1-SOURCE §7](R1C-2C-C-C1-SYN-001-A1-SOURCE-001安全投送与冻结审批.md)、R1-C §22 和 R0，下一步 A2 需要单独批准采集器/时限/原始写路径，不运行 SYN/strace。旧 C0 LIMITED-ACCEPTED、A0 PASS_SCOPED、C1 OPEN、C5-G2 NO-GO、S2 DAILY PAUSED。当前仅本地文档，未提交远端。

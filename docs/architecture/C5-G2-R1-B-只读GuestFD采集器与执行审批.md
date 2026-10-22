@@ -735,6 +735,12 @@ PR #2905 经 CI #7456 success，squash merge `dev@d7f57ff23814168a38d9eb4ea2d348
 
 **独立技术裁定：**`A1-SOURCE-001 PLACEMENT/ATTRIBUTES/SHA READBACK PASS_SCOPED`。详情见 [A1 审批文档 §7](R1C-2C-C-C1-SYN-001-A1-SOURCE-001安全投送与冻结审批.md)。已创建的 Guest 唯一路径必须保留原样，**禁止重跑 A1 投送/删除失败证据**；A2 独立采集器与预算/受限写路径授权仍 OPEN，A3/A4 实际 strace 禁止；`C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。仅本地文档更新，未推远端。
 
+## 23. 2026-10-22 — C1-SYN-001 / A2-CAPTURE-001 受控采集与失败保全审计（LOCAL DRAFT）
+
+继 **PR #2906 / CI #7459 SUCCESS** squash merge `dev@d746698145a1f340cccacd464f5ddd21249c6519` 后，新建本地 A2 审计分支并读取 `AGENTS.md`、R0 §4.1、D0 SYN-01/02 设计、A0–A2 冻结审批与现有纯内存 `ops/runtime/c1_syn001_approval_offline.py`/测试。该代码只提出 `strace` argv/env/cwd/30 秒/单 trace 4 MiB/总量 8 MiB **声明**，不具 stdout+stderr 完整回收、Guest 子进程组 watchdog、SSH 断线保全或硬预算强制实现。详见 [A2-CAPTURE-001 审批草案](R1C-2C-C-C1-SYN-001-A2-CAPTURE-001采集与失败保全审批草案.md)。
+
+A2 下一步应在不碰 v1 reviewer、不改正常 Runtime、不加 root/包依赖的前提下，审阅仅限现有 Ubuntu Guest 的 **Guest-local 非 root collector + Mac 私有归档** 技术路线；精确两个场景 argv 仍保持既有冻结值、分批批准；仅建议不执行。**尚需证明**总 raw 8 MiB 的真正执行前硬约束与断线时所有 tracee 的退出/无孤儿保证，不允许用事后发现超限或 Mac SSH timeout 伪称已实现强制策略。独占 `raw/` 的创建/collector 代码投送/执行均须单独批准；已落地 A1 三源原样保留，不自动清理/重送。本轮结论 `A2 POLICY DRAFTED / EXECUTABLE COLLECTOR NOT IMPLEMENTED / A2-A4 NOT AUTHORIZED / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。仅本地文档，未推远端。
+
 
 
 
