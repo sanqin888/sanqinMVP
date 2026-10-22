@@ -757,6 +757,12 @@ PR #2908 已在 CI #7463 SUCCESS 后 squash 合并 `dev@80f970bd6a1845a376fdd520
 
 **状态：`A2-II-R LOCAL OPERATOR PREPARED / GUEST R01–R06 EXECUTION NOT AUTHORIZED / C1 OPEN / A3/A4 NO-GO / C5-G2 NO-GO / S2 DAILY PAUSED`。** 需用户明确批准精确 SSH/Guest 只读行为后才能让操作员在 Mac 运行；本批只改本地审计文档，未推远端。
 
+## 27. 2026-10-22 — A2-II-R 原始 ZIP 独立只读复核（LOCAL REVIEW / PASS_SCOPED）
+
+用户按后续审批在隔离 Host-only Ubuntu Guest 通过 Mac strict SSH 执行冻结的 8 条 R01–R06 只读命令，提交 `A2-II-R-20261022T183900Z.zip`（整体 SHA256 `fba18c72a6df84cd88cbb3a0fdbe11873778933d22a3a1dfb5e72a5030234689`、13,835 bytes）。离机独立读取 ZIP 32 条目（1 目录、31 个文件），CRC/path/symlink 检查通过，`SHA256SUMS.txt` **30/30** 文件 SHA 真正重算一致；14/14 Host+Guest 原始命令 stdout/stderr 的字节长度与回执 SHA 全匹配，rc0/无 timeout/budget/gap，S05 60B stderr 为保留的 OpenSSH banner。操作器 SHA 与原冻结 `d6e8b37a095ff12167db4ae533f45b9beff02313c91816e693697ac27489b7ca` 一致；控制台 ED25519 fingerprint 由 keyscan 公钥 wire 独立重算一致，并与 A0-GUEST/A1-SOURCE 原包中的 host key/boot/UID/GID 原始 stdout 完全一致。Host VM running、批准 VDI、仅 nic1 Host-only、转发禁用。
+
+Guest R01 返回 `0::/user.slice/user-1000.slice/session-34.scope`；R02 根控制器为 `cpuset cpu io memory hugetlb pids rdma misc`，R03 根 subtree enabled `cpu memory pids`；R04 A1 root mount 仅显示 `/dev/sda2 ext4 rw,relatime`（未显示 quota 配置）；R05 `strace 6.8`；R06 UID/GID=1000，boot 与 A0/A1 一致。它们**没有**确认当次 user scope 被委托 cgroup 写权限、`cgroup.kill` 可用性、项目/独立文件系统 quota 已配置或 SSH 断线全子进程终止。上传 receipt 原始 `a2iirSiteReadonlyApproved/a2ExecutionAuthorized/traceAuthorized/hardAggregateQuotaProven/detachedDescendantsExcluded=false` 等字段均不得倒改。技术裁定仅为 `A2-II-R RAW READONLY PASS_SCOPED`；**A2 硬总量 8MiB + 孤儿进程门禁仍 BLOCKED**。详见 [A2-II-R 审批包 §5](R1C-2C-C-C1-SYN-001-A2-II-R现场只读取证审批包.md)。下一阶段提议独立审批 R07 delegated scope 权限/`cgroup.kill` 静态检查与 R08 精确 quota 候选只读检查；不自动进行，保持 `A2-S/A3/A4 NO-GO / C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。本地文档未推远端。
+
 
 
 
