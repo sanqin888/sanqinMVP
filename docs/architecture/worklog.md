@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-22 — R1C-2C-C / C1-SYN-001 A0–A2 离线审批组件与门禁包
+
+**LOCAL SOURCE+TESTS+DOCS / NO TRACE / NO PR / C0 CLOSED LIMITED-ACCEPTED / C1 OPEN / G2 NO-GO。** 先审阅 `AGENTS.md`、Runtime ops owner/v1 review/test、R0 §4.1、C0 §7、PR #2903 合并的最新 `dev@9845e698` 与既有 SYN-01/02 惰性源文件；在新分支 `feat/runtime-c1-syn001-preflight-20261022` 编制纯内存、无文件/Guest/root/SSH/子进程行为的 `ops/runtime/c1_syn001_approval_offline.py` 及 `ops/runtime/tests/test_c1_syn001_approval_offline.py`。精确比对三份 `.py.txt`/fixture 的 SHA256+大小，审核 caller-supplied site claims 的字段与不一致风险，仅构造双场景准确 argv、非 root 环境、30s/8MiB/4MiB 预算与失败留证结构，程序输出永远不能授权真实执行或生产。新增 [C1 A0–A2 逐项审批包](R1C-2C-C-C1-SYN-001-A0-A2离线预检与执行审批.md)并同步 R1-C §18/R0；旧 C0 历史证据保持原样，新 R0 不要求外部见证/多跳交接，A0 现场 VM/VDI/SSH 指纹/Guest UID 仍单独待核，A1 关键来源/实际材料尚待 pin，A2 逐条批准未获；A3/A4/A5 未执行。无 v1 合同/Runtime core/bootstrap 变更、无依赖、CI、schema/migration、生产改动。MCP-workspace 未开放 lint/build/test，不在此冒充 CI 通过；本地待审，未推送。`S2 DAILY PAUSED`。
+
 ## 2026-10-22 — C0 历史证据在 R0 新规则下限定收口
 
 **LOCAL DOCS-ONLY / SCOPED CLOSEOUT PROPOSED / NO NEW HOST OR GUEST EXECUTION。** 与同一批 [R0 §4.1](Runtime更新-R0冻结设计.md) 取消第三方见证、最小必要取证变更**同时合并 dev 后**，将 [C0 §7](R1C-2C-C-C0独立身份与保管链证据复核.md) 从旧 `OPEN-LIMITED` 调整为 **`C0 HISTORICAL EVIDENCE = CLOSED / LIMITED-ACCEPTED`**。承认 B-001～004 与 C1-HOST-001～005 原始记录、B-004 98/98 同字节、Host 五批 115/115 清单与 35/35 命令回执；保留 B-003 SSH timeout、B-004 DMI/readelf 非零 rc、HOST-001 16/17 与历史 B-004 `LIMITED`。过去事前外部 VM/VDI/SSH 签认、第三方工作底稿和 ZIP 每跳交接不再是现行 C0 关闭门禁；历史 `known_hosts` 首次可信指纹及 SSH 精确会话绑定仍**未被历史材料完整证实**，不倒填 PASS。新 VM/VDI/Host-only/SSH key 身份核对转至 [C1-SYN-001 A0](R1C-2C-C-C1-SYN-001受控观察设计与审批草案.md) 每次执行前 Preflight，需 SanQ 内部认可来源及用户准确命令授权；首次 SSH 主机 key 不盲目 TOFU。**C1 动态执行 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED。** 未修改 reviewer/权限、未运行 SSH、Guest、strace、AWS、root 或生产；此次合并前仍是文档提议，不是自动生产授权。
