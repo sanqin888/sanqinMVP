@@ -717,6 +717,25 @@ PR #2904 / CI #7454 已针对离线审批模块与 15 项测试通过并 squash 
 
 用户在已核对的隔离 VM 控制台预先采集 ED25519 host-key 指纹，再运行受控 Mac 严格 SSH（无自动信任、不使用 sudo）。本轮收到 `A0-GUEST-001-20261022T145533Z.zip`，原包 SHA256 `f309e9a96c6cda5c79d7e0fdf452606c53ab6b32237656e387f5fc6e653f70ec`；独立复算 28/28 原始文件摘要、Host S00–S05 6/6 + Guest G01–G07 7/7 真实 rc0、13 组 stdout/stderr 长度和 SHA 一致。重新解码 SSH keyscan 原始 ED25519 公钥计算 SHA256 指纹，与控制台给定 pin 和 `known_hosts.approved` 一致；Guest UID/GID 1000/1000、boot ID/ns 形式有效、ptrace_scope=1，`strace`/Python3.12/loader 三个 SHA256 与本工作包 §14.3 已验 Ubuntu 来源包成员候选一致。S05 stderr 中 60 B SSH banner 原样保留；不宣称本轮重新执行 GPG 签名验证。单独回执仍 `guestAuthenticated=false`、`a0Approved=false`、`traceAuthorized=false`、`readyToInstall=false`，不可因离线证据校验更写。结合 A0-SITE Host PASS_SCOPED，当前 `A0-GUEST RAW REVIEW PASS_SCOPED / A0 SYNTHETIC NON-ROOT PREFLIGHT TECHNICALLY SATISFIED`，并非 C1 动态认证或真实 strace 许可。详情见 [A0-GUEST-001 新审计文档](R1C-2C-C-C1-SYN-001-A0-GUEST-001只读身份复核.md)。A1、A2 仍 OPEN；A3/A4 不得执行，生产 C5-G2 NO-GO、S2 daily PAUSED。原始 ZIP 仅存私有文件；本批无新现场命令和远端交付。
 
+## 21. 2026-10-22 — C1-SYN-001 / A1-SOURCE-001 安全投送与冻结方案（LOCAL REVIEW）
+
+PR #2905 经 CI #7456 success，squash merge `dev@d7f57ff23814168a38d9eb4ea2d3489e2fee6965`。继承 §19–20 的 `A0-SITE HOST PASS_SCOPED`、`A0-GUEST CONSOLE-PINNED SSH PASS_SCOPED`；这些为本次隔离 non-root synthetic 环境的受限技术核验，不改变原回执 false，也不自动授予任何文件写入或 `strace` 权限。本批在最新 dev 新分支仅编制 [A1-SOURCE-001 三源准确 bytes/目标及写入审批包](R1C-2C-C-C1-SYN-001-A1-SOURCE-001安全投送与冻结审批.md)：复用 D0 的两个惯性 `.py.txt` 和 25 B 输入，总计 2,694 B，固定唯一 Guest `/tmp/sanq-c1-syn-001` 目标；规定源 Mac 前后 hash/size、A0 同 VM/VDI/Host-only/先验 SSH key/boot 身份、非 root UID/GID1000、目录 0700、文件 0400、单链接/regular/无 symlink、独占创建不覆盖、Guest 读回 SHA 与失败冻结。精确 SSH argv、传输 helper 的源字节和文件创建效果须在下一批逐项用户审批后才能执行。未新增重复 `review()` 模块、证据 v1 更动、任何 Guest/SSH 实操、root/strace/VM/AWS/生产动作。
+
+**A1 原始方案裁定：`SOURCE MAPPING/SAFETY PLAN PREPARED / GUEST WRITE NOT AUTHORIZED / SOURCE NOT DEPLOYED`；A2/A3/A4 仍禁止真实运行，C1 OPEN、C5-G2 NO-GO、S2 DAILY PAUSED。**
+
+**后续用户明确授权续报：**允许同一已确认 Guest 的 non-root 唯一私有目录创建、三份冻结文件写入与只读 mode/owner/SHA 回检。Mac 端固定操作器 `A1-SOURCE-001-Mac-Guest-Placement-20261022.py` SHA256 `51a3c2942ca728b3deab74e22bceebef200f13877e9157d07bbd6eeded8f8267`，无需在 Guest 新增第四份 helper、采用 `mkdir -m0700` + `dd conv=excl oflag=nofollow` + `stat/sha256sum`；每次都须核对已 pinned SSH/Guest boot 身份与目录不存在。静态/模拟测试完成，但暂无现场证据：`A1 WRITE AUTHORIZED / OPERATOR EXECUTION PENDING / A2-A4 NO-GO`。见 A1 文档 §6。 本地文档待审、未经用户授权不提交远端。
+
+## 22. 2026-10-22 — A1-SOURCE-001 三份实验材料真实投送离机复核（LOCAL REVIEW）
+
+**原件：**用户执行用户批准的 Mac 非 root Guest 投送后提交 `A1-SOURCE-001-20261022T161938Z.zip`，整体 SHA256 `fc288a8cf804283d9aecc3ae8506511626f4b58b791a42d6597fe0c525db942c`；本轮独立只读打开 ZIP，54 条目（1 目录、53 文件）、无 CRC/重名/穿越/symlink 问题。SHA256SUMS 清单覆盖 **52/52** 个应验文件并全部匹配，包含 25 组命令 stdout/stderr、receipt、SSH pinned known_hosts；25/25 原始命令回执 `rc0`、无 timeout、overBudget、gap，长度/哈希逐项与归档一致。
+
+**现场身份与文件：**A1 VM/VDI、Guest/IP、SSH 控制台 ED25519 pin 与此前 A0-GUEST 原件一致；A1 keyscan `94/94` bytes 对应 A0 公钥原件、现有私有 known_hosts 与重新计算指纹匹配；Guest boot ID、mount/PID namespaces 三份 stdout 与 A0 同字节；VM 运行中且 nic1 Host-only、其他网卡关闭、HostNetwork Enabled、两类 forwarding=0。`/tmp` 为本地 ext4 根分区挂载，目标此前不存在，目录独占创建后 `directory|1000|1000|700|2`。恰三次 `dd conv=excl oflag=nofollow` 写入 `input.txt`、`syn01.py`、`syn02.py` 分别 `rc0`；Guest `stat`/SHA 读回：三文件均为 regular、UID/GID=1000/1000、mode=0400、nlink=1，大小 25/1028/1641，SHA 与原冻结精确相符。keyscan stderr 的 60 B banner 原样保留。
+
+**技术边界：**原 ZIP 未包含从 Guest 再读取并封存的三份完整文件字节，确认的是现场系统 `stat`/`sha256sum` 命令及返回的原始证据，而非第二渠道独立取得的 Guest 内容；文件执行时不可替换性仍未证明。`receipt.json` 原值 `classification=A1_PLACEMENT_CANDIDATE_ONLY`、`a1Approved=false`、`a2Authorized=false`、`traceAuthorized=false`、`productionAuthorized=false`、`cleanupPerformed=false` **永久保留不改写**。
+
+**独立技术裁定：**`A1-SOURCE-001 PLACEMENT/ATTRIBUTES/SHA READBACK PASS_SCOPED`。详情见 [A1 审批文档 §7](R1C-2C-C-C1-SYN-001-A1-SOURCE-001安全投送与冻结审批.md)。已创建的 Guest 唯一路径必须保留原样，**禁止重跑 A1 投送/删除失败证据**；A2 独立采集器与预算/受限写路径授权仍 OPEN，A3/A4 实际 strace 禁止；`C1 DYNAMIC OPEN / C5-G2 NO-GO / S2 DAILY PAUSED`。仅本地文档更新，未推远端。
+
+
 
 
 
