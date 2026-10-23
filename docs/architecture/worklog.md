@@ -1,5 +1,10 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-23 — R2-A2-3 Boot Barrier 同版本隔离 PoC 首验准备与持久化依赖
+
+**LOCAL DOC READINESS / USER REVIEW REQUIRED / P0-01 NOT_RUN / NO PRODUCTION MUTATION。** PR #2918 已在 `CI #7485 SUCCESS` 后合并 `dev@d74992970c079a582b76d82db5ea8fc4b96aa7b2`，按“合并后开始下一步”从最新 dev 新建 `docs/runtime-r2a2-3-boot-barrier-isolated-poc-plan-20261023`，只读复核 R0 / R2-A2-1、A2-2、R2-A1 宿主证据及 Docker/systemd 原理。新增 [R2-A2-3 隔离 PoC 就绪与持久化前置审计](Runtime更新-R2-A2-3隔离启动屏障PoC就绪与持久化前置审计.md)，将已批准的 `SAFE_STOP_DOCKER_ON_UNCERTAIN_RESTART` 实现前首验拆为 P0-01A～F：隔离 VM 原始 always、只改合成 API restart=no 后断电、ARMING 部分提交/重启、daemon-only/live-restore、socket activation、直接 dockerd、Host/SSH 独立救援与不可无授权撤销。首项不通过绝不走资源/插件实现；P0-02～04 依序覆盖等价生产资源写者、真实状态排他/CAS/离机回执、AuthZ 故障。已确认当前助手执行容器为 Debian 13/supervisord、无 Docker/完整 systemd/虚拟机，因此**不能声称同版本 PoC 已执行**；VirtualBox 既有 Ubuntu 24.04.5 仅候选，其 Docker 版本/Host 身份/配置/可丢弃性仍须独立预检。没有使用生产 VM、Clover/PG 数据/密钥，也未更改源码/模型、Compose、系统权限、17 Bundle、AWS 或 Docker。**A2-3 持久化未实现；P0-01 NOT_RUN / S03/G06/S09/R2-C4 OPEN / C5-G2 NO-GO；本地文档等待审阅授权，未推远端。**
+
+
 ## 2026-10-23 — R2-A2-2 Maintenance Fence 实际禁入适配、安装与撤回方案
 
 **LOCAL DOC DESIGN / USER REVIEW GATE / NO ADAPTER IMPLEMENTATION / NO PUSH。** 用户明确要求先明确 Docker、Compose/deploy、备份入口的禁入方案与安装权限/撤回方式，**审阅授权后再实现**。最新 `origin/dev@fac45616` 已含 PR #2917 的 R2-A2-1 离线模型/25 合成负例；新建 `docs/runtime-r2a2-2-fence-adapter-permission-design-20261023`。复核 AGENTS、ops_runtime CI、R0/AWS Snapshot、R2-A1 Host H14–H18、R2-A2-1 现有完整源/测试与 `deploy_release.py`、`backup-db.sh`、systemd backup service/sudoers/helper 及 Compose。新增 [R2-A2-2 设计审批文档](Runtime更新-R2-A2-2禁入适配器与安装权限撤回设计.md)，约束 Docker 四业务容器的原 restart policy 与 ID/镜像/卷、启动禁止/受控 stop、Clover host-network SANDBOX 保留、`docker.socket` 管理不一刀切停止、deploy/rollback --execute/Compose up/run 绕过、backup timer/脚本/远端 rclone sync/delete 和 root helper 并发副作用。
