@@ -74,7 +74,26 @@
 
 **本地交付门禁：**工作区首次改动后仅可生成本地改动报告供审阅，未经用户另行授权不得将本批新分支推远端/创建 PR。无本地 CI claim；文档阶段未运行源码 lint/build/test。
 
-## 8. 2026-10-23 — GitHub Actions Runner 能力探针实现（本地待审阅）
+## 8. 2026-10-23 — GitHub Runner 能力探针历史结论与退役
 
-在 PR #2919 的文档方案于 CI #7487 SUCCESS 后合并 `dev@0f4579301f429bf0da378e925c164108f9a731d4` 后，用户明确批准**先实现 GitHub 能力探针**（非完整 P0-01），新建 `feat/runtime-github-runner-vm-capability-probe-20261023`。详见 [独立工作包与能力判定](Runtime更新-R2-A2-3-GitHubRunner能力探针.md)：新增限定 `dev` PR 的独立工作流、`ops/runtime/probes/github_runner_vm_capability.py`、标准库 unittest，先探测 `/dev/kvm`、存储/内存，KVM 可用才在 disposable Runner 安装 QEMU/OVMF，下载已核对 SHA256SUMS 的官方 Ubuntu 24.04 Guest，禁用 Guest 网络并尝试**真实 systemd 两次引导和一次 QEMU hard reset**，保存最小证据。无 KVM/包/Guest 时输出明确 `BLOCKED`，不能伪报环境可行；每个结果强制 `P0-01=NOT_RUN / same_version_as_production=NOT_VERIFIED`。不改变现有 R0/A2-1/A2-2 生产冻结合同、主 CI、17 Bundle、备份/Docker/Cloudflare/VM/AWS、业务代码或迁移。**当前仅 MCP-workspace 本地源码，CI 和实际 Guest 均未运行**，首次远端提交需另获用户授权。G06/S03/S09/R2-C4 OPEN，C5-G2 NO-GO。
+[PR #2920](https://github.com/sanqin888/sanqinMVP/pull/2920) 原已将 GitHub-hosted `ubuntu-24.04` KVM/QEMU 能力探针合并 `dev@ae47a8ee`（常规 CI #7489 SUCCESS）；真实 [Actions #39993752638](https://github.com/sanqin888/sanqinMVP/actions/runs/39993752638) 日志和 artifact 明确为 **`KVM_UNAVAILABLE / capability=BLOCKED`**，故 `QEMU/GUEST_SYSTEMD/GUEST_RESET/P0-01=NOT_RUN`。Actions 的 SUCCESS 只说明探针正确记录能力不可用，不表示嵌套 VM 可行。历史运行和 PR 继续保留供审计，**不改写 Git 历史**。
+
+用户当日决定采用 **VirtualBox** 路线，要求通过新的 `dev` PR **撤销 PR #2920 新增且今后不再使用的**独立 workflow `.github/workflows/runtime-vm-capability.yml`、Python Runner 探针、其配套 unittest 和 GitHub 方案专属文档。保留本 R2-A2-3 PoC 主计划、R0、R2-A2-1/2 原合同及任何真实生产证据，不撤回 GitHub Actions 作为**仓库普通 CI 权威验证平台**的既有规则。
+
+## 9. VirtualBox 首批就绪核验与严格执行边界（已选平台，尚未实测）
+
+**目标：**仅把早前 R1-A 使用过的 Ubuntu 24.04.5 VirtualBox Guest 作为候选；**不能**从历史 Guest/kernel 取证或上一轮测试成功推断它已经具备与生产同版本的 Docker/systemd/Compose 环境，亦不能无授权写 VM 或注入故障。
+
+| 门禁 | 必须先采集并复核的只读证据 | 失败处理 |
+| --- | --- | --- |
+| VB-01 Host/Guest 身份 | VirtualBox Host 上的完整 VM UUID、名称、配置路径、状态、介质关系；Guest 的 machine-id/主机名、Ubuntu 版本、kernel、系统时间、root disk/FS；复核**绝非生产 Lightsail VM** | 不一致/模糊即 `BLOCKED` |
+| VB-02 可信与隔离 | Host-only 接口配置、Guest NIC 模式/端口映射、对 sanq.ca/生产 DB/API/Cloudflare 和真实备份位置的隔离；无生产密钥、rclone/cloud credentials、真实 Clover Tunnel | 无法证明隔离即 `BLOCKED` |
+| VB-03 同版本对照 | Guest 的 systemd/docker engine API/version、containerd/runc、Compose plugin、docker.service/socket unit/drop-ins、restart policy、live-restore、daemon.json；与 R2-A1 当前生产只读采集比对，缺少同版本证据则标记 `SIMILAR_PLATFORM_ONLY` | 禁止声称 `SAME_VERSION_PASS` |
+| VB-04 故障回退与救援 | 在实验之前建立**该 VM 的**精确可恢复快照/克隆，校验快照身份与介质链，Host console/SSH 和不依赖 Docker 的救援路径，确认失败日志在恢复前单独保留 | 无恢复能力即 `BLOCKED` |
+| VB-05 合成数据隔离 | 准备四个全新 synthetic 容器/数据库卷与合成 Clover PRESERVE 替身，所有 service 不连接真实支付/订单/Uber、生产宿主 bind mount | 生产资料/凭据混入即停止 |
+| VB-06 P0-01 授权 | 用户针对**具体 VM UUID 和精确可回滚范围**，另行批准 Guard 原型安装、持久化试验、`restart=no`、强制关机/daemon crash 与受控恢复 | **本轮仅确定路线和删除旧工具，不含任何执行授权** |
+
+首个真实 P0-01 必须仍按 §4 **P0-01B** 执行：在隔离 VM 中原策略均 `restart=always`，完成可信持久 Guard 与 ARMING 后仅将合成 API 改 `restart=no`，DB/Web/worker 仍 `always` 即模拟断电；下一次 boot 由 Guard 在 daemon 恢复之前拒绝整个 Docker，证明无在途或新生产模拟写者复活；合成 Clover 暂停允许，但独立管理必须可用。继续覆盖 §4 的 daemon-only/live-restore、`docker.socket` 和直接 dockerd 绕过测试。**未安装真实 Guard 前绝不把该路径标记为测试通过。**
+
+**当前裁定：**`VIRTUALBOX_SELECTED / VB-01..VB-06 NOT_RUN / P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。本轮不会连接或改变任何 Guest、Host、生产 Runtime、Docker、AWS、数据库或 Cloudflare；GitHub 方案的撤回仅是 `dev` 仓库源代码回退。
 
