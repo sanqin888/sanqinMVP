@@ -235,3 +235,148 @@ docker ps -a --no-trunc --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}'
 ## 7. 本地交付及退出门禁
 
 **本批：DOCUMENTATION ONLY / HOST H14–H17 PROPOSED, NOT EXECUTED / NO PRODUCTION MUTATION / NOT PUSHED。** 不改应用、Runtime 正式流程、Docker、systemd、Cron、IAM/AWS、MCP allowlist、网络、数据库、17+Manifest、CI、依赖/锁、Prisma/schema/migration。MCP workspace 无 lint/build/test 权限；仅审阅文档差异/工作区状态。下一门禁：用户审阅本报告，并分别批准所需的 Host 只读 ID；随后根据实际结果评估 G02–G07 是否满足继续实现 R2-A2 的最低条件。首次远端交付仍须另行明确授权 PR → `dev` / CI 全绿 → 合并。
+
+## 8. 2026-10-23 — HOST-READ-002 实际现场回执续记（H14–H18、G03/G05/G07）
+
+**时间、状态及证据层级：**本节为 §4 候选命令在 **PR #2915 经 CI #7478 SUCCESS、squash merge `3ba4ac2b2496c5b1411ff16f3d5a65499d68133f` 后**，经用户逐批授权，由 `ubuntu@sanq-web` 从生产 SSH 执行并贴回的 **OPERATOR_TRANSCRIPT**；另有 Cloudflare 控制台两张人工截图（**CONTROL_PLANE_SCREENSHOT**）和用户说明的 MacBook Sandbox 网络设计（**OPERATOR_CONTEXT**）。旧 §1–§7 中的「未执行/未推送」描述是 **PR #2915 编写时的历史快照，不表示本节追加后的现场状态**。回执没有提交完整原始 stdout/stderr/argv 的独立加密封存及 hash chain；此处只记录可见的具体字段、命令退出码、时间与推论边界，绝不伪称自动执行或端到端复验。
+
+| 回执 ID | 时间（UTC，来自回传） | 实际结果 / rc | 结论级别 |
+| --- | --- | --- | --- |
+| H14-1～4 | 12:31:12 | service 完整列表、unit-file 列表、socket 列表、9 个已知 unit 的选定属性；`rc=0/0/0/0` | `SYSTEMD_INVENTORY PASS_SCOPED` |
+| H14-extra | 时间未单独回传 | SSM snap unit / EIC service 选定属性，`rc=0` | `UNIT_IDENTITY PASS_SCOPED`；连通性未证 |
+| H15-1～6 | 12:33:21 | Cron owner/mode、run-parts --test、apt timers/service；各 `rc=0` | `CRON_FILES/TIMERS PASS_SCOPED` |
+| H15-7～8 | 12:39:08 | `/etc/crontab` 和 `/etc/cron.d/e2scrub_all` 规则原文，`rc=0/0` | `SYSTEM_CRON_RULES PASS_SCOPED` |
+| H15-9 | 时间未单独回传 | `apt-config`/`grep` 均 `rc=0`；三个 APT::Periodic 键存在 | `APT_PERIODIC_CONFIG PASS_SCOPED` |
+| H15-10～11 | 13:04:12 | unattended 配置/已装实现选定行，`rc=0/0` | `APT_AUTO_REBOOT_CONFIG PASS_SCOPED` |
+| H16-1～4 | 12:36:03 起 | stat、Manifest SHA、容器 image IDs、RepoDigests；各 `rc=0` | `INSTALL_METADATA/IMAGE_IDS PASS_SCOPED` |
+| H16-state-readable | 时间未单独回传 | `ubuntu` 对 root-owned 600 state `NO` | `PERMISSION_BLOCKED`（当时），不是损坏 |
+| H16-5 | 时间未单独回传 | 固定 17 路径 Python 核验 `RESULT PASS_17_OF_17`、`rc=0` | `STATIC_BYTES PASS_SCOPED` |
+| H17-1～4 | 12:51:39 | stat/hash/命令位置/Cloudflared 过滤容器列表；各 `rc=0` | `ENTRY_IDENTITY PASS_SCOPED` |
+| H17-5 / H18-1～3 | H18：13:34:45；其余时间未单列 | inspect 策略/网络/挂载和 `ss :18080`，各 `rc=0` | `TUNNEL_CONTAINER PASS_SCOPED`，监听当时空 |
+| H18-4～5 | 约当地 09:39 / 09:41 控制台截图 | 远端 Published application route + TLS 2 项自定义，无 CLI rc | `ROUTE/TLS_CONFIG SCREENSHOT_SCOPED` |
+| G07-1～3 | 13:42:43 | 四目录 findmnt、DB local volume、lsblk，`rc=0/0/0` | `ROOT_DISK_LAYOUT PASS_SCOPED` |
+| G07-4～5 | 13:44:56 | DB 目录 `findmnt rc=1` 空输出、`stat rc=1` Permission denied | `PATH_DIRECT_READ BLOCKED`（后以其他元数据交叉核验） |
+| G07-6～8 | 13:46:19 | DockerRootDir/volume/mount list，`rc=0/0/(0,0)` | `DB_VOLUME_DISK INFERRED_HIGH_CONFIDENCE` |
+| G07-9 | 13:47:24 | `local/local` volume、`CustomOptions=NO`、`rc=0` | `ROOT_DISK_COVERAGE PASS_SCOPED` |
+| G03-ROOT-Cron | 13:50:24 | 经单独批准 `sudo -n /usr/bin/crontab -u root -l`，`no crontab for root`、`rc=1` | `ROOT_PERSONAL_CRON EMPTY`；`rc=1` 是无 crontab 的结果 |
+| G05-Release-State | 13:50:29 | 经单独批准的 `sudo -n /usr/bin/python3 -I -S -B`，仅输出 3 个校验字段，`VALID`、`rc=0` | `DYNAMIC_STATE PASS_SCOPED` |
+
+**MCP 再核验：**2026-10-23T13:33:25Z 既有只读 `system_status`/`docker_status(include_stopped=true)`：Docker 和 MCP tunnel active，4/4 `sanq-app` 容器 healthy，当前应用镜像均仍为 `ff5be8d5…`（PostgreSQL `postgres:15-alpine`）。这一瞬时健康观测不代表维护冻结或独立救援已验证。
+
+## 9. G02 / G03 — systemd、Cron 与 unattended-upgrades 现场裁定
+
+**H14 systemd：**`docker.service`、`containerd.service`、`nginx.service`、`ssh.service`、`cron.service`、`unattended-upgrades.service`、`sanq-mcp-tunnel.service` 均 `loaded/active/running/enabled`；`sanq-backup.service` `loaded/inactive/dead/static`，`sanq-backup.timer` `loaded/active/waiting/enabled`。`sanq-mcp-tunnel.service` 与 `sanq-backup.service` 的 `User=ubuntu`；前者 fragment `/etc/systemd/system/sanq-mcp-tunnel.service`，后者 `/etc/systemd/system/sanq-backup.service`。`ssh.service` 有 `/usr/lib/systemd/system/ssh.service.d/ec2-instance-connect.conf` drop-in。socket 完整名单包含 **`docker.socket loaded/active/running`**，属于额外可激活 Docker daemon 的入口，不得以关闭单个 daemon 或业务容器一次性 stop 代替持久冻结。已取得全量 service/unit-file/socket 的现场名单，但没有逐个打开完整 ExecStart/依赖/外部管理服务的实际重新拉起链。
+
+**H14-extra 救援候选：**`snap.amazon-ssm-agent.amazon-ssm-agent.service` = `loaded/active/running/enabled`，fragment `/etc/systemd/system/snap.amazon-ssm-agent.amazon-ssm-agent.service`；`ec2-instance-connect.service` = `loaded/inactive/dead/enabled`，fragment `/lib/systemd/system/ec2-instance-connect.service`。两者仅证明安装/运行状态；**尚无** IAM、网络、控制台实际 Session Manager/EIC 登录、事故态恢复权限证明。当前 SSH 操作员可登录也不能证明失效态独立救援可达。
+
+**H15 文件/调度：**`/etc/crontab` root:root 644（1136 B），`/etc/cron.d/e2scrub_all` root:root 644（201 B）；`apt-compat`、`dpkg`、`apport`、`logrotate`、`man-db` daily 和 `man-db` weekly 全部 root:root 755。`run-parts --test` 的 hourly/monthly 均空（`rc=0`），daily 选择 `apport / apt-compat / dpkg / logrotate / man-db`，weekly 选择 `man-db`。`/etc/crontab` 有 `17 * * * *` hourly，`25 6 * * *` daily、`47 6 * * 7` weekly、`52 6 1 * *` monthly（后三项具 anacron 存在性判定）；`e2scrub_all` 有 `30 3 * * 0` 与 `10 3 * * *` root 任务，均先 `test -e /run/systemd/system || ...`，故在正常 systemd 环境下通常不会由该 Cron 路径实际执行。已审阅的规则**没有直接 SanQ deploy/业务复活调用**；`ubuntu` 私有 crontab 先前仅注释，root 私有 crontab 本轮 `no crontab for root (rc=1)`。**其他账户的私有 Cron、anacron 精确状态及上述脚本间接调用链未穷尽**。
+
+**APT 定时维护：**`APT::Periodic::Update-Package-Lists "1"`、`Download-Upgradeable-Packages "0"`、`Unattended-Upgrade "1"`。`apt-daily.timer` `active/enabled`，现场下一次 2026-10-24 01:24:06 UTC，最近触发 2026-10-23 10:37:50 UTC；`apt-daily-upgrade.timer` `active/enabled`，下一次 2026-10-24 06:25:53 UTC，最近触发 06:49:38 UTC；两个 service 当时 inactive/static、`Result=success`；`unattended-upgrades.service` active/enabled。`/etc/apt/apt.conf.d/50unattended-upgrades` 的 `Automatic-Reboot` / `WithUsers` / `Time` 仅注释示例；实际 `apt-config dump` 未显示重启配置；已装 `/usr/bin/unattended-upgrade` 的 `find_b("Unattended-Upgrade::Automatic-Reboot", False)` 默认 False。因此 **unattended-upgrades 自身自动整机重启未开启（配置限定）**，**不代表**升级时不会 restart Docker 等服务，也不排除其他重启机制。
+
+**G02 `PARTIAL` / G03 `PASS_SCOPED（非全集）`。** 保留系统安全更新默认状态，不批量禁用 systemd/Cron；未来 R2-A2 需对真实 apt/daemon/socket/Compose/手工和其他用户入口做到 fail-closed 分类。
+
+## 10. G04 / G05 — 实装 Runtime、当前生产版本与 Clover Sandbox 入口
+
+### 10.1 H16 / G05：17+Manifest 静态完整性及真实激活状态
+
+| 对象 | 实测字节/权限/身份 | 裁定 |
+| --- | --- | --- |
+| `/opt`、`/opt/sanq`、`/opt/sanq/runtime` | 全部 root:root `755` | 受保护目录元数据 PASS |
+| `runtime-release.json` | root:root `644`、3289 B、SHA256 `6f4fe7d6fcd9b819c79d153da297a950f15fd075e6553a530e87206191f40cf9` | 现场 Manifest 摘要取得 |
+| Manifest `sourceSha` | `a84b72007e6b4e82c981101e56c897355757c0ff` | **Runtime Bundle 的源码身份**，不是当前业务 Image |
+| `.sanq-release-state.json` | root:root `600`，265 B | `ubuntu` 非 root `test -r=no`，后经独立 sudo 只读查询成功 |
+| `.env` | ubuntu:ubuntu `600`、3905 B | 只查元数据，未读取/哈希内容；部署源码有保留 ubuntu owner 支持备份的意图 |
+| API / Uber Worker 实际镜像 | 均 `ghcr.io/sanqin888/sanq-api:ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8`，image ID `sha256:819adfd7575c3613857b63d8e612da26a7aed63825f36ec7d5faf92ac582230d` | 与共享 API 发布 SHA 对齐 |
+| Web 实际镜像 | `ghcr.io/sanqin888/sanq-web:ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8`，image ID `sha256:f87a2fbf16947411cdc8473b6a9b932dc55761c092cc53be87b31e75339ed0ad` | Web 与 API 配对 tag |
+| DB 实际镜像 | `postgres:15-alpine`；image ID `sha256:b3968e348b48f1198cc6de6611d055dbad91cd561b7990c406c3fc28d7095b21` | 数据库身份单独记录 |
+
+本次 `docker image inspect` 的 RepoDigests 显示 API `ghcr.io/sanqin888/sanq-api@sha256:819adfd7575c3613857b63d8e612da26a7aed63825f36ec7d5faf92ac582230d`、Web `ghcr.io/sanqin888/sanq-web@sha256:f87a2fbf16947411cdc8473b6a9b932dc55761c092cc53be87b31e75339ed0ad`；这是运行机的当前镜像事实。Manifest 另绑定 **Runtime sourceSha `a84b7200…`** 对应配对镜像：API digest `sha256:63d4fb5029ca4194d7c6a83ebaa2db85dd57f7dbf6bd2fd59ae17ec121aab496`，Web digest `sha256:cf646d58a14b44a30156c5b8fd58dcac1313bae23924a037911257b74576adf2`。**两套 digest 不同是不同版本的事实，不能因此宣告 Runtime 漂移，也不能把前一套冒充当前生产。** 用户明确说明：当前应用停留在 `ff5be8d5…` 是因为最新 Image 涉及尚无安全执行路径的 Runtime 更新，**有意不部署**，不得以审计为理由执行升级。
+
+H16-5 经操作者运行受限的纯只读固定路径 Python 核验，17 条 `MEMBER` 全部 `manifestMatch True`，最终 `RESULT PASS_17_OF_17`、`rc=0`。固定成员：`docker-compose.yml`；`ops/backup/{backup-db.sh,sanq-backup-protected-nginx,sanq-backup.service,sanq-backup.sudoers}`；`ops/release/{deploy_release.py,release_contract.py}`；`ops/runtime/{build_bundle.py,audit_compose_cutover.py,audit_release_provenance.py,inspect_layout.py,stage_bundle.py,runtime_trust.py,versioned_release_contract.py,plan_versioned_install.py,runtime-layout.v1.json}`；`ops/verify-runtime-readiness.sh`。输出验证各成员 sha256、长度、root owner、模式和 symlink 检查；不是完整第三方发布来源证明。
+
+**H16-5 逐文件 SHA256 现场清单（17/17 均 `manifestMatch=True`）：**
+
+| 成员相对路径 | 实际 SHA256 |
+| --- | --- |
+| `docker-compose.yml` | `b8c5eb10300eb33242af49b9bfceedc652e93898732374d2525feb168a815ce4` |
+| `ops/backup/backup-db.sh` | `fee7556667376a417a995f0a2bf4aa2c9241dac0eeb4b3022067be0467345437` |
+| `ops/backup/sanq-backup-protected-nginx` | `df91e37ca252afad9bfe665d6f3e72239d957c8f11767e38dc6ce51ac5226322` |
+| `ops/backup/sanq-backup.service` | `c0726fc7fadc373e151d049ef36836236e4827fbf4a7d5ceec08fb1d08f1e607` |
+| `ops/backup/sanq-backup.sudoers` | `232cc78d3db075f94a54590ac9517c46e8c611f04d74d29f8ba3796ca987630c` |
+| `ops/release/deploy_release.py` | `ab6c416887c08d4e66a400763722c217fc52785dcf806b1544d865f1852cd1b6` |
+| `ops/release/release_contract.py` | `2b23cc91e8e23e8aabb79415b2a51a654f4f6d3f3c8a304050b3278a4df551cb` |
+| `ops/runtime/build_bundle.py` | `5fc9a6dacc4ee86ca4a7d87c58df8dffb333427d90d5050e95dd4d7d65767223` |
+| `ops/runtime/audit_compose_cutover.py` | `bae3249c34fc4dae72a0b44ccbcfd0f49e404a72e687894c772b369f780e5212` |
+| `ops/runtime/audit_release_provenance.py` | `24810b80f90c27b848df0c0aa25c8403dd09a4d1da374973c4e9902c08d13a55` |
+| `ops/runtime/inspect_layout.py` | `4f6f6ab1c680e3d9f41a7a949b7909317fe690021bf3496d118691bd8e5d70d9` |
+| `ops/runtime/stage_bundle.py` | `b2f2e1398156ae04c9855ff74766a71420e886eb81a0a3b88caf70dd9e897a50` |
+| `ops/runtime/runtime_trust.py` | `1ce6c7a04dc16b2bf284601ca632359f4dc2fe9765f378fbf594c40400435c30` |
+| `ops/runtime/versioned_release_contract.py` | `988f2c4c1c158a25dadc53db1a0936f04b0e85bcaf1781c06141b9a68fea3637` |
+| `ops/runtime/plan_versioned_install.py` | `ce1c6b5a4a51652393b09f8bbc42c4974e8c1ca18d8c47e2662c2054f44a47da` |
+| `ops/runtime/runtime-layout.v1.json` | `e75712ef993f82c37497996d68cf486d2983436540337ac799767cdedc1bea91` |
+| `ops/verify-runtime-readiness.sh` | `fe2d108c4093b6f1dc1ff2ef5caf3fefbfb95eb8d908944a5446f4b59e5368f8` |
+
+本表仅复述操作者程序打印的 hash/匹配裁定，**尚未从生产完整原始文件独立二次取字节复算**；不可把逐文件静态一致性等同完整发布证明。
+
+G05 root state **经用户另行批准**的字段限定 `sudo` 只读校验：
+
+```text
+G05-STATE phase=active
+G05-STATE current=ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8
+G05-STATE previous=a84b72007e6b4e82c981101e56c897355757c0ff
+G05-STATE VALID
+G05-Release-State rc=0
+```
+
+**对应关系 PASS_SCOPED：** `state.current` 与当前 API/Web 实际 tag 完全一致；`state.previous` 与 Manifest `sourceSha` 一致，`phase=active` 格式校验通过；这说明目前声明的应用状态内部一致，**不证明**外部 CI/Archive 签名已独立验证、当前状态的每次发布历史完整或真实更新后恢复成功。G05 整体 **`PASS_SCOPED / PUBLICATION_TRUST_OPEN`**。
+
+### 10.2 H17–H18 / G04：实际部署/备份脚本与 Sandbox 公网转发
+
+H17 stat/hash 的三条文件与 H16 Manifest 对应字节逐项一致：
+
+| 实装路径 | Owner / mode | 现场 SHA256 |
+| --- | --- | --- |
+| `/opt/sanq/runtime/ops/release/deploy_release.py` | root:root 644，26443 B | `ab6c416887c08d4e66a400763722c217fc52785dcf806b1544d865f1852cd1b6` |
+| `/home/ubuntu/backup-db.sh` | ubuntu:ubuntu 750，14016 B | `fee7556667376a417a995f0a2bf4aa2c9241dac0eeb4b3022067be0467345437` |
+| `/usr/local/sbin/sanq-backup-protected-nginx` | root:root 755，5458 B | `df91e37ca252afad9bfe665d6f3e72239d957c8f11767e38dc6ce51ac5226322` |
+
+`command -v docker` = `/usr/bin/docker`，`rclone` = `/usr/bin/rclone`，Host PATH 的 `cloudflared` 未找到。实际运行独立容器 `sanq-clover-dev-cloudflared`，镜像 `cloudflare/cloudflared:latest`，H17-4 时 `Up 12 days`；H17-5 `RestartPolicy=unless-stopped`、`com.docker.compose.project/service` 标签均空，**不能由空标签推断一定非 Compose 管理**。H18-1 `NetworkMode=host`、`Status=running`、`MountCount=2`，H18-3 两个只读 bind 目标分别为 `/run/secrets/tunnel-token` 与 `/etc/cloudflared/origin-cert.pem`（**未读取源路径/凭据/证书内容**）；H18-2 `ss -H -ltn '( sport = :18080 )'` `rc=0`、无监听者，说明该时刻没有观察到 `:18080` 的 SSH 反向监听，**不是** Cloudflare Tunnel 容器未运行或整个公网域名持续不可用的证据。
+
+用户历史方案说明 Clover App 要求公网 URL；本地 Sandbox 在 MacBook 运行 API/Web/DB，原计划经 MacBook `127.0.0.1:8443` → SSH `-R 127.0.0.1:18080:127.0.0.1:8443` → VM Cloudflare 入口。**控制台截图新鲜证据**：名为 `sanq-clover-dev` 的 Tunnel，页面显示 **1 条 Published application 路由**，Hostname `clover-dev.sanq.ca`、Service `https://127.0.0.1:18080`，路径 UI 表达式可见 `/` 与 Clover `/clover/oauth/(start|callback|result)` 类匹配；没有逐 URL 验证匹配/404 或探测端到端 TLS/连接性，不以截图证明 OAuth 已通。另张截图显示 TLS **2 项自定义**：`Origin Server Name=clover-dev.sanq.ca`、`CA Pool=/etc/cloudflared/origin-cert.pem`；`Disable TLS certificate verification`、`Match SNI to host`、`Use HTTP/2 to origin` 均为 OFF；HTTP/Connection/Access 显示使用默认值。**CA Pool 文件名不能证明其内容确为 CA、证书链可验证**，无明文凭据进入审计。
+
+**R2-A2 分类：** `sanq-app` API/Web/Uber Worker/DB 和 Compose/deploy 是受控业务写入/复活对象；`sanq-backup.timer/service` 与备份/rclone/helper 属需维护协调的副作用入口；**`sanq-clover-dev-cloudflared` 为独立 Clover Sandbox 开发通信设施，默认 PRESERVE、单独记录 `unless-stopped`，不一刀切停止或改为 `restart=no`**。它采用 Host 网络，未来仍需以实际 route/network 隔离证明不会直通生产写口；VM 重启后仅 Cloudflared running 不能证明 MacBook 反向 SSH 已恢复。`G04 PARTIAL`，入口已识别但持续禁入、未知绕过与断链恢复未验收。
+
+## 11. G07 — Lightsail VM 数据盘/Volume 覆盖及负例
+
+| 路径/资源 | 实测内容 | 覆盖裁定 |
+| --- | --- | --- |
+| `/opt/sanq/runtime` | `findmnt -T` 返回 `/ /dev/nvme0n1p1 ext4 rw,...` | 根盘 PASS |
+| `/srv/sanq/uploads` | 同根 `/dev/nvme0n1p1` | 根盘 PASS |
+| `/srv/sanq/backups` | 同根 `/dev/nvme0n1p1` | 根盘 PASS |
+| `/home/ubuntu/sanq-assets/sounds` | 同根 `/dev/nvme0n1p1` | 根盘 PASS |
+| `sanq-app_pgdata` | Docker `Driver=local`、`Scope=local`、`Mountpoint=/var/lib/docker/volumes/sanq-app_pgdata/_data`、`CustomOptions=NO` | 根盘**高可信间接证据** |
+| Docker 数据根 | `DockerRootDir=/var/lib/docker` | 与卷位置对应 |
+| `lsblk` / 内核挂载 | `nvme0n1` 60G；`nvme0n1p1` 59.9G ext4 `/`；另有 EFI/辅助分区及 snap loop；`findmnt --kernel` 仅见根挂载和 Docker overlay rootfs，无所列 DB volume 路径的独立挂载 | 当前观测范围无额外数据盘 / DB volume 单独挂载 |
+
+**负例不能抹除：**先前直接在 `ubuntu` 身份下对数据库卷 mountpoint 执行 `findmnt -T` 是 `rc=1`/空输出，`stat` 是 `Permission denied, rc=1`。没有为凑齐 rc0 擅用 sudo 或调整数据库目录权限。后续 G07-6～9 才依据 Docker daemon 元数据、host 内核挂载及无自定义 Volume options 交叉核验；**这不等价于 root 身份直接穿越 DB 目录的文件系统断言或 PostgreSQL 文件级一致性检查**。
+
+**结论：`G07 ROOT_DISK_COVERAGE PASS_SCOPED / G07 OVERALL PARTIAL`。** 当前识别的持久化对象应落在 Lightsail 实例根盘快照覆盖候选范围，未观察到单独的业务数据盘；但 AWS 控制面的准确 instance/snapshot ARN/Region/盘清单及快照真实创建/available、PostgreSQL clean shutdown/WAL/恢复验证、恢复后的业务与密钥/TLS/escrow、外部事件留存/去重/权威对账、Google Drive/rclone 离机 daily 与 S2 全量恢复都**未进行本轮验收**。不能把「磁盘位置」升级为「整机独立可恢复」或「零数据丢失」。
+
+## 12. 本批最终 G01–G07 判定、R2-A2 前置与退出边界
+
+| Gate | 2026-10-23 本轮只读取证后的判定 | 仍未具备的生产实施条件 |
+| --- | --- | --- |
+| G01 生产对象 | `PASS_SCOPED`；MCP/Host 与容器已确认 | 快照/更新前再次精确 pin 实例/Region/发布版本/健康 |
+| G02 systemd/启动入口 | `PARTIAL`；完整 service/unit/socket 清单和 `docker.socket` 已证 | 全量依赖/未知触发器、业务自动复活与跨重启持久屏障 |
+| G03 Cron/unattended | `PASS_SCOPED`；系统 + ubuntu + root 个人规则和 apt 默认重启行为已证 | 其他用户 crontab、脚本调用链、升级可能导致的服务重启 |
+| G04 非容器写者/独立 Tunnel | `PARTIAL`；deploy/backup/helper hash、Docker/rclone、Cloudflare host-network 与 route 已证 | 独立受控执行入口、Compose/admission deny、Tunnel 生产写口隔离与恢复链 |
+| G05 Runtime/Release 身份 | `PASS_SCOPED`；17/17、Manifest SHA、state 校验、运行 image ID/digest 已证 | 独立发布可信来源链/完整恢复点和正式生产新版本执行器 |
+| G06 独立救援 | `OPEN`；SSH/MCP/SSM/EIC 状态已发现 | IAM/救援会话实际登陆和事故态独立恢复能力 |
+| G07 数据覆盖/恢复 | `ROOT_DISK_COVERAGE PASS_SCOPED / OVERALL PARTIAL` | 真 AWS 快照→独立 VM 恢复、PG/WAL、备份/密钥/外部事件一致性 |
+
+**综合：`R2-A1 INVENTORY SUFFICIENT FOR R2-A2-1 OFFLINE MODEL / R2-C4 OPEN / AWS S01–S12 OPEN / R1-C1 OPEN / S2 DAILY EXPANSION PAUSED / C5-G2 NO-GO`。** 可另批授权在现有 `ops/runtime` 范围进行**纯离线 Maintenance Fence 对象/原始策略/拒绝判定/持久化意图模型及 synthetic 失败测试**；这不授权上线 adapter、改 systemd/cron、容器 RestartPolicy/Compose、重启 VM、变更 Cloudflare、写生产数据库、创建 Lightsail 快照或部署任何新 Image。任何需越过架构/17 Bundle/privilege 的安装/持久重启守卫，必须先独立说明理由、影响、替代方案、测试和撤回，再获用户批准。
+
+**本续记仅本地仓库文档同步。** 所有生产只读命令为用户在已授权 SSH/Cloudflare 控制台执行，本次文档更新没有追加任何生产 Host 命令；保留历史原件在对话/操作者私有位置，**不提交** token、证书、`.env`、release-state 原文、root crontab 全量 dump 或截图中的账号标识。首次远端交付另待用户审阅授权，PR 必须目标 `dev` 且 CI 全绿方可合并。
+
+
+
