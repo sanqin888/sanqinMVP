@@ -1,5 +1,8 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-23 GitHub Runner 虚拟化能力探针本地实现（未跑）：**PR #2919、CI #7487 SUCCESS 后，`dev@0f457930` 完成 R2-A2-3 首验文档归档。按用户同批授权，在新本地分支增加[GitHub Runner 能力探针工作包](Runtime更新-R2-A2-3-GitHubRunner能力探针.md)：隔离 `ubuntu-24.04` PR 路径限定 CI、KVM 是否可读写、QEMU/OVMF 和零生产凭据的 Ubuntu Cloud Guest 两次 systemd 启动/一次 QEMU hard reset；首次 GitHub 实际执行仍待独立远端授权。KVM 缺失或 Guest 失败必须显式 BLOCKED，所有结果保留 `P0-01 NOT_RUN / S03/G06/S09 OPEN / C5-G2 NO-GO`，不能以绿色 CI 代替真正部分冻结掉电测试。未实现 Guard、正式 A2-3 持久化、Docker/备份/生产写操作。
+
+
 **2026-10-23 R2-A2-3 同版本隔离 Boot Barrier PoC 准备（LOCAL DOC / NOT_RUN）：**R2-A2-2 设计 PR #2918 在 CI #7485 SUCCESS 后合并 `dev@d7499297`。本地新建 [R2-A2-3 隔离 PoC 就绪审计与前置门禁](Runtime更新-R2-A2-3隔离启动屏障PoC就绪与持久化前置审计.md)：优先 P0-01“仅 API 改 restart=no，DB/Web/worker 仍 always 即隔离 VM 断电”的 **daemon 在自动恢复之前整体拒绝启动**，并覆盖 socket activation、daemon-only/live-restore/现存 writer、受限救援、合成 Clover 降级；其后才测试受保护资源新写者与 AuthZ。需确证准确可丢弃 Ubuntu/Docker/systemd 同版本 Guest 与 host-only 网络；当前执行环境没有完整 Docker/systemd VM，**真实 PoC 没有执行**。A2-3 root/离机双持久回执、CAS/epoch 和 Guard 安装均**未实现或授权**。仍 `P0-01 NOT_RUN / S03/G06/S09/R2-C4 OPEN / C5-G2 NO-GO`；本地文档审阅后方可另批提交，生产无任何修改。
 
 

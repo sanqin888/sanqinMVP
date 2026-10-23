@@ -73,3 +73,8 @@
 **下一次真实动作前需要的授权：**指定准确隔离 Host/Guest VM UUID，确认可丢弃镜像、准确 OS/Docker/systemd/Compose 版本，保留独立 SSH/控制台/VM 快照；批准**仅该隔离 VM**上安装 Guard 原型、模拟容器策略修改与故障注入的准确对象/回退流程。需变更架构边界（systemd/docker socket/权限/持久化状态合同）时另列影响、替代方案和独立批准。未经这些审批，即使 PoC 设计文档合并，也仍 `P0-01 NOT_RUN / S03 OPEN / G06 OPEN / S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。
 
 **本地交付门禁：**工作区首次改动后仅可生成本地改动报告供审阅，未经用户另行授权不得将本批新分支推远端/创建 PR。无本地 CI claim；文档阶段未运行源码 lint/build/test。
+
+## 8. 2026-10-23 — GitHub Actions Runner 能力探针实现（本地待审阅）
+
+在 PR #2919 的文档方案于 CI #7487 SUCCESS 后合并 `dev@0f4579301f429bf0da378e925c164108f9a731d4` 后，用户明确批准**先实现 GitHub 能力探针**（非完整 P0-01），新建 `feat/runtime-github-runner-vm-capability-probe-20261023`。详见 [独立工作包与能力判定](Runtime更新-R2-A2-3-GitHubRunner能力探针.md)：新增限定 `dev` PR 的独立工作流、`ops/runtime/probes/github_runner_vm_capability.py`、标准库 unittest，先探测 `/dev/kvm`、存储/内存，KVM 可用才在 disposable Runner 安装 QEMU/OVMF，下载已核对 SHA256SUMS 的官方 Ubuntu 24.04 Guest，禁用 Guest 网络并尝试**真实 systemd 两次引导和一次 QEMU hard reset**，保存最小证据。无 KVM/包/Guest 时输出明确 `BLOCKED`，不能伪报环境可行；每个结果强制 `P0-01=NOT_RUN / same_version_as_production=NOT_VERIFIED`。不改变现有 R0/A2-1/A2-2 生产冻结合同、主 CI、17 Bundle、备份/Docker/Cloudflare/VM/AWS、业务代码或迁移。**当前仅 MCP-workspace 本地源码，CI 和实际 Guest 均未运行**，首次远端提交需另获用户授权。G06/S03/S09/R2-C4 OPEN，C5-G2 NO-GO。
+
