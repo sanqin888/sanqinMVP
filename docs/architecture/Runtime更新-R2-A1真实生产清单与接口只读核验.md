@@ -123,4 +123,12 @@
 
 **更新后状态：`H11-TIMERS PASS_SCOPED / H11-SERVICES PARTIAL / H12-UBUNTU EMPTY PASS_SCOPED / H12-SYSTEM-FILENAMES PASS_SCOPED / G01 VERIFIED SCOPED / G02 PARTIAL / G03 PARTIAL / G04–G07 OPEN / R2-A1 OVERALL PARTIAL / R2 C4 OPEN / C5-G2 NO-GO`.** 本批无生产更改、无 Runtime 执行或推送；不能进入冻结或 AWS 生产快照阶段。
 
+## 9. 2026-10-23 — R2-A1-HOST-READ-002 生产入口/实装身份延续审计（新本地分支）
+
+继已合并 PR #2913、#2914（#2914 CI #7476 SUCCESS），从 `origin/dev@d98acb089448836bdfef82fa5c498329b027ba52` 独立建立 `docs/runtime-r2a1-host-read-002-20261023`。本次仅复核已知 H01–H12、现役 MCP 的固定 `system_status / docker_status`（UTC 12:20:56，四业务容器仍 healthy）、最新 Runtime/Release/Backup/MCP 源码，不发起 H14–H17 Host 查询，不读取生产 Runtime 磁盘文件或凭据。
+
+**新增的完整报告：**[R2-A1-HOST-READ-002 — 启动入口、Cron、Runtime 实装身份与 R2-A2 适配器条件](Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md)。报告区分 docker/Compose/deploy/backup/cron/apt/nginx/Cloudflared/SSH/SSM/MCP 的启动风险与必要管理能力；提供 H14–H17 **未执行**、须用户单独批准的准确只读命令/脱敏/rc 条件，以及 17+Manifest 已安装 SHA 校验的固定路径候选；root/其他用户 Cron 的 sudo 查询明确另需许可，不以文档本身视为获批。
+
+**裁定不越级：`G01 PASS_SCOPED / G02 PARTIAL / G03 PARTIAL / G04–G07 OPEN / R2-A1 OVERALL PARTIAL / R2/C4 OPEN / C5-G2 NO-GO`。** 现役应用镜像标记 `ff5be8d5…`、历史 Runtime 来源 `a84b7200…` 与 GitHub `main/dev` 不等于本批实测 17+Manifest 字节/Release state；SSM/EIC/MCP active 不证明独立故障救援可达。仍未进行任何容器策略变更、Cron/systemd/AWS 操作、维护冻结或快照。R2-A2 仅可进入**离线设计与合成验证准备**，真实 adapter、正式部署和生产执行须按新证据及另行授权审查；首次远端推送/PR 同样单独授权。
+
 
