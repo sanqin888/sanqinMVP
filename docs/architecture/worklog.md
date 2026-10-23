@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-23 — R2-A2-1 Maintenance Fence 离线模型与失败测试
+
+**LOCAL SOURCE / 25 SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED。** 用户授权开始 R2-A2 离线模型/失败测试；基于 PR #2916 已合并的最新 `origin/dev@64f9968f9e1dab2cbed2fc10390466a89afd6cb2` 创建 `feat/runtime-r2a2-offline-maintenance-fence-20261023`。复核完整 AGENTS、当前 R0/AWS/R2-A1-HOST-READ-002、现有 NormalUpdateFlow/原维护合同/测试和 ops_runtime CI。Runtime/Ops 内新增 `maintenance_fence_contract.py`、`maintenance_fence.py` 与 25 个聚焦 unittest：准确原策略和 writer/startup 分类、owner/txid/epoch/request/registry 绑定、双份持久化意图回执、连续新鲜观察、事故与只供复核的重载；所有业务 verdict DENY，模型权限恒 false。Synthetic Host/双 bytes 覆盖部分冻结/两份记录分叉/中断、旧回执/错误身份、容器重建/策略漂移、凭据/管理/外部事件未知；Clover 开发 Tunnel、SSH/docker.socket/系统任务保持 PRESERVE。**没有真实持久化/CAS/跨进程锁、Host/AWS/安装/恢复放行 adapter，也未对接 NormalUpdateFlow；本地源码不证明生产屏障成立。** A 类纯新增内部切片，仅同 owner/标准库依赖；无业务 owner/跨上下文边/债务/SCC/scanner baseline/兼容/17 Bundle/CI/锁/Prisma/migration 改动。同步 [R2-A2 工作包](Runtime更新-R2-A2-MaintenanceFence离线模型与失败测试.md)、依赖图和 R0；按工作日志容量规则核对现卷全文低于 1,000,000 UTF-8 字节，不需分卷。MCP 未开放 lint/build/test，测试仅编写和静态审阅，未执行/未推送/无 PR，无生产/SSH/Guest/root/Docker/AWS 动作。**R2-C4 OPEN / S01–S12 OPEN / R1-C1 OPEN / G06 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED**；本批先停本地供审阅，远端及后续 adapter/生产实施须各自授权。
+
 ## 2026-10-23 — R2-A1 HOST-READ-002 现场 H14–H18/G03/G05/G07 收口与文档同步
 
 **DOCUMENTATION ONLY / LOCAL REVIEW / NO PUSH / NO PRODUCTION MUTATION。** 原 HOST-READ-002 文档由 PR #2915、CI #7478 SUCCESS、squash `3ba4ac2b2496c5b1411ff16f3d5a65499d68133f` 进入 dev；本次从最新 `origin/dev` 建独立分支 `docs/runtime-r2a1-host-evidence-closeout-20261023`，将随后经用户批准在生产 SSH 和 Cloudflare 控制台取得的 H14–H18、G03 root Cron、G05 Release State、G07 存储证据同步到 [HOST-READ-002 §§8–12](Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md) 与 [R2-A1 §10](Runtime更新-R2-A1真实生产清单与接口只读核验.md)。记录每批可见的 UTC 时间、rc、SHA、策略、异常和推论边界；受保护原文/Cloudflare Token/证书/`.env` 不进 Git。历史「尚未执行」条款仅表示当时审批状态，不覆盖本轮后来执行的真实查询。
