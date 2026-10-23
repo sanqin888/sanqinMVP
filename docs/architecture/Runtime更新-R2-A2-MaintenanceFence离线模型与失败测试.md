@@ -87,3 +87,19 @@ python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'
 A2-1 本地源码/测试/多文档同步与源码 CI 已完成；远端交付已获授权。当前补记 #7482 实际结果，最终文档提交仍需本 PR head 全部必需 Checks 通过后才合并 dev，最终 head/merge SHA 以 PR #2917 事件为准。此源码 CI 只关闭离线模型的自动化验证，不关闭 R2-A2 全部子项或生产验收。
 
 后续 A2-2/3 需分别审阅真实受限 adapter、准确持久化位置与权限/CAS/epoch 账本、Compose/deploy/backup 准入、受保护 systemd/boot guard 安装及撤回方案。A2-4 再对接现有 NormalUpdateFlow 并绑定 request/原策略/step completion/事故证据。任何涉及安装布局、固定 17 成员、root/sudo/MCP allowlist、systemd/Cron/容器策略、生产或 AWS 的变更，须说明影响、替代方案和测试后另获明确授权。S03/S09、独立救援 G06、PG/WAL/外部事件和同平台 AWS 恢复仍需真实验收，不能由本批合成测试推定。
+
+## 7. 2026-10-23 — R2-A2-2 禁入 adapter / 安装权限 / 撤回方案（本地待审阅）
+
+PR #2917 已通过 CI 合并为 `dev@fac45616`。在新的文档专用分支 `docs/runtime-r2a2-2-fence-adapter-permission-design-20261023`，按照 A2-1 源码/测试与 R2-A1 的实际 Host 清单，形成 [R2-A2-2 审阅方案](Runtime更新-R2-A2-2禁入适配器与安装权限撤回设计.md)：准确 Docker 四业务容器、docker.socket、Clover preserve、Compose/deploy root 调用、备份 timer/service/脚本/rclone/helper 的入口与副作用边界；六个候选 adapter；路线 A 已知入口守卫的直接 Docker API 绕过限制与路线 B Engine/AuthZ/权限收敛的风险；root-owned 原策略/持久凭据/双回执/CAS 的建议安装位置、预安装撤回与维护事故不可卸载的区分，以及逐项负例测试。
+
+**阻塞事项：**源码 `frozen_policy()` 为 CONTROL systemd 单元规定 `masked`，但本地 unit（例如备份 service/timer）若文件已在 `/etc/systemd/system`，按 systemd 官方 mask 语义不一定能成功；直接脚本/Helper、Docker socket root 级权限不能仅靠 drop-in/wrapper 统一禁入。修改当前模型期望、变更真实 unit/sudoers/权限、Docker daemon auth 插件或受保护 17+Manifest 均需事先列明影响并取得**单独授权**。本批**只写方案，未实现任何 adapter**，不调整旧 A2-1 合同/测试、不执行 VM/生产/AWS 操作；仍 `R2-C4 OPEN / S01–S12 OPEN / G06 OPEN / C5-G2 NO-GO`。提交远端亦需用户审阅授权。
+
+## 8. R2-A2-2 安全优先的异常重启选择（同一文档分支，待审阅）
+
+用户选择 **SAFE_STOP_DOCKER_ON_UNCERTAIN_RESTART**：`ARMING/FENCED/INCIDENT/UNKNOWN` 后若 VM 或 Docker daemon 需要重启，在 daemon 进行容器自动恢复前由**可信的 Host/systemd 启动屏障**拒绝启动**整个 Docker daemon**，不要求此时 Clover Tunnel 可用；SSH/独立恢复通道不能依赖 Docker 或 AuthZ。正常未中断的维护仍保留 Clover 原 `unless-stopped` 与独立路径，不主动停它。**这属于事故降级，而非把 SANDBOX/PRESERVE 改为 CONTROL；A2-1 目前无法将事故态 Clover 停止解释成“FROZEN PASS”，应记录 INCIDENT 并在未来单独审阅版本化合同。**
+
+详细 [A2-2 §3.1 启动屏障、§3.2 资源禁入、§6.1 启用状态表、§8 P0 隔离验收](Runtime更新-R2-A2-2禁入适配器与安装权限撤回设计.md)。维护覆盖不再只凭四容器/Compose 标签，还需封住 DB volume、Uploads、Runtime、Docker socket、备份远端、宿主/网络新写入者。安装未启用、维护已 ARMING、状态损坏、离机不可达及释放待复核均有拒绝语义；**已安装主机状态文件缺失不能解释为从未安装/已经解除维护**。入口先排他、持久提交 ARMING 再排空；A2-3 真实本机+离机持久化、CAS/epoch/跨进程独占实现前，只允许离线/隔离验证。**同版本隔离 PoC 第一项必须是：只改 API restart=no 后断电，DB/Web/worker 仍 always，重启后整个 daemon 启动受阻且无生产写入，Clover 可暂不可用，独立 SSH 救援仍可达。**
+
+本次仅增补**设计文档**，没有修改 A2-1 源码、25 项测试、17 Bundle、任何 Docker/systemd/VM 安装或真实安全状态。**S03 / G06 / S09 OPEN；C5-G2 NO-GO**；后续不同架构/权限变更与远端交付均需分开授权。
+
+
