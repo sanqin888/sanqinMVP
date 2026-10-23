@@ -1,8 +1,8 @@
 # R2-A2 — Maintenance Fence 离线模型与失败测试
 
-**日期：2026-10-23（America/Toronto）。状态：A2-1 LOCAL SOURCE / 25 SYNTHETIC TESTS AUTHORED / NOT RUN / NOT PUSHED。**
+**日期：2026-10-23（America/Toronto）。状态：A2-1 SOURCE CI VERIFIED / 25 SYNTHETIC TESTS INCLUDED / DEV DELIVERY AUTHORIZED。**
 
-基线为已合并 R2-A1 H14–H18 文档的 `origin/dev@64f9968f9e1dab2cbed2fc10390466a89afd6cb2`（PR #2916）；本批分支 `feat/runtime-r2a2-offline-maintenance-fence-20261023`。用户本次明确要求开始 R2-A2 的离线模型和失败测试，覆盖 [HOST-READ-002 §5 A2-1 / §12](Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md)。该授权只覆盖本地源码、合成测试和文档；首次远端交付须审阅后另行批准。
+基线为已合并 R2-A1 H14–H18 文档的 `origin/dev@64f9968f9e1dab2cbed2fc10390466a89afd6cb2`（PR #2916）；本批分支 `feat/runtime-r2a2-offline-maintenance-fence-20261023`。用户本次明确要求开始 R2-A2 的离线模型和失败测试，覆盖 [HOST-READ-002 §5 A2-1 / §12](Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md)。用户审阅本地报告后已明确授权提交远端；现为 [PR #2917](https://github.com/sanqin888/sanqinMVP/pull/2917) → dev。源码提交 `8d2425d9a63112a795c1c73ca7ce18c04ea08165` 的 [CI #7482](https://github.com/sanqin888/sanqinMVP/actions/runs/39969268220) SUCCESS；后续仅补记本次验证，最终文档 head 的 Checks 和合并事件仍须另核，本文不提前声明它已合并。
 
 **门禁不变：R2-C4 OPEN / AWS S01–S12 OPEN / R1-C1 OPEN / C5-G2 NO-GO / S2 DAILY EXPANSION PAUSED。** A2-1 源码准备不是完整 R2-A2 关闭，更不是生产 Maintenance Fence 已建立。
 
@@ -71,9 +71,9 @@
 | 重载/证据 | 准确另渠道 pin、完整规范 bytes、不可伪造 authority、首次事故不被覆盖、摘要之外无原始错误泄露 |
 | 架构 | 仅标准库/同 Runtime 内部导入，无 live IO/CLI/动态执行/恢复放行入口，仍在固定 17 Bundle 外 |
 
-**实际状态：25 个测试方法已编写、源码和测试逻辑已静态审阅；没有执行 unittest、lint、build、依赖扫描或 GitHub CI，也没有任何真实 Host/SSH/Guest/AWS/Docker 运行。** 内存 Fake 的 crash 只验证模型分支和拒绝语义，不证明真实磁盘掉电、跨重启屏障或 AWS 恢复。
+**实际状态：源码 `8d2425d9…` 的 GitHub CI #7482 SUCCESS。** ops-checks 实际运行既有 Runtime discovery，`Ran 559 tests in 6.990s / OK`，包含本批全部 25 个新测试；同作业 Release `Ran 45 tests / OK`，Runtime shell 语法检查通过。其余检查按既有 change-scope 成功或正常跳过，无 CI 修复、无工作流变更。MCP-workspace 仍未执行 lint/build/test 或依赖扫描，没有任何真实生产 Host/SSH/Guest/AWS/Docker 运行。 内存 Fake 的 crash 只验证模型分支和拒绝语义，不证明真实磁盘掉电、跨重启屏障或 AWS 恢复。
 
-按 AGENTS.md §§1/4/10，MCP-workspace 未开放执行权限。本批只编写测试，首次远端交付先停在本地供用户审阅。授权后沿用既有 `.github/workflows/ci.yml` 的 ops_runtime → ops-checks：
+按 AGENTS.md §§1/4/10，MCP-workspace 未开放执行权限，初次实现曾停本地供审阅；用户授权后已由 GitHub Actions 实际执行。沿用既有 `.github/workflows/ci.yml` 的 ops_runtime → ops-checks：
 
 ```bash
 bash -n ops/verify-runtime-readiness.sh
@@ -84,6 +84,6 @@ python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'
 
 ## 6. 下一步与退出条件
 
-本批完成门禁是本地源码/测试/多文档同步和差异审阅，随后等待用户授权远端 PR → dev → 全绿 CI → 合并。A2-1 取得实际 CI 结果后再更新本条；不提前标记通过。
+A2-1 本地源码/测试/多文档同步与源码 CI 已完成；远端交付已获授权。当前补记 #7482 实际结果，最终文档提交仍需本 PR head 全部必需 Checks 通过后才合并 dev，最终 head/merge SHA 以 PR #2917 事件为准。此源码 CI 只关闭离线模型的自动化验证，不关闭 R2-A2 全部子项或生产验收。
 
 后续 A2-2/3 需分别审阅真实受限 adapter、准确持久化位置与权限/CAS/epoch 账本、Compose/deploy/backup 准入、受保护 systemd/boot guard 安装及撤回方案。A2-4 再对接现有 NormalUpdateFlow 并绑定 request/原策略/step completion/事故证据。任何涉及安装布局、固定 17 成员、root/sudo/MCP allowlist、systemd/Cron/容器策略、生产或 AWS 的变更，须说明影响、替代方案和测试后另获明确授权。S03/S09、独立救援 G06、PG/WAL/外部事件和同平台 AWS 恢复仍需真实验收，不能由本批合成测试推定。
