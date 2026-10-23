@@ -131,4 +131,17 @@
 
 **裁定不越级：`G01 PASS_SCOPED / G02 PARTIAL / G03 PARTIAL / G04–G07 OPEN / R2-A1 OVERALL PARTIAL / R2/C4 OPEN / C5-G2 NO-GO`。** 现役应用镜像标记 `ff5be8d5…`、历史 Runtime 来源 `a84b7200…` 与 GitHub `main/dev` 不等于本批实测 17+Manifest 字节/Release state；SSM/EIC/MCP active 不证明独立故障救援可达。仍未进行任何容器策略变更、Cron/systemd/AWS 操作、维护冻结或快照。R2-A2 仅可进入**离线设计与合成验证准备**，真实 adapter、正式部署和生产执行须按新证据及另行授权审查；首次远端推送/PR 同样单独授权。
 
+## 10. 2026-10-23 — HOST-READ-002 用户现场已执行结果 / Gate 续记
+
+**证据入口：**[HOST-READ-002 §§8–12](Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md) 逐项列出 H14–H18、G03 root Cron、G05 Release State、G07 磁盘/DB Volume 的 UTC 时间、退出码、准确 owner/mode/SHA、Docker/Cloudflare 路由及截图结果和负证据。该批由用户在生产 SSH（只读，获单独批准的 root 字段查询除外）及 Cloudflare 控制台实际观察；**不是**旧 §9 「未执行候选」的重复宣告。PR #2915 CI #7478 SUCCESS、merge `3ba4ac2b2496c5b1411ff16f3d5a65499d68133f` 已交付原审核合同，本续记使用独立本地分支且尚未交付。
+
+- **H14/G02：**完整 services/unit files/sockets 与 9 个固定 unit 字段、SSM/EIC unit，`rc0`；`docker.socket` active，备份 timer enabled/waiting、SSH/MCP active、SSM agent running、EIC 当前 inactive。`G02 PARTIAL`，不能用此证明故障独立救援可用或跨重启冻结。
+- **H15/G03：**系统 Cron `/etc/crontab`、`e2scrub_all` 和日/周运行项、apt timers/周期配置、unattended 已装默认行为均已直接读取；`ubuntu` 私有任务空，root `sudo -n crontab -l` 返回 `no crontab for root`、`rc=1`（正常无任务语义）。APT `Unattended-Upgrade=1` 但本机未显式启用 Auto-Reboot，已装实现默认 False；服务重启和其他用户 Cron 未证。`G03 PASS_SCOPED`。
+- **H16/G05：**root-owned `/opt/sanq/runtime`、Manifest SHA256 `6f4fe7d6fcd9b819c79d153da297a950f15fd075e6553a530e87206191f40cf9`、来源 `a84b72007e6b4e82c981101e56c897355757c0ff`，固定 **17/17 manifestMatch True rc0**。另经用户批准只读 sudo 校验 root-owned state `phase=active`、`current=ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8`、`previous=a84b72007e6b4e82c981101e56c897355757c0ff`、`rc0`。当前 API/Web/worker 镜像 ID/RepoDigests 已记录；当前业务未升级最新 Image **是主动保持安全边界**，不能把 Runtime Manifest 来源与业务镜像当前版本强行等同。`G05 PASS_SCOPED / INDEPENDENT_PROVENANCE_OPEN`。
+- **H17–H18/G04：**实装 deploy/backup/helper hash 均匹配 Manifest；Docker/rclone 存在。`sanq-clover-dev-cloudflared` Docker 独立容器使用 `host` 网络、`unless-stopped`、2 个 RO bind（token/自定义 TLS 文件），无 Compose 标签；Cloudflare 控制台唯一显示的 Published application route 是 `clover-dev.sanq.ca → https://127.0.0.1:18080`，SNI name、CA Pool 两项定制，证书验证未关闭。观察时 `18080` 无监听，MacBook SSH 反向隧道不具当前端到端可用性证据。此容器按 Clover 本地 MacBook Sandbox 开发入口**保留且独立策略控制**，而非生产 API/Web worker 统一 stop 对象；Host 网络仍须维护期拒绝通向生产写接口。`G04 PARTIAL`。
+- **G07：**`/opt/sanq/runtime`、`/srv/sanq/uploads`、`/srv/sanq/backups`、`/home/ubuntu/sanq-assets/sounds` 全在 `/dev/nvme0n1p1` ext4 根盘。数据库 `sanq-app_pgdata` 是 Docker `local/local` 且 `CustomOptions=NO`，Docker root `/var/lib/docker`、内核挂载/`lsblk` 未显示该卷独立数据盘；直接穿越 DB 目录曾 `rc1 Permission denied`，后续间接核验证明高可信根盘覆盖，**不能涂改失败回执**。`G07 ROOT_DISK_COVERAGE PASS_SCOPED / OVERALL PARTIAL`；快照/PG WAL/远端 backup/新 VM 恢复仍 OPEN。
+
+**裁定：`G01 PASS_SCOPED / G02 PARTIAL / G03 PASS_SCOPED / G04 PARTIAL / G05 PASS_SCOPED / G06 OPEN / G07 ROOT_DISK PASS_SCOPED, OVERALL PARTIAL / R2-A1 INVENTORY READY FOR OFFLINE R2-A2-1 ONLY / R2-C4 OPEN / S01–S12 OPEN / C5-G2 NO-GO`。** 没有变更 Docker restart、systemd、Cron、AWS/IAM、Clover route、17 Bundle、Runtime 源码或数据；需要新的权限/持久 Boot Guard/正式安装/恢复演练须逐项另行授权，不能因本轮审计就宣告生产可更新。
+
+
 
