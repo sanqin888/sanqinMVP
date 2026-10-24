@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-06 固定源码字节加载与失败测试
 
-**2026-10-24（America/Toronto）｜REMOTE DELIVERY AUTHORIZED / 30 TEST METHODS AUTHORED / CI PENDING / SELECTED BYTES LOADER ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
+**2026-10-24（America/Toronto）｜SOURCE CI #7535 VERIFIED / 30 TEST METHODS INCLUDED / SELECTED BYTES LOADER ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
 
 前批 [PR #2937](https://github.com/sanqin888/sanqinMVP/pull/2937) 最终 head `88a774a2e15daeb7cf171d8f4699bb7cf977a110` 的 [CI #7531](https://github.com/sanqin888/sanqinMVP/actions/runs/40141759436) SUCCESS（Runtime 743 / Release 45，含 PREP-05 的28项），squash 合并 dev `102eeeb5ac0c7e6ca658a4436928354925af8559`。用户授权合并后继续；本批以该最新 dev 为基线，在独立缓存新增固定字节消费机制。用户现已授权本批远端 PR→dev、最终 head CI 全绿后合并并开始下一步；发布复核 dev 仍为 `95d470cad5c08f8d6f8d6c49e3ae7726dd1c6d46`，四份既有文档、五份前置源码、AGENTS 与 CI 的 Git blob 未漂移，通过独立缓存/GitHub 插件交付。完成时 dev 已由 PR #2938 推进至 `95d470cad5c08f8d6f8d6c49e3ae7726dd1c6d46`；该并行批只更新 TLS_ONLY 现场验收文档和原日志条目，没有修改代码、AGENTS、CI或依赖。本批已重对齐该最新基线，完整保留其日志更新，共享工作区保持原样。
 
@@ -45,14 +45,16 @@ RLock 只保护本进程本批 registry 操作；相同 candidate 的同时加�
 
 ## 4. 30项测试与当前验证
 
-`ops/runtime/tests/test_normal_runtime_source_loader.py` 编写30个 unittest 方法：从仓库读取当前三份真实源码，另用会立即 throw 的 inert bootstrap/unused adapter；只在未来 CI 中编译/执行这些候选副本。不执行真实 Host/root/Guest/VM/Docker/AWS 或任何维护/安装动作。
+`ops/runtime/tests/test_normal_runtime_source_loader.py` 编写30个 unittest 方法：从仓库读取当前三份真实源码，另用会立即 throw 的 inert bootstrap/unused adapter；已在本批 CI 中编译/执行这些候选副本，本地未执行。不执行真实 Host/root/Guest/VM/Docker/AWS 或任何维护/安装动作。
 
 覆盖同字节/同组类型与 canonical cache 污染隔离、无路径/finder回退、真实临时目录reader的 held-FD组合；错 pin/快照身份/缺项/重复/额外/异型/错大小/报告/字节在编译前拒绝、材料先复制；只选三模块及编译参数、全部语法先于任何执行；未知/相对/逆序/动态/退出后 import；初始化失败/中断；既有 namespace/子项保留、同候选占用/不同候选类型隔离/退出后重载；调用方异常原实例和registry漂移/外来项保留；候选 parser 类型/launch语义漂移；原核心由调用方显式提供 inert capabilities 才走11步、结果仍 BLOCKED/所有权威 false，以及缺能力仍拒绝、无第18成员/CLI/真实效果。
 
-本地仅完成 AST/静态导入与调用审阅、基线 Git blob、差异/空白与补丁可应用性核对。**30项已编写/审阅，尚未运行**；未运行本批模块/仓库 lint/build/test/扫描，前批 CI #7531 不覆盖本批新源码。后续远端交付须经实际 ci.yml Runtime/Release 及最终 head 全部必需 Checks；CI 平台上的 loader 测试不等于正式平台或 C1 验收。
+本地仅完成 AST/静态导入与调用审阅、基线 Git blob、差异/空白与补丁可应用性核对。**30项已由源码 CI #7535 实际覆盖，Runtime 773 / Release 45 均 OK**；本地未运行本批模块/仓库 lint/build/test/扫描，前批 CI #7531 不作为本批验证。最终 head 全部必需 Checks 仍为合并门禁；CI 平台上的 loader 测试不等于正式平台或 C1 验收。
 
 ## 5. 所有权、交付与后续
 
 新增静态同 owner 边 `normal_runtime_source_loader → normal_runtime_inputs / normal_runtime_launch / normal_runtime_source_snapshot`，以及从已固定 bytes 装配 launch/update/inputs 的有限运行期关系；这些模块均归 Runtime/Ops，当前只有测试消费。既有 inputs→update/launch、update→launch 和 reader/anchor 关系保留，无反向导入或新环、跨上下文边/债务、12-context owner/部署单元/兼容、依赖/锁、CI、Prisma/migration、17 Bundle、旧字段/guard 或 scanner baseline 改动；未运行生产依赖扫描，不宣称重算其基线。
 
 同步 R0、C1总包、依赖图和原 PREP-05 日志中的最终CI/合并事实；C1证据复用表同时补记 PR #2938 的 LAB_ONLY TLS_ONLY 四项及停止监听 PASS_SCOPED，实际 CAS 服务、正式身份/Guard 仍 OPEN。该限定实测不作为本批 loader 测试或正式平台认证。本批已获远端交付授权，使用独立功能分支 PR→dev，待本批实际 Runtime/Release 及最终 head 全部必需 Checks 全绿后才合并。下一步应先取得真实 CI，再把实际受信入口、平台/解释器/关键来源及保护输入、同字节 adapter 装配与必要真实验证随正式候选完成；不复制第二套核心，不拿 source loader 替代 R2/R3/R4 的真实效果。**C1 OPEN / REAL BOOTSTRAP NOT IMPLEMENTED / NO PRODUCTION AUTHORITY。**
+
+**同批远端验证：**[PR #2939](https://github.com/sanqin888/sanqinMVP/pull/2939) → dev；完整源码 head `42a5642d9b66f5d55910a9ff0e85847e50c79ad0` 的 [CI #7535](https://github.com/sanqin888/sanqinMVP/actions/runs/40143689266) SUCCESS，Runtime `773 tests / OK`（含本批30）、Release `45 tests / OK`，Runtime shell 语法检查通过，无需 CI 修复。当前同批只补验证记录，最终 head 仍须实际 CI 全绿才合并；最终 Checks/merge 状态以 PR 事件为准。
