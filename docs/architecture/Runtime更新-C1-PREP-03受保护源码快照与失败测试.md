@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-03 受保护源码快照与失败测试
 
-**2026-10-24（America/Toronto）｜LOCAL IMPLEMENTED / 27 TEST METHODS AUTHORED / TESTS NOT RUN / SOURCE PROVENANCE NOT AUTHENTICATED / C1 OPEN。**
+**2026-10-24（America/Toronto）｜SOURCE CI #7522 VERIFIED / 27 TEST METHODS INCLUDED / SOURCE PROVENANCE NOT AUTHENTICATED / C1 OPEN。**
 
 前批 [PR #2933](https://github.com/sanqin888/sanqinMVP/pull/2933) 最终 head `185f962368b1d52d28c29dce05e54098f18b5bd5` 经 [CI #7518](https://github.com/sanqin888/sanqinMVP/actions/runs/40137391840) SUCCESS（Runtime 649 / Release 45），squash merge `51c7d01ba5928b5532d9e965b78797b8e372382b`。本批根据用户“合并后开始下一步”及共享工作区占用时的本地缓存授权，新增真实 FD 读取能力和失败测试。用户现已批准远端交付，发布基线复核为 `dev@0fad2000c05b76d2d0ec7ccb2514cde0bc12f4e4`；保留随后 PR #2934 的 mTLS 实验服务及其 R0/日志记录，仅提交本批七文件增量。
 
@@ -57,7 +57,9 @@ reader 自身及 normal_runtime_launch 在本函数调用前已被 Python 加载
 - 读取期间同 bytes 换路径 inode、context 内改写/替换/额外输入、调用方原异常/中断不被覆盖、失败不恢复文件、自有 FD 不泄漏、原 proposal 被强行修改不改写快照。
 - 架构约束：不执行候选代码、不增加 CLI/执行或授权方法、不加入固定 17 Bundle。
 
-本地只进行 AST/导入/差异/空白和基线摘要静态核对，**没有执行 reader、仓库 tests/lint/build 或用本地缓存绕过 MCP 的测试规则**。27 项为已编写/已审阅，未声称通过。下次远端交付后以实际 ci.yml 的 Runtime unittest discovery 和 Release 检查为准；前批 CI #7518 不覆盖本批新增代码。
+本地只进行 AST/导入/差异/空白和基线摘要静态核对，**没有执行 reader、仓库 tests/lint/build 或用本地缓存绕过 MCP 的测试规则**。本批27项现已由实际 CI #7522 验证通过；本地未运行，前批 CI #7518 不被当成本批证据。
+
+**同批远端验证：**[PR #2935](https://github.com/sanqin888/sanqinMVP/pull/2935) → dev；完整源码 head `084a124c3342f2576a76f8da7b02817f042eedce` 的 [CI #7522](https://github.com/sanqin888/sanqinMVP/actions/runs/40139007584) SUCCESS，Runtime `690 tests / OK`（含本批27）、Release `45 tests / OK`、Runtime shell 语法检查通过，无需修复。当前同批只补验证记录，最终 head 仍须实际 CI 全绿才合并；最终 Checks/merge 状态以 PR 事件为准。
 
 API 语义核对参考 [Python 3.12 os](https://docs.python.org/3.12/library/os.html#os.scandir) 的 FD scandir/pread 与 [contextlib](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager)；文档只能说明接口机制，不证明本机权限、来源或运行结果。
 
@@ -65,4 +67,4 @@ API 语义核对参考 [Python 3.12 os](https://docs.python.org/3.12/library/os.
 
 这是 Runtime/Ops 内部原子新增能力，当前仅测试消费；唯一同 owner 新边为 `normal_runtime_source_snapshot → normal_runtime_launch`。没有跨上下文导入/债务、SCC/cycle/部署单元/兼容登记、依赖/锁、CI、Prisma/migration 或 17 Bundle 变更；未运行扫描器，不改 scanner baseline。
 
-本批源码/测试及 R0、C1 总包、依赖图和日志已同步并经用户授权远端交付，实际最终 head CI 尚待核对。下一步先让该 reader 通过实际 CI，再为同一正式候选补 sourceRoot 受保护锚点、来源/平台绑定和消费固定 bytes 的真实入口；R2/R3/R4 效果源码可继续并行准备。**C1 OPEN / REAL BOOTSTRAP NOT IMPLEMENTED / NO PRODUCTION AUTHORITY。**
+本批源码/测试及 R0、C1 总包、依赖图和日志已同步并经用户授权远端交付，源码 head 已通过 CI #7522，补记录后的最终 head 仍须重新核对。下一步先让该 reader 通过实际 CI，再为同一正式候选补 sourceRoot 受保护锚点、来源/平台绑定和消费固定 bytes 的真实入口；R2/R3/R4 效果源码可继续并行准备。**C1 OPEN / REAL BOOTSTRAP NOT IMPLEMENTED / NO PRODUCTION AUTHORITY。**
