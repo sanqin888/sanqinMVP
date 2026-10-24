@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — C1 最小可信执行基线对齐与候选准备
+
+**DOC-ONLY / BASELINE ALIGNED_LOCAL / INVENTORY COMPLETE_LOCAL / CANDIDATE PREPARATION STARTED / C1 OPEN / REMOTE DELIVERY AUTHORIZED / CI PENDING。** 按用户要求复工后 fetch 并核对 `origin/dev@08e5031cd9f8727e4bbe69cf18e86cf71367bedb`，重读当前 R0/AGENTS/CI、R1/S1、正常更新与 R2 Guard/CAS 代码和现有记录；GitHub 实核 PR #2927 最终 head/CI #7504 及 PR #2929 最终 head/CI #7508 SUCCESS，旧未 CI 字样保留历史解释。更新 R0 当前 C1/R1/R2 进度与旧 §9 适用范围、R1-B/C 与 S1 的默认闭包/见证要求、SYN A2-II 的条件触发定位；新增 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)，完成 I01–I12 实现盘点、证据复用/平台差异、旧 Python/完整闭包字段和双 Archive 输入衔接缺口、四项最终关闭条件。当前只有核心/离线模型与有限实测，真实 bootstrap、平台/关键依赖、完整 effect adapters 和正式同候选验收仍 OPEN；C1 源码准备可与 R2 并行，最终随正式执行候选收口。Runtime/Ops owner 不变，无代码/守卫、17 Bundle、依赖/锁、CI、Prisma/migration、跨上下文边/债务、SCC/scanner baseline 或兼容改动。工作日志现卷已核对低于 1,000,000 UTF-8 字节，新增后仍无需分卷。复工时已有 P2-C3C3-READ 文档改动，原工作区保留；用户随后明确授权提交远端、合并后开始下一步，并允许工作区占用时使用本地缓存/GitHub 插件。本次因此从最新 dev 在独立缓存重建 C1 七份文档，不带入 TLS 未提交内容、不暂存/提交或切换共享工作区；MCP 无 lint/build/test 权限，未运行，未操作 Mac/Guest/VM/root/Docker/AWS/生产。远端仅走功能分支 PR→dev，须最终 head CI 全绿才合并；PR/CI/合并证据随同批续记。**R2-C4 OPEN / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED**。
+
 ## 2026-10-24 — R2-A2-3 P2-C3C2 离线身份绑定/Wire 合同本地实现
 
 **P2-C3C1 PR #2928 / CI #7506 SUCCESS / dev@09db31ec；P2-C3C2 LOCAL_IMPLEMENTED / TESTS NOT RUN / NO PR。** 按前次已审 B 方案的最小范围，只在 MCP-workspace 新增 `ops/runtime/maintenance_off_host_auth_wire.py`、25 项 `test_maintenance_off_host_auth_wire.py` 离线负例及 [C3C2 实施记录](Runtime更新-R2-A2-3-P2-C3C2离线认证身份与Wire合同实施记录.md)。Wire v1 严格 canonical JSON、三种操作、32KiB 上限；只注入未实际验证的 synthetic peer certificate/CA 指纹和 enrollment、READ/SUBMIT 角色，校验状态/锚点/nonce、unknown-commit 读回策略；所有输出始终 DENY 且无网络/SSL/真实 CAS 执行权。没有修改 P1/A2-1、原 CAS SQLite、VB-04D1 及 17 文件 Bundle；没有 Mac/Guest/证书/Docker/生产操作。下一批 C3C3 先严格只读环境核验与独立权限申请；`P0-01 NOT_RUN / S03-G06-S09 OPEN / PRODUCTION NO-GO`。
