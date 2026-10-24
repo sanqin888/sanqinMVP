@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-04 源码目录锚点与失败测试
 
-**2026-10-24（America/Toronto）｜REMOTE DELIVERY AUTHORIZED / 25 TEST METHODS AUTHORED / CI PENDING / CURRENT-NAMESPACE PATH OBSERVATION ONLY / C1 OPEN。**
+**2026-10-24（America/Toronto）｜SOURCE CI #7525 VERIFIED / 25 TEST METHODS INCLUDED / CURRENT-NAMESPACE PATH OBSERVATION ONLY / C1 OPEN。**
 
 前批 [PR #2935](https://github.com/sanqin888/sanqinMVP/pull/2935) 最终 head `c6a1a15875b452be32d5d4e41835cdf9e1b909c3` 经 [CI #7523](https://github.com/sanqin888/sanqinMVP/actions/runs/40139311338) SUCCESS（Runtime 690 / Release 45，含 PREP-03 的27项）后，squash 合并 dev `a667b3a9209ed0124e475fa0b81d1bdf7e7594aa`。用户授权合并后继续，本批以该最新 dev 为基线，在独立缓存实现下一有限能力。用户现已授权本批远端 PR→dev、最终 head CI 全绿后合并并继续下一步；发布复核 dev 仍为 `a667b3a9209ed0124e475fa0b81d1bdf7e7594aa`，既有四份文档及核心/reader/AGENTS/CI 的 Git blob 未变化。共享工作区保留另一批 mTLS 文档和日志改动，本批继续独立缓存/GitHub 插件交付。
 
@@ -45,10 +45,12 @@ PREP-03 从调用方借出的目录 FD 读取固定源码字节，但不负责�
 
 覆盖正常完整目录链/固定字节、借入前清单复制；错pin/材料/owner/平台/不规范路径在 I/O 前拒绝；祖先错属主、组/他人可写/特殊 mode、缺失、symlink、非目录/O_PATH；叶目录与源码验证不被绕过；读取后换父目录不得进入调用方；scope 内父目录移动、相同源码重建新父 inode、权限漂移均拒绝；无关父级条目变化允许；异常/中断保留原因、不恢复路径、正常及失败 FD 释放；无 loader/CLI/公共替代根和17 Bundle边界。
 
-本地只进行 AST/导入、基线摘要、差异/空白与补丁可应用性静态核对，**没有执行本批模块或仓库 lint/build/test**。25项为已编写/审阅，未声称运行通过；前批 CI #7523 不覆盖本批新代码。下一远端交付须以实际 ci.yml Runtime/Release 及最终 head 全部必需 Checks 为准。
+本地只进行 AST/导入、基线摘要、差异/空白与补丁可应用性静态核对，**没有执行本批模块或仓库 lint/build/test**。25项已由本批源码 CI #7525 实际覆盖，Runtime 715 / Release 45 均 OK；本地仍未执行。前批 CI #7523 不作为本批验证。最终 head 全部必需 Checks 仍为合并门禁。
 
 ## 5. 所有权、交付与后续
 
 本批为 Runtime/Ops 内部原子新增能力，当前仅测试调用。新增同 owner 单向边 `normal_runtime_source_anchor → normal_runtime_source_snapshot / normal_runtime_launch`，既有 `source_snapshot → normal_runtime_launch` 保留；无反向引用或跨上下文边/债务、owner/部署单元/兼容、依赖/锁、CI、Prisma/migration、17 Bundle 或 scanner baseline 改动。未运行扫描器，不宣称重新计算生产依赖图。
 
 源码/测试、R0、C1总包、依赖图和日志已同步并经本地静态审阅，已获本批远端交付授权。通过独立功能分支 PR→dev 取得实际 CI；最终 head 全部必需 Checks 通过后才合并。下一步先取得实际 CI，再随正式候选完成来源/实际平台/关键输入与消费固定 bytes 的入口；不为旧全量闭包补无关实验。**C1 OPEN / REAL BOOTSTRAP NOT IMPLEMENTED / NO PRODUCTION AUTHORITY。**
+
+**同批远端验证：**[PR #2936](https://github.com/sanqin888/sanqinMVP/pull/2936) → dev；完整源码 head `eafe0188a1fe218277d118d7134dd78737b19bf2` 的 [CI #7525](https://github.com/sanqin888/sanqinMVP/actions/runs/40140724214) SUCCESS，Runtime `715 tests / OK`（含本批25）、Release `45 tests / OK`，Runtime shell 语法检查通过，无需 CI 修复。当前同批只补验证记录，最终 head 仍须实际 CI 全绿才合并；最终 Checks/merge 状态以 PR 事件为准。
