@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-2026-10-24 **C1-PREP-02 入口装配与关键来源绑定（SOURCE COMMENT / DOC ONLY / LOCAL）**：在 PR #2930 已合并、PR #2931 后的 `dev@b7e8d882` 仅修改 `normal_runtime_launch.py` 模块注释与 `normal_runtime_update.py` 能力接口注释，按 R0 对齐关键来源及旧摘要/目标原 Archive 的区别。[C1 候选入口装配与关键来源绑定方案](Runtime更新-C1候选入口装配与关键来源绑定方案.md) 已盘点原 11 步+abort 和真实接线缺口，未实现新入口/adapter。**已静态对照，无可执行 AST、导入、函数/字段、12-context owner、直接依赖边/债务、SCC/scanner baseline、兼容、部署单元或 17 Bundle 变化**；未运行扫描/Runtime 测试，代码 guard 与 C1 OPEN 不变。未来实际入口/平台适配应按其真实代码切片同步和验证。
+2026-10-24 **C1-PREP-02 入口装配与关键来源绑定（SOURCE COMMENT / DOC ONLY / LOCAL）**：在 PR #2930 已合并、PR #2931 后的 `dev@b7e8d882` 仅修改 `normal_runtime_launch.py` 模块注释与 `normal_runtime_update.py` 能力接口注释，按 R0 对齐关键来源及旧摘要/目标原 Archive 的区别。[C1 候选入口装配与关键来源绑定方案](Runtime更新-C1候选入口装配与关键来源绑定方案.md) 已盘点原 11 步+abort 和真实接线缺口，未实现新入口/adapter。**已静态对照，无可执行 AST、导入、函数/字段、12-context owner、直接依赖边/债务、SCC/scanner baseline、兼容、部署单元或 17 Bundle 变化**；本地未运行扫描/Runtime 测试；[PR #2933](https://github.com/sanqin888/sanqinMVP/pull/2933) 源码 head 的 CI #7517 SUCCESS（Runtime 649 / Release 45），当前只补记录，最终 head CI/merge 以 PR 事件为准；代码 guard 与 C1 OPEN 不变。未来实际入口/平台适配应按其真实代码切片同步和验证。
 
 2026-10-24 **C1 最小可信执行基线对齐与候选准备（DOC-ONLY / COMPLETE_LOCAL INVENTORY / C1 OPEN）**：按 R0 D1/§4.1 盘点正常更新核心/启动材料、固定 17 Bundle、R2 Guard/安装清单与离线 CAS/Wire，建立 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md) 的关键来源/平台/权限缺口和证据复用表；旧全量闭包/第三方见证不再默认强制，SYN 资源隔离保留为条件触发专项，最终 C1 随正式候选验收。本批没有改代码或代码守卫，**12-context owner、跨上下文直接导入/债务、依赖边、SCC/cycle/scanner baseline、兼容登记、部署单元和 17 Bundle 均无变化**；未运行扫描或测试，不把源码盘点登记成生产验证，既有 R2/TLS 就绪审计按原批次保留。
 
