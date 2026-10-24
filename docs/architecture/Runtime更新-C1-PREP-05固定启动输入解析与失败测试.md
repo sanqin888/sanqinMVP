@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-05 固定启动输入解析与失败测试
 
-**2026-10-24（America/Toronto）｜REMOTE DELIVERY AUTHORIZED / 28 TEST METHODS AUTHORED / CI PENDING / INPUT HASH MATCH ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
+**2026-10-24（America/Toronto）｜SOURCE CI #7529 VERIFIED / 28 TEST METHODS INCLUDED / INPUT HASH MATCH ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
 
 前批 [PR #2936](https://github.com/sanqin888/sanqinMVP/pull/2936) 最终 head `78f67dad2b9221f0f383321b0b8eea7b37663345` 的 [CI #7527](https://github.com/sanqin888/sanqinMVP/actions/runs/40140803220) SUCCESS（Runtime 715 / Release 45，含 PREP-04 的25项），squash 合并 dev `3c4823bf95672b8930990892cd253aad705754b2`。用户授权合并后继续；本批以该最新 dev 为基线，在独立缓存完成下一项输入边界。用户现已授权本批远端 PR→dev、最终 head CI 全绿后合并并开始下一步；发布复核 dev 仍为 `3c4823bf95672b8930990892cd253aad705754b2`，四份既有文档、launch/update、AGENTS 与 CI 的 Git blob 均未漂移，本批通过独立缓存/GitHub 插件交付。共享工作区的另一批 mTLS 文档/日志保持原样。
 
@@ -46,10 +46,12 @@ Python JSON 的重复键/数值 hook 与解析前大小限制机制按 [官方 j
 
 覆盖：精确回环至原类型/不可变返回且不调用 Flow；两 pin 在 JSON 前核验、错/零/异型 pin、mutable/非bytes、空/超预算、原字节变化；顶层/嵌套重复键、异常 JSON/根类型/编码/BOM/空白排序转义、浮点/非有限数/长整数/深嵌套；全部 launch/request 字段缺失及未知字段、平台/解释器/env/路径/身份/false 声明漂移、bool/int 混同、源 pin/清单/bootstrap/subprocess 错误；launch摘要和事务交叉绑定、同版/同 Archive/状态与存储目标守卫；旧摘要必填而无旧字节依赖；最大 argv 转义预算、自洽新 pin 不授信、输出不保留可变 dict、无 I/O/loader/CLI/Flow/第18成员。
 
-本地只进行 AST/导入与调用边、基线摘要、差异/空白和补丁可应用性静态核对，没有执行模块或仓库 lint/build/test/扫描。**28项已编写/审阅，尚未运行**；前批 CI #7527 不覆盖本批新代码。后续远端交付须以实际 ci.yml 的 Runtime/Release 和最终 head 全部必需 Checks 为准。
+本地只进行 AST/导入与调用边、基线摘要、差异/空白和补丁可应用性静态核对，没有执行模块或仓库 lint/build/test/扫描。**28项已由源码 CI #7529 实际覆盖，Runtime 743 / Release 45 均 OK**；本地仍未执行。前批 CI #7527 不作为本批验证。最终 head 全部必需 Checks 仍为合并门禁。
 
 ## 5. 所有权、状态与下一步
 
 本批为 Runtime/Ops 内部原子新增能力，当前只由测试消费；新增单向边 `normal_runtime_inputs → normal_runtime_launch / normal_runtime_update`，既有 update→launch 保留，无反向引用或新环。未改变跨上下文边/债务、12-context owner、部署单元/兼容、依赖/锁、CI、Prisma/migration、17 Bundle、原字段/guard 或 scanner baseline；未运行扫描器，不宣称重新计算生产依赖图。
 
 同步 R0、C1总包、依赖图及原批次日志中的 PREP-04 最终CI/合并结果。本批已获远端交付授权，通过独立功能分支 PR→dev，待本批实际 Runtime/Release 及最终 head 全部必需 Checks，全绿后才合并。正式入口还需固定实际平台/解释器和关键来源、外部 pins/关键输入保护、从已核对字节实际加载同一核心、真实能力装配与必要验证；这些随 R2/R3/R4 准备推进，C1 最终跟随正式执行候选完成。**C1 OPEN / NO PRODUCTION AUTHORITY。**
+
+**同批远端验证：**[PR #2937](https://github.com/sanqin888/sanqinMVP/pull/2937) → dev；完整源码 head `be783b091bc5604283166d0d92621ddb1840fa53` 的 [CI #7529](https://github.com/sanqin888/sanqinMVP/actions/runs/40141511752) SUCCESS，Runtime `743 tests / OK`（含本批28）、Release `45 tests / OK`，Runtime shell 语法检查通过，无需 CI 修复。当前同批只补验证记录，最终 head 仍须实际 CI 全绿才合并；最终 Checks/merge 状态以 PR 事件为准。
