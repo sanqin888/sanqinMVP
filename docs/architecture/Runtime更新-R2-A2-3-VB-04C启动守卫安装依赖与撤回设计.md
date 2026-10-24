@@ -1,5 +1,7 @@
 # R2-A2-3 — VB-04C Boot Guard 安装边界、启动依赖与事故撤回设计
 
+> **2026-10-24 VB-04D1 进度续记（原 VB-04C 状态保持历史时点）：** VB-04C 已由 PR #2926 / CI #7501 合并 `dev@05ec6ef8`。后续按用户授权在 [VB-04D1 离线 Manifest 实施记录](Runtime更新-R2-A2-3-VB-04D1离线Unit依赖与安装Manifest实施记录.md) 新增纯声明/静态依赖环校验和 24 项聚焦测试方法，**尚未运行 CI / 尚无安装、启动、OFF_HOST 认证或 P0-01 验证**；首次远端提交仍待审阅授权。
+>
 > **2026-10-24（America/Toronto）｜DESIGN ONLY / LOCAL REVIEW / INSTALL NOT AUTHORIZED / P0-01 NOT_RUN / PRODUCTION NO-GO**。基线 `dev@427a7195d54d90f4ebb0306143639b1f7f02484b`（PR #2925、CI #7499）。依据操作者本对话 VB-04A/B 只读回执，**不代表 MCP 登录 Mac/Guest**。此文件不含可直接部署的 Unit、安装器或执行授权。
 
 ## 1. 依据、所有权与不可改变的安全承诺

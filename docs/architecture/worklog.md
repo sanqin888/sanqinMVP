@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — R2-A2-3 VB-04D1 离线 Unit/安装 Manifest 合同本地实现
+
+**LOCAL IMPLEMENTED / TESTS NOT RUN / REVIEW PENDING / NO PR。** [VB-04C](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md) 通过 PR #2926 / CI #7501 已合并 `dev@05ec6ef8`。用户授权合并后开始下一阶段，现仅在 MCP-workspace Runtime/Ops 新增 `maintenance_boot_guard_install_manifest.py` 与聚焦负例 `test_maintenance_boot_guard_install_manifest.py`，并编写 [VB-04D1 本地记录](Runtime更新-R2-A2-3-VB-04D1离线Unit依赖与安装Manifest实施记录.md)。严格约束 Ubuntu systemd 249 / docker.service fd://、docker.socket 监听/触发、containerd、Unit 显式 After/Before 静态图、9 项 root 文件/目录及 SHA/mode 意图、service/socket 双入口重验；任何候选回执仍 `decision=DENY`，五项绕过/离机/G06/运行时未证风险强制保留。**没有真正 unit 文本、安装器、daemon/Socket 服务、文件/权限读写、mTLS、VM/生产操作；P1/A2-1 DENY 和 17 Bundle 未修改。** `P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。未运行 workspace 测试，需用户审阅后才授权远端 GitHub CI。
+
 ## 2026-10-24 — R2-A2-3 VB-04C Boot Guard 安装/启动依赖/撤回设计（本地审阅）
 
 **VB-04A/B OPERATOR-READONLY PASS_SCOPED / VB-04C DESIGN COMPLETE_LOCAL / NO ROOT OR VM WRITE / NO PR。** PR #2925（CI #7499 SUCCESS）已合并 `dev@427a7195`，P2-C3B 仅 Mac SQLite process-level PASS_SCOPED。最新操作者 Mac/Guest 回执确认 Recovery Clone 正在运行、原 Jammy VM 保持 poweroff、仅 Host-only NIC、Guest UID1000、Linux 5.15/systemd 249；`docker.service` 的 `/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock` 明确依赖 `docker.socket`，后者监听 `/run/docker.sock` 并可触发前者；containerd 独立 Unit，三个 Unit 目前 inactive/disabled、无 drop-ins/daemon.json 与相关正在运行进程。已形成 [VB-04C 安装依赖与撤回设计](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md)，区分可信安装与双回执、service+socket 准入、直接 dockerd/既有 shim writer/备份旁路、ARMING 竞态、G06 独立救援与预登记后禁止自动卸载。**未安装、未授权启动 Docker、未测试 P0-01A–F**；下一批提议 VB-04D1 仅离线 Unit/安装 manifest 合同/负例，P2-C3C/真实 root 另审批。`S03/G06/S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`；文档分支本地待审，未推送。
