@@ -1,5 +1,7 @@
 # R1-B S4/S5 只读 Guest FD 采集与 R1-C S6 准备
 
+> **2026-10-24 现行主线与历史适用范围：**依据 R0 D1/§4.1，已完成文档对齐并启动 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)。**C1 OPEN / CANDIDATE PREPARATION STARTED**；最终验收绑定真实 bootstrap、实际平台、关键依赖/输入与完整能力接线。R1C-1 已在 PR #2888 / CI #7417 合并；S5 原件 PASS_SCOPED 继续复用。旧 §§7/9 中完整 CPython/ELF/dlopen 逐字节消费覆盖及第三方审阅要求不再作为默认 C1 前置；它们作为历史/条件触发的专项合同保留。§§25–29 的 quota/cgroup/无孤儿缺口只阻断那条 SYN 采集路线，不要求主线先配置该环境；原回执、v1 解析器和运行禁令不改，C0 不重开。
+
 > **2026-10-22 R0 取证规则更新 + C0 限定收口（本地待审）：**后续 R1-B/C、C0–C5、C1-SYN、Host/Guest/Native 的**第三方见证人员、PDF、邮件、签署和复算底稿均取消**，仅保留 [R0 §4.1](Runtime更新-R0冻结设计.md) 定义的目标 VM/SSH、源码/输入、执行权限、实际结果和内部技术比对。按新标准，**历史 [C0 §7](R1C-2C-C-C0独立身份与保管链证据复核.md) = `CLOSED / LIMITED-ACCEPTED`**（本批与新 R0 同时合并方生效）；旧 §14–§17 `OPEN / LIMITED`、B-004 见证和失败回执保留当时真实结论，不追索见证底稿。未来 VM/VDI/SSH host key 实际核对是 C1-SYN A0 新会话 Preflight，**不是重新开放历史 C0**。Guest/root/strace 仍需单独用户授权，审阅器 `BLOCKED` 不自动放行。
 
 **2026-10-20 最新接续：R1C-1 SOURCE MERGED / SOURCE CI VERIFIED；R1C-2A LOCAL CONTRACT AUTHORED / USER REVIEW PENDING。** R1C-1 已通过 [PR #2888](https://github.com/sanqin888/sanqinMVP/pull/2888) / [CI #7417](https://github.com/sanqin888/sanqinMVP/actions/runs/39478774789) SUCCESS，并合并 `dev@54638f2e`；§8 留存当时本地实现状态。R1C-2A 的观察覆盖、威胁模型及独立 v1 证据合同见本文件 §9；尚未实现观察器/真实 bootstrap/effect adapters、实际 S6 或独立 C1 验收。§6 S5 PASS_SCOPED 不变，R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED。
@@ -107,6 +109,8 @@ Mac guest-root 调用为 17:36:21.767219–17:36:35.653106 UTC，Guest collector
 R1/C1 OPEN、G2 NO-GO、S2 daily PAUSED、C2 既有限定 CLOSED。下一步进入 [R1-C S6 就绪与首批源码范围](C5-G2-R1-B-只读GuestFD采集器与执行审批.md#7-r1-c-s6-就绪审计与实施拆分)，完整 import/ELF/dlopen、正式正常更新入口及独立 C1 裁定均未完成。本轮只更新文档，用户已授权将本续记与 R1-C 准备包一同提交；最终 CI/合并以本批 PR 为准，S5 的批准不延伸至新执行命令。
 
 ## 7. R1-C S6 就绪审计与实施拆分
+
+> **2026-10-24 适用修订：**本节是 10 月 20 日原方案。现行最小可信基线、证据复用和候选缺口见 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)；正式入口/同候选的要求继续保留，§7.5 全量观察矩阵改为有具体风险时才定向采用的专项材料，不默认全部实施。
 
 **日期：2026-10-20（America/Toronto）；状态：READINESS AUDITED / EXECUTOR AND LIVE S6 NOT IMPLEMENTED / DOC-ONLY DELIVERY AUTHORIZED。**
 分支：`docs/runtime-r1c-readiness-s5-closeout-20261020`；基线 `origin/dev@acd7f19311bd1117aab4f67f3c293f1a47d8758e`。本轮完成 S5 证据收口和 R1-C 实施拆分，无新源码或现场执行；用户已审阅并授权本批远端交付，最终 CI/合并以本批 PR 的实际 head 检查与事件为准。
@@ -419,6 +423,8 @@ R1C-2B 首先只写 **无执行、无 filesystem/Guest/root/网络、仅 caller-
 **2B 允许验证的最高状态**：`OFFLINE CONTRACT/PARSER TESTS CI VERIFIED`；不代表`OBSERVATION COMPLETE`、`ACTUAL CONSUMPTION VERIFIED` 或 `S6 C1 PASS`。
 
 ### 9.7. R1C-2C/2D 后续门禁与公开未决点
+
+> **2026-10-24 范围修订：**下列是旧全量追踪路线的设计未决点，不再整体构成 C1 主线硬门禁；“最终 C1 永远 BLOCKED”和“第三方离机审阅”的旧结论按 R0 D1/§4.1 及 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md) 解释。关键来源、真实受保护入口与必要完整性仍须证明；风险触发后采用本专项时，所用方案的安全/权限约束和既有代码拒绝行为仍须满足。
 
 - **2C 技术选型**：核实准确 C2 Guest 的现有 trace 工具/版本、kernel 约束、ptrace_scope/capabilities/namespace、工具自身动态依赖、实际记录的系统调用/mmap/import 映射覆盖、非侵入与失败冻结。当前只允许提出候选方案，不安装、不提权、不运行。所需新增依赖、策略权限或架构行为变更必须按 AGENTS 取得用户独立授权。
 - **bootstrap/import 策略**：R1C-1 `-I -S -B` 隔离参数需要与 import 路径/既有 .pyc/c-extension/自定义 loader 的真实语义逐项核实；不能仅靠 `-B` 就推定所有 .pyc 读取被禁止；完整启动源码与 import 入口必须在 S6 前冻结并重审。
