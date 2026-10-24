@@ -142,7 +142,7 @@ class OfflineInstallManifestTests(unittest.TestCase):
                        {"triggers": ()}, {"triggers": ("other.service",)}):
             changed = replace(base.units[1], **change)
             self.assert_denied(replace(manifest(), baseline=replace(
-                base, units=(base.units[0], changed, base.units[2])))
+                base, units=(base.units[0], changed, base.units[2]))))
 
     def test_socket_disabled_baseline_does_not_claim_activation_safe(self):
         plan = manifest()
