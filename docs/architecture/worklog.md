@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — P2-C3C1 最小认证离机 CAS 信任边界设计（本地审阅）
+
+**VB-04D1 PR #2927 / CI #7504 SUCCESS / dev@2b83edf2 / Runtime 624/624 PASS。** 首轮 CI #7503 新增负例测试存在一处括号未闭合，已在同 PR 以最小测试语法修复后重新运行全部必需作业并全绿合并。现根据主线进入 [P2-C3C1 最小认证 CAS 信任边界与实施分批设计](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md)：确认 P1 `CustodyReceipt` 只是未认证 claim、P2-C3A `client_identity` 是调用方声明且 `LAB_ONLY`、Mac SQLite process-level PASS_SCOPED，不得直接接 Docker。候选新增版本化 wire + mTLS peer ↔ enrollment/role 身份绑定；`HEAD_READ`、`COMMIT_LOOKUP`、`CAS_SUBMIT` 三端口操作；响应丢失后的未知/对账；特别列出在线查询到 Docker 启动之间的 **TOCTOU**，因此本批不给 `ALLOW_DOCKER_START`。该跨进程/身份所有权扩展要按 `AGENTS.md §10` 取得单独授权，下一步优先 C3C2 纯离线合同与负例，Mac 网络/证书、Guest 文件、Unit 安装和 P0-01 均未授权。本批只改 MCP-workspace 文档，未 push/PR；`S03/G06/S09 OPEN / R2-C4 OPEN / PRODUCTION NO-GO`。
+
 ## 2026-10-24 — R2-A2-3 VB-04D1 离线 Unit/安装 Manifest 合同本地实现
 
 **LOCAL IMPLEMENTED / TESTS NOT RUN / REVIEW PENDING / NO PR。** [VB-04C](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md) 通过 PR #2926 / CI #7501 已合并 `dev@05ec6ef8`。用户授权合并后开始下一阶段，现仅在 MCP-workspace Runtime/Ops 新增 `maintenance_boot_guard_install_manifest.py` 与聚焦负例 `test_maintenance_boot_guard_install_manifest.py`，并编写 [VB-04D1 本地记录](Runtime更新-R2-A2-3-VB-04D1离线Unit依赖与安装Manifest实施记录.md)。严格约束 Ubuntu systemd 249 / docker.service fd://、docker.socket 监听/触发、containerd、Unit 显式 After/Before 静态图、9 项 root 文件/目录及 SHA/mode 意图、service/socket 双入口重验；任何候选回执仍 `decision=DENY`，五项绕过/离机/G06/运行时未证风险强制保留。**没有真正 unit 文本、安装器、daemon/Socket 服务、文件/权限读写、mTLS、VM/生产操作；P1/A2-1 DENY 和 17 Bundle 未修改。** `P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。未运行 workspace 测试，需用户审阅后才授权远端 GitHub CI。

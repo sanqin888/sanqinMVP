@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-24 P2-C3C1 最新进度（原有 VB-04D1 本地状态为历史记录）：** VB-04D1 已通过 PR #2927 / CI #7504，Runtime 624/624 PASS，并合并 `dev@2b83edf2`。按“合并后开始下一步”只读审阅并形成 [P2-C3C1 最小认证离机 CAS 设计](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md)。指出 `OfflineCasSubmission.client_identity` 自报、P1 `CustodyReceipt` 不具独立真实性、网络 HEAD_READ 与 Docker 启动存在 TOCTOU，不能把 mTLS 连接或旧实验回执直接提升为生产 OFF_HOST/ALLOW。后续跨进程/可信身份边界所需 C3C2 源码扩展要单独授权，Mac/Guest 真实服务和 root Guard/P0-01 分批审批。`P2-C3C1 DESIGN COMPLETE_LOCAL / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO`。
+
 **2026-10-24 最新 VB-04D1 本地实现进度（此前 VB-04C 为历史设计状态）：** VB-04C 文档已由 PR #2926 / CI #7501 合并 `dev@05ec6ef8`。按用户授权，现于新 MCP-workspace 分支新增 [VB-04D1 离线 Unit/安装 Manifest 合同及测试记录](Runtime更新-R2-A2-3-VB-04D1离线Unit依赖与安装Manifest实施记录.md)，用于校验操作者提供的 systemd 249 / Docker socket+service Unit 快照、9 项安装文件/目录意图、双入口 gate 声明及静态依赖环；**始终 DENY，未安装真实 Guard 或 mTLS，不启用 Docker**。本批还没实际运行 CI，待本地审阅、单独批准 PR。`P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。
 
 **2026-10-24 VB-04C 现场新进度与设计收口（最新条目，前文为历史时点）：** [VB-04C Boot Guard 安装/依赖/撤回方案](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md) 已基于 Recovery Clone 的操作者只读回执冻结。Guest systemd 249 的 `docker.service` 真实 `-H fd://` 依赖 `docker.socket`，后者监听 `/run/docker.sock` 并触发 service；daemon/config/Unit 静态 inactive/disabled，不证明跨重启安全。设计区分 root 安装锚点/真实离机可信 CAS、service+socket 启动入口、直接 dockerd 与仍活 shim/writer、持续 ARMING 准入、G06 独立救援和分层撤回。**目前仅设计，P1 DENY/P2 LAB_ONLY 未接 live permission；VB-04D1/P2-C3C/真实 root Guard 安装/VM 故障测试均未获授权**。`P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`；本条只在本地文档分支，未经远端 CI/合并。
