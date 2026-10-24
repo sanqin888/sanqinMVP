@@ -1,5 +1,9 @@
 # R1C-2C-C / C1-SYN-001 — A2-II 资源隔离与进程生命周期技术选型
 
+> **2026-10-24 现行定位：条件触发专项 / 非 C1 主线默认前置。**依据 R0 D1/§4.1 和 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)，只有真实候选出现未知可执行依赖、异常加载或来源/路径替换风险并选择本路线时，才继续专项采集设计。下文 4MiB/8MiB、进程生命周期与执行授权约束不降低，`run_scenario=A2_EXECUTION_NOT_AUTHORIZED` 和原 false 回执不改；**不为推进 C1 基线自动配置 quota/cgroup、改 argv 或运行 SYN/strace**。
+>
+> 原 R01–R06“未执行”及推荐顺序是 10 月 22 日早期历史；后续 R01–R08 只读原件已有限核对，见 [A2-II-R2 §7](R1C-2C-C-C1-SYN-001-A2-II-R2委托权限与Quota精确核验审批.md) 与 [R1-B/C §29](C5-G2-R1-B-只读GuestFD采集器与执行审批.md)。已知 UID1000 对所查 cgroup 无直接写权、aggregate quota/脱离子进程保障仍未证；这些缺口只阻断该专项，当前主线先做真实候选准备。
+
 **2026-10-22 · LOCAL READINESS DESIGN ONLY / NO GUEST EXECUTION / NO SECURITY CONTRACT CHANGE**
 
 ## 1. 当前起点与边界
