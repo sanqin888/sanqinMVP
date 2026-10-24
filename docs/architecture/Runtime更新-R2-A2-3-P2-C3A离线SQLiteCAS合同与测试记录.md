@@ -35,3 +35,9 @@
 目标工作区分支 `feat/runtime-r2a2-3-p2c3a-offline-sqlite-cas-20261024`（基于当前 `origin/dev`）。本批仅本地文件修改，不提交远端，不新建 PR。下一阶段需先取得用户代码审阅和远端授权，CI 全绿后再讨论 P2-C3B Mac 用户态真实持久化测试的准确命令/目录/恢复边界；网络服务、mTLS、launchd 和 Boot Guard 安装分别请求授权。
 
 `P2-C3A LOCAL_IMPLEMENTED / TESTS_NOT_EXECUTED / REVIEW_PENDING / P2-C3B NOT_AUTHORIZED / P0-01 NOT_RUN / PRODUCTION NO-GO`。
+
+## 5. 2026-10-24 后续执行与源代码验证续记（前文保留为当时历史状态）
+
+用户在首次本地审阅后明确授权远端：[PR #2924](https://github.com/sanqin888/sanqinMVP/pull/2924) 的最终 PR head `58f762966cea39eea373d183fb53739a9ac782d8` 在 [CI #7497](https://github.com/sanqin888/sanqinMVP/actions/runs/40129182741) 获得成功，Runtime `600/600 OK`；squash 合并 `dev@c8e1c13d402ffb92eb568b5c817fc76a26d89212`。这些是源码 CI 的结论，不是 Mac 同机之外的持久化验收。
+
+之后操作者明确获批仅 Mac 用户态合成 SQLite 文件/测试进程；现场命令与结果详见 [P2-C3B-001 Mac 进程级验证复核](Runtime更新-R2-A2-3-P2-C3B-001Mac进程持久化实测复核.md)：8/8 固定源码 SHA、Mac Python 22/22 unittest、epoch2 两笔回执重新打开、B05-A 未提交 `SIGKILL` 回滚、B05-B epoch3 `INCIDENT` 已提交后 `SIGKILL` 丢失响应读回均 `PASS_SCOPED`。真实 OFF_HOST/mTLS、Mac 整盘回滚、物理掉电和 Boot Guard P0-01 仍未证明。最新限定状态：`P2-C3A MERGED / P2-C3B-001 PROCESS-LEVEL PASS_SCOPED / C3C NOT_AUTHORIZED / P0-01 NOT_RUN / PRODUCTION NO-GO`。

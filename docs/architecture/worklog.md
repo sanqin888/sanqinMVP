@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — R2-A2-3 P2-C3B-001 Mac SQLite 进程级验收续记（本地文档）
+
+**OPERATOR_TRANSCRIPT / MAC PROCESS-LEVEL PASS_SCOPED / P2-C3B-001 CLOSED_SCOPED / NO PR。** PR #2924 / CI #7497 Runtime 600/600 全绿，已 squash 合并 `dev@c8e1c13d`；操作者经用户态准确授权在 Mac 私有目录中完成 8/8 固定 Git blob 来源核验、原生 SQLite 22/22 测试、epoch2 两份历史回执重开读回、B05-A 未提交 SIGKILL 回滚和 B05-B 已提交后 SIGKILL 丢失响应读回（最终合成 epoch3/INCIDENT）。[完整范围/数据/不变量与限制](Runtime更新-R2-A2-3-P2-C3B-001Mac进程持久化实测复核.md)。没有物理掉电、mTLS/Guest-to-Mac OFF_HOST 权威、Guard 实装或 P0-01；`S03/G06/S09 OPEN / C5-G2 NO-GO`。本批**仅文档**，未访问 Mac/VM/生产，待用户审阅再授权提交远端。
+
 ## 2026-10-24 — R2-A2-3 P2-C3A 离线 SQLite CAS 事务合同与失败测试本地实现
 
 **MCP-WORKSPACE LOCAL IMPLEMENTED / TESTS NOT RUN / REVIEW PENDING / NO PR。** 用户明确授权仅在最新 dev 基线的 Runtime/Ops 工作区新建 V2 离线 CAS 提交/查询合同、受限用户态 SQLite 单写事务实现及聚焦负例测试，保留 P1/A2-1 DENY、现有 17 文件发布清单与生产/VM 边界。新增 `maintenance_off_host_cas_contract.py`、`maintenance_off_host_cas_sqlite.py`、`test_maintenance_off_host_cas_sqlite.py` 和 [P2-C3A 合同及失败测试记录](Runtime更新-R2-A2-3-P2-C3A离线SQLiteCAS合同与测试记录.md)。CAS 提交中验证独立登记、nonce/epoch/前驱、状态转换，并持久记录 head/commit/实验回执/成功审计；注入合成提交前与提交后响应丢失窗口。**实验记录明确不构成真实认证 OFF_HOST receipt、安装许可或 Boot Guard 允许启动。** 不新增依赖、Prisma migration、网络/服务/密钥，未在 MCP-workspace 运行测试，待审阅后单独授权远端 PR/CI。分支 `feat/runtime-r2a2-3-p2c3a-offline-sqlite-cas-20261024`；`P2-C3B NOT AUTHORIZED / P0-01 NOT_RUN / C5-G2 NO-GO`。
