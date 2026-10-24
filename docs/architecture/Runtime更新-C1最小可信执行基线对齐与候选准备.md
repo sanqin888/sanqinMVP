@@ -32,7 +32,7 @@
 | [生产 H14–H18](Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md) | 已安装 17/17 + Manifest 内容/权限核对及部分当前状态 PASS_SCOPED | 原已安装对象的来源和位置基线 | 本次尚未选定的新目标包、外置执行器或其安装后状态 |
 | C1-SYN A2-II-R/R2 | 只读取证 PASS_SCOPED；该 UID 对所查 cgroup 无直接写权，硬 8MiB quota/脱离子进程保障未证 | 原限定负证据和失败停止约束 | 不应将该专项的 BLOCKED 解释为 C1 主线必须先配置 quota/cgroup；真实 SYN 仍未获授权 |
 
-上述 CI 是对应历史 PR 最终 head 的实际结果，已通过 GitHub PR/Checks 与 Git 历史核对；本批远端交付已获用户授权，新 PR 的最终 head 仍须实际 GitHub CI 全绿；不把历史 CI 转称本批已通过。
+上述 CI 是对应历史 PR 最终 head 的实际结果，已通过 GitHub PR/Checks 与 Git 历史核对；本批远端交付已获用户授权，首次完整文档 head 已通过 CI #7510；验证范围及最终 head 门禁见 §6 同批续记。
 
 ## 3. 首版候选清单：已启动的具体准备
 
@@ -88,5 +88,7 @@ C1 的来源/执行验证可复用 R2/R4/R5 同候选的实际结果；跨重启
 ## 6. 本批交付边界
 
 本批仅修改文档，归 Runtime/Ops；无代码、依赖/锁、CI、Prisma/迁移、17 Bundle、模块 owner、跨上下文边、SCC/scanner baseline 或兼容合同变化。MCP-workspace 未开放 lint/build/test，未运行；文档差异和链接已核对，用户现已授权远端 PR→dev、最终 head CI 全绿后合并并开始下一步。因共享工作区仍被 TLS 审计占用，依据用户明确授权在独立本地缓存从最新 dev 重建本批七份文档，通过 GitHub 插件交付；不带入 TLS 未提交文档或改动共享工作区。PR/CI/合并状态以本包后续同批续记和 PR 事件为准。
+
+**同批远端验证续记：**[PR #2930](https://github.com/sanqin888/sanqinMVP/pull/2930) → dev；首次完整文档 head `ea8c0cabc0fe36bd0d2974979f59f6e80c7e2eda` 的 [CI #7510](https://github.com/sanqin888/sanqinMVP/actions/runs/40135924881) SUCCESS，`ci-change-scope` 实际通过，Runtime/Release 等执行 lane 按 docs-only 正常跳过，不能称为新增运行时测试通过。当前同批仅补验证记录；最终文档 head 仍须实际 CI 全绿才合并，最终 Checks/merge 状态以 PR 事件为准。
 
 **总状态：C1 OPEN / CANDIDATE PREPARATION STARTED / R2-C4 OPEN / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED。**
