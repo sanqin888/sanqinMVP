@@ -1,6 +1,6 @@
 # R2-A2-3 — P2-C3C3-IMPLEMENT-A Mac Host-only mTLS 服务候选及证书交付门禁
 
-> **2026-10-24 / REMOTE FEATURE PR REVIEW / LIVE CERTS & MAC SERVICE NOT_RUN / PRODUCTION NO-GO**。设计依据已合并 `dev@a8898a90a4d71fec1d2bba871b63b70dbb86268c`（PR #2932 / CI #7515）。远端代码交付已另从最新 `dev` 建立独立功能分支 `feat/runtime-p2c3c3-implement-a-mtls-hostonly-20261024`，仅移植本批 2 个代码文件与本实施文档，不包含旧 MCP-workspace 中的并行 C1 文档或未授权改动；**新代码的 CI 结果以该 PR 最终 Actions 为准**。
+> **2026-10-24 / LAB_ONLY_MTLS_CORE_CLOSED PASS_SCOPED 4/4 / REAL_CAS_NOT_RUN / PRODUCTION NO-GO**。设计依据已合并 `dev@a8898a90a4d71fec1d2bba871b63b70dbb86268c`（PR #2932 / CI #7515）。远端代码交付已另从最新 `dev` 建立独立功能分支 `feat/runtime-p2c3c3-implement-a-mtls-hostonly-20261024`，仅移植本批 2 个代码文件与本实施文档，不包含旧 MCP-workspace 中的并行 C1 文档或未授权改动；**新代码的 CI 结果以该 PR 最终 Actions 为准**。
 
 ## 1. 审前规范与架构归属
 
@@ -33,9 +33,147 @@
 
 **判定**：`M00-A MAC_SSL_TOOL_AND_ENDPOINT PASS_SCOPED`；`M00_VM_IDENTITY_PENDING / TLS_CERT_PROFILE_UNPROVEN / PORT_NOT_RESERVED / LIVE_MTLS_NOT_RUN`。操作者提供的是命令输出，助手未连接 Mac、未检查真实端口保留或执行写入。此回执不构成创建 CA、私钥、实验 CAS 数据库或启动监听的授权完成证明。
 
+## 2B. M00-B Recovery Clone 身份与 Host-only 预检（操作者回执）
+
+Mac `VBoxManage list runningvms` 只列出 Recovery Clone `SanQ-Runtime-Lab-Recovery-01` UUID `d60b89a0-6d55-4658-ad6b-948a4d033901`；原 Jammy VM UUID `dc8c8dc0-56ea-45af-ba2c-a9e6652f60cc` 未运行。Ubuntu Guest `sanq-runtime-lab`、UID1000、`enp0s3 192.168.56.5/24` dynamic、无 IPv4/IPv6 default route、root `/dev/sda2 ext4`；Mac `bridge100 192.168.56.1/24`。以上仅 `M00-B PASS_SCOPED`，不构成 VM VDI 或正式安装来源的密码学证明。
+
+## 2C. M01-A 独立实验 CA 签发（操作者回执）
+
+Mac 生成加密 RSA3072 实验 CA：CN `SanQ-P2-C3C3-Experimental-CA`，`ca.pem: OK`，critical `CA:TRUE,pathlen:0`、critical `Certificate Sign, CRL Sign`；UTC `2026-10-24T22:32:19Z`—`2026-11-23T22:32:19Z`，DER SHA256 `40788f66c5eb4572f41d7b49019a87d9138d4f2676be1a9ca1a8ee6f90e449e8`。独立 `P2-C3C3-CA-001` 目录 0700、ca.cnf/key/pem 均 0600；CA 私钥留在 Mac。`CA PASS_SCOPED`。
+
+## 2D. M01-A2 Host-only 服务端证书签发（操作者回执）
+
+Mac 签 RSA3072/SHA256 server leaf，CN `SanQ-P2-C3C3-HostOnly`，`openssl verify -purpose sslserver` → `server.pem: OK`；critical `CA:FALSE`、critical `Digital Signature, Key Encipherment`、`serverAuth`、`IP SAN:192.168.56.1`，序列号 `6CB4D71126D0A2703989A97CB71DEA05`，UTC `2026-10-24T22:35:28Z`—`2026-11-07T22:35:28Z`，DER SHA256 `06b1d2f197565ab9b57222ff8317f2cb28e92e39dce671b9272855760800888d`。独立 `P2-C3C3-SERVER-001` 目录 0700、server.cnf/key/csr/pem 各 0600。`SERVER_LEAF PASS_SCOPED`。
+
+## 2E. 正式 Guest 安装锚点不存在（操作者回执）
+
+Recovery Guest `/etc/sanq-maintenance` 和 `/etc/sanq-maintenance/installation-anchor.json` 均为 `NOT_PRESENT`；OpenSSL 3.0.2。不得由 VM hostname/UUID、IP 或任意自建文件生成正式可信 `InstallationAnchor`；`FORMAL_ENROLLMENT_BLOCKED`。
+
+## 2F. 用户单独授权 LAB_ONLY 方案 B
+
+用户明确授权不等待正式安装锚点，先进行**独立 LAB_ONLY TLS-only** 的 Guest 加密 RSA3072 私钥/公开 CSR、Mac CA 签 `clientAuth` 公钥证书和真实双向 TLS1.2 正反握手。Guest 私钥只留 Guest，Mac 仅收 CSR/回送公开证书；双方独立非 root 0700/0600。临时 Mac 服务**不导入 CAS、不创建 enrollment/SQLite/Guard、不发 Docker 启动许可**。不得将 LAB_ONLY 证书自升为正式 OFF_HOST 身份。
+
+后续 §2G—§2N 保留分阶段原始现场回执，其 `PENDING/NOT_RUN` 代表**记录当时**；最终状态以 §2N/§5 为准。
+
+## 2G. M01-B1 Recovery Guest 私钥/CSR 及 Mac 公开 CSR 交叉验证（2026-10-24）
+
+**OPERATOR_PASTED_TERMINAL / LAB_ONLY_CLIENT_CSR PASS_SCOPED / PRIVATE_KEY_STAYS_GUEST / LEAF_NOT_ISSUED / REAL_MTLS NOT_RUN**。
+
+| 检查项目 | 原始回执 | 判定范围 |
+| --- | --- | --- |
+| Guest 本地 CSR | `Certificate request self-signature verify OK`，`subject=CN = SanQ-C3C3-LAB-ONLY-Recovery-01` | 客户端 CSR 公钥签名自验证通过；并非 CA 已签证书 |
+| Guest SHA-256 | `fd9c809c5c64e6dfb8715970fffc8d88a8e03e9f4be2640e6a8a3db4b7c8879e`（`client.csr`） | 公共 CSR 文件 pin |
+| Guest 本地目录与密钥 | `/home/ubuntu/sanq-c3c3-lab-tls-client-001` 属主 `ubuntu:ubuntu`、目录 `0700`，`client.cnf/client.key/client.csr` 均 `0600` | 私钥已在 Guest 非 root 用户目录内生成且加密；密码未透露，未由 Mac 复制 |
+| Mac CSR 接收 | `scp` 传输 `client.csr` 1265 bytes 到 `P2-C3C3-CLIENT-ISSUE-001`；`openssl req -verify -subject` 输出 `verify OK` 和相同 CN | Mac 可验证 CSR；不能凭此证明正式 InstallationAnchor / ssh 主机长期信任 |
+| Mac SHA-256 | `fd9c809c5c64e6dfb8715970fffc8d88a8e03e9f4be2640e6a8a3db4b7c8879e` | 与 Guest 摘要完全一致，内容传输一致 |
+
+**下一步 M01-B2**：保持相同 CSR、不重新生成或触碰 Guest 私钥，在 Mac 原独立实验 CA 下签 `CA:FALSE`、`keyUsage: digitalSignature`、`extendedKeyUsage: clientAuth` 的短期**测试专用** leaf；只用本机交互方式解锁 CA 私钥，签发后按 `openssl verify -purpose sslclient`、证书 profile/有效期/指纹、文件 owner/mode 验收。向 Guest 仅投送签好的公钥证书及 CA 公钥证书，明确不携带 CA key、server key 或任何 client key。**LAB_ONLY TLS endpoint 必须没有 CAS writer**，正式 `InstallationAnchor` 仍缺失，`P1/CAS ENROLLMENT BLOCKED`。
+
+## 2H. M01-B2 LAB_ONLY 客户端证书 Mac CA 签发回执（2026-10-24）
+
+**OPERATOR_FIELD_RECEIPT / CLIENT_LEAF_CERT PASS_SCOPED / TWO_WAY_TLS_HANDSHAKE NOT_RUN。** 现场仅执行 Mac 实验根 CA 对先前经过双端 SHA256 交叉校验的公开 CSR 签发及证书静态验证；未接触/搬移 Ubuntu 私钥，没有监听、安装身份或 CAS 写入。
+
+| 检查 | 现场结果 | 判定边界 |
+| --- | --- | --- |
+| CA 签发与用途验签 | `Signature ok`；`openssl verify -purpose sslclient …/client.pem` 输出 `client.pem: OK` | 本机证书链和 SSL 客户端用途符合预期；尚未真实握手 |
+| Subject / Issuer | `/CN=SanQ-C3C3-LAB-ONLY-Recovery-01` / `/CN=SanQ-P2-C3C3-Experimental-CA` | 完全隔离的 LAB_ONLY 凭据；不是正式 InstallationAnchor |
+| 序列号 | `44601F8916F41C943163C93F75FF65B1` | 已固定本轮测试证书序列号 |
+| UTC 有效期 | `2026-10-24T22:50:49Z` ～ `2026-10-31T22:50:49Z` | 7 日短期证书；过期后必须 fail-closed，禁止忽略证书时钟 |
+| X509 SHA256 指纹 | `D5:DF:B4:C1:3A:87:29:5F:1F:25:67:B6:7F:F6:5B:C5:93:04:5C:72:7A:08:D4:88:44:CC:CE:8B:C8:3B:DA:B7` | CLI Fingerprint 与公钥 DER 字节 SHA256 `d5dfb4c13a87295f1f2567b67ff65bc593045c727a08d48844ccce8bc83bdab7` 一致；**并非 PEM 文件字节 SHA** |
+| X509 扩展 | `CA:FALSE` critical；`Digital Signature` critical；`TLS Web Client Authentication`；SKI 存在，AKI=`4E:C1:73:C0:78:5C:24:F8:6D:DD:21:BF:FA:38:0A:0D:63:A4:74:6F` 与实验 CA SKI 一致 | clientAuth 独立端实体，不是 CA / 服务器身份；实际 Mac LibreSSL client-cert chain/EKU 校验仍待握手 |
+| 文件权限 | `P2-C3C3-CLIENT-ISSUE-001` `apple drwx------`；`client.csr/client-leaf.cnf/client.pem` 各 `apple -rw-------` | Mac 只持有签发材料与公钥证书；Ubuntu `client.key` 不离开 Guest |
+
+**下一门禁 M01-B3**：仅经既有已验证 Host-only SSH（`StrictHostKeyChecking=yes`）将 Mac `client.pem`、CA `ca.pem` 两个**公开证书**送回 Recovery Guest **现有** `/home/ubuntu/sanq-c3c3-lab-tls-client-001/`，转送前核验两端文件不存在，转送后在 Guest 验 CA X509 指纹/客户端 DER SHA256、`openssl verify -purpose sslclient`，并**交互输入客户端密钥口令**验证 Guest 本地 `client.key` 公钥与签发的 `client.pem` 一致。不得复制 `ca.key`、`server.key`、`client.key`；不得输出私钥 PEM。完成这些只读验收后，另一步开始**无 CAS 的隔离 TLS 双向握手**，不使用原 `maintenance_mtls_hostonly_lab_service.py` 的 CAS endpoint。
+
+`M01-B2 PASS_SCOPED / LAB_ONLY TLS-ONLY APPROVED / GUEST_CERT_DELIVERY_PENDING / REAL_MTLS NOT_RUN / FORMAL_ENROLLMENT_BLOCKED / P1 DENY / PRODUCTION NO-GO`。
+
+## 2I. M01-B3 公开证书回传与 Guest 原生私钥匹配（操作者回执，2026-10-24）
+
+**OPERATOR_FIELD_RECEIPT / GUEST_CLIENT_MATERIAL_READY_PASS_SCOPED / REAL_MTLS_HANDSHAKE NOT_RUN。** 已见 Mac → Recovery Guest `scp` 仅传输公开 `client.pem`（1554 bytes）和 `ca.pem`（1476 bytes），返回 `PUBLIC_CERT_TRANSFER_COMPLETED`；无 CA 或 client/server 私钥传输证据。
+
+| Guest 核验 | 原始实测 | 有界结论 |
+| --- | --- | --- |
+| CA 和 client 链 | `openssl verify -CAfile ca.pem -purpose sslclient client.pem` → `client.pem: OK` | OpenSSL 3.0.2 下证书链和用途验签通过；不代表已完成 TLS 握手 |
+| 客户端证书 DER SHA256 | `d5dfb4c13a87295f1f2567b67ff65bc593045c727a08d48844ccce8bc83bdab7` | 等于 Mac 证书签发回执指纹 |
+| CA 证书 DER SHA256 | `40788f66c5eb4572f41d7b49019a87d9138d4f2676be1a9ca1a8ee6f90e449e8` | 等于 Mac 根 CA 指纹；**不要混淆 PEM 文件原字节哈希** |
+| 原私钥与签发证书 | `Enter pass phrase for client.key` 后 `CLIENT_PRIVATE_KEY_MATCH=PASS；公钥 SHA256=`e32e01ada02811fd907f4f3299d8080c3fdbf0c3e10cc597a74d939663dbd991` | Guest 原 RSA 私钥所导出公钥与客户端证书匹配；没有暴露私钥字节 |
+| Guest 权限 | `/home/ubuntu/sanq-c3c3-lab-tls-client-001` owner `ubuntu:ubuntu` / 0700；`client.key/client.pem/ca.pem` 全部 0600 | 独立实验身份权限 PASS_SCOPED |
+
+**下一步 M01-B4（已批准 LAB_ONLY）**：在 Mac **非 root** 用户态仅临时运行无 CAS import、无持久存储、无业务 API、仅允许单次 TLS1.2 双向认证的独立 Python SSL 测试监听 `AF_INET 192.168.56.1:39443`。严格使用 `SSLContext(PROTOCOL_TLS_SERVER)`、`CERT_REQUIRED`、指定 CA、受限 `ECDHE-RSA-AES128/256-GCM` cipher，核验客户端 leaf DER SHA256；Recovery Guest Python 3.10 以 `PROTOCOL_TLS_CLIENT`、`check_hostname=True`、`server_hostname=192.168.56.1`、固定 CA/服务端 leaf 指纹连接。**双方实际输出 TLSv1.2/cipher/对端证书 SHA + 进程停监听后才可判 PASS**；仅本轮正例不代表缺客户端证书、错误 CA/SAN、吊销、时钟失效等负例已经 PASS。不能使用已合并的 `maintenance_mtls_hostonly_lab_service.py` CAS 服务来代替 TLS_ONLY 测试；绝不生成正式 `InstallationAnchor`、enrollment、DB 或 Docker 授权。
+
+`M01-B3 PUBLIC_CERT_TRANSFER_AND_GUEST_KEY_MATCH PASS_SCOPED / LAB_ONLY_HANDSHAKE_READY / LIVE_MTLS NOT_RUN / FORMAL_ENROLLMENT_BLOCKED / P1 DENY / PRODUCTION NO-GO`。
+
+## 2J. M01-B4 TLS_ONLY Mac ↔ Ubuntu 真实 mTLS 正例执行回执（2026-10-24）
+
+**OPERATOR_LIVE_TWO_SIDED_TRANSCRIPT / POSITIVE_MTLS_HANDSHAKE PASS_SCOPED / NEGATIVE_TESTS NOT_RUN / CAS_NOT_USED**。操作者依用户授权的方案 B 在 Mac 非 root Python SSL 一次性测试端点 `192.168.56.1:39443` 和 Recovery Clone Guest Python 客户端手工执行真实网络握手。服务为仅一次连接且无 CAS/SQLite/Boot Guard 导入的临时进程，不是 `maintenance_mtls_hostonly_lab_service.py` 的 CAS endpoint。
+
+| 双方证据 | 现场输出 | 限定验收 |
+| --- | --- | --- |
+| Mac 服务启动 | `LAB_ONLY_SERVER_READY 192.168.56.1:39443` | 实际绑定指定 Host-only IPv4；运行时已配置 `CERT_REQUIRED`、TLS1.2 上下限、指定实验 CA、ECDHE-RSA AES-GCM 白名单 |
+| Mac 协商结果 | `SERVER_TLS_VERSION= TLSv1.2`；`SERVER_CIPHER= ECDHE-RSA-AES128-GCM-SHA256` | 真实 LibreSSL 2.8.3 TLS1.2 白名单协商成功 |
+| Mac 验证客户端 | `VERIFIED_CLIENT_SHA256= d5dfb4c13a87295f1f2567b67ff65bc593045c727a08d48844ccce8bc83bdab7`；`SERVER_MTLS_PASS` | SSL server 经过 CA 链验证的 Guest leaf DER SHA256 与实验注册候选指纹一致 |
+| Guest 协商结果 | `CLIENT_TLS_VERSION= TLSv1.2`；`CLIENT_CIPHER= ECDHE-RSA-AES128-GCM-SHA256` | OpenSSL 3.0.2 端 TLS1.2 与服务端结果匹配 |
+| Guest 验证服务端 | `VERIFIED_SERVER_SHA256= 06b1d2f197565ab9b57222ff8317f2cb28e92e39dce671b9272855760800888d`；`CLIENT_MTLS_PASS` | `check_hostname=True` 和 `server_hostname=192.168.56.1` 的 IP SAN + CA 验证通过，并收到 `SANQ_LAB_ONLY_TLS_OK` |
+| 进程与监听退出 | Mac `LAB_ONLY_SERVER_STOPPED`，随后 `lsof -nP -iTCP:39443 -sTCP:LISTEN` 无可见输出 | 一次性实验服务结束，端口无观察到的残留 LISTEN |
+
+**正式判定**：本轮 `LAB_ONLY_MTLS_POSITIVE_PASS_SCOPED` 成立；**尚未**完成缺客户端证书、错误受信 CA、错误 IP SAN、坏 EKU、过期或撤销、session resumption 等真实拒绝用例，因此不能将 `LAB_ONLY_MTLS_COMPLETE` 标为 PASS。负例应继续使用完全**无 CAS** 的一次性监听，不得为方便排错关闭证书验证或改用 `CERT_NONE`。本试验没有检查生产守卫或授予 `OFF_HOST` 正式授权；Recovery Guest `InstallationAnchor` 仍缺失，CAS enrollment **BLOCKED**，`P1 DENY / P0-01 NOT_RUN / PRODUCTION NO-GO`。
+
+## 2K. M01-B5 缺失客户端证书真实 TLS 负例（2026-10-24）
+
+**OPERATOR_LIVE_BOTH_SIDES / MISSING_CLIENT_CERT_REJECTED PASS_SCOPED / NO_CAS / OTHER_NEGATIVES NOT_RUN**。Mac 使用相同已批准实验根 CA/服务器叶子证书、`SSLContext(PROTOCOL_TLS_SERVER)`、TLSv1.2 only、受限 ECDHE-RSA AES-GCM cipher、`CERT_REQUIRED`，一次性 Host-only 端点 `192.168.56.1:39443`。Recovery Guest SSL 客户端仍验证服务器 CA/IP SAN，但**有意不加载 `client.pem/client.key`**。
+
+| 双端结果 | 原始证据 | 判定 |
+| --- | --- | --- |
+| Mac 监听进入 | `NEGATIVE_SERVER_READY` | 临时端点实际已监听 |
+| Mac 拒绝握手 | `SERVER_HANDSHAKE_REJECTED`；`[SSL: PEER_DID_NOT_RETURN_A_CERTIFICATE] peer did not return a certificate (_ssl.c:1108)` | 服务端拒绝无客户端证书的握手，未进入成功 SSL 会话 |
+| Ubuntu 观察 | `CLIENT_OBSERVED_TLS_REJECTION`；`[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] sslv3 alert handshake failure (_ssl.c:1007)` | 收到服务端拒绝握手的 TLS Alert；`SSLV3_ALERT` 是历史错误名称，**不是 SSLv3 降级证据** |
+| Mac 一次性服务退出 | `NEGATIVE_SERVER_STOPPED` | 服务进程正常走完测试代码；此次 **未收到独立 `lsof` 退出后快照**，不能声称已再次观测端口无占用 |
+| 数据/权限边界 | 本次只有证书验证代码，无 CAS 客户端、writer、`InstallationAnchor`、enrollment 或 Docker 操作 | 保持 `P1 DENY / FORMAL_ENROLLMENT BLOCKED` |
+
+**限定判定**：`M01-B5 MISSING_CLIENT_CERT_REJECTED PASS_SCOPED`。需进一步针对错误受信 CA、错误 IP SAN（可用正确服务器证书但强制错误 `server_hostname`）做互相独立的无 CAS 真实负例，并核对相应 Mac 单次监听停止后端口状态；不能把错误 CA 客户端自检失败或握手前本地配置拒绝冒称服务端证书拒绝。**不应以 `verify_mode=CERT_NONE`、降低 TLS 或更改默认 Host-only 绑定绕过测试失败。**
+
+## 2L. M01-B6 未受信任 CA 的真实握手拒绝（操作者回执，2026-10-24）
+
+**OPERATOR_LIVE_BOTH_SIDES / WRONG_CA_REJECTED PASS_SCOPED / TLS_ONLY / NO_CAS**。Mac 仍运行单次非 CAS Host-only TLS server（`192.168.56.1:39443`），Ubuntu 的 client 仍提供已签发的正常 `client.pem/client.key`，但将信任源改为系统默认 CA 集合，不加载实验 CA；客户端之前的本地检查证实 SanQ 实验 CA 不在该信任集中，避免产生错误“被信任”的原因混淆。
+
+| 检查项 | 操作者终端回执 | 安全判定 |
+| --- | --- | --- |
+| Mac server | `WRONG_CA_SERVER_READY` | 实际一次性端点进入监听 |
+| Ubuntu client | `CLIENT_CA_VERIFICATION_REJECTED`; `VERIFY_CODE=19`; `VERIFY_MESSAGE=self-signed certificate in certificate chain` | 独立 OpenSSL3.0.2 服务端证书链验证失败；错误码 19 是证书信任链拒绝，非 Host-only 连通性故障 |
+| Mac TLS Alert | `SERVER_HANDSHAKE_FAILED= [SSL: TLSV1_ALERT_UNKNOWN_CA] tlsv1 alert unknown ca (_ssl.c:1108)` | 服务端观察到客户端因未知 CA 终止握手；错误名称不表示 TLS 协议降级 |
+| Mac 退出 | `WRONG_CA_SERVER_STOPPED` | 本次单连接服务正常退出；**没有本次独立 `lsof` 快照**，故不另称端口空闲已检查 |
+| 其它合同 | 未使用 CAS writer、InstallationAnchor、enrollment、生产服务或 Docker | 仍是 LAB_ONLY 纯 TLS 负例，未增加 Guard 放行能力 |
+
+**本次判定**：`M01-B6 WRONG_TRUST_CA_REJECTED PASS_SCOPED`。累计 `M01-B4 POSITIVE PASS`、`M01-B5 MISSING_CLIENT_CERT REJECTED PASS`、`M01-B6 WRONG_CA REJECTED PASS`。尚需独立 `M01-B7 WRONG_SERVER_IP_SAN` 用例，固定**正确的实验 CA 与合法客户端证书**，仅令客户端 `server_hostname` 为不在已签 server leaf SAN 中的地址，预期 OpenSSL hostname verification 拒绝（通常 `VERIFY_CODE=64`，以现场错误为准），而不是通过无 CA 或无客户端证书间接失败。服务端只运行一次性非 CAS 端点；不得关闭 IP 核验、降级 TLS、变更服务端 SAN/密钥来人为制造测试 PASS。
+
+## 2M. M01-B7 错误服务器 IP SAN 真实负例 + 四项核心结果（2026-10-24）
+
+**OPERATOR_LIVE_BOTH_SIDES / WRONG_IP_SAN_REJECTED PASS_SCOPED / CORE_TLS_4_OF_4_PASS_SCOPED / NO_CAS**。单次运行的非 CAS Mac TLS 端点保持已签发 server leaf `IP SAN:192.168.56.1`、正确的实验 CA 和 `CERT_REQUIRED`，Ubuntu 保留该 CA 及合法 client leaf，仅将 `server_hostname` 从实际连接 IP `192.168.56.1` 故意设为 `192.168.56.254`，检验证书内 IP SAN 与期待服务器身份不一致后的拒绝。
+
+| 验收项 | 操作者回执 | 判定 |
+| --- | --- | --- |
+| Mac 测试监听 | `WRONG_IP_SAN_SERVER_READY` | 单次 TLS_ONLY 服务进入监听 |
+| Ubuntu 证书身份验证 | `CLIENT_IP_SAN_VERIFICATION_REJECTED`；`VERIFY_CODE=64`；`VERIFY_MESSAGE=IP address mismatch, certificate is not valid for '192.168.56.254'.` | 明确证实服务端身份/IP SAN 校验失败，与 CA 受信与否或客户端缺证书无关 |
+| Mac TLS alert | `SERVER_HANDSHAKE_FAILED= [SSL: SSLV3_ALERT_BAD_CERTIFICATE] sslv3 alert bad certificate (_ssl.c:1108)` | 服务端观察到证书拒绝引发的警报；错误历史命名**不能解释为协商 SSLv3** |
+| Mac 单次服务退出 | `WRONG_IP_SAN_SERVER_STOPPED` | 处理结束；本次未收到退出后的独立 `lsof` 快照，端口状态应额外只读核验 |
+
+**已通过的核心范围**：`M01-B4` 正常 Mac↔Guest 双向 TLS1.2 + 正确 CA、证书叶子指纹、IP SAN、`ECDHE-RSA-AES128-GCM-SHA256`：PASS；`M01-B5` 无 client cert → server `PEER_DID_NOT_RETURN_A_CERTIFICATE`：REJECTED/PASS；`M01-B6` 未受信 CA → client X509 code 19：REJECTED/PASS；`M01-B7` 错误 server IP SAN → client X509 code 64：REJECTED/PASS。四项均为操作者双机真实回执，不是单元模拟；但只验证**临时无 CAS 的实验 TLS 端点**，并不能推论 `maintenance_mtls_hostonly_lab_service.py` 与真实 SQLite writer 已部署或完整验收。
+
+**剩余门禁**：独立 `lsof -nP -iTCP:39443 -sTCP:LISTEN` 最新停止后快照尚未提供；错 EKU、过期/未生效、CRL/登记撤销、session resumption、错误客户端身份/role、CAS 请求和失败恢复均 **NOT_RUN**。客户端证书在 `2026-10-31T22:50:49Z` 失效，Mac server leaf 在 `2026-11-07T22:35:28Z` 失效，CA 在 `2026-11-23T22:32:19Z` 失效；后续不得关闭证书过期检查。Recovery Guest 正式 `InstallationAnchor` 仍 `NOT_PRESENT`，不准从 LAB_ONLY 证书提升权限。状态限定为 `LAB_ONLY_MTLS_CORE_PASS_SCOPED / FULL_NEGATIVE_MATRIX_OPEN / FORMAL_ENROLLMENT_BLOCKED / P1 DENY / P0-01 NOT_RUN / PRODUCTION NO-GO`。
+
+## 2N. M01-B7 结束后 Mac 监听端口只读检查与 LAB_ONLY 核心关闭（2026-10-24）
+
+**OPERATOR_FIELD_RECEIPT / POST_TEST_LSOF_EMPTY PASS_SCOPED / LAB_ONLY_MTLS_CORE CLOSED。** 继 §2M 的错误 IP SAN 拒绝及 `WRONG_IP_SAN_SERVER_STOPPED` 后，操作者在 Mac Terminal 执行 `/usr/sbin/lsof -nP -iTCP:39443 -sTCP:LISTEN` 并反馈**无输出**。这证明当次非 root 可见的检查快照中，没有观察到 39443 端口的 TCP LISTEN 占用；不等于永久端口保留、完整 OS 进程列表证明，也不补称先前每轮单独执行过 `lsof`。
+
+**关闭依据**：M01-B4 实际 TLSv1.2/ECDHE-RSA-AES128-GCM-SHA256 双向正向握手 + 公钥指纹/正确 IP SAN PASS；M01-B5 缺客户端证书拒绝 PASS；M01-B6 不受信任 CA 拒绝（verify 19）PASS；M01-B7 错误服务器 IP SAN 拒绝（verify 64）PASS；B7 后 Mac 端口无可见监听。仅授权范围内 `LAB_ONLY_MTLS_CORE_CLOSED / PASS_SCOPED`；M01-B2/B3 的材料交叉核验亦完成。
+
+**明确 OPEN**：bad EKU、过期/未生效、撤销/CRL、session resumption、证书/CA 轮转的真实负例未覆盖；此结果**不验证真正的** `maintenance_mtls_hostonly_lab_service.py`、`enrollment.json`、SQLite CAS、role/identity pin 或 Boot Guard 安装。Recovery Guest `/etc/sanq-maintenance/installation-anchor.json` 仍无正式受信材料；`FULL_NEGATIVE_MATRIX_OPEN / FORMAL_CAS_ENROLLMENT_BLOCKED / P1 DENY / P0-01 NOT_RUN / PRODUCTION NO-GO`。
+
+本次仅追加本地中文审计证据，**不创建提交/PR，不触碰私钥、Guest、Mac、Docker 或生产环境**。
+
 ## 3. 真正发证与运行前必须审阅的 Mac 操作清单
 
-**目前没有在 Mac/Guest 执行以下任何一步。** 用户如批准真实操作，应由其在 Mac Terminal/Guest Console 精确执行，先根据本机当前 `openssl version` / `/usr/bin/python3` / 可信 VM UUID 结果确认发行版和命令兼容性，**切勿把私钥内容或带密码命令输出粘贴到聊天或 Git**。
+**本节为原始 M00–M06 实施计划（历史基线）**，现场已完成的仅是 §2B–§2N 中无 CAS 的 CA/证书签发及 TLS-only 验收；实际 CAS 服务、enrollment、SQLite 和正式 Guard 未运行。私钥与口令不得提交仓库。
 
 | 阶段 | 执行对象与可审阅产物 | 准入与撤回 |
 | --- | --- | --- |
@@ -64,14 +202,14 @@
 
 ## 4. 必须明确保留的缺口
 
-1. 这是**Mac 服务源码候选**，不是完成的 Mac 安装；当前工具无法连接用户 Mac Terminal、Guest SSH/Console，故没有证书、真实 SSLContext 加载/握手、端口或 CAS 联网验收回执。
-2. Mac Catalina Python 3.8 / LibreSSL 2.8.3 是老旧实验环境，仅从 14/14 套件名交集推导 TLS1.2 **可能**兼容；证书 EKU/IP SAN/CRL、TLS session resumption/撤销即时性、实际 TLS version/cipher 仍待负例。
+1. 操作者真实验证的是独立无 CAS 临时 TLS-only 端点，而不是 `maintenance_mtls_hostonly_lab_service.py` 的实际 CAS 监听、enrollment 或 SQLite writer；助手没有直接访问用户 Mac/Guest。
+2. Mac LibreSSL 2.8.3 ↔ Guest OpenSSL 3.0.2 已实测 TLS1.2、ECDHE-RSA-AES128-GCM-SHA256 和三项拒绝负例；错误 EKU、过期/未生效、CRL/撤销、session resumption 仍 NOT_RUN。
 3. 证书签发/唯一身份的链下审批、真正 trusted peer 产生、客户端安装、失败持续性审计仍需落地；由系统同一 Mac UID 控制的 CA/状态目录**无法抗本机完全可信账户恶意篡改或物理整机回滚**。新服务只在已验证 TLS socket 下调用原 CAS，纯 Python 内部可构造的 `dispatch_authenticated_lab()` 函数不是不可伪造的操作系统安全边界。
 4. 缺少 C3C4 真实 Guest mTLS client / 端到端正反用例、systemd 249 Service/Socket Guard、直接 dockerd + 存活 shim writer 限制、ARMING TOCTOU、G06 救援/S09 AWS 首启；生产仍 `NO-GO`。
-5. 默认不创建 GPG、PKCS#12/PEM/密钥或认证配置文件；这样可以保证远端 PR/CI 无 secret 泄露。**源码审阅通过及 CI 绿之后**再以准确 Mac/Guest 受控实验处理真实私钥与端口。
+5. 操作者已在 Mac/Guest 受限目录生成实验公私钥；仓库只保存非秘密指纹和验收回执，不包含任何私钥、口令或证书文件。
 
 ## 5. 本地退出及下批提议
 
-`DESIGN-B MERGED / C3C3-IMPLEMENT-A SOURCE_WRITTEN_LOCAL / TESTS_NOT_RUN / MAC_CERTS_NOT_ISSUED / MAC_TLS_LISTENER_NOT_STARTED / GUEST_NOT_TOUCHED / P1_DENY / P0-01_NOT_RUN / PRODUCTION_NO-GO`。
+`IMPLEMENT-A PR#2934 CI#7520 MERGED / LAB_ONLY_MTLS_CORE_CLOSED PASS_SCOPED 4_OF_4 / POST_TEST_39443_NO_VISIBLE_LISTENER / FULL_NEGATIVE_MATRIX_OPEN / FORMAL_ANCHOR_NOT_PRESENT / CAS_NOT_RUN / P1_DENY / P0-01_NOT_RUN / PRODUCTION NO-GO`。
 
-用户已明确批准此批远端提交；已以最新 `dev` 独立 feature 分支交付 2 个代码文件/1 份中文文档，待最终 Actions CI 绿后合并。CI 通过后，再逐项申请 Mac M00（只读）→ M01–M03（证书/私有目录/数据库）→ M04–M06（手工监听/Guest 客户端/撤回）的准确实际操作，绝不能宣称 CI 等于真实 mTLS PASS。
+原 IMPLEMENT-A 源码已通过 PR #2934 / CI #7520 合并。本次仅同步操作者现场证据；下一步先只读审计 EKU、过期/未生效、撤销和 session resumption 扩展负例。真正 CAS 仍需正式受信身份门禁。
