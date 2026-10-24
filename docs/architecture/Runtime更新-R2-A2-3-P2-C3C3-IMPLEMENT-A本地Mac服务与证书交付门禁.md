@@ -1,6 +1,6 @@
 # R2-A2-3 — P2-C3C3-IMPLEMENT-A Mac Host-only mTLS 服务候选及证书交付门禁
 
-> **2026-10-24 / LAB_ONLY_MTLS_CORE_CLOSED PASS_SCOPED 4/4 / REAL_CAS_NOT_RUN / PRODUCTION NO-GO**。设计依据已合并 `dev@a8898a90a4d71fec1d2bba871b63b70dbb86268c`（PR #2932 / CI #7515）。远端代码交付已另从最新 `dev` 建立独立功能分支 `feat/runtime-p2c3c3-implement-a-mtls-hostonly-20261024`，仅移植本批 2 个代码文件与本实施文档，不包含旧 MCP-workspace 中的并行 C1 文档或未授权改动；**新代码的 CI 结果以该 PR 最终 Actions 为准**。
+> **2026-10-24 / LAB_ONLY_MTLS_CORE_CLOSED PASS_SCOPED 4/4 / REAL_CAS_NOT_RUN / PRODUCTION NO-GO**。DESIGN-B 已通过 PR #2932 / CI #7515，IMPLEMENT-A 实验 CAS 服务候选源码及单元测试已通过 PR #2934 / CI #7520 合并 `dev`。本轮从最新 `dev` 独立补交 **M00～M01 真实 Mac/Recovery Guest 的 TLS-only 现场回执**，保留并行 C1 工作，不修改服务代码；**GitHub CI 仅验证文档/代码门禁，现场 TLS 验收以操作者真实双端终端记录为准**。
 
 ## 1. 审前规范与架构归属
 
