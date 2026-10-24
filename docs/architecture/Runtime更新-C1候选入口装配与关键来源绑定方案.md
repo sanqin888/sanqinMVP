@@ -102,4 +102,6 @@
 
 本批为两处源码 docstring 与五份文档同步，按内部原子、行为不变的注释/文档切片处理；没有可执行逻辑、字段/函数、导入、持久化/公共合同、权限、17 Bundle、依赖/锁、CI、Prisma/migration 或生产变更。12-context owner、依赖边/债务、SCC/scanner baseline、兼容和部署单元不变。
 
-本地仅做文件摘要、差异/空白、去除 docstring 后 AST 静态对照；未执行 Runtime 模块、项目 lint/build/test 或 Guest/VM/生产命令；没有新增镜像注释的测试。最高状态为 **SOURCE COMMENTS ALIGNED_LOCAL / ASSEMBLY DESIGN COMPLETE_LOCAL / REAL BOOTSTRAP NOT IMPLEMENTED**，已授权提交远端，最终 head 的实际 Runtime/Release CI 尚待核对；正式候选和 C1 保持 OPEN，后续同批更新验证证据。
+本地仅做文件摘要、差异/空白、去除 docstring 后 AST 静态对照；未执行 Runtime 模块、项目 lint/build/test 或 Guest/VM/生产命令；没有新增镜像注释的测试。最高状态为 **SOURCE COMMENTS ALIGNED_LOCAL / ASSEMBLY DESIGN COMPLETE_LOCAL / REAL BOOTSTRAP NOT IMPLEMENTED**，源码已通过实际 CI #7517；正式候选和 C1 保持 OPEN。
+
+**同批远端验证：**[PR #2933](https://github.com/sanqin888/sanqinMVP/pull/2933) → dev；完整源码 head `1a7809e0632c54f023aac4c11548c7845db64885` 的 [CI #7517](https://github.com/sanqin888/sanqinMVP/actions/runs/40137267379) SUCCESS，Runtime `649 tests / OK`、Release `45 tests / OK`、Runtime shell 语法检查通过，无需 CI 修复。当前仅补同批验证记录，最终 head 仍须实际 CI 全绿，最终 Checks/merge 事件以 PR 为准。
