@@ -2,7 +2,10 @@
 
 Only caller-supplied bytes are hashed. No path reads, imports of supplied code,
 subprocesses or privileged entry point. A later reviewed bootstrap must verify
-root-private paths, source provenance and the complete real dependency closure.
+root-private paths, source provenance, the actual platform and safety-critical
+dependency/input sources under R0 D1/4.1. Unknown executable loading or path
+replacement risks require targeted evidence; a full dynamic closure is not the
+default baseline. This proposal implements no live loader or trust authority.
 """
 from __future__ import annotations
 
