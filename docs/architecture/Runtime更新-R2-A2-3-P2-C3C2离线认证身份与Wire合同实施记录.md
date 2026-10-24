@@ -1,5 +1,7 @@
 # R2-A2-3 — P2-C3C2 离线模拟对等身份绑定与 Wire 合同实施记录
 
+> **2026-10-24 现行进度续记（下文为实施当时历史状态）：** P2-C3C2 已通过 [PR #2929](https://github.com/sanqin888/sanqinMVP/pull/2929) / CI #7508 全绿并合并 `dev@08e5031c`；目前 `dev@67a88aae` 已另合并 C1 文档（PR #2930），独立保留。后续 [P2-C3C3-READ TLS/Host-only 现场复核](Runtime更新-R2-A2-3-P2-C3C3-READ认证TLS与HostOnly就绪审计.md) 确认 Mac/Guest 支持 TLS1.2、Mac 全量 37 个 cipher 与 Guest 14 个 TLS1.2 cipher 名称交集 14/14，原先空集合源于旧 LibreSSL `protocol` 标签。**实际 mTLS、证书验证、CAS 网络、Boot Guard 正向权限均未验证和未授权**；C3C2 仍 `OFFLINE_SIMULATED_PEER_ONLY / decision=DENY`。
+
 > 2026-10-24（America/Toronto）｜**LOCAL IMPLEMENTED / TESTS NOT RUN / REVIEW PENDING / NO PR / PRODUCTION NO-GO**。基线 `dev@09db31ec8575e4e4d3fb45fdfc88abd2161de5b6`（PR #2928 / CI #7506 SUCCESS）。用户要求合并后开始下一步，按已审 [P2-C3C1 方案 B](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md) 在 MCP-workspace 实现**纯离线合成身份 / 协议合同**，只新增 Runtime/Ops 模块与负例，不实现 mTLS 服务、网络监听或真实运行权。
 
 ## 1. 审前规范、职责和兼容性
