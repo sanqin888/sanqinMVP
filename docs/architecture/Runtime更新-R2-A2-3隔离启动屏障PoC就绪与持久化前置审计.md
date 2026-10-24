@@ -97,3 +97,62 @@
 
 **当前裁定：**`VIRTUALBOX_SELECTED / VB-01..VB-06 NOT_RUN / P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。本轮不会连接或改变任何 Guest、Host、生产 Runtime、Docker、AWS、数据库或 Cloudflare；GitHub 方案的撤回仅是 `dev` 仓库源代码回退。
 
+## 10. 2026-10-23 — VB-READ-001 环境核验（历史证据复用；当前现场尚待）
+
+在 `dev@24cc2e2e`（PR #2921 已撤回 GitHub VM 探针）上启动 [VB-READ-001 只读环境核验审批与命令包](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)。**已只读复核**此前 2026-10-22 的 A0-SITE-001 Host 8/8 rc0、17/17 SHA 与 VM host-only/其它 NIC none/转发关闭 `PASS_SCOPED`，以及 A0-GUEST-001 13/13 rc0、28/28 SHA、控制台 ED25519 pin + strict SSH、UID/GID 1000 的 `PASS_SCOPED`；历史原件存在于操作者私有归档，**不是今天再次运行的结果**。复用已有身份锚点，不再要求重做完整可信来源证明。
+
+**新鲜缺口：**MCP-workspace 无 Mac/VirtualBox Host 访问能力；需要操作者在原 Mac 仅执行指定 `VBoxManage list/showvminfo/snapshot list/hostonlynets` 与 Host IP forwarding 的只读读取，确认准确当前 VM/VDI 配置后，才从对应已运行的 Guest 控制台以普通用户读取 systemd、Docker Engine/Compose/containerd/runc、live-restore、daemon/socket、existing synthetic containers/volumes 状态。**没有 Docker 版本/服务来源现场证据，不能通过 VB-03；存在快照不等于实测恢复，VB-04 仍 PARTIAL。**任何 Host/Guest 输出须私有保全/脱敏，不入公开仓库；不运行 SSH 自动接受、sudo、apt、startvm/controlvm、创建快照或 Guard。此前表中 `VB-01..06 NOT_RUN` 表示**本 R2-A2-3 当次未执行**，不否认历史 A0 的有效限定技术证据。
+
+**本轮状态：**`VB-READ-001 SOURCE REVIEW COMPLETED / HOST-GUEST CURRENT COMMANDS NOT_RUN / VB-01/02 HISTORICAL PASS_SCOPED-CURRENT UNKNOWN / VB-03 OPEN / VB-04 PARTIAL / VB-05 OPEN / VB-06 NOT_AUTHORIZED / P0-01 NOT_RUN / C5-G2 NO-GO`。本地文档审阅门禁，未提交远端。
+
+## 11. 2026-10-23 — Test-02 Host 配置现场回读（VB-READ-001 §6）
+
+用户在 Mac Terminal 回传 VirtualBox `7.0.26r168464` 的 `list vms/runningvms`、精确 Test-02 UUID 的 `showvminfo` / `snapshot list` 和 `list hostonlynets`。**本轮确实取得了当前 Host 配置证据**，相较上一节 `NOT_RUN` 的历史设计状态有进展：Test-02 UUID/hardware UUID 一致，VM 当前 `poweroff`（只有 C2 恢复机运行）、`1 vCPU/2048 MB`，仅 NIC1 为已启用 `HostNetwork` 的 host-only 网络、其余 7 卡 none；Clipboard/DragDrop disabled、未见共享目录配置；Snapshot `SanQ-Runtime-B4B2-Clean-Baseline-20261017` 的名称/UUID 双读取一致，SATA-0-0 连接的 VDI 位于 Snapshots 路径。**Snapshot ID 不等于 active attached VDI ID**，该 VDI 的父盘/差分链和 clone 实测仍需独立核验。确切私有 UUID/MAC/路径均不抄入公共 repo。
+
+参见 [VB-READ-001 §6 明细与下一项](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)。当前仍未取得 `showmediuminfo` 父盘关系、Mac 当前 IP forwarding/hostonlyifs、Guest 真实 Docker/systemd 版本、Snapshot 真正可恢复、生产同版证据；Test-02 仍关机，**不据此自动批准开机、安装、Guard、P0-01**。本地文档分支未推远端，状态 `VB-01/02 HOST_CONFIG PASS_SCOPED / VB-03 OPEN / VB-04 MEDIA_CHAIN+RESTORE OPEN / VB-05 OPEN / VB-06 NOT_AUTHORIZED / P0-01 NOT_RUN / C5-G2 NO-GO`。
+
+## 12. 2026-10-23 — Test-02 差分盘父链与 Host IPv4/IPv6 转发
+
+用户回传在**确切附着 Test-02 的现役差分 VDI UUID** 上运行 `VBoxManage showmediuminfo disk` 的结果：显示 `normal(differencing)`、`created`、`Parent UUID` 为一个明确的非 base 父盘、`In use by VMs` 只关联 Test-02、25 GiB 虚拟容量与 92 MiB 级差分空间；证实子盘与 §11 的 SATA 已附着标识相符，**没有核验父盘本身或完整快照链**。Mac `list hostonlyifs` stdout 为空（与既有记录一致）、`net.inet.ip.forwarding=0`、`net.inet6.ip6.forwarding=0`；在 VirtualBox 的 Host-only Network 机制下空 hostonlyifs 不是网络损坏证据，也不等于真实网络隔离已通过。详见 [VB-READ-001 §7](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)。**下一只读项为准确 Parent UUID 的 `showmediuminfo`**，依真实输出继续沿父链到 base；不启动 VM、不修改/合并/恢复介质。状态 `VB-01 HOST_ID+CHILD_BIND PASS_SCOPED / VB-02 HOSTONLY+FORWARDING_CONFIG PASS_SCOPED / VB-03 GUEST_NOT_RUN / VB-04 PARENT_CHAIN OPEN / P0-01 NOT_RUN`，仍本地待审阅。
+
+## 13. 2026-10-23 — Test-02 父盘回读：磁盘链元数据限定完成
+
+用户在 Mac 以只读 `VBoxManage showmediuminfo disk` 查看 §12 现役子盘声明的父盘：父盘的 `Parent UUID=base`，`Type=normal(base)`、`State=created`、`Storage format=VDI`、虚拟容量 25600 MBytes；`Child UUIDs` 精确回指 Test-02 附着的差分子盘，`In use by VMs` 包含 Test-02 及其既有 Clean Baseline Snapshot。由此**双向元数据确认 Base VDI → Differencing VDI → 已登记 Test-02**，未见多级上游断链。**但没进行真实磁盘块读取/哈希、Guest 引导、Snapshot Clone/Restore**，只裁定 `VB-04 MEDIA_METADATA_CHAIN PASS_SCOPED / RESTORE NOT_VERIFIED`，不关闭 VB-04 整体。
+
+最新交接参见 [VB-READ-001 §8](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)：Host 静态链路审计结束；若用户单独批准对准确 UUID 的已关机 Test-02 开机，才进入 Guest Console 非 root 只读 OS/systemd/Docker/containerd/Compose 版本预检；开机本身会产生 Guest 写入，**不包含安装 Docker、改配置、创建快照、Guard 或真实断电**。本地文档分支未推远端。门禁 `VB-01/02 PASS_SCOPED / VB-03 GUEST_NOT_RUN / VB-04 MEDIA_CHAIN PASS_SCOPED, RESTORE_OPEN / P0-01 NOT_RUN / C5-G2 NO-GO`。
+
+## 14. 2026-10-23 — VB-03 Test-02 指定开机与控制台只读核验已获授权
+
+用户明确授权**启动经 Host UUID 核实的唯一 `SanQ-Linux-Test-02`**，通过该 VM 的本地 Guest Console 普通账户读取 OS/kernel、systemd、Docker Engine/Compose/containerd/runc 版本、`docker.service/docker.socket` 选定状态/入口字段与 `live-restore`。已向操作者给出 Mac `VBoxManage showvminfo` 最终预检和 `startvm <exact UUID> --type gui` 指令（**操作者尚未回传开机执行结果**），并给出 Guest 只读命令集合。MCP 无 Mac/VirtualBox 控制通道，**不是助手已成功启动 VM**。本次授权不包括 `sudo`、安装 Docker/包、服务启停与 unit 修改、Snapshot 任何写操作、VM 断电注入或 Guard 安装；C2 恢复 VM 保持原状。接续 [VB-READ-001 §9](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)，待回传真实 Guest 命令输出再审计；门禁 `VB-03 START AUTHORIZED / EXECUTION PENDING / P0-01 NOT_RUN / C5-G2 NO-GO`。
+
+## 15. 2026-10-23 — VB-03 Guest 环境只读回传：Docker Stack 未安装
+
+用户随后通过 Mac `ssh ubuntu@192.168.56.2` 提交 G0～G4 只读输出。观察到 Guest Ubuntu 24.04.5 LTS / Linux 6.8.0-146 / systemd 255 (255.4-1ubuntu8.17)、UID/GID 1000、根 `/dev/sda2 ext4`；`docker` CLI/Engine、Compose、`containerd`、`runc` 均不存在，`systemctl show` 返回两段 `LoadState=not-found`（G3 回传命令本体拼贴有缺损，unit 具体边界仍可再确认）。**此为操作者 Guest SSH 回执而非已授权的本地 Console 检查**，本次尚无 `VBoxManage list runningvms` / 真实 Guest Console/当次 SSH key pin 将本会话重新绑定至准确 Test-02 UUID，故证据限定 `GUEST_ENVIRONMENT OBSERVED / EXACT-VM SESSION BINDING PENDING`。未将 Ubuntu 软件源提示的 `docker.io` 候选安装，未做 sudo/apt、Docker/unit/网络/快照更改。详细见 [VB-READ-001 §10](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)。后续若需要补齐 Docker 必须先生产/Guest 同版本及包来源只读比对、设计影响/撤回方案，**经单独授权**才可操作 Test-02；真实 P0-01 保持 `NOT_RUN`，S03/G06 OPEN、C5-G2 NO-GO。
+
+## 16. 2026-10-23 — Test-02 Mac Host 当前运行身份确认
+
+用户随即在**Mac 宿主机**运行 `VBoxManage list runningvms`：只见 `SanQ-Linux-Test-02` 及同一精确 UUID；`showvminfo --machinereadable` 选定字段显示同 VM 的 `VMState=running`、`hostonly-network1=HostNetwork`、`nic1=hostonlynetwork`、`nic2..8=none`。与前批已经回传的 Guest SSH Ubuntu/systemd 版本和 Docker 缺失结果形成**同环境限定关联证据**，但尚未做当次 Guest Console SSH 指纹/boot ID 交叉认证。此刻以前运行的 C2 恢复 VM **没有出现在新 runningvms 清单中**，原因未知，不执行任何 C2 恢复机操作。参见 [VB-READ-001 §11](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)。门禁 `VB-01/02 HOST CURRENT PASS_SCOPED / VB-03 DOCKER_STACK_MISSING / VB-04 RESTORE_OPEN / P0-01 NOT_RUN / C5-G2 NO-GO`。后续如需在 Test-02 安装 Docker，要先独立授权生产服务版本只读采集、比较来源/参数/撤回，再审批 Guest 安装。本地文档未推送。
+
+## 17. 2026-10-24 — 新 Jammy VM Docker 实验基线已就绪（VB-03 收口、VB-04 待审）
+
+**本节为最新状态，优先于 §§10–16 的 Test-02 历史时点；不重写历史现场记录。** 用户新建独立 `SanQ-Runtime-Lab-Jammy-01`（与旧 Test-02 完全不同的 VM/VDI），Mac 通过明确的 VirtualBox UUID、NIC1 `HostNetwork` host-only/NIC2–8 none、Guest Console SSH 指纹与独立 Mac SSH 比对确认新机身份。Guest `Ubuntu 22.04.5 / Kernel 5.15.0-119 / systemd 249.11-0ubuntu3.12`、1 vCPU/2 GiB RAM/2 GiB Swap、ext4、无 IPv4 默认路由、SSH 正常。全部来自操作员现场对话回执；**MCP 无 Mac 或 Guest 执行通道**，准确私有 UUID/IP/指纹不进入公开文档。
+
+用户先创建 `SanQ-Jammy-Clean-Baseline-20261024`（Docker 安装前），经明确授权随后完成 **12 个已验签/哈希核验的 Docker/Ubuntu Jammy amd64 .deb 离线安装**：Docker Engine/CLI `29.2.1`、containerd.io `2.2.1`、Compose `v5.0.2`、实际 runc `1.3.4`；APT 计划 `0 upgraded / 12 newly installed / 0 removed`，无 `docker.io` 或 `podman-docker`，Buildx 推荐包未安装。真实 `postinst` 标准服务启动请求被临时 `policy-rc.d=101` 拒绝；安装后显式禁用并确认 `docker.service`、`docker.socket`、`containerd.service` 的 `loaded/inactive/disabled`，`dpkg --audit` 空、临时策略已撤销。**这仅证明安装时常规服务动作受控，不是可靠的跨重启 Boot Guard。**
+
+随后 Guest 经独立身份/版本/服务检查正常关机；Mac 的 `snapshot list` 表明第二份 `SanQ-Jammy-Docker-Baseline-20261024` 已登记为 **CurrentSnapshot**，第一份仍在。重复创建时的 `Original baseline mismatch` 只是因为第二份已存在，操作员回报的只读快照表已核实，未重复创建。两份均只标 `SNAPSHOT_REGISTERED PASS_SCOPED`；新盘介质链全量核验、克隆/真实恢复均未完成。详尽过程与误差/边界见 [VB-READ-001 §12](Runtime更新-R2-A2-3-VB-READ-001环境核验与下一步审批.md)。
+
+| 门禁 | 最新状态（仅新 Jammy VM） |
+| --- | --- |
+| VB-01 / VB-02 | `HOST/GUEST ID+HOSTONLY CONFIG PASS_SCOPED`；非完整安全隔离认证 |
+| VB-03 | `DOCKER OFFLINE INSTALLED / LOCAL VERSION+INACTIVE/DISABLED PASS_SCOPED`；daemon 从未按 PoC 要求启动验证 |
+| VB-04 | `TWO BASELINE SNAPSHOTS REGISTERED PASS_SCOPED`；真实 media-chain/clone/restore **OPEN**；Docker 启动链只读审计 **NEXT** |
+| VB-05 / VB-06 | 合成容器、Boot Guard 安装、故障注入 **NOT_RUN / NOT_AUTHORIZED** |
+
+**VB-04 下一阶段目标：**在重新绑定新 VM 准确身份和快照后，以只读方式审计 `docker.service/docker.socket/containerd.service` 的 `ExecStart/Requires/Wants/After/TriggeredBy/FragmentPath/DropInPaths`，SysV/sockets/直接 `dockerd` 入口、daemon `live-restore` 语义、shim/writer 继续存活风险、独立 SSH/Console 救援；按生产真实 Engine API/systemd/runc/Compose/daemon 参数取证进一步判断「同版本」的剩余差距。产出最小 PoC 实施与 P0-01A～F 负例矩阵，需突破 systemd/权限/持久化合同的设计先解释并独立请求授权。**此前 Docker 离线安装/快照许可不授权 Docker 启停、写 unit、安装 Guard、快照 restore、断电测试或生产操作。**
+
+维持已选 `SAFE_STOP_DOCKER_ON_UNCERTAIN_RESTART`；`P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。当前更新仅在 MCP-workspace 本地文档进行，未执行新的 Mac/Guest/生产动作、未提交 PR 或推送。
+
+
+
+
+
