@@ -2,6 +2,8 @@
 
 **日期：2026-10-23（America/Toronto）｜阶段：LOCAL READINESS / P0-01 PROCEDURE PROPOSED / NO POC EXECUTION / NO INSTALL AUTHORIZATION。**
 
+> **2026-10-24 VB-04C 最新现场与设计进度（原文历史保留）：** 操作者最新 Mac/Recovery Clone 回执证实原 Jammy VM poweroff、Recovery Host-only NIC1 且其它 none、Guest UID1000/Linux 5.15/systemd 249；`docker.service` 启动命令 `dockerd -H fd:// --containerd=/run/containerd/containerd.sock` 依赖 `docker.socket`，后者监听 `/run/docker.sock` 且可触发服务；`containerd` 为独立 Unit，三 Unit 均 inactive/disabled、无 Drop-in、无活动 dockerd/shim、`daemon.json` ABSENT。**静态链路 PASS_SCOPED，不是实际 Boot Guard PASS**。参见新 [VB-04C 安装依赖与撤回设计](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md)：按 root 身份/离机认证、service+socket、direct dockerd/shim/writer 及 G06 救援拆分，下一批仅提议离线 VB-04D1；`P2-C3C/VM root/P0-01 NOT_AUTHORIZED`、`S03/G06/S09 OPEN / C5-G2 NO-GO`。
+>
 > **2026-10-24 最新 P2-C3B 现场证据续记：** [P2-C3A](Runtime更新-R2-A2-3-P2-C3A离线SQLiteCAS合同与测试记录.md) 已经 PR #2924 / CI #7497 全绿，squash 合并到 `dev@c8e1c13d`；操作者获批 Mac 本地 [P2-C3B-001](Runtime更新-R2-A2-3-P2-C3B-001Mac进程持久化实测复核.md) 回传 8/8 固定源码 SHA、22/22 Mac SQLite unittest、epoch2 两笔回执重开验证、未提交及已提交两种真实测试子进程 `SIGKILL` 后状态读回，限定 `MAC PROCESS-LEVEL PASS_SCOPED / P2-C3B-001 CLOSED_SCOPED`。**不是物理掉电、真实 OFF_HOST/mTLS、Boot Guard/daemon 屏障或生产 S03 通过**；P2-C3C 未设计/未授权，`P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO` 保持。
 >
 > **2026-10-24 P2-C3A 初始阶段记录（原状态保留为历史）：** 用户曾授权 P2-C3A，仅在 MCP-workspace 开发 [离线 SQLite CAS V2 合同、实验事务和失败测试](Runtime更新-R2-A2-3-P2-C3A离线SQLiteCAS合同与测试记录.md)；当时尚无 CI 或 Mac 实测。原文中的未执行状态不代表当前最新状态。

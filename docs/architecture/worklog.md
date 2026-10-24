@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — R2-A2-3 VB-04C Boot Guard 安装/启动依赖/撤回设计（本地审阅）
+
+**VB-04A/B OPERATOR-READONLY PASS_SCOPED / VB-04C DESIGN COMPLETE_LOCAL / NO ROOT OR VM WRITE / NO PR。** PR #2925（CI #7499 SUCCESS）已合并 `dev@427a7195`，P2-C3B 仅 Mac SQLite process-level PASS_SCOPED。最新操作者 Mac/Guest 回执确认 Recovery Clone 正在运行、原 Jammy VM 保持 poweroff、仅 Host-only NIC、Guest UID1000、Linux 5.15/systemd 249；`docker.service` 的 `/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock` 明确依赖 `docker.socket`，后者监听 `/run/docker.sock` 并可触发前者；containerd 独立 Unit，三个 Unit 目前 inactive/disabled、无 drop-ins/daemon.json 与相关正在运行进程。已形成 [VB-04C 安装依赖与撤回设计](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md)，区分可信安装与双回执、service+socket 准入、直接 dockerd/既有 shim writer/备份旁路、ARMING 竞态、G06 独立救援与预登记后禁止自动卸载。**未安装、未授权启动 Docker、未测试 P0-01A–F**；下一批提议 VB-04D1 仅离线 Unit/安装 manifest 合同/负例，P2-C3C/真实 root 另审批。`S03/G06/S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`；文档分支本地待审，未推送。
+
 ## 2026-10-24 — R2-A2-3 P2-C3B-001 Mac SQLite 进程级验收续记（本地文档）
 
 **OPERATOR_TRANSCRIPT / MAC PROCESS-LEVEL PASS_SCOPED / P2-C3B-001 CLOSED_SCOPED / NO PR。** PR #2924 / CI #7497 Runtime 600/600 全绿，已 squash 合并 `dev@c8e1c13d`；操作者经用户态准确授权在 Mac 私有目录中完成 8/8 固定 Git blob 来源核验、原生 SQLite 22/22 测试、epoch2 两份历史回执重开读回、B05-A 未提交 SIGKILL 回滚和 B05-B 已提交后 SIGKILL 丢失响应读回（最终合成 epoch3/INCIDENT）。[完整范围/数据/不变量与限制](Runtime更新-R2-A2-3-P2-C3B-001Mac进程持久化实测复核.md)。没有物理掉电、mTLS/Guest-to-Mac OFF_HOST 权威、Guard 实装或 P0-01；`S03/G06/S09 OPEN / C5-G2 NO-GO`。本批**仅文档**，未访问 Mac/VM/生产，待用户审阅再授权提交远端。
