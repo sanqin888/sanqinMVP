@@ -140,8 +140,14 @@ class UpdateCapabilities(Protocol):
     """Each method is bounded and authenticates its own real evidence.
 
     Admission must durably reject consumed/active/aborted transactions and
-    independently verify platform/source/closure, both archives, the current
-    17-member inventory, changed Runtime members and preserved app/storage state.
+    independently verify the actual platform, executor and critical dependency/
+    input sources, the exact target archive/publication, current installed
+    provenance/17-member inventory, changed members and preserved app/storage.
+    current_archive_digest remains required authenticated publication identity;
+    it does not require possession of old archive bytes, and must not be
+    fabricated from a manifest, repackaged files or the target archive. Exact
+    target archive bytes remain required. Unknown source/loading/path risks
+    need targeted resolution before use, not a default full dynamic closure.
     Holding maintenance is continuous, not a stat-before/stat-after assertion. Snapshot
     creation must resolve the exact request, require available/source/disks and
     off-host custody; an unknown result is not COMPLETE and is never retried by
