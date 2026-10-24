@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-24 P2-C3C2 本地进度续记：** [P2-C3C1 认证 CAS 信任边界](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md) 已由 PR #2928 / CI #7506 合并 `dev@09db31ec`。依据该 B 方案，仅在 MCP-workspace 增加 [P2-C3C2 离线模拟 peer/Enrollment + Wire v1 合同与负例](Runtime更新-R2-A2-3-P2-C3C2离线认证身份与Wire合同实施记录.md)；`HEAD_READ/COMMIT_LOOKUP/CAS_SUBMIT` 和 Unknown-commit 不授予任何 CAS、mTLS 或 Docker 实际权限，P1/A2-1 和 17 文件发布清单不变。**尚未运行 GitHub CI，未启动 Mac 网络服务或修改 Guest/VM；P2-C3C3 TLS 环境能力只读预检须另批**。`P0-01 NOT_RUN / S03-G06-S09 OPEN / PRODUCTION NO-GO`。
+
 **2026-10-24 P2-C3C1 最新进度（原有 VB-04D1 本地状态为历史记录）：** VB-04D1 已通过 PR #2927 / CI #7504，Runtime 624/624 PASS，并合并 `dev@2b83edf2`。按“合并后开始下一步”只读审阅并形成 [P2-C3C1 最小认证离机 CAS 设计](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md)。指出 `OfflineCasSubmission.client_identity` 自报、P1 `CustodyReceipt` 不具独立真实性、网络 HEAD_READ 与 Docker 启动存在 TOCTOU，不能把 mTLS 连接或旧实验回执直接提升为生产 OFF_HOST/ALLOW。后续跨进程/可信身份边界所需 C3C2 源码扩展要单独授权，Mac/Guest 真实服务和 root Guard/P0-01 分批审批。`P2-C3C1 DESIGN COMPLETE_LOCAL / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO`。
 
 **2026-10-24 最新 VB-04D1 本地实现进度（此前 VB-04C 为历史设计状态）：** VB-04C 文档已由 PR #2926 / CI #7501 合并 `dev@05ec6ef8`。按用户授权，现于新 MCP-workspace 分支新增 [VB-04D1 离线 Unit/安装 Manifest 合同及测试记录](Runtime更新-R2-A2-3-VB-04D1离线Unit依赖与安装Manifest实施记录.md)，用于校验操作者提供的 systemd 249 / Docker socket+service Unit 快照、9 项安装文件/目录意图、双入口 gate 声明及静态依赖环；**始终 DENY，未安装真实 Guard 或 mTLS，不启用 Docker**。本批还没实际运行 CI，待本地审阅、单独批准 PR。`P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`。

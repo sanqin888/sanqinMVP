@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — R2-A2-3 P2-C3C2 离线身份绑定/Wire 合同本地实现
+
+**P2-C3C1 PR #2928 / CI #7506 SUCCESS / dev@09db31ec；P2-C3C2 LOCAL_IMPLEMENTED / TESTS NOT RUN / NO PR。** 按前次已审 B 方案的最小范围，只在 MCP-workspace 新增 `ops/runtime/maintenance_off_host_auth_wire.py`、25 项 `test_maintenance_off_host_auth_wire.py` 离线负例及 [C3C2 实施记录](Runtime更新-R2-A2-3-P2-C3C2离线认证身份与Wire合同实施记录.md)。Wire v1 严格 canonical JSON、三种操作、32KiB 上限；只注入未实际验证的 synthetic peer certificate/CA 指纹和 enrollment、READ/SUBMIT 角色，校验状态/锚点/nonce、unknown-commit 读回策略；所有输出始终 DENY 且无网络/SSL/真实 CAS 执行权。没有修改 P1/A2-1、原 CAS SQLite、VB-04D1 及 17 文件 Bundle；没有 Mac/Guest/证书/Docker/生产操作。下一批 C3C3 先严格只读环境核验与独立权限申请；`P0-01 NOT_RUN / S03-G06-S09 OPEN / PRODUCTION NO-GO`。
+
 ## 2026-10-24 — P2-C3C1 最小认证离机 CAS 信任边界设计（本地审阅）
 
 **VB-04D1 PR #2927 / CI #7504 SUCCESS / dev@2b83edf2 / Runtime 624/624 PASS。** 首轮 CI #7503 新增负例测试存在一处括号未闭合，已在同 PR 以最小测试语法修复后重新运行全部必需作业并全绿合并。现根据主线进入 [P2-C3C1 最小认证 CAS 信任边界与实施分批设计](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md)：确认 P1 `CustodyReceipt` 只是未认证 claim、P2-C3A `client_identity` 是调用方声明且 `LAB_ONLY`、Mac SQLite process-level PASS_SCOPED，不得直接接 Docker。候选新增版本化 wire + mTLS peer ↔ enrollment/role 身份绑定；`HEAD_READ`、`COMMIT_LOOKUP`、`CAS_SUBMIT` 三端口操作；响应丢失后的未知/对账；特别列出在线查询到 Docker 启动之间的 **TOCTOU**，因此本批不给 `ALLOW_DOCKER_START`。该跨进程/身份所有权扩展要按 `AGENTS.md §10` 取得单独授权，下一步优先 C3C2 纯离线合同与负例，Mac 网络/证书、Guest 文件、Unit 安装和 P0-01 均未授权。本批只改 MCP-workspace 文档，未 push/PR；`S03/G06/S09 OPEN / R2-C4 OPEN / PRODUCTION NO-GO`。
