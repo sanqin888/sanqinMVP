@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-24 C1 现行范围与候选准备（远端交付已授权，CI 待核）：**按用户要求完成文档范围对齐并启动 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)，已建立实际组件/平台缺口、证据复用表和同候选关闭条件。**C1 OPEN / BASELINE ALIGNED_LOCAL / CANDIDATE PREPARATION STARTED / FINAL CANDIDATE NOT FROZEN**；正式 bootstrap、实际平台/关键依赖及 effect adapters 尚未完整固定，最终收口跟随正式执行候选。R1-A 七包与 S5 有限证据可在对象/平台仍匹配时复用；旧全量 Python/ELF/dlopen 消费和第三方见证要求不再默认适用，C1-SYN A2-II 仅为异常/专项路线，原失败与禁令保留。R2 的 VB-04D1 / P2-C3C2 已分别经 PR #2927 / CI #7504、PR #2929 / CI #7508 全绿进入 dev；旧“本地未 CI”文字为各自历史时点；C3C3-READ 已取得部分只读能力回执，真实 mTLS/受信身份/Guard 联动仍未完成，以其工作包最新现场续记为准。本批不改代码或守卫、不取得现场执行权；**R2-C4 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED**。
+
 **2026-10-24 P2-C3C2 本地进度续记：** [P2-C3C1 认证 CAS 信任边界](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md) 已由 PR #2928 / CI #7506 合并 `dev@09db31ec`。依据该 B 方案，仅在 MCP-workspace 增加 [P2-C3C2 离线模拟 peer/Enrollment + Wire v1 合同与负例](Runtime更新-R2-A2-3-P2-C3C2离线认证身份与Wire合同实施记录.md)；`HEAD_READ/COMMIT_LOOKUP/CAS_SUBMIT` 和 Unknown-commit 不授予任何 CAS、mTLS 或 Docker 实际权限，P1/A2-1 和 17 文件发布清单不变。**尚未运行 GitHub CI，未启动 Mac 网络服务或修改 Guest/VM；P2-C3C3 TLS 环境能力只读预检须另批**。`P0-01 NOT_RUN / S03-G06-S09 OPEN / PRODUCTION NO-GO`。
 
 **2026-10-24 P2-C3C1 最新进度（原有 VB-04D1 本地状态为历史记录）：** VB-04D1 已通过 PR #2927 / CI #7504，Runtime 624/624 PASS，并合并 `dev@2b83edf2`。按“合并后开始下一步”只读审阅并形成 [P2-C3C1 最小认证离机 CAS 设计](Runtime更新-R2-A2-3-P2-C3C1最小认证离机CAS信任边界设计.md)。指出 `OfflineCasSubmission.client_identity` 自报、P1 `CustodyReceipt` 不具独立真实性、网络 HEAD_READ 与 Docker 启动存在 TOCTOU，不能把 mTLS 连接或旧实验回执直接提升为生产 OFF_HOST/ALLOW。后续跨进程/可信身份边界所需 C3C2 源码扩展要单独授权，Mac/Guest 真实服务和 root Guard/P0-01 分批审批。`P2-C3C1 DESIGN COMPLETE_LOCAL / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO`。
@@ -113,7 +115,7 @@
 | B4B-2 Guest 实验 | 操作员报告固定合成字节机制 8/8；hash/原证据定位见对应验收文档 | 不是真实解释器完整闭包、独立见证或安装资格；过去未做的原机 restore 只是历史事实，不再属于新 C2 验收；该实验仍不能代替新实例恢复门禁 |
 | B2B8 / H-01–H-08 | B2B8 仅 S1/S2/S11；H 系列为有限负向证据（H08 4/4） | 未形成可阻止新消费者的真实整机屏障，namespace/观察完整性仍需 R2 |
 | C2-0 / C2-1A–D 生产式恢复模拟（2026-10-18） | 用户原始两份归档已被独立读取复算 SHA，Guest 22 项中 19 项稳定输出/rc 完全一致，3 项为 UTC、IP、临时 mountinfo 差异；完整来源见 [B2B2 §9](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) | 克隆、新 VDI、Ubuntu、合成 HTTP 接管及归档完整性有限 VERIFIED；原始 Host 独立真实性和部分外层 SSH rc 等限制经 [N-07 最终风险裁定](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) §9.6 接受，**C2 隔离合成恢复前置项已在限定范围 CLOSED**；真实 AWS/业务恢复不能据此关闭 |
-| 正式更新与独立恢复 | 新 AWS 快照/维护冻结合同已批准，尚未实现；仍缺正常执行闭包、真实维护禁入、代码快照与正式安装/新实例恢复组合 | **C2 已作为可丢弃隔离实验恢复前置项有界 CLOSED（N-07 LIMITED-ACCEPTED）**；C1、C3–C7 仍 OPEN，C8 NOT REQUESTED；真实 AWS S01–S12、安装/维护冻结和生产交付未实现，NO-GO |
+| 正式更新与独立恢复 | AWS 快照/维护冻结合同及部分离线模型已推进；仍缺正式候选的关键可信执行基线、真实持续禁入、代码快照与正式安装/新实例恢复组合 | **C2 已作为可丢弃隔离实验恢复前置项有界 CLOSED（N-07 LIMITED-ACCEPTED）**；C1、C3–C7 仍 OPEN，C8 NOT REQUESTED；真实 AWS S01–S12、安装/维护冻结和生产交付未完成，NO-GO |
 
 上述是源码/已有证据核对，不是重新检查任何生产主机、Guest、快照、凭据或远端对象当前存在。已安装 Runtime 的历史身份仍见[发布与 Runtime 状态](../runbooks/GHCR发布与Runtime状态.md)，不能用 dev SHA 替代 installed source 或 app image SHA。
 
@@ -121,7 +123,7 @@
 
 | 门禁 | 关闭条件 | 当前状态及主要后续 |
 | --- | --- | --- |
-| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器及关键运行环境/依赖可信来源、实际执行位置/权限及必要的完整性核验；遇到未知动态加载、来源或路径替换风险才按 §4.1 专项追踪；当前安装健康与完整性绑定快照 | OPEN：R1；**不再默认要求全量 Python/ELF/dlopen 逐字节消费闭包或第三方见证**；旧版恢复专用自举闭包和双 Archive 不重复强制 |
+| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器及关键运行环境/依赖可信来源、实际执行位置/权限及必要的完整性核验；遇到未知动态加载、来源或路径替换风险才按 §4.1 专项追踪；当前安装健康与完整性绑定快照 | **OPEN / CANDIDATE PREPARATION STARTED**：见 [C1 最小基线与候选清单](Runtime更新-C1最小可信执行基线对齐与候选准备.md)；最终同正式执行候选收口，不默认全量 Python/ELF/dlopen 消费闭包、第三方见证、旧恢复自举闭包或双 Archive 取回 |
 | C2 生产模式可恢复的隔离环境 | 在无生产资产、隔离且独立核实身份的 Guest 上，从**已认证指定 Snapshot 创建独立新实例**，依 [C2-02 N-01–N-07（C2-CHANGE-02）](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 核验 A Snapshot 身份和来源、实际 clone rc、新 VM/VDI、选定 Guest 稳定基线及明确的运行时差异、合成服务、离机归档与独立审阅；**不要求原机 restore / Marker A/B / 新快照** | **CLOSED — ISOLATED SYNTHETIC RECOVERY ONLY / N-07 LIMITED-ACCEPTED（2026-10-18）**：两份已独立核对的归档 SHA/内部清单、22 项 Guest 比对（19 同值/3 预期差异）、准确 Snapshot `showvminfo` rc=0、独立 VM/base VDI `showmediuminfo` rc=0、Host-only 合成 HTTP 接管/停止共同证明该可丢弃隔离实验环境的指定恢复流程。**N-07 风险接受仅适用于这些准确合成资产**：原始 Mac Host 无独立签认、历史 SSH 外层 rc 缺失、本轮 Host 输出未另作离机封存，按 [B2B2 §9.6](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 如实保留，不补造值。不能据此认证真实 AWS 平台、新代码可信来源、持续维护冻结、数据库/Uploads/供应商恢复或授权 Guest/root 操作；C1/C3–C8 仍独立，C5-G2 NO-GO |
 | C3 应用与存储一致性 | 本次 current/previous/env/running image、17+Manifest、C4、project/DB/Uploads 及外部安装副本相容，无 pending/未明事故 | OPEN：R3/R4，生产前另做当前主机核对 |
 | C4 维护排他与禁入 | 原策略离机记录→准确容器 no/正常停止→所有启动/写入入口持续禁入；跨 reboot/快照首启仍冻结，namespace/持有者覆盖完整，成功精确恢复 | OPEN：R2；按 MAINT-RESTART-01，不修改 Manifest Compose |
@@ -150,8 +152,8 @@
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
 | R0 | D1–D5、两项批准修订、C1–C8、矩阵及文档收口 | 本次文档审阅通过且远端交付已授权；不重复请求两项设计批准 |
-| R1 | B4B-3B/3C：正式执行器关键来源/平台与必要风险取证（按 §4.1 精简，不默认完整依赖消费或第三方见证） | IN PROGRESS：B4B-3B-1 已合并 PR #2854 / CI #7336 / dev merge `2bab5fe6`，仅为候选 FD 哈希与离机比对；B4B-3B-2A 已合并 PR #2855（dev `2db85d32`），提供仅内存 AST/ELF 静态线索；B4B-3B-2B1 已合并 PR #2857 / CI #7344（run `39098295751`）/ dev `1a82caff`，仅实现严格 no-follow 的候选目录 FD 逐段开启与合成测试；B4B-3B-2B2 设计已由 PR #2858 / CI #7346 合并（dev `c9db47b7`），其 2B2-A 已由 PR #2859 合并（final head `d366d62a906fe5060f1dbfe85b6e930bfbe77dab`；CI #7348 / run `39101080529` 选中作业成功，Runtime 281 / Release 45 合成 tests OK；dev merge `d5a8ba0dfc45ed349aa65edba160b0ffa5ee4386`），仅纯内存 alias 声明、不放宽已有 `O_NOFOLLOW`；2B2-B 受限真实路径/FD 解析及 C2 可恢复隔离 Guest 就绪已形成[专项评审和操作清单](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md)，**B2B2-B1 独立受限 nofollow alias FD 候选解析器及合成测试已由 PR #2861 / CI #7352 (run `39103592288`) 合并 dev `5d69eb81`；B2B2-B2 真实可信 root-anchor / Guest FD、独立外部 pin 未实施；C2-0 实际 Host/Guest 只读观察与 C2-1A–D 新实例恢复合成演练由操作员报告已完成，但按已批准 C2-CHANGE-01，按 C2-CHANGE-02 N-02/N-03/N-05 的 A/B 证据规则不再强制 marker，现有归档与最终 Host 只读核对已证实可丢弃隔离新实例恢复，N-07 历史来源局限已获限定风险接受，C2 隔离实验前置项 CLOSED（但真实 AWS 同平台验收/维护冻结仍未做）**，真实可信 alias/root-anchor 仍另审，仍无真实 Guest / `/'` 锚点证明、系统 symlink/realpath 认证、完整动态 Python/ELF/dlopen 闭包、独立来源或消费见证。privileged Guest 试验须先满足 C2 和精确命令批准。详见 [B4B-3B-1](C5-G2-B4B3B1-只读FD证据与离机比对.md)、[B4B-3B-2B1](C5-G2-B4B3B2B1-受控路径FD候选开启.md) 与 [B4B-3B-2B2 设计评审](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) |
-| R2 | MAINT-RESTART-01：原策略/任务持久化、no/正常停止、跨重启维护与禁入、精确恢复 | PLANNED；先真实生产清单/接口评审；真实操作另行授权，不重构全消费者协议 |
+| R1 | 正式执行器最小可信基线、关键来源/平台及条件触发的专项风险取证（按 §4.1） | **IN PROGRESS / C1 OPEN**：R1-A 准确 Noble 七包技术原件、R1-B S5 三 FD/27 项 manifest 的 PASS_SCOPED 可按原对象复用；R1C-1 核心/启动材料已由 PR #2888 / CI #7417 合并，但无真实 bootstrap/完整接线。已启动 [C1 最小基线与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)，登记实际平台、关键依赖/输入、外置 Guard/CAS、发布物/权限和必要同候选验证缺口。旧 B4B/S6/见证记录留作历史与专项材料，不再据此要求默认全量闭包或重开 C0；最终 C1 随正式执行候选验收 |
+| R2 | MAINT-RESTART-01：原策略/任务持久化、no/正常停止、跨重启维护与禁入、精确恢复 | **IN PROGRESS / R2-C4 OPEN**：真实生产清单有限核验、Fence/Boot Guard/Unit 安装清单/认证 Wire 离线合同已推进；Mac SQLite 进程级 PASS_SCOPED；C3C3-READ 只读现场能力已部分核对，实际 mTLS/服务和 Guard 联动待证，以该工作包最新续记为准。真实 Guard、持续写入禁入、P0-01/S03/G06/S09 均未完成；仅源码/候选准备可与 R1 并行，主机/服务/云操作仍须精确授权 |
 | R3 | RUNTIME-SNAPSHOT-01：受限 API 创建/等待/验证本次手动快照，离机轻量恢复清单、未知结果处理与保留 | PLANNED；准确 AWS 账户/Region/权限/盘先审，快照前必须 R2 持续冻结 |
 | R4 | 正式 Runtime installer + 准确快照→独立新 AWS 实例，首启冻结/数据/身份核对、单写者与人工切流 | PLANNED；组合正常执行来源、R2/R3；不部署旧故障主机自举链，不隐藏改外部 helper |
 | R5 | 同最终候选完整端到端、故障和恢复矩阵；再提交精确 C8 readiness/执行/复验 | PLANNED；前四批真实证据成立后进行；不自动取得生产授权 |
@@ -193,7 +195,7 @@ S2 新 daily 扩充/接线/sudoers 后置不变；现役日常备份和独立 DR
 | ID | 场景 | 必须观察的结果 / 主要门禁 |
 | --- | --- | --- |
 | A01 | Guest 身份/隔离/平台不符，恢复基线不可用 | root 实验前停止；C2 不关闭 |
-| A02 | 正确来源与真实执行材料 | 外部 pins、FD/输入、实际消费及独立观察一致；固定表达式不足以代替；C1 |
+| A02 | 正确来源与真实执行材料 | 准确发布 proof、同候选执行器/解释器/关键依赖和输入的来源、实际位置/权限及必要完整性独立核对一致；未知或替换风险按 §4.1 定向取证；C1 |
 | A03 | 错源码/解释器/依赖、路径替换、未知 import/动态库 | 在相关材料被执行前拒绝；不得只靠退出后告警；C1 |
 | A04 | 错 main SHA、配对镜像/Archive、seal/run，伪造/重打包 | 无活跃写；历史指定版本不改选 latest；C1/C5 |
 | A05 | pending、env/state/running image 不一致、错误 volume/bind/外部 helper | 无活跃写；不自动 normalize 或 repair；C3 |
@@ -224,6 +226,8 @@ S2 新 daily 扩充/接线/sudoers 后置不变；现役日常备份和独立 DR
 后续按修订后的 R1–R5 补齐有限缺口，同一真实 AWS 演练可复用 C2 与快照恢复证据，不能为旧默认路线重复实测。G2 A–F 的精确 Guest/生产许可和安装后独立复验仍有效；此处不再次请求 D1–D5 决策批准，也不因 R0 完成自动开始任何生产操作。
 
 ## 9. 2026-10-19 — Runtime R1 最终剩余项审计与后续执行门禁（状态续记）
+
+> **现行适用说明（2026-10-24）：**本节保留 10 月 19 日的证据与队列快照，其“尚缺包来源/root FD/独立见证”“完整动态消费闭包”和 R2 PLANNED 不是当前剩余清单。后续 R1-A/S5/R1C-1/R2 进度依本文最新续记；验收范围按 D1/§4.1 和 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md)。第三方见证已取消、全量消费追踪仅在风险触发时定向采用，现有代码 guard 不自动放行。
 
 最新核查基线 GitHub `dev@58e317b79024a027644be7ec55e5eb7b9ad71143`。S1-R1 Runner [PR #2876](https://github.com/sanqin888/sanqinMVP/pull/2876) merge `c2e33af27bb15ad5ba209dd3831a2aae5a462d4a`，[Actions run 39285377503](https://github.com/sanqin888/sanqinMVP/actions/runs/39285377503) success。MacBook/Debian 公钥、见证审批及 Google Drive 归档读回为操作员独立保存/回传材料，准确原件和限制见 [S1 §8](C5-G2-R1-S1-独立Ubuntu签名验真采集程序.md)，不能把 GitHub CI 或操作员自报值单独当作完整 C1 独立消费证据。
 
