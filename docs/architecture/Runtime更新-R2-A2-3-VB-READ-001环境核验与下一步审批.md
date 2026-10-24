@@ -229,3 +229,9 @@ Oracle VirtualBox 7.0 文档将 *differencing images* 定义为只存相对父�
 
 **下一任务 VB-04：**先在 Mac 绑定准确 VM/网络/当前快照，再按后续明确批准的范围启动 Guest 做 Docker/systemd **只读**入口审计：`docker.service/docker.socket/containerd.service` 的 `ExecStart/Requires/Wants/After/TriggeredBy/DropInPaths`、SysV/直接 `dockerd`、socket activation、`live-restore` 与存活 shim/writer 的待证边界；形成 P0-01A–F 最小 PoC/救援与撤回方案。**本批没有授权启动 daemon、合成容器、修改 unit、安装 Guard、恢复快照、断电故障或生产操作**。保持 `P0-01 NOT_RUN / S03-G06-S09 OPEN / R2-C4 OPEN / C5-G2 NO-GO`；本轮 MCP 只更新本地文档，不推送远端。
 
+## 13. 2026-10-24 — VB-04A/B Recovery Clone Docker/systemd 现场只读回执及 VB-04C 设计交接
+
+**OPERATOR-READONLY PASS_SCOPED / NO VM OR HOST MUTATION BY MCP。** 操作者在 Mac Host 读回 `SanQ-Runtime-Lab-Recovery-01` 为 running，原 `SanQ-Runtime-Lab-Jammy-01` 为 poweroff；Recovery 只有 NIC1 `hostonlynetwork`，其它 NIC none，Host-only `HostNetwork` enabled。Guest UID1000、Linux 5.15、systemd 249、单 `192.168.56.5/24`、无 IPv4 default route。`docker.service` `/lib/systemd/system/docker.service` 的 `ExecStart` 为 `dockerd -H fd:// --containerd=/run/containerd/containerd.sock`，`Requires=docker.socket`、`TriggeredBy=docker.socket`；`docker.socket` 监听 `/run/docker.sock` 并触发 `docker.service`；`containerd.service` 独立启动。三 Unit 均 inactive/disabled、没有 Drop-in，未见运行中的 dockerd/containerd/shim，`/etc/docker/daemon.json` 不存在。**这些是静态链路事实，不等于 socket/直接 dockerd 容易绕过路径已封闭或 G06/P0-01 通过。**
+
+据此编制 [VB-04C 安装依赖/身份/撤回设计](Runtime更新-R2-A2-3-VB-04C启动守卫安装依赖与撤回设计.md)，明确候选服务 pre-exec、socket 联合准入、持续 ARMING 写入屏障、既有 shim/writer、P2-C3C 真实离机认证前置及事故恢复分类。下一批仅推荐 **VB-04D1 离线 Unit/安装 manifest 合同与负例**，不可因文档完成自行添加 root-owned Guard、Mac 网络服务或执行 P0-01。`VB-04C DESIGN ONLY / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO`；本次仅 MCP-workspace 本地文档，未提交远端。
+
