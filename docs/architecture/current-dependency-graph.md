@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-24 **C1 最小可信执行基线对齐与候选准备（DOC-ONLY / COMPLETE_LOCAL INVENTORY / C1 OPEN）**：按 R0 D1/§4.1 盘点正常更新核心/启动材料、固定 17 Bundle、R2 Guard/安装清单与离线 CAS/Wire，建立 [C1 最小可信执行基线对齐与候选准备](Runtime更新-C1最小可信执行基线对齐与候选准备.md) 的关键来源/平台/权限缺口和证据复用表；旧全量闭包/第三方见证不再默认强制，SYN 资源隔离保留为条件触发专项，最终 C1 随正式候选验收。本批没有改代码或代码守卫，**12-context owner、跨上下文直接导入/债务、依赖边、SCC/cycle/scanner baseline、兼容登记、部署单元和 17 Bundle 均无变化**；未运行扫描或测试，不把源码盘点登记成生产验证，既有 R2/TLS 就绪审计按原批次保留。
+
 2026-10-23 **R2-A2-3 平台调整与 GitHub Runner 方案退役（REVERT PR / VIRTUALBOX SELECTED）**：[PR #2920](https://github.com/sanqin888/sanqinMVP/pull/2920) 曾新增独立 GitHub VM 探针，但 [Actions #39993752638](https://github.com/sanqin888/sanqinMVP/actions/runs/39993752638) 得到 `KVM_UNAVAILABLE / BLOCKED`；用户选择 VirtualBox 并授权通过新 PR 撤回该 workflow、Runtime 探针、探针 unittest 和专属文档。**保留历史 PR/CI/日志，不重写 Git 历史**。Runtime/Ops owner 下删除的是一个没有生产 consumer 的独立实验入口；未改变 12-context owner、跨上下文直接导入/债务、SCC/cycle/scanner baseline、兼容登记、17 Bundle、正常 CI、依赖/锁文件、Prisma/migration 或部署单元。下一步仅审阅 [R2-A2-3 §9 VirtualBox 就绪门禁](Runtime更新-R2-A2-3隔离启动屏障PoC就绪与持久化前置审计.md)；`VB-01..06 NOT_RUN / P0-01 NOT_RUN / S03 OPEN / C5-G2 NO-GO`。
 
 
