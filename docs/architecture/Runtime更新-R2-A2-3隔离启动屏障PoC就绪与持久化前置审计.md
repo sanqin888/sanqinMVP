@@ -2,7 +2,9 @@
 
 **日期：2026-10-23（America/Toronto）｜阶段：LOCAL READINESS / P0-01 PROCEDURE PROPOSED / NO POC EXECUTION / NO INSTALL AUTHORIZATION。**
 
-> **2026-10-24 本地进度增记（不改写原始历史基线）：** 用户已授权 P2-C3A，仅在 MCP-workspace 开发 [离线 SQLite CAS V2 合同、实验事务和失败测试](Runtime更新-R2-A2-3-P2-C3A离线SQLiteCAS合同与测试记录.md)。当前仅源码和测试文件本地完成，未经 CI；Mac 实机持久化、认证 OFF_HOST、Guard 安装和 P0-01 均未执行，生产仍 NO-GO。
+> **2026-10-24 最新 P2-C3B 现场证据续记：** [P2-C3A](Runtime更新-R2-A2-3-P2-C3A离线SQLiteCAS合同与测试记录.md) 已经 PR #2924 / CI #7497 全绿，squash 合并到 `dev@c8e1c13d`；操作者获批 Mac 本地 [P2-C3B-001](Runtime更新-R2-A2-3-P2-C3B-001Mac进程持久化实测复核.md) 回传 8/8 固定源码 SHA、22/22 Mac SQLite unittest、epoch2 两笔回执重开验证、未提交及已提交两种真实测试子进程 `SIGKILL` 后状态读回，限定 `MAC PROCESS-LEVEL PASS_SCOPED / P2-C3B-001 CLOSED_SCOPED`。**不是物理掉电、真实 OFF_HOST/mTLS、Boot Guard/daemon 屏障或生产 S03 通过**；P2-C3C 未设计/未授权，`P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO` 保持。
+>
+> **2026-10-24 P2-C3A 初始阶段记录（原状态保留为历史）：** 用户曾授权 P2-C3A，仅在 MCP-workspace 开发 [离线 SQLite CAS V2 合同、实验事务和失败测试](Runtime更新-R2-A2-3-P2-C3A离线SQLiteCAS合同与测试记录.md)；当时尚无 CI 或 Mac 实测。原文中的未执行状态不代表当前最新状态。
 >
 > 基线：`origin/dev@d74992970c079a582b76d82db5ea8fc4b96aa7b2`（PR #2918；CI #7485 SUCCESS），[R2-A2-2 已审方案](Runtime更新-R2-A2-2禁入适配器与安装权限撤回设计.md) 采用 **SAFE_STOP_DOCKER_ON_UNCERTAIN_RESTART**。本阶段目标是让**用户可审阅和授权**的首个真实隔离 PoC 具有准确对象、故障注入、证据及回退门禁。**不是**宣布 A2-3 已实现持久化或 P0-01 已通过。本批只在 MCP-workspace 修改文档；不使用生产 VM、AWS 实例、Clover Token、数据库备份、生产密钥或 Docker/systemd 安装。
 
