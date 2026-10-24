@@ -1,5 +1,7 @@
 # R2-A2-3 — P2-C3C1 最小认证离机 CAS 信任边界与实施分批设计
 
+> **2026-10-24 进度更新（历史设计状态保留）：** 本文件已在 PR #2928、CI #7506 SUCCESS 后合并 `dev@09db31ec`。下一批在 MCP-workspace 以 B 方案新增 [P2-C3C2 离线模拟身份绑定与 Wire v1 合同/25 项聚焦测试](Runtime更新-R2-A2-3-P2-C3C2离线认证身份与Wire合同实施记录.md)，保持 P1/P2/VB-04D1 DENY；还没有 GitHub CI，不是真实 mTLS peer/联网 CAS。Mac/Guest 网络、证书、root Unit 与 P0-01 未授权。
+
 > **2026-10-24（America/Toronto）｜DESIGN ONLY / LOCAL REVIEW / AUTHENTICATED NETWORK IMPLEMENTATION NOT AUTHORIZED / NO PR / PRODUCTION NO-GO。** 基线 `dev@2b83edf29cde91c2bc9b25ba720c69ecd33357c3`（PR #2927、CI #7504 SUCCESS；Runtime 624/624）。本批按“合并后开始下一步”只审计和编写可审阅设计。P1/A2-1 DENY、P2-C3A LAB_ONLY、VB-04D1 OFFLINE_STATIC_CANDIDATE_ONLY 不变；没有启动 TCP 监听、签发证书、变更 Mac/VM 权限或改 Runtime 可执行代码。
 
 ## 1. 依据与已有可复用合同
