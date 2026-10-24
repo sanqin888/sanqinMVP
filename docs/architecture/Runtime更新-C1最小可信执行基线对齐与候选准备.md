@@ -89,6 +89,10 @@ C1 的来源/执行验证可复用 R2/R4/R5 同候选的实际结果；跨重启
 
 本批仅修改文档，归 Runtime/Ops；无代码、依赖/锁、CI、Prisma/迁移、17 Bundle、模块 owner、跨上下文边、SCC/scanner baseline 或兼容合同变化。MCP-workspace 未开放 lint/build/test，未运行；文档差异和链接已核对，用户现已授权远端 PR→dev、最终 head CI 全绿后合并并开始下一步。因共享工作区仍被 TLS 审计占用，依据用户明确授权在独立本地缓存从最新 dev 重建本批七份文档，通过 GitHub 插件交付；不带入 TLS 未提交文档或改动共享工作区。PR/CI/合并状态以本包后续同批续记和 PR 事件为准。
 
-**同批远端验证续记：**[PR #2930](https://github.com/sanqin888/sanqinMVP/pull/2930) → dev；首次完整文档 head `ea8c0cabc0fe36bd0d2974979f59f6e80c7e2eda` 的 [CI #7510](https://github.com/sanqin888/sanqinMVP/actions/runs/40135924881) SUCCESS，`ci-change-scope` 实际通过，Runtime/Release 等执行 lane 按 docs-only 正常跳过，不能称为新增运行时测试通过。当前同批仅补验证记录；最终文档 head 仍须实际 CI 全绿才合并，最终 Checks/merge 状态以 PR 事件为准。
+**同批远端验证续记：**[PR #2930](https://github.com/sanqin888/sanqinMVP/pull/2930) → dev；首次完整文档 head `ea8c0cabc0fe36bd0d2974979f59f6e80c7e2eda` 的 [CI #7510](https://github.com/sanqin888/sanqinMVP/actions/runs/40135924881) SUCCESS，`ci-change-scope` 实际通过，Runtime/Release 等执行 lane 按 docs-only 正常跳过，不能称为新增运行时测试通过。随后最终文档 head `5dc25a8d14cb0ccc6af0fbeda198f631781a6c00` 的 [CI #7511](https://github.com/sanqin888/sanqinMVP/actions/runs/40136110790) SUCCESS，PR #2930 squash 合并 dev `67a88aae648b23266403b306b642d3d3a6526d2f`；此文档批已交付，不代表 C1 正式验收通过。
 
 **总状态：C1 OPEN / CANDIDATE PREPARATION STARTED / R2-C4 OPEN / P0-01 NOT_RUN / S03-G06-S09 OPEN / C5-G2 NO-GO / S2 DAILY PAUSED。**
+
+## 7. 2026-10-24 — C1-PREP-02 入口装配与关键来源绑定（本地）
+
+用户已授权上一批合并后开始下一步。现基于 PR #2931 后最新 `dev@b7e8d882dbef75705ed63af911e265622fe59acc` 在独立缓存完成 [C1 候选入口装配与关键来源绑定方案](Runtime更新-C1候选入口装配与关键来源绑定方案.md)：四类候选身份、旧摘要与旧原 Archive bytes 的准确差异、启动前信任与实际加载顺序、11 个正常步骤及 abort 的接线责任、必要正反例。仅同步两处源码 docstring，不改 v1 字段/平台/guard 或运行行为。I01–I12 的装配准备已细化；平台/真实 bootstrap/关键来源和 live adapters 仍 OPEN，没有新模型、安装器或执行许可，用户现已授权本批提交远端，发布基线复核为 `dev@a8898a90`、既有六文件 blob 未变；最终 head CI 待核。
