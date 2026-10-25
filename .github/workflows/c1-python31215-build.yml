@@ -1,0 +1,97 @@
+name: C1 Python 3.12.15 isolated build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Require isolated Jammy builder
+        env:
+          C1_BUILD_ROOT: ${{ runner.temp }}/sanq-c1-python31215
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'C1_BUILD_ROOT=%s\n' "$C1_BUILD_ROOT" >> "$GITHUB_ENV"
+          mkdir "$C1_BUILD_ROOT"
+          mkdir "$C1_BUILD_ROOT/inputs" "$C1_BUILD_ROOT/logs"
+          python3 ops/runtime/c1_python_build_materials.py preflight "$C1_BUILD_ROOT"
+
+      - name: Test build-material boundaries on the Jammy host Python
+        run: python3 -B -m unittest discover -s ops/runtime/tests -p 'test_c1_python_build_materials.py'
+
+      - name: Prepare build dependencies on the disposable runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config gnupg xz-utils libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev libexpat1-dev
+          dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\t${Status}\n' build-essential gcc make binutils libc6 libc6-dev libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev libexpat1-dev gnupg > "$C1_BUILD_ROOT/logs/build-packages.tsv"
+          /usr/bin/cc --version > "$C1_BUILD_ROOT/logs/compiler.txt"
+
+      - name: Fetch fixed upstream release and publisher key
+        run: |
+          set -euo pipefail
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 --max-time 180 https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tar.xz -o "$C1_BUILD_ROOT/inputs/Python-3.12.15.tar.xz"
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 --max-time 60 https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tar.xz.asc -o "$C1_BUILD_ROOT/inputs/Python-3.12.15.tar.xz.asc"
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 --max-time 60 https://github.com/Yhg1s.gpg -o "$C1_BUILD_ROOT/inputs/publisher.gpg"
+
+      - name: Verify digest and publisher before extracting source
+        run: python3 ops/runtime/c1_python_build_materials.py verify-extract "$C1_BUILD_ROOT"
+
+      - name: Build and stage the fixed version without system installation
+        run: |
+          set -euo pipefail
+          cd "$C1_BUILD_ROOT/source/Python-3.12.15"
+          ./configure --prefix=/opt/sanq/python/3.12.15 --with-ensurepip=no CC=/usr/bin/cc > "$C1_BUILD_ROOT/logs/configure.log" 2>&1
+          cp config.log "$C1_BUILD_ROOT/logs/config.log"
+          /usr/bin/make -j2 > "$C1_BUILD_ROOT/logs/make.log" 2>&1
+          /usr/bin/make altinstall DESTDIR="$C1_BUILD_ROOT/stage" > "$C1_BUILD_ROOT/logs/altinstall.log" 2>&1
+
+      - name: Smoke and C1 regression using the actual staged interpreter
+        run: |
+          set -euo pipefail
+          interpreter="$C1_BUILD_ROOT/stage/opt/sanq/python/3.12.15/bin/python3.12"
+          env -i HOME=/root LANG=C LC_ALL=C PATH=/usr/bin:/bin TZ=UTC "$interpreter" -I -S -B -c 'import sys, ssl, sqlite3, zlib, pyexpat, json; assert sys.implementation.name == "cpython"; assert sys.version_info == (3,12,15,"final",0); assert sys.prefix == sys.executable.rsplit("/bin/",1)[0]; assert sys.flags.isolated == 1 and sys.flags.ignore_environment == 1 and sys.flags.no_site == 1 and sys.flags.no_user_site == 1 and sys.flags.dont_write_bytecode == 1 and sys.flags.safe_path is True and sys.flags.optimize == 0; print(json.dumps({"version":list(sys.version_info),"executable":sys.executable,"prefix":sys.prefix,"openssl":ssl.OPENSSL_VERSION,"sqlite":sqlite3.sqlite_version,"zlib":zlib.ZLIB_RUNTIME_VERSION,"expat":pyexpat.EXPAT_VERSION}))' > "$C1_BUILD_ROOT/logs/interpreter-smoke.json"
+          "$interpreter" -B -m unittest discover -s ops/runtime/tests -p 'test_normal_runtime_*.py' > "$C1_BUILD_ROOT/logs/c1-regression.log" 2>&1
+          cat "$C1_BUILD_ROOT/logs/c1-regression.log"
+
+      - name: Record critical native dependency observations
+        run: |
+          set -euo pipefail
+          interpreter="$C1_BUILD_ROOT/stage/opt/sanq/python/3.12.15/bin/python3.12"
+          ldd "$interpreter" > "$C1_BUILD_ROOT/logs/interpreter-ldd.txt"
+          "$interpreter" -I -S -B -c 'import _ssl, _hashlib, _sqlite3, zlib, pyexpat; print("\n".join(m.__file__ for m in (_ssl,_hashlib,_sqlite3,zlib,pyexpat)))' > "$C1_BUILD_ROOT/logs/critical-extensions.txt"
+          while IFS= read -r extension; do
+            printf '%s\n' "$extension"
+            ldd "$extension"
+          done < "$C1_BUILD_ROOT/logs/critical-extensions.txt" > "$C1_BUILD_ROOT/logs/extensions-ldd.txt"
+          if grep -q 'not found' "$C1_BUILD_ROOT/logs/"*-ldd.txt; then exit 1; fi
+
+      - name: Package review materials without granting installation authority
+        run: python3 ops/runtime/c1_python_build_materials.py package "$C1_BUILD_ROOT"
+
+      - name: Upload successful build review
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-python31215-jammy-review-${{ github.sha }}
+          path: ${{ runner.temp }}/sanq-c1-python31215/output/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload bounded failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-python31215-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/sanq-c1-python31215/logs/
+          if-no-files-found: ignore
+          retention-days: 7

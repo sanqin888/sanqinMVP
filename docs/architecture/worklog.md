@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1-PREP-12 Python3.12.15可信构建与交付工具
+
+**IMPLEMENTED_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / CI_NOT_RUN / C1_OPEN。** 用户授权启动PREP-12修改，基于PREP-11 PR #2946最终CI #7563（十项全绿，Runtime848/Release45/精确3.12.15回归203）合并dev `bdfb25af7de88ecafbb17b1fda71b305e5cfd17c`，建立 `feat/runtime-c1-prep12-trusted-python-build-20261025`。已读AGENTS、R0/当前C1/PREP-12、旧Ubuntu来源链/采集器和相关CI。新增Runtime/Ops构建材料工具及18个离线测试方法，固定CPython3.12.15源包SHA256与Thomas Wouters完整主指纹，先验真后固定bytes安全解包；暂存成员、关键动态库字节与包归属、产物归档/日志/原始源签名材料及SHA256SUMS均保留审阅属性和false安装/执行权。新增仅workflow_dispatch/dev的Ubuntu22.04非root托管构建工作流，在一次性runner准备工具并用固定prefix与DESTDIR暂存，实际产物smoke/C1回归成功后才上传；无生产机root安装或系统Python替换。当前本地非已确认Jammy且无Docker，未通过MCP/缓存绕过项目执行限制；源包下载/验签/构建和新测试尚未执行。没有新增应用依赖/锁、17 Bundle/正常9源候选、生产入口、业务或数据库迁移变化；新工具/测试标准库关系均同owner，无跨上下文边/scanner baseline变化。静态AST/YAML/9段shell语法与差异已核对，首次远端交付待审，未推送；具体来源、流程和剩余安装门禁见 [PREP-12工作包](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)。
+
 ## 2026-10-24 — C1-PREP-11 实际平台身份与包元数据只读回执准备
 
 **PR #2946 / SOURCE OPS VERIFIED / FINAL CI PENDING / INTERPRETER_PROVENANCE_OPEN / C1_OPEN。** 按PREP-10合并后继续授权，在PR #2944最终head `35e2150f3d13db0746b31f67a91df2d9b29050a2` 经 [CI #7558](https://github.com/sanqin888/sanqinMVP/actions/runs/40151007839) SUCCESS合并 `17188367684a155b7217881d695c8c615589e940` 后，新建 `docs/runtime-c1-prep11-platform-receipt-20261024`。准备 [选定AWS正常执行主机的5条非root只读查询与RC标记](Runtime更新-C1-PREP-11实际平台身份与包元数据只读回执.md)：uname、os-release、Python三包完整version/arch/status、解释器包归属和路径metadata；不先运行目标Python、不使用sudo或安装/修复。核对现有MCP的system_status仅时间/负载/内存/磁盘/服务，read_file限仓库、无目标查询接口，需操作者在该AWS终端回传原始stdout/stderr/RC；准备时现场尚未执行/收到，后续回执见同批续记。同步R0/C1总包/PREP-10最终交付/依赖图及原批日志。纯文档，无源码/依赖边/owner/兼容/scanner baseline、17 Bundle、依赖/锁/CI、数据库或权限变更；未运行项目test/scanner或现场/root/Host/Guest/AWS/生产命令，不需要迁移。首次审阅待用户批准，本批未推送；下一动作直接取得现场回执，按准确平台/revision复用既有来源证据，不再新增抽象准备作为读取前置。
