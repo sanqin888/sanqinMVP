@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+**2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
+
+
 **2026-10-25 隔离负例工具实施（本地）：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LAB_NOT_RUN / C1_OPEN。**审计PR #2951已由CI #7577（docs-only）合并ff95601f。本批新增仅托管Jammy/dev手动可运行的外部lab工具、固定输入fixture、23个真实CLI/外层验收case及5个离线边界测试，复用构建run40192632845的准确Python产物，源码/双输入仍绑定711197d2。一次性runner可写其自己的root/prefix，禁止生产运行；不改9候选源码、17 Bundle、业务或数据库，无owner/依赖图/架构基线变化。AST/YAML/shell/独立输入摘要静态核对通过，未运行项目测试或lab、未推送。
 
 **2026-10-25 同候选负例缺口审计（本地）：**前批PR #2950完整7文件已由最终CI #7575（docs-only）合并3b0d6cf5。已静态核对准确711197d2的8测试文件/203方法，含32个bootstrap方法；fixture模拟进程、根和owner，不替代真实Jammy CLI负例。已复用现有覆盖并限定预启动信任/进程/输入/支持源码/成员/权限/链接对象的最小隔离验收家族，建议下一批实现一次性Jammy负例harness及手动工作流；未编写harness、未执行lab或生产负例。无依赖图/owner/基线、9源码、17 Bundle或数据库变化。详见 [隔离负例审计](Runtime更新-C1同候选隔离负例缺口审计.md)。AUDIT_COMPLETE_LOCAL / LAB_NOT_RUN / C1_OPEN。
@@ -64,8 +67,8 @@
 | 项 | 组件/输入及当前定位 | 候选准备的实际缺口 |
 | --- | --- | --- |
 | I01 正常流程核心 | `ops/runtime/normal_runtime_update.py`：`NormalUpdateFlow.run`，`UpdateCapabilities` 仅定义能力接口 | 保留同一核心，登记最终接线组件和阶段；不能另造仅认证时使用的假执行器 |
-| I02 启动入口 | PREP-03～09 已合并；只读bootstrap及32项测试已由最终CI #7553通过；PREP-10固定9文件源码清单/包，Git blob与最终已测head一致 | 操作器源码材料已固定；待初始bootstrap/批准pins的启动前可信来源、实际交付及同平台必要验证；完整执行与真实能力接线仍OPEN |
-| I03 真实平台 | Jammy22.04.5/x86_64 metadata已收到；3.12.15 final及版本专属解释器路径已写入本地源码 | **PROFILE_IMPLEMENTED_LOCAL / CI_NOT_RUN / PROVENANCE_AND_INSTALL_OPEN**；精确版本CI步骤已编写，新九源为未提交审阅材料；实际解释器产物/来源、受保护安装、批准输入及Jammy同候选验收仍OPEN |
+| I02 启动入口 | 准确711197d2九源、CPython3.12.15及三批准输入已固定/交付；AWS正例与隔离23项已验收 | **READ_ONLY_ACCEPTANCE_COMPLETE_SCOPED**；真实Flow/effects装配仍OPEN，证据见页首 |
+| I03 真实平台 | AWS Jammy22.04.5/x86_64；Python3.12.15准确prefix完成smoke/8368成员，7关键库字节匹配；隔离runner同解释器对象完成23项 | **PYTHON_INSTALLED_VERIFIED_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED**；平台范围和有限TCB按验收记录，不扩张全闭包 |
 | I04 关键运行依赖 | 核心使用标准库；旧静态线索含 libm/libz/libexpat/libc；若实际选用 CAS/TLS，还涉及 sqlite3/SSL 及其真实后端 | 按最终组件识别会影响安全/稳定的执行依赖及来源；已有准确成员可复用，新增或变更对象补来源，风险对象才专项追踪；本表不是完整依赖认证 |
 | I05 目标发布物 | `build_bundle.py` 的固定 17 成员 + 生成的 `runtime-release.json`；`runtime_trust.py` / release proof 规则已有 | 待选准确 main 发布 SHA、原 Archive digest/原字节、配对镜像 digest 和同 publish run proof；目标 Runtime、应用 SHA 与操作器源码版本分别登记 |
 | I06 非活跃准备 | `prepare_runtime_update.py` / `stage_bundle.py` 可审阅复用；前者仍 `readyToInstall=false` | 逐项确认进入正式入口的准备实现、私有路径/权限及失败结果；不能把准备成功当成 activation |
@@ -74,7 +77,7 @@
 | I09 快照能力 | `create_and_verify_snapshot` 目前是 Protocol，未有正常流程的真实 AWS adapter | R3 准备准确执行位置、最小权限与实现/输入清单；C1 审查执行来源，AWS 对象/恢复点真实性归 R3 |
 | I10 正式交接 | `handoff` 无正常流程的真实接线；`offline_root_private_installer.py` 仍是受限合成 fixture | R4 准备真实安装/交接候选和路径/权限/持久化方式，保留实验 guard，禁止直接把 lab 限制移除当实现 |
 | I11 复验与退出 | `verify_installed`、`restore_original_policies`、`verify_restored`、`release_business` 目前无真实能力实现 | 登记最终核验工具、原策略记录和最后业务放行边界；未知/中断保持维护，其效果验收随 R2/R4/R5 |
-| I12 安装位置与输入保护 | PREP-09 将固定 sourceRoot 与 `/root/sanq-runtime-operator/normal-update-approvals/<txid>` 三文件的 FD/祖先/权限/集合/退出复检接入只读 bootstrap；VB-04D1 的 Guard 路径另属 R2 | 没有创建真实目录/控制文件或安装任何组件；外部批准 pins/源码的可信交付和实际 owner/mode/祖先、关键效果输入仍待同候选验收，读回自洽不认证来源 |
+| I12 安装位置与输入保护 | AWS九源root0700/0400、三批准输入root0700/0400已交付并完成只读正例；隔离副本权限/链接/集合异常实际拒绝 | **READ_ONLY_INPUT_AND_PATH_PASS_SCOPED**；关键效果输入、持续冻结/保护及真实效果组件待完整候选 |
 
 **外置对象也必须登记。** 固定 17 Bundle 不含正常更新操作器、Boot Guard 或离机 CAS；不能把它们算作未获批准的第 18 成员，也不能因其在 Bundle 外便省略来源、安装权限和完整性。是否最终选用某离线模块，由真实候选装配决定；不要求把全部实验文件打进生产。
 
@@ -93,9 +96,9 @@
 | 工作 | 本批状态 | 完成条件/依赖 |
 | --- | --- | --- |
 | 基线对齐与已有证据盘点 | COMPLETE_LOCAL | R0 和 R1/S1/SYN 的现行适用范围统一；本包完成现有代码与证据复用登记 |
-| 正式候选准备 | READ_ONLY BOOTSTRAP SOURCE_CI_VERIFIED / SOURCE PACKAGE LOCAL / EFFECTS OPEN | PREP-03～09已交付；PREP-10九文件清单/包和验收顺序本地完成，实际可信交付与同平台验证仍待完成；完整效果接线随R2/R3/R4，不为未存在对象编造hash |
-| 候选平台与来源绑定 | PYTHON3.12.15 PROFILE_IMPLEMENTED_LOCAL / PROVENANCE OPEN | 绝对路径已配置；须固定实际构建产物、关键来源/依赖和启动前保护，并完成CI与Jammy必要验证；匹配的旧证据按准确对象复用 |
-| 同候选必要验证与 C1 裁定 | OPEN / NOT RUN | 正式候选可执行后，按精确授权进行受控验证和内部独立核对；不得转用无关演示、早期合成成功或不同平台局部结果 |
+| 正式候选准备 | READ_ONLY_ACCEPTANCE_COMPLETE_SCOPED / EFFECTS OPEN | 九文件只读正例及23项负例已完成；P10-F完整效果接线仍随R2/R3/R4准备 |
+| 候选平台与来源绑定 | PYTHON_INSTALLED_VERIFIED_SCOPED | 已固定准确Python材料、关键7库、受保护路径/输入及同候选结果；新增效果对象仍需来源和安装保护 |
+| 同候选必要验证与 C1 裁定 | READ_ONLY_SCOPED_PASS / FINAL_C1_OPEN | 九文件入口限定验收完成，完整组合候选尚未形成，禁止推断生产放行或C1整体关闭 |
 
 源码准备与 R2 主线可并行，**不要求 R1/C1 先 CLOSED 才允许准备 R2/R3/R4 源码**；执行维护、快照、安装仍分别遵循其精确门禁。C1 最终关闭跟随正式执行候选完成，避免“C1 等执行器、执行器等 C1”的循环。
 

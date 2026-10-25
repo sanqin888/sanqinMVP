@@ -1,11 +1,20 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1同候选隔离负例验收归档
+
+**ISOLATED_NEGATIVE_PASS_SCOPED / READ_ONLY_ACCEPTANCE_COMPLETE_SCOPED / C1_OPEN。** 用户授权归档run40210744043（dev@ecf8fc31，SUCCESS）的实际23项验收：2基线、2启动前拒绝、19 CLI RC2拒绝。已独立核对原ZIP SHA256 9392252c8eba14319ff56f621093b52363600bdb7c35128485634daacba3ad7d、69成员及23结果/raw输出；完整UTF-8原件与逐文件摘要归档JSON，GitHubartifact到期后仍可审阅。同步负例审计、C1总包/PREP-10、R0和依赖图：P10-E限定完成，P10-F/R2/R3/R4与最终C1仍OPEN。无源码/owner/依赖图/基线/17 Bundle/数据库变化，无新生产操作、无需迁移；仅静态核对，归档文档未运行新CI，未推送。详见[验收归档](evidence/c1-jammy-negative-acceptance-2026-10-25.md)。
+
+
 ## 2026-10-25 — C1隔离负例runner父目录准备修复
+
+交付续记：PR #2954最终head ac7bbe34经CI #7585 SUCCESS（Runtime871/Release45/精确203）合并dev ecf8fc31；后续run40210744043的23项实际完成，见本卷最新归档。以下LOCAL/首跑失败为原修复审阅时点。
 
 **FIX_IMPLEMENTED_LOCAL / LAB_FAILED_BEFORE_CASES / C1_OPEN。** 前批PR #2952/CI #7579十项通过并合并b9523cd3。首次手动run40209172466在dev@6d855c9f完成材料/依赖校验后因unsafe interpreter parent失败，23 case均未启动；无验收artifact。基于最新dev创建fix/c1-negative-runner-opt-20261025，只修改外部lab：guard之后将一次性runner /opt本身经无链接目录FD设置root:root/0755，保留原祖先拒绝，增加前后元数据及case前PREPARING诊断；不递归、不改9源/3输入/23断言/17 Bundle/业务或数据库。A类内部原子修复，无依赖图/基线变化，无迁移。静态审阅；项目测试与修复后lab未运行、未推送。详见[隔离负例审计第7节](Runtime更新-C1同候选隔离负例缺口审计.md)。
 
 
 ## 2026-10-25 — C1 Jammy同候选隔离负例工具与手动工作流
+
+交付续记：PR #2952最终head 7cdd0189经CI #7579十项成功合并b9523cd3；首跑在case前失败后由PR #2954修复，23项验收证据见本卷最新归档。以下LOCAL/NOT_RUN为原实施审阅时点。
 
 **2026-10-25 隔离负例工具实施（本地）：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LAB_NOT_RUN / C1_OPEN。**审计PR #2951已由CI #7577（docs-only）合并ff95601f。本批新增仅托管Jammy/dev手动可运行的外部lab工具、固定输入fixture、23个真实CLI/外层验收case及5个离线边界测试，复用构建run40192632845的准确Python产物，源码/双输入仍绑定711197d2。一次性runner可写其自己的root/prefix，禁止生产运行；不改9候选源码、17 Bundle、业务或数据库，无owner/依赖图/架构基线变化。AST/YAML/shell/独立输入摘要静态核对通过，未运行项目测试或lab、未推送。
 

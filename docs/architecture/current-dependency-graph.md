@@ -1,5 +1,10 @@
 # Current 12-context dependency graph
 
+**2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
+
+2026-10-25 本批已审阅：仅验收原件文本归档及进度同步；没有源码/导入、跨上下文边、owner、依赖图/债务计数、scanner baseline、兼容路径、17 Bundle、CI、依赖或数据库变化。未运行架构扫描/项目测试。
+
+
 2026-10-25 C1隔离负例首跑修复：run40209172466在case前祖先检查失败；仅lab的/opt目录本身通过FD准备root:root/0755并增加诊断，保留原检查及23用例。审阅确认无公共边界、owner、依赖图/债务基线或9候选源码/17 Bundle变化；FIX_IMPLEMENTED_LOCAL / LAB_FAILED_BEFORE_CASES。详见[隔离负例审计第7节](Runtime更新-C1同候选隔离负例缺口审计.md)。
 
 

@@ -1,5 +1,8 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
+
+
 **2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。
 
 **2026-10-25 PREP-12本地实施：**PREP-11已由PR #2946 / CI #7563十项全绿合并 `bdfb25af`。用户现授权 [Python3.12.15可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，新增固定来源/主指纹验签、安全解包、stage清单/关键库归属及归档材料工具、18个离线测试方法和仅dev手动触发的Jammy隔离构建工作流；源码验签/构建/测试均未执行，产物未生成、未推送。**IMPLEMENTED_LOCAL / BUILD_NOT_RUN / C1_OPEN**。现有9文件候选、全部guard、17 Bundle、owner/跨上下文边/scanner baseline、业务和数据库保持原样；构建与测试仅同Runtime/Ops owner关系。
@@ -159,7 +162,7 @@
 
 | 门禁 | 关闭条件 | 当前状态及主要后续 |
 | --- | --- | --- |
-| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器及关键运行环境/依赖可信来源、实际执行位置/权限及必要的完整性核验；遇到未知动态加载、来源或路径替换风险才按 §4.1 专项追踪；当前安装健康与完整性绑定快照 | **OPEN / PYTHON3.12.15 PROFILE_LOCAL / CI_NOT_RUN / PROVENANCE_OPEN**：见 [C1总包](Runtime更新-C1最小可信执行基线对齐与候选准备.md) 与 [PREP-11实施](Runtime更新-C1-PREP-11-Python31215变更审计.md)；旧源码CI和材料保留历史身份，当前解释器来源/实际交付/同候选验证仍待完成，最终随正式执行候选收口，不默认全量消费闭包或第三方见证 |
+| C1 来源与可信执行 | 正常执行器、实际平台/关键来源、准确发布物和输入保护随完整组合候选收口 | **OPEN / READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED**：准确Python3.12.15与711197d2九源只读切片已完成AWS正例及23隔离用例，见[C1总包](Runtime更新-C1最小可信执行基线对齐与候选准备.md)；R2/R3/R4效果候选及最终裁定仍OPEN，不默认全量闭包或第三方见证 |
 | C2 生产模式可恢复的隔离环境 | 在无生产资产、隔离且独立核实身份的 Guest 上，从**已认证指定 Snapshot 创建独立新实例**，依 [C2-02 N-01–N-07（C2-CHANGE-02）](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 核验 A Snapshot 身份和来源、实际 clone rc、新 VM/VDI、选定 Guest 稳定基线及明确的运行时差异、合成服务、离机归档与独立审阅；**不要求原机 restore / Marker A/B / 新快照** | **CLOSED — ISOLATED SYNTHETIC RECOVERY ONLY / N-07 LIMITED-ACCEPTED（2026-10-18）**：两份已独立核对的归档 SHA/内部清单、22 项 Guest 比对（19 同值/3 预期差异）、准确 Snapshot `showvminfo` rc=0、独立 VM/base VDI `showmediuminfo` rc=0、Host-only 合成 HTTP 接管/停止共同证明该可丢弃隔离实验环境的指定恢复流程。**N-07 风险接受仅适用于这些准确合成资产**：原始 Mac Host 无独立签认、历史 SSH 外层 rc 缺失、本轮 Host 输出未另作离机封存，按 [B2B2 §9.6](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 如实保留，不补造值。不能据此认证真实 AWS 平台、新代码可信来源、持续维护冻结、数据库/Uploads/供应商恢复或授权 Guest/root 操作；C1/C3–C8 仍独立，C5-G2 NO-GO |
 | C3 应用与存储一致性 | 本次 current/previous/env/running image、17+Manifest、C4、project/DB/Uploads 及外部安装副本相容，无 pending/未明事故 | OPEN：R3/R4，生产前另做当前主机核对 |
 | C4 维护排他与禁入 | 原策略离机记录→准确容器 no/正常停止→所有启动/写入入口持续禁入；跨 reboot/快照首启仍冻结，namespace/持有者覆盖完整，成功精确恢复 | OPEN：R2；按 MAINT-RESTART-01，不修改 Manifest Compose |
