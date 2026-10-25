@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 try:
     import normal_runtime_candidate_scope as scope
+    import normal_runtime_process_check as process_check
     import normal_runtime_launch as launch
     import normal_runtime_update as ordinary_core
     import normal_runtime_source_anchor as anchor
@@ -56,6 +57,8 @@ class NormalCandidateScopeTests(unittest.TestCase):
         self.real_capture = anchor.capture_anchored_candidate_sources
         self.real_load = loader.load_pinned_normal_candidate
         patches = (
+            ("process_mock", patch.object(
+                process_check, "_observe_current_process", side_effect=self.process_fixture)),
             ("root_mock", patch.object(
                 anchor, "_open_namespace_root", side_effect=self.open_root)),
             ("capture_mock", patch.object(
@@ -85,6 +88,21 @@ class NormalCandidateScopeTests(unittest.TestCase):
         self.launch_raw = launch.canonical(self.materials.document())
         self.request_raw = launch.canonical(self.request.document())
         self.prefix = "_sanq_candidate_" + self.materials.sha256()
+
+    def process_fixture(self):
+        # Simulated process declaration only; this does not attest CI/root/Python.
+        document = self.materials.document()
+        return {
+            "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.3",
+            "releaseLevel": "final", "releaseSerial": 0,
+            "executable": "/usr/bin/python3.12",
+            "realUid": 0, "effectiveUid": 0, "realGid": 0, "effectiveGid": 0,
+            "cwd": document["cwd"], "argv": tuple(document["argv"][4:]),
+            "originalArgv": tuple(document["argv"]), "environment": document["environment"],
+            "flags": {"isolated": 1, "ignore_environment": 1, "no_site": 1,
+                      "no_user_site": 1, "dont_write_bytecode": 1,
+                      "safe_path": True, "optimize": 0},
+        }
 
     def open_root(self):
         fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -174,6 +192,7 @@ class NormalCandidateScopeTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(PinnedInputsBlocked):
                 with self.assemble(**{field: "9" * 64}):
                     self.fail("wrong pins reached caller")
+        self.process_mock.assert_not_called()
         self.capture_mock.assert_not_called()
         self.load_mock.assert_not_called()
         self.root_mock.assert_not_called()
@@ -188,9 +207,31 @@ class NormalCandidateScopeTests(unittest.TestCase):
         self.capture_mock.assert_not_called()
         self.load_mock.assert_not_called()
 
+    def test_wrong_process_declaration_blocks_before_any_source_capture(self):
+        observed = self.process_fixture()
+        observed["pythonVersion"] = "3.10.12"
+        self.process_mock.side_effect = lambda: observed
+        with self.assertRaises(process_check.LaunchProcessBlocked):
+            with self.assemble():
+                self.fail("wrong process reached source assembly")
+        self.capture_mock.assert_not_called()
+        self.load_mock.assert_not_called()
+        self.root_mock.assert_not_called()
+
+    def test_unreadable_process_declaration_blocks_before_any_source_capture(self):
+        error = OSError("process observation unavailable")
+        self.process_mock.side_effect = error
+        with self.assertRaises(process_check.LaunchProcessBlocked) as caught:
+            with self.assemble():
+                pass
+        self.assertIs(caught.exception.__cause__, error)
+        self.capture_mock.assert_not_called()
+        self.load_mock.assert_not_called()
+
     def test_public_entry_has_no_snapshot_owner_root_loader_or_callback_override(self):
         for field in ("snapshot", "expected_owner_uid", "expected_owner_gid",
-                      "root_fd", "root_path", "loader", "callback"):
+                      "root_fd", "root_path", "loader", "callback",
+                      "process_checker", "process_observation"):
             with self.subTest(field=field), self.assertRaises(TypeError):
                 with self.assemble(**{field: object()}):
                     pass
@@ -380,8 +421,8 @@ class NormalCandidateScopeTests(unittest.TestCase):
                 self.assertNotIn(node.func.attr, {"run", "write", "write_text", "write_bytes"})
         self.assertLessEqual(imports, {
             "__future__", "contextlib", "dataclasses", "typing",
-            "normal_runtime_inputs", "normal_runtime_source_anchor",
-            "normal_runtime_source_loader",
+            "normal_runtime_inputs", "normal_runtime_process_check",
+            "normal_runtime_source_anchor", "normal_runtime_source_loader",
         })
         self.assertNotIn("__main__", source)
         self.assertEqual(len(SOURCE_FILES), 17)
