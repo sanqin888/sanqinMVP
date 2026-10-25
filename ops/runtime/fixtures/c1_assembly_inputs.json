@@ -1,0 +1,99 @@
+{
+  "launch.json": {
+    "argv": [
+      "/opt/sanq/python/3.12.15/bin/python3.12",
+      "-I",
+      "-S",
+      "-B",
+      "/root/sanq-runtime-operator/normal-update-v1/normal_runtime_bootstrap.py",
+      "--transaction-id",
+      "c1-assembly-20261025-001"
+    ],
+    "bootstrapSource": "normal_runtime_bootstrap.py",
+    "cwd": "/root/sanq-runtime-operator/normal-update-v1",
+    "dynamicDependencyClosureVerified": false,
+    "entryPoint": "normal_runtime_update.NormalUpdateFlow.run",
+    "environment": {
+      "HOME": "/root",
+      "LANG": "C",
+      "LC_ALL": "C",
+      "PATH": "/usr/bin:/bin",
+      "TZ": "UTC"
+    },
+    "gid": 0,
+    "launchAuthorized": false,
+    "platform": {
+      "architecture": "x86_64",
+      "os": "linux",
+      "pythonVersion": "3.12.15"
+    },
+    "schema": "sanq.runtime.normal-update-launch.v1",
+    "sourceCommit": "711197d2f31d1d6198d37f662e072e647f541efb",
+    "sourceFiles": {
+      "normal_runtime_bootstrap.py": {
+        "bytes": 17469,
+        "sha256": "490b5678e4902c2a0d693ea88b6cb8d364751c171fcf3843af0d0f294c6a06e9"
+      },
+      "normal_runtime_candidate_scope.py": {
+        "bytes": 2638,
+        "sha256": "bc7d269e6e1aaccba66e0ed8fbf31068b282c538aa92e18ad3af40e3d992524a"
+      },
+      "normal_runtime_inputs.py": {
+        "bytes": 5383,
+        "sha256": "423a20bf2dae9d1f8584002a59e0c30febd29eca008746e783c6b0535403d88c"
+      },
+      "normal_runtime_launch.py": {
+        "bytes": 6254,
+        "sha256": "9b0a4b3b4ab2d0749bc8c3388f6a8cbaba9c3df9938af6443db018fee9d48f3b"
+      },
+      "normal_runtime_process_check.py": {
+        "bytes": 4149,
+        "sha256": "2310bbc1c9e21e7b2bf30f5842d0ba3e553b1aaf91ffc7437a5604407e6031cc"
+      },
+      "normal_runtime_source_anchor.py": {
+        "bytes": 8847,
+        "sha256": "48f9736d8bdac9ca030a162492ff1eb742245319f96a66b6b161b684cb6ebcac"
+      },
+      "normal_runtime_source_loader.py": {
+        "bytes": 8861,
+        "sha256": "93a53fedaba61105a07d623ff61e92179cab1cac819ea4ab583058569b4a1ecd"
+      },
+      "normal_runtime_source_snapshot.py": {
+        "bytes": 10273,
+        "sha256": "ee2e6d91a44635f78420cef6881f73126895eb3bf45315647e3573ccbd840fb4"
+      },
+      "normal_runtime_update.py": {
+        "bytes": 14464,
+        "sha256": "29756e44c05e0d1a8ca976d75eae9932375d3f23798ed6c7c3ce99478848dacd"
+      }
+    },
+    "sourceProvenanceAuthenticated": false,
+    "sourceRoot": "/root/sanq-runtime-operator/normal-update-v1",
+    "subprocessArgvs": [],
+    "transactionId": "c1-assembly-20261025-001",
+    "uid": 0
+  },
+  "pins.json": {
+    "launchSha256": "1bcfe5482876c79239c9137750cd4b744c82c8604e46b293418c7b0bcae6b395",
+    "requestSha256": "54ee69fd11f188a0ff17b636c77c4213a2cf9bea83a3fa8b361a4de2db954cc6",
+    "schema": "sanq.runtime.normal-update-bootstrap-pins.v1",
+    "transactionId": "c1-assembly-20261025-001"
+  },
+  "request.json": {
+    "composeProject": "sanq-app",
+    "currentAppSha": "ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8",
+    "currentArchiveDigest": "sha256:8bd4d6c3d6ad1a942841c8cd7c81d47067c70f553bc4f445120ed60fe3323c84",
+    "currentRuntimeSha": "a84b72007e6b4e82c981101e56c897355757c0ff",
+    "databaseVolume": "sanq-app_pgdata",
+    "launchMaterialsSha256": "1bcfe5482876c79239c9137750cd4b744c82c8604e46b293418c7b0bcae6b395",
+    "operation": "upgrade",
+    "preservedStateSha256": "017a20fccf68bbf9327b23e27ddbd421ec97d03c580522e2da966606a88d9faa",
+    "previousAppSha": "a84b72007e6b4e82c981101e56c897355757c0ff",
+    "runtimeRoot": "/opt/sanq/runtime",
+    "schema": "sanq.runtime.normal-update-request.v1",
+    "targetArchiveDigest": "sha256:f1111edc9162f383a83c3b355a40ea17fc7ff2b21355e9d07b54a293561e34a3",
+    "targetRuntimeSha": "913258eb17e93a4900f90443959abfa07c7db96d",
+    "transactionId": "c1-assembly-20261025-001",
+    "uploadsBind": "/srv/sanq/uploads"
+  }
+}
