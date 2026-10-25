@@ -1,5 +1,7 @@
 # Runtime 更新 — C1-PREP-12 Python3.12.15可信构建与交付
 
+**2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。
+
 **2026-10-25（America/Toronto）｜PREP-12工具已合并 / MANUAL_MAIN_ENTRY_ALIGNMENT_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / C1_OPEN。**
 
 PREP-12工具已由 [PR #2947](https://github.com/sanqin888/sanqinMVP/pull/2947) 合并 `dev@d2fe275da39b67a4bbd5564863fd925810c0f606`；最终head `76de96050be5a8a38348b6e132d326346e6c0311` 的 [CI #7566](https://github.com/sanqin888/sanqinMVP/actions/runs/40187387143) 十项全绿（Runtime866 / Release45 / 精确CPython3.12.15回归203），新增18个工具测试已通过。dev合并提交的 [CI #7567](https://github.com/sanqin888/sanqinMVP/actions/runs/40187661795) 亦成功。当前用户选择整体dev→main方案以注册手动入口，本次仅完成本地工作流显示/说明与文档对齐；尚未提交本次修订、晋级main或运行构建。
@@ -29,7 +31,11 @@ PREP-12工具已由 [PR #2947](https://github.com/sanqin888/sanqinMVP/pull/2947)
 - 不覆盖旧Noble/S5或PREP-10证据；匹配对象可复用，变化对象重新绑定。PREP-11的源代码CI不等于解释器构建来源通过。
 - 本阶段构建产物就绪不自动关闭C1；正式交付、实际权限与启动前保护及同候选必要验收仍按R0完成。AWS快照、维护冻结、正式安装/业务效果权限不从版本选择或本任务文档推导。
 
-## 新对话启动内容
+## 新对话启动内容（现场验收后）
+
+先读本页验收续记及完整记录。解释器安装、九源交付及本事务正例已通过，勿重复安装或重跑正例。下一步先交付本批文档，再以准确源码/输入/平台身份审计隔离负例与完整候选缺口。以下原启动模板保留为背景，不再表示当前尚未构建/安装。
+
+### 原启动模板
 
 继续SanQ C1-PREP-12：基于PREP-11 PR #2946最终合并状态，推进Python3.12.15可信构建与交付。版本与路径已经确定为CPython3.12.15 final及 `/opt/sanq/python/3.12.15/bin/python3.12`。先读AGENTS、R0及本包，核对最终dev和源码身份，确认隔离Jammy/x86_64构建环境；目标是验真源包、形成可交付解释器产物并取得实际回归结果。生产VM的软件安装、root交付、bootstrap运行和任何真实更新效果，按准确操作对象及原授权规则分别处理。不要重复版本比较，也不要把旧Noble取证或CI缓存当新解释器来源证明。
 
@@ -60,7 +66,7 @@ PREP-12工具已由 [PR #2947](https://github.com/sanqin888/sanqinMVP/pull/2947)
 5. 记录configure/config.log、编译/altinstall日志、必要构建包完整版本、真实stdlib关键后端、解释器及选定扩展模块ldd结果。关键非虚拟动态库必须存在，取得准确文件SHA256及Ubuntu包归属/版本；未知来源对象阻断并专项审阅，不静默省略或启动全量消费追踪。
 6. 暂存清单拒绝外逃/绝对符号链接、硬链接、特殊文件和组/其他可写对象；安全内部相对链接可保留。归档元数据归一为root不代表实际安装owner已认证。产物及原始来源材料、日志、成员清单和SHA256SUMS仅在全部步骤成功后上传，保留14天；失败日志保留7天，应在实际运行后及时取回准确产物并建立长期证据引用。
 
-### 当前状态与剩余门禁
+### 初次实施时的状态与门禁（历史；当前见页首验收续记）
 
 **实际源包下载/验签、Jammy构建、真实产物回归和交付包均NOT_RUN。** 新增18个工具测试已在PR #2947 CI通过，不能替代Jammy构建job。本次入口对齐仅做YAML、内嵌shell、仅手动触发/仅dev守卫和差异静态审阅；未运行本批项目测试、CI或构建。
 
