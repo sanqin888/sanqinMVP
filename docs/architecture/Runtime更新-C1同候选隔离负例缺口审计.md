@@ -80,3 +80,12 @@ workflow仅contents:read/actions:read，checkout不持久化token；按准确run
 fixture仅包含此前准确三份JSON的重放，不包含.env原文或业务数据；旧生产观察只是输入中一个保留摘要，不声称lab存在相同容器或持续维护。真实UID/根路径/进程观察未patch。现有细粒度FD/race/中断203测试复用；新增5个测试检查fixture独立pins、report不授予权限/不接受缺项和有界非链接读取。
 
 结果仅写/root/sanq-c1-negative-results，workflow总是尝试导出至artifact保留14天；失败不会产生完整通过。测试记录不自行授予生产或C1关闭权限。当前最高状态是本地实现及静态检查，23 case和5个新测试均NOT_RUN。后续先PR常规CI→dev合并，再手动隔离运行并核对所有raw stdout/stderr/exit及summary；本轮未执行任何新root/生产操作。
+
+
+## 7. 首次隔离运行失败与环境准备修复（2026-10-25）
+
+工具PR #2952已合并dev b9523cd3，最终CI #7579十项成功（Runtime871/Release45/精确解释器203）。首次手动run [40209172466](https://github.com/sanqin888/sanqinMVP/actions/runs/40209172466)在dev@6d855c9f执行，Python原材料下载及ZIP摘要、关键依赖包版本步骤通过；helper已越过内部tar/review/7库摘要检查，在解释器父目录检查抛出unsafe interpreter parent。旧错误未携带具体path/uid/gid/mode，不能从日志声称某个具体owner值；23 case均尚未开始，无summary/artifact，不能计为负例通过。
+
+本批为A类内部原子缺陷修复，仅外部lab helper及记录：在hosted/manual/dev/root/空目标guard与材料核验之后，用O_DIRECTORY|O_NOFOLLOW打开一次性runner的/opt，经同一FD非递归设置root:root/0755，再保留原祖先安全检查；已有/opt/sanq及python父目录异常仍拒绝，不自动修复。记录/opt前后元数据，后续祖先报错包含准确路径/owner/mode。RESULTS创建后立即保留PREPARING/0 cases记录，使case前失败也有可导出的诊断；它不是验收summary或通过凭据。不递归chown/chmod，不接触生产或现有候选路径。
+
+9候选源码、3输入pin、准确Python材料及23个断言不变；无依赖/迁移/公共边界变化。分支fix/c1-negative-runner-opt-20261025，本地静态审阅完成；未执行项目测试/修复后隔离run，未推送。最高状态FIX_IMPLEMENTED_LOCAL / LAB_FAILED_BEFORE_CASES / C1_OPEN。交付CI及dev合并后重新从dev手动启动工作流，无需重复Python构建或AWS安装。
