@@ -15,7 +15,7 @@ import json
 import re
 
 SOURCE_ROOT = "/root/sanq-runtime-operator/normal-update-v1"
-INTERPRETER = "/usr/bin/python3.12"
+INTERPRETER = "/opt/sanq/python/3.12.15/bin/python3.12"
 FLAGS = ("-I", "-S", "-B")
 ENVIRONMENT = (("HOME", "/root"), ("LANG", "C"), ("LC_ALL", "C"),
                ("PATH", "/usr/bin:/bin"), ("TZ", "UTC"))
@@ -104,7 +104,7 @@ class LaunchMaterials:
             "sourceCommit": self.source_commit,
             "transactionId": self.transaction_id,
             "sourceRoot": SOURCE_ROOT,
-            "platform": {"os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.3"},
+            "platform": {"os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.15"},
             "sourceFiles": pins,
             "entryPoint": "normal_runtime_update.NormalUpdateFlow.run",
             "bootstrapSource": self.bootstrap_source,

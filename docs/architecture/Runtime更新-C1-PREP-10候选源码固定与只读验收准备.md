@@ -1,5 +1,9 @@
 # Runtime 更新 — C1-PREP-10 候选源码固定与只读验收准备
 
+**PREP-11实施续记（2026-10-25，本地待审）：**按用户授权，launch/bootstrap已固定CPython3.12.15 final及 `/opt/sanq/python/3.12.15/bin/python3.12`，6个测试文件同步并新增2个旧批准材料/混合绑定负例；新增确切版本CI回归步骤但尚未执行。[新九源审阅快照](evidence/c1-prep11-python31215-source-review-2026-10-25.md) 与 [审计/实施记录](Runtime更新-C1-PREP-11-Python31215变更审计.md) 已更新。旧PREP-10归档仍保持b7b7身份；新包为未提交工作树审阅材料，最终sourceCommit/CI及真实批准输入尚未固定。解释器产物来源/安装和Jammy同候选验收仍OPEN，无主机安装或真实效果。
+
+> **最终交付与下一动作：**[PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944) 最终head `35e2150f3d13db0746b31f67a91df2d9b29050a2` / [CI #7558](https://github.com/sanqin888/sanqinMVP/actions/runs/40151007839) SUCCESS，已合并 `17188367684a155b7217881d695c8c615589e940`。本批Markdown文档/材料记录已交付，Runtime等重lane按原规则跳过，包内原JSON/九源字节/归档摘要不变；首次缺两个新增文件已在同PR补齐，#7556的ECR拉取失败及展示格式修复见本包原续记。P10-B已由 [PREP-11](Runtime更新-C1-PREP-11实际平台身份与包元数据只读回执.md) 收到两份操作者回执并形成平台方案，用户已选择3.12.15并完成变更审计，等待具体来源/路径方案及源码适配；目标Python及root交付/效果仍未执行。下方首审LOCAL/未推送为历史时点；C1仍OPEN。
+
 **2026-10-24（America/Toronto）｜NINE SOURCE FILES PINNED / SOURCE REVIEW PACKAGE PREPARED_LOCAL / PLATFORM AND DELIVERY NOT_RUN / C1 OPEN。**
 
 本批接续用户“提交远端，合并后开始下一步”的授权，先将 PREP-09 已交付的只读候选落到准确源码和可核验物料，再准备同平台取证/交付/只读验收。此处冻结的是**九文件只读候选切片**；未来加入 R2/R3/R4 效果能力的完整正式候选仍未冻结。
@@ -50,7 +54,7 @@
 | 阶段 | 要完成的具体工作 | 当前状态 |
 | --- | --- | --- |
 | P10-A 源码物料 | 固定合并 SHA、最终 CI head、九文件 Git blob/SHA256/大小与归档原字节 | **COMPLETE_LOCAL / 9_OF_9 MATCH** |
-| P10-B 实际平台 | 绑定操作者确认的准确 AWS 正常执行主机；只读确认 Ubuntu/架构/主机标识、Python 包 revision/成员归属/真实路径及关键对象字节和保护条件 | **PREPARED / NOT_RUN**；Python版本已选择3.12.3，现场材料仍待采集 |
+| P10-B 实际平台 | 绑定操作者确认的准确 AWS 正常执行主机；只读确认 Ubuntu/架构/主机标识、Python 包 revision/成员归属/真实路径及关键对象字节和保护条件 | **METADATA RECEIVED / PYTHON3.12.15 PROFILE_LOCAL / PROVENANCE OPEN**；代码已配置，实际产物来源/保护及同平台验证未完成 |
 | P10-C 启动前可信交付 | 用准确源码清单、匹配的平台来源证据和受信外部工具核对；经单独批准，在无覆盖的受控位置交付9源码，核对root:root/0700目录、0400或0600单链接文件、祖先及读回原字节 | **NOT_AUTHORIZED / NOT_RUN**；无 root 目录或文件已创建 |
 | P10-D 输入批准 | 从已核实真实版本/状态构造同一事务的规范 launch/request，固定独立双摘要；经批准交付准确三文件，保持源码目录只含9份源码 | **INPUTS_NOT_SELECTED / APPROVAL_NOT_CREATED** |
 | P10-E 只读入口 | 启动前信任成立后，在明确批准的同平台环境以原v1固定argv/env/cwd运行只读 bootstrap，核对退出码/完整报告/无效果；实际负例安排在经批准的可丢弃同平台环境 | **NOT_AUTHORIZED / NOT_RUN** |

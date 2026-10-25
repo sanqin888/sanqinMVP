@@ -93,9 +93,9 @@ class NormalCandidateScopeTests(unittest.TestCase):
         # Simulated process declaration only; this does not attest CI/root/Python.
         document = self.materials.document()
         return {
-            "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.3",
+            "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.15",
             "releaseLevel": "final", "releaseSerial": 0,
-            "executable": "/usr/bin/python3.12",
+            "executable": "/opt/sanq/python/3.12.15/bin/python3.12",
             "realUid": 0, "effectiveUid": 0, "realGid": 0, "effectiveGid": 0,
             "cwd": document["cwd"], "argv": tuple(document["argv"][4:]),
             "originalArgv": tuple(document["argv"]), "environment": document["environment"],

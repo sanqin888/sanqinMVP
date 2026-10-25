@@ -32,14 +32,14 @@ class LaunchProcessCheckTests(unittest.TestCase):
                      "normal_runtime_launch.py": b"proposal_marker = 1\n",
                      "normal_runtime_update.py": b"core_marker = 2\n"})
         self.observed = {
-            "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.3",
+            "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.15",
             "releaseLevel": "final", "releaseSerial": 0,
-            "executable": "/usr/bin/python3.12",
+            "executable": "/opt/sanq/python/3.12.15/bin/python3.12",
             "realUid": 0, "effectiveUid": 0, "realGid": 0, "effectiveGid": 0,
             "cwd": "/root/sanq-runtime-operator/normal-update-v1",
             "argv": ("/root/sanq-runtime-operator/normal-update-v1/bootstrap.py",
                      "--transaction-id", "process-check-001"),
-            "originalArgv": ("/usr/bin/python3.12", "-I", "-S", "-B",
+            "originalArgv": ("/opt/sanq/python/3.12.15/bin/python3.12", "-I", "-S", "-B",
                              "/root/sanq-runtime-operator/normal-update-v1/bootstrap.py",
                              "--transaction-id", "process-check-001"),
             "environment": {"HOME": "/root", "LANG": "C", "LC_ALL": "C",
@@ -83,7 +83,8 @@ class LaunchProcessCheckTests(unittest.TestCase):
 
     def test_os_architecture_version_and_release_must_match_the_existing_v1(self):
         for field, value in (("os", "darwin"), ("architecture", "aarch64"),
-                             ("pythonVersion", "3.10.12"), ("pythonVersion", "3.12.4"),
+                             ("pythonVersion", "3.10.12"), ("pythonVersion", "3.12.3"),
+                             ("pythonVersion", "3.12.14"), ("pythonVersion", "3.12.16"),
                              ("releaseLevel", "candidate"), ("releaseSerial", 1)):
             original = self.observed[field]
             self.observed[field] = value
@@ -93,7 +94,8 @@ class LaunchProcessCheckTests(unittest.TestCase):
             self.observed[field] = original
 
     def test_interpreter_path_alias_or_missing_value_is_rejected(self):
-        for value in ("/usr/bin/python3", "/tmp/python3.12", "", None):
+        for value in ("/usr/bin/python3", "/usr/bin/python3.12",
+                      "/usr/local/bin/python3.12", "/tmp/python3.12", "", None):
             self.observed["executable"] = value
             with self.subTest(value=value), self.assertRaisesRegex(
                     process_check.LaunchProcessBlocked, "executable"):
@@ -202,8 +204,8 @@ class LaunchProcessCheckTests(unittest.TestCase):
         Version = namedtuple("Version", "major minor micro releaselevel serial")
         with ExitStack() as patches:
             values = {
-                "platform": "linux", "executable": "/usr/bin/python3.12",
-                "version_info": Version(3, 12, 3, "final", 0),
+                "platform": "linux", "executable": "/opt/sanq/python/3.12.15/bin/python3.12",
+                "version_info": Version(3, 12, 15, "final", 0),
                 "argv": list(self.observed["argv"]),
                 "orig_argv": list(self.observed["originalArgv"]),
                 "flags": SimpleNamespace(**self.observed["flags"]),

@@ -176,14 +176,14 @@ class LaunchMaterialsTests(unittest.TestCase):
         m = materials()
         d = m.document()
         self.assertEqual(d["argv"], [
-            "/usr/bin/python3.12", "-I", "-S", "-B", launch.SOURCE_ROOT + "/bootstrap.py",
+            "/opt/sanq/python/3.12.15/bin/python3.12", "-I", "-S", "-B", launch.SOURCE_ROOT + "/bootstrap.py",
             "--transaction-id", TXID])
         self.assertEqual(d["environment"], {
             "HOME": "/root", "LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin", "TZ": "UTC"})
         self.assertEqual((d["cwd"], d["uid"], d["gid"]), (launch.SOURCE_ROOT, 0, 0))
         self.assertEqual(d["entryPoint"], "normal_runtime_update.NormalUpdateFlow.run")
         self.assertEqual(d["platform"], {"os": "linux", "architecture": "x86_64",
-                                         "pythonVersion": "3.12.3"})
+                                         "pythonVersion": "3.12.15"})
         pin = d["sourceFiles"]["bootstrap.py"]
         self.assertEqual(pin, {"sha256": launch.digest(b"BOOTSTRAP = 1\n"), "bytes": 14})
         for key in ("sourceProvenanceAuthenticated", "dynamicDependencyClosureVerified", "launchAuthorized"):
