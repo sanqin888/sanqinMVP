@@ -1,4 +1,4 @@
-"""C1-PREP-09: standalone, assembly-only Python 3.12.3 bootstrap candidate.
+"""C1-PREP-09: standalone, assembly-only Python 3.12.15 bootstrap candidate.
 
 The operator must authenticate this script, Python/stdlib and the separately
 installed approval pins BEFORE starting it. Root ownership is not provenance.
@@ -107,9 +107,9 @@ def _require_process(transaction_id: str) -> None:
     argv = (SOURCE_ROOT + "/" + BOOTSTRAP_SOURCE, "--transaction-id", transaction_id)
     expected = {
         "platform": "linux", "machine": "x86_64",
-        "version": (3, 12, 3, "final", 0), "executable": "/usr/bin/python3.12",
+        "version": (3, 12, 15, "final", 0), "executable": "/opt/sanq/python/3.12.15/bin/python3.12",
         "ids": (0, 0, 0, 0), "argv": argv,
-        "originalArgv": ("/usr/bin/python3.12", "-I", "-S", "-B", *argv),
+        "originalArgv": ("/opt/sanq/python/3.12.15/bin/python3.12", "-I", "-S", "-B", *argv),
         "environment": {"HOME": "/root", "LANG": "C", "LC_ALL": "C",
                         "PATH": "/usr/bin:/bin", "TZ": "UTC"},
         "cwd": SOURCE_ROOT,
@@ -245,7 +245,7 @@ def _approved_inputs(fixed, transaction_id: str):
              and launch.get("bootstrapSource") == BOOTSTRAP_SOURCE
              and launch.get("sourceRoot") == SOURCE_ROOT
              and launch.get("platform") == {
-                 "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.3"}
+                 "os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.15"}
              and launch.get("subprocessArgvs") == [],
              "unsupported bootstrap candidate")
     inventory = launch.get("sourceFiles")

@@ -398,8 +398,12 @@ class PinnedSourceLoaderTests(unittest.TestCase):
 
     def test_candidate_launch_semantics_cannot_drift_from_pinned_v1_document(self):
         sources = dict(self.original)
-        sources["normal_runtime_launch.py"] = sources["normal_runtime_launch.py"].replace(
-            b'"pythonVersion": "3.12.3"', b'"pythonVersion": "3.10.12"')
+        original = sources["normal_runtime_launch.py"]
+        token = b'"pythonVersion": "3.12.15"'
+        self.assertEqual(original.count(token), 1)
+        sources["normal_runtime_launch.py"] = original.replace(
+            token, b'"pythonVersion": "3.12.3"')
+        self.assertNotEqual(sources["normal_runtime_launch.py"], original)
         self.configure(sources)
         with self.assertRaises(loader.CandidateLoadBlocked):
             with self.load():

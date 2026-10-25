@@ -105,8 +105,8 @@ class NormalRuntimeBootstrapTests(unittest.TestCase):
     def process_fixture(self):
         document = self.materials.document()
         return {
-            "platform": "linux", "machine": "x86_64", "version": (3, 12, 3, "final", 0),
-            "executable": "/usr/bin/python3.12", "ids": (0, 0, 0, 0),
+            "platform": "linux", "machine": "x86_64", "version": (3, 12, 15, "final", 0),
+            "executable": "/opt/sanq/python/3.12.15/bin/python3.12", "ids": (0, 0, 0, 0),
             "argv": tuple(document["argv"][4:]), "originalArgv": tuple(document["argv"]),
             "environment": document["environment"], "cwd": document["cwd"],
             "flags": {"isolated": 1, "ignore_environment": 1, "no_site": 1,
@@ -118,7 +118,7 @@ class NormalRuntimeBootstrapTests(unittest.TestCase):
         view = self.process_fixture()
         return {
             "os": view["platform"], "architecture": view["machine"],
-            "pythonVersion": "3.12.3", "releaseLevel": "final", "releaseSerial": 0,
+            "pythonVersion": "3.12.15", "releaseLevel": "final", "releaseSerial": 0,
             "executable": view["executable"], "realUid": 0, "effectiveUid": 0,
             "realGid": 0, "effectiveGid": 0, "cwd": view["cwd"],
             "argv": view["argv"], "originalArgv": view["originalArgv"],
@@ -217,7 +217,13 @@ class NormalRuntimeBootstrapTests(unittest.TestCase):
         self.assert_closed(before)
 
     def test_version_architecture_identity_environment_and_flags_reject_before_io(self):
-        variants = (("version", (3, 10, 12, "final", 0)), ("version", (3, 12, 4, "final", 0)),
+        variants = (("version", (3, 10, 12, "final", 0)),
+                    ("version", (3, 12, 3, "final", 0)),
+                    ("version", (3, 12, 14, "final", 0)),
+                    ("version", (3, 12, 16, "final", 0)),
+                    ("version", (3, 12, 15, "candidate", 1)),
+                    ("executable", "/usr/bin/python3.12"),
+                    ("executable", "/usr/local/bin/python3.12"),
                     ("machine", "aarch64"), ("ids", (1000, 0, 0, 0)),
                     ("cwd", "/tmp"), ("executable", "/usr/bin/python3"),
                     ("environment", {"SECRET": "DO_NOT_ECHO"}), ("flags", {}))
@@ -268,6 +274,7 @@ class NormalRuntimeBootstrapTests(unittest.TestCase):
     def test_source_inventory_platform_and_subprocess_expansion_reject(self):
         original = self.materials.document()
         for key, value in (("platform", {"os": "linux", "architecture": "x86_64", "pythonVersion": "3.10.12"}),
+                           ("platform", {"os": "linux", "architecture": "x86_64", "pythonVersion": "3.12.3"}),
                            ("sourceRoot", "/tmp/other"), ("bootstrapSource", "other.py"),
                            ("subprocessArgvs", [["/usr/bin/true"]]),
                            ("sourceFiles", {**original["sourceFiles"], "extra.py": {"sha256": "a" * 64, "bytes": 1}})):

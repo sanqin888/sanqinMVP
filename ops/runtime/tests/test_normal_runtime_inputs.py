@@ -116,6 +116,25 @@ class PinnedUpdateInputsTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(inputs.PinnedInputsBlocked):
                 self.parse(**{field: raw + b" "})
 
+    def test_legacy_platform_cannot_be_repinned_as_the_current_candidate(self):
+        legacy = json.loads(self.launch_raw)
+        legacy["platform"]["pythonVersion"] = "3.12.3"
+        legacy["argv"][0] = "/usr/bin/python3.12"
+        legacy_raw = launch.canonical(legacy)
+        request = json.loads(self.request_raw)
+        request["launchMaterialsSha256"] = launch.digest(legacy_raw)
+        with self.assertRaisesRegex(inputs.PinnedInputsBlocked, "v1 serialization"):
+            self.parse_raw(legacy_raw, launch.canonical(request))
+
+    def test_legacy_request_binding_cannot_be_mixed_with_current_launch(self):
+        legacy = json.loads(self.launch_raw)
+        legacy["platform"]["pythonVersion"] = "3.12.3"
+        legacy["argv"][0] = "/usr/bin/python3.12"
+        request = json.loads(self.request_raw)
+        request["launchMaterialsSha256"] = launch.digest(launch.canonical(legacy))
+        with self.assertRaisesRegex(inputs.PinnedInputsBlocked, "launch binding"):
+            self.parse_raw(self.launch_raw, launch.canonical(request))
+
     def test_duplicate_top_level_keys_even_with_same_value_are_rejected(self):
         for which, raw in (("launch", self.launch_raw), ("request", self.request_raw)):
             schema = json.loads(raw)["schema"]
@@ -192,7 +211,7 @@ class PinnedUpdateInputsTests(unittest.TestCase):
             "sourceRoot": "/tmp/operator",
             "platform": {"os": "linux", "architecture": "x86_64", "pythonVersion": "3.10.12"},
             "entryPoint": "another.run",
-            "argv": ["/usr/bin/python3.12", self.materials.bootstrap_source],
+            "argv": ["/opt/sanq/python/3.12.15/bin/python3.12", self.materials.bootstrap_source],
             "environment": {"PATH": "/tmp"},
             "cwd": "/tmp",
             "uid": 1,
