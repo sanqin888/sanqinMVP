@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-08 运行进程声明核对与失败测试
 
-**2026-10-24（America/Toronto）｜REMOTE DELIVERY AUTHORIZED / 20 NEW TEST METHODS AUTHORED / CI PENDING / PROCESS DECLARATION CONFORMANCE ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
+**2026-10-24（America/Toronto）｜SOURCE CI #7546 VERIFIED / 20 NEW TEST METHODS INCLUDED / PROCESS DECLARATION CONFORMANCE ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
 
 前批 [PR #2940](https://github.com/sanqin888/sanqinMVP/pull/2940) 最终 head `8638f522e04862ba30fb7c4b77ac9bf9b2bae87e` 的 [CI #7544](https://github.com/sanqin888/sanqinMVP/actions/runs/40145422597) SUCCESS（Runtime 794 / Release 45，含 PREP-07 的21项），squash 合并 dev `fe170ab1797a7135737d3bd411069ecfeee4fe55`。首次 CI #7540 的FD基线断言仅在测试隔离中修复，修复后源码CI #7541和最终CI均已通过；没有改动原实现/guard。按用户合并后继续授权，本批从该最新 dev 在独立缓存实现下一有限能力。用户现已授权本批远端交付；发布复核dev仍为 `fe170ab1797a7135737d3bd411069ecfeee4fe55`，六份既有文件、AGENTS/CI及前置launch源码的Git blob未漂移，使用独立缓存/GitHub插件PR→dev，待最终head全部必需CI全绿后合并；共享工作区其他改动保留。
 
@@ -46,10 +46,12 @@ os.environ是Python导入时建立并由Python更新的视图，不能认证libc
 
 正例是模拟进程视图，不证明CI或实验机实际为root/Python3.12.3；真实CI用例仅验证不符合v1的unittest入口遭拒绝，不保留其环境值。CI上scope测试的受控虚拟根/真实FD和固定代码加载与正式平台认证仍分开。
 
-本地只完成AST、静态导入/调用与顺序审阅、基线Git blob、差异/空白和补丁可应用性检查。**新增20项方法已编写/审阅，尚未运行**；没有调用本批guard/装配入口或执行模块、仓库lint/build/test/扫描，前批CI #7544不覆盖本批代码。后续远端交付须以实际ci.yml Runtime/Release及最终head全部必需Checks为准。
+本地只完成AST、静态导入/调用与顺序审阅、基线Git blob、差异/空白和补丁可应用性检查。**新增20项方法已由源码CI #7546实际覆盖，Runtime 814 / Release 45均OK**；本地没有调用本批guard/装配入口或执行模块、仓库lint/build/test/扫描，前批CI #7544不作为本批验证。最终head全部必需Checks仍为合并门禁。
 
 ## 5. 所有权与后续
 
 新增同owner单向边 `normal_runtime_process_check → normal_runtime_launch`，以及 `normal_runtime_candidate_scope → normal_runtime_process_check`；既有低层loader/anchor/reader和同一核心不变，仅当前测试消费。没有反向边/新环、跨上下文边/债务、12-context owner/部署单元/兼容、依赖/锁、CI、Prisma/migration、17 Bundle、原字段/guard放宽或scanner baseline变化，未运行生产扫描。
 
 同步R0、C1总包、依赖图和原PREP-07的最终CI/合并/最小测试修复事实。本批是Runtime/Ops内部原子源码切片，本批已获远端交付授权，使用独立功能分支PR→dev，待实际Runtime/Release及最终head全部必需Checks全绿后才合并；正式受信启动入口、平台/关键来源和输入保护、真实能力与必要同候选验证继续OPEN。**C1 OPEN / REAL BOOTSTRAP NOT IMPLEMENTED / NO PRODUCTION AUTHORITY。**
+
+**同批远端验证：**[PR #2941](https://github.com/sanqin888/sanqinMVP/pull/2941) → dev；完整源码 head `d40c370eb482e52dd61ae6443429834413331859` 的 [CI #7546](https://github.com/sanqin888/sanqinMVP/actions/runs/40146872548) SUCCESS，Runtime `814 tests / OK`（含本批新增20）、Release `45 tests / OK`，Runtime shell语法检查通过，无需CI修复。当前同批只补验证记录，最终 head 仍须实际 CI 全绿才合并；最终 Checks/merge 状态以 PR 事件为准。
