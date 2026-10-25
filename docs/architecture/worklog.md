@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1 P10-F4-B2终结与事故处置合同审阅
+
+**2026-10-25 F4-B2：CONTRACT_REVIEW_COMPLETE_LOCAL / FINALIZER_NOT_IMPLEMENTED / C1_OPEN。** F4-B1 [PR #2962](https://github.com/sanqin888/sanqinMVP/pull/2962)经[CI #7601](https://github.com/sanqin888/sanqinMVP/actions/runs/40231097040)成功合并e1b7d9eb：Runtime950/Release45/准确3.12.15回归282，含30新增测试，无修复。本批完成[终结与事故处置合同审阅](Runtime更新-C1-P10-F4B2终结与事故处置合同审阅.md)：现有非空ledger永久阻断，不能靠删除active或追加声明开放下一笔；需真实安装/保留状态/R2终态证据与配套多事务历史/崩溃协议。下一源码优先独立只读安装后目标复验；本批6份文档，无finalizer/schema升级、代码/依赖/迁移、R2或生产操作，无依赖图/债务/scanner基线变化，未运行新测试/CI、未推送。
+
 ## 2026-10-25 — C1 P10-F4-B1本机持久消费内核
 
-**2026-10-25 F4-B1：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B设计PR #2961经CI #7599（docs-only，1成功/9跳过）合并dev 99c79221，无修复。新增[本机持久消费内核](Runtime更新-C1-P10-F4B1本机持久消费内核.md)及30项测试：固定既有全安装flock、create-only claim/永久消费副本、文件与父目录fsync、持锁handle、同attempt abort和有界只读事故分类；退出/SIGKILL不清claim，未知阻断。未接Flow/F2/F3/F4-A或R2/云/生产，无效果权限/终结器；仅静态AST与差异审阅，未执行项目测试，分支feat/c1-p10f4b1-durable-admission-20261025未推送。Runtime/Ops同owner单向依赖，无依赖图/债务/scanner基线、九源/v1/17 Bundle、包依赖或数据库迁移变化。下一步先取得实际CI，再审阅独立终结/事故处置与可信组合。
+**2026-10-25 F4-B1：MERGED_DEV / CI_VERIFIED_OFFLINE / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** [PR #2962](https://github.com/sanqin888/sanqinMVP/pull/2962)最终head c55000c2862c0912a24371be4bb34f74f825ae25，经[CI #7601](https://github.com/sanqin888/sanqinMVP/actions/runs/40231097040)成功（4作业成功/6按范围跳过）合并e1b7d9ebd6daa8c1bad358e1caeae7371b5ac291。Release45、Runtime950、准确CPython3.12.15回归282全部通过，含30项新增真实FD/flock/独立进程测试，无CI修复。固定全安装锁、create-only claim/永久消费、abort与只读分类已通过离线回归；未接Flow/终结器/R2或生产效果。7文档同步，无owner/依赖图/基线/依赖/迁移变化；见[实现记录](Runtime更新-C1-P10-F4B1本机持久消费内核.md)。
 
 ## 2026-10-25 — C1 P10-F4-B一次性事务准入与全局锁设计
 
