@@ -1,5 +1,7 @@
 # Runtime 更新 — C1-PREP-10 候选源码固定与只读验收准备
 
+**2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。
+
 **PR #2946远端验证续记：**19文件已完整提交，源码head `802a0ae8` 的 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 已通过Runtime848、Release45及精确3.12.15回归203项。E2E因ECR Public镜像拉取Data limit exceeded在测试前阻断，CI服务镜像已最小改回Docker Official上游同标签，最终head仍须全绿再合并；最终Checks/merge以 [PR事件](https://github.com/sanqin888/sanqinMVP/pull/2946) 为准。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批未启动，解释器来源/安装及C1继续OPEN。下方LOCAL/CI_NOT_RUN按实施审阅时点保留。
 
 **PREP-11实施续记（2026-10-25，本地待审）：**按用户授权，launch/bootstrap已固定CPython3.12.15 final及 `/opt/sanq/python/3.12.15/bin/python3.12`，6个测试文件同步并新增2个旧批准材料/混合绑定负例；新增确切版本CI回归步骤但尚未执行。[新九源审阅快照](evidence/c1-prep11-python31215-source-review-2026-10-25.md) 与 [审计/实施记录](Runtime更新-C1-PREP-11-Python31215变更审计.md) 已更新。旧PREP-10归档仍保持b7b7身份；新包为未提交工作树审阅材料，最终sourceCommit/CI及真实批准输入尚未固定。解释器产物来源/安装和Jammy同候选验收仍OPEN，无主机安装或真实效果。
@@ -74,7 +76,7 @@
 
 旧 B02-B3 `deliver_fixed_source()` 只支持独立 `v1/operator.py`；它没有九文件 sourceRoot/三文件审批目录的交付合同。不得更改其固定名/guard 或把一次单文件回读当作本候选全部交付完成。受控交付实现/具体root命令须随准确对象评审，本批仅固定物料和验收步骤。
 
-## 5. 首次只读实测的有限收口条件
+## 5. 首次只读实测的有限收口条件（原3.12.3方案；实际3.12.15续记见页首）
 
 正例必须使用已记录的同一九源字节、准确 Python3.12.3 平台和受信批准输入，按 v1 的 `/usr/bin/python3.12 -I -S -B`、root IDs、固定五键环境/argv/cwd运行。预期仅为 `CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / decision=BLOCKED`，并核对来源记录、原始stdout/stderr/rc和未产生维护/AWS/安装效果。
 
