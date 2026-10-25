@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 P10-F4 事务准入与非活跃准备边界
 
+**2026-10-25 F4-B1：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B设计PR #2961经CI #7599（docs-only，1成功/9跳过）合并dev 99c79221，无修复。新增[本机持久消费内核](Runtime更新-C1-P10-F4B1本机持久消费内核.md)及30项测试：固定既有全安装flock、create-only claim/永久消费副本、文件与父目录fsync、持锁handle、同attempt abort和有界只读事故分类；退出/SIGKILL不清claim，未知阻断。未接Flow/F2/F3/F4-A或R2/云/生产，无效果权限/终结器；仅静态AST与差异审阅，未执行项目测试，分支feat/c1-p10f4b1-durable-admission-20261025未推送。Runtime/Ops同owner单向依赖，无依赖图/债务/scanner基线、九源/v1/17 Bundle、包依赖或数据库迁移变化。下一步先取得实际CI，再审阅独立终结/事故处置与可信组合。
+
 **2026-10-25 F4-B本地设计：DESIGN_COMPLETE_LOCAL / IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F4-A PR #2960经最终CI #7597成功（Runtime920/Release45/准确3.12.15回归252）合并74b6aba6，含20新增测试，无需修复。现已审阅[一次性事务准入/全安装锁](Runtime更新-C1-P10-F4B一次性事务准入与全局锁设计.md)：锁与持久消费分开、未知claim阻断、关闭flock不重放、abort仅本attempt，终结器不靠Flow声明自动放行；与R2真实身份/epoch分工，不再造CAS。下一源码限定本机准入内核与事故分类；本批仅文档，无新锁/ledger/schema/代码、R2或生产变化，未运行新测试/CI、未推送，依赖图/owner/基线不变。
 
 
