@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import gc
 from contextlib import contextmanager
 from dataclasses import FrozenInstanceError
 import os
@@ -29,6 +30,13 @@ finally:
 
 class NormalCandidateScopeTests(unittest.TestCase):
     def setUp(self):
+        # Drain unrelated unreachable fixtures before measuring this chain.
+        # Never collect at exit: newly leaked descriptors must still fail.
+        gc.collect()
+        self.inherited_fd = os.open(os.devnull, os.O_RDONLY | os.O_CLOEXEC)
+        self.addCleanup(os.close, self.inherited_fd)
+        info = os.fstat(self.inherited_fd)
+        self.inherited_identity = (info.st_dev, info.st_ino, info.st_mode)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -129,6 +137,12 @@ class NormalCandidateScopeTests(unittest.TestCase):
 
     def assert_closed(self, baseline):
         self.assertEqual(self.fds(), baseline)
+        info = os.fstat(self.inherited_fd)
+        self.assertEqual((info.st_dev, info.st_ino, info.st_mode),
+                         self.inherited_identity)
+        for fd in self.opened_roots:
+            with self.assertRaises(OSError):
+                os.fstat(fd)
         self.assertFalse(self.keys())
 
     def test_full_chain_rechecks_and_closes_source_fds_before_caller_entry(self):
