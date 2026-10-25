@@ -1,0 +1,55 @@
+name: C1 Jammy isolated negative acceptance
+run-name: C1 negative lab / ${{ github.ref_name }} / ${{ github.sha }}
+
+# Register on the default branch before dispatching dev, as with the build workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  negative:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download the exact previously verified Python material
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40192632845
+          name: c1-python31215-jammy-review-711197d2f31d1d6198d37f662e072e647f541efb
+          path: ${{ runner.temp }}/c1-python-materials
+      - name: Match critical Jammy libraries on the disposable runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libc6=2.35-0ubuntu3.15 libssl3=3.0.2-0ubuntu1.30 libsqlite3-0=3.37.2-2ubuntu0.8 zlib1g=1:1.2.11.dfsg-2ubuntu9.2
+      - name: Execute isolated real-root CLI acceptance
+        env:
+          MATERIALS: ${{ runner.temp }}/c1-python-materials
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REF,GITHUB_WORKFLOW,GITHUB_EVENT_NAME,GITHUB_RUN_ID,GITHUB_SHA /usr/bin/python3 -I -S -B ops/runtime/c1_jammy_negative_lab.py "$MATERIALS"
+      - name: Export only bounded lab logs
+        if: always()
+        env:
+          EXPORT: ${{ runner.temp }}/c1-negative-results
+        run: |
+          set -euo pipefail
+          mkdir "$EXPORT"
+          if sudo test -d /root/sanq-c1-negative-results; then
+            sudo cp -R /root/sanq-c1-negative-results/. "$EXPORT/"
+            sudo chown -R "$(id -u):$(id -g)" "$EXPORT"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: c1-jammy-negative-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/c1-negative-results/
+          if-no-files-found: warn
+          retention-days: 14

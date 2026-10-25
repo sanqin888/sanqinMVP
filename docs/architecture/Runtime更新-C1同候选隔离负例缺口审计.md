@@ -1,5 +1,7 @@
 # Runtime更新 — C1同候选隔离负例缺口审计
 
+**2026-10-25 隔离负例工具实施（本地）：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LAB_NOT_RUN / C1_OPEN。**审计PR #2951已由CI #7577（docs-only）合并ff95601f。本批新增仅托管Jammy/dev手动可运行的外部lab工具、固定输入fixture、23个真实CLI/外层验收case及5个离线边界测试，复用构建run40192632845的准确Python产物，源码/双输入仍绑定711197d2。一次性runner可写其自己的root/prefix，禁止生产运行；不改9候选源码、17 Bundle、业务或数据库，无owner/依赖图/架构基线变化。AST/YAML/shell/独立输入摘要静态核对通过，未运行项目测试或lab、未推送。
+
 **2026-10-25（America/Toronto）｜AUDIT_COMPLETE_LOCAL / LAB_NOT_RUN / C1_OPEN。**
 
 用户授权PR #2950合并后开始下一步。本批基于 `dev@3b0d6cf5f8986a2cc9504937bf32a7546b76d9af`，只审计现有覆盖与下一批最小隔离验收范围，不修改候选源码、平台、guard或生产材料，不新增执行许可。前批完整7文件最终head `205d55d5d98e249cad8efe47976940a3bc489997`，[CI #7575](https://github.com/sanqin888/sanqinMVP/actions/runs/40200523700) SUCCESS：ci-change-scope通过，9个重lane按docs-only正常跳过；补齐的新证据文件在同PR由GitHub contents API交付并按最终head回读一致。MCP暂存接口对该新增文件未生效，不用临时命令绕过工具限制。详见 [PR #2950](https://github.com/sanqin888/sanqinMVP/pull/2950)。
@@ -65,3 +67,16 @@ bootstrap测试setUp明确patch _observe_process、_open_namespace_root、_owner
 R2持续维护/Guard/CAS、R3真实AWS快照、R4安装/复验/策略恢复与最后放行仍是另一个完整效果候选，未因本审计或只读正例完成。源码准备可并行，不要求等C1先关闭；最终C1跟随实际选定的组合候选裁定。下一批建议先实现上述**隔离负例harness与手动工作流**，不让用户在生产改权限或篡改源码。
 
 本批最高状态AUDIT_COMPLETE_LOCAL / LAB_NOT_RUN；仅文档及依赖图“无变化”登记，无代码/依赖/迁移或生产操作。本批尚未提交远端。
+
+
+## 6. 隔离工具本地实施
+
+文件：`ops/runtime/c1_jammy_negative_lab.py`、`ops/runtime/fixtures/c1_assembly_inputs.json`、`ops/runtime/tests/test_c1_jammy_negative_lab.py`、`.github/workflows/c1-jammy-negative.yml`。工具不进入候选9源，不导入项目模块；仅在hosted/manual/dev/Jammy/x86_64/root且目标路径原不存在时开始，仓库/runner/系统工具为有限TCB。无AWS凭据传入，不操作Docker、业务、目标Runtime或数据库。
+
+workflow仅contents:read/actions:read，checkout不持久化token；按准确run/name下载既有Python材料，固定原tar与build-review摘要，核对关键7库实际bytes及8368对象安全解包。runner安装固定4个关键Ubuntu运行库包revision以匹配构建记录；若仓库版本不可用或文件摘要不同则阻断，不改用最新包掩盖差异。解释器材料2026-11-08到期，过期后停止并另行审阅同对象材料来源，不能自动回退其他run。workflow须进入默认分支注册后从dev手动运行，不在PR/push自动执行root实验。
+
+23 case：首尾2个准确基线、2个外层未启动拒绝（错bootstrap/错解释器路径）、3个真实进程条件（env/cwd/额外-B argv（保留禁写bytecode））、3个输入篡改、支持源码篡改、源码/输入各缺项与额外成员4个、可写祖先、公开输入/源码权限2个、错误输入owner、输入symlink、源码目录symlink、输入hardlink、源码FIFO。每case使用独立重建的root fixture；CLI预期RC2/空stdout/受控stderr，全false/BLOCKED；外层预期started=false而非伪造CLI结果。20秒timeout会杀掉该case进程组并失败；任一非预期立即停止并保留原始日志/摘要。final-baseline通过且23条结果无失败才complete=true。
+
+fixture仅包含此前准确三份JSON的重放，不包含.env原文或业务数据；旧生产观察只是输入中一个保留摘要，不声称lab存在相同容器或持续维护。真实UID/根路径/进程观察未patch。现有细粒度FD/race/中断203测试复用；新增5个测试检查fixture独立pins、report不授予权限/不接受缺项和有界非链接读取。
+
+结果仅写/root/sanq-c1-negative-results，workflow总是尝试导出至artifact保留14天；失败不会产生完整通过。测试记录不自行授予生产或C1关闭权限。当前最高状态是本地实现及静态检查，23 case和5个新测试均NOT_RUN。后续先PR常规CI→dev合并，再手动隔离运行并核对所有raw stdout/stderr/exit及summary；本轮未执行任何新root/生产操作。
