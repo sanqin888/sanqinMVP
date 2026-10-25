@@ -1,5 +1,11 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1 P10-F4-B一次性事务准入与全局锁设计
+
+
+**2026-10-25 F4-B本地设计：DESIGN_COMPLETE_LOCAL / IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F4-A PR #2960经最终CI #7597成功（Runtime920/Release45/准确3.12.15回归252）合并74b6aba6，含20新增测试，无需修复。现已审阅[一次性事务准入/全安装锁](Runtime更新-C1-P10-F4B一次性事务准入与全局锁设计.md)：锁与持久消费分开、未知claim阻断、关闭flock不重放、abort仅本attempt，终结器不靠Flow声明自动放行；与R2真实身份/epoch分工，不再造CAS。下一源码限定本机准入内核与事故分类；本批仅文档，无新锁/ledger/schema/代码、R2或生产变化，未运行新测试/CI、未推送，依赖图/owner/基线不变。
+
+
 ## 2026-10-25 — C1 P10-F4-A FD安全非活跃准备
 
 
