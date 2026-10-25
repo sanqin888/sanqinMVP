@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-11 实际平台身份与包元数据只读回执
 
-**2026-10-24批次（America/Toronto）｜PYTHON3.12.15 PROFILE IMPLEMENTED_LOCAL / CI_NOT_RUN / INTERPRETER PROVENANCE OPEN / C1 OPEN。**
+**2026-10-24批次（America/Toronto）｜PYTHON3.12.15 PROFILE IMPLEMENTED_LOCAL / SOURCE_OPS_VERIFIED / FINAL_CI_PENDING / INTERPRETER PROVENANCE OPEN / C1 OPEN。**
 
 本批接续 PREP-10 合并后的下一步 P10-B，核对选定AWS正常执行主机与现v1的Python3.12.3假设。现已收到P11-01～07两份操作者粘贴回执：[001](evidence/c1-prep11-aws-platform-receipt-001-2026-10-24.md)、[002](evidence/c1-prep11-aws-platform-receipt-002-2026-10-24.md)。观察为Ubuntu22.04.5 Jammy/x86_64；指定Python3.12包及 `/usr/bin/python3.12` 缺失，PATH可见 `/usr/bin/python3.10`，三个版本化包为amd64、`3.10.12-1~22.04.18`、installed。用户现已明确选择Python3.12.15，完成 [相关变更审计](Runtime更新-C1-PREP-11-Python31215变更审计.md)；用户随后授权实施，现源码已固定3.12.15及版本专属路径，相关测试和精确版本CI步骤已更新但未运行，见§11。实际解释器来源/产物、安装与Jammy验证仍OPEN。
 
@@ -135,3 +135,5 @@ Python3.10仍提供 `-I -S -B`。若选系统解释器，适配应保留隔离�
 用户已授权开始代码修改。最新dev `32963a0c` 上的 `feat/runtime-c1-python31215-20261025` 保留原9份回执/审计文档及并行R2日志，现已修改两源码和6个测试文件，新增2个输入绑定负例及精确3.12.15 CI步骤；实现细节见 [审计§9](Runtime更新-C1-PREP-11-Python31215变更审计.md)。代码中的解释器路径已固定为 `/opt/sanq/python/3.12.15/bin/python3.12`，实际产物尚未构建/安装或认证。
 
 [新九源审阅快照](evidence/c1-prep11-python31215-source-review-2026-10-25.md) 明确未提交和 `sourceCommit=null`，不作为批准输入。旧PREP-10归档不改；最终源码head/CI后再固定对应来源身份和launch/request/pins。项目测试未在MCP-workspace或缓存中运行，无Flow/主机/安装/维护/AWS/生产操作，未推送，C1仍OPEN。
+
+**远端交付与CI续记（2026-10-25）：**用户已授权代码与此前文档一并远端交付及最终CI全绿后合并dev。[PR #2946](https://github.com/sanqin888/sanqinMVP/pull/2946) 首个源码head为 `802a0ae8e4c1e53b935bc5eacd950e9280853880`，19个文件包含原回执/审计全部新增文件。实际 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 的ops-checks成功：Runtime848、Release45、精确CPython3.12.15回归203项通过；Browser E2E在Initialize containers拉取ECR Public PostgreSQL时连续返回Data limit exceeded，未进入测试，未记为E2E通过。最小修复只将CI服务镜像改为Docker Official Image上游 `docker.io/library/postgres:15-alpine`，保留同一标签、健康检查及全部测试门禁，不动业务/生产镜像或selector。修复head仍须实际CI全绿后合并，最终head/Checks/merge以PR事件为准；无需再次取得同分支CI修复授权。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批只交接任务，尚未启动构建/安装，C1仍OPEN。

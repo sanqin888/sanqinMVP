@@ -1,5 +1,7 @@
 # Runtime 更新 — C1-PREP-10 候选源码固定与只读验收准备
 
+**PR #2946远端验证续记：**19文件已完整提交，源码head `802a0ae8` 的 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 已通过Runtime848、Release45及精确3.12.15回归203项。E2E因ECR Public镜像拉取Data limit exceeded在测试前阻断，CI服务镜像已最小改回Docker Official上游同标签，最终head仍须全绿再合并；最终Checks/merge以 [PR事件](https://github.com/sanqin888/sanqinMVP/pull/2946) 为准。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批未启动，解释器来源/安装及C1继续OPEN。下方LOCAL/CI_NOT_RUN按实施审阅时点保留。
+
 **PREP-11实施续记（2026-10-25，本地待审）：**按用户授权，launch/bootstrap已固定CPython3.12.15 final及 `/opt/sanq/python/3.12.15/bin/python3.12`，6个测试文件同步并新增2个旧批准材料/混合绑定负例；新增确切版本CI回归步骤但尚未执行。[新九源审阅快照](evidence/c1-prep11-python31215-source-review-2026-10-25.md) 与 [审计/实施记录](Runtime更新-C1-PREP-11-Python31215变更审计.md) 已更新。旧PREP-10归档仍保持b7b7身份；新包为未提交工作树审阅材料，最终sourceCommit/CI及真实批准输入尚未固定。解释器产物来源/安装和Jammy同候选验收仍OPEN，无主机安装或真实效果。
 
 > **最终交付与下一动作：**[PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944) 最终head `35e2150f3d13db0746b31f67a91df2d9b29050a2` / [CI #7558](https://github.com/sanqin888/sanqinMVP/actions/runs/40151007839) SUCCESS，已合并 `17188367684a155b7217881d695c8c615589e940`。本批Markdown文档/材料记录已交付，Runtime等重lane按原规则跳过，包内原JSON/九源字节/归档摘要不变；首次缺两个新增文件已在同PR补齐，#7556的ECR拉取失败及展示格式修复见本包原续记。P10-B已由 [PREP-11](Runtime更新-C1-PREP-11实际平台身份与包元数据只读回执.md) 收到两份操作者回执并形成平台方案，用户已选择3.12.15并完成变更审计，等待具体来源/路径方案及源码适配；目标Python及root交付/效果仍未执行。下方首审LOCAL/未推送为历史时点；C1仍OPEN。

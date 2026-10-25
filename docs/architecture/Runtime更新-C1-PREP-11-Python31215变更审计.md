@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-11 Python 3.12.15 变更审计
 
-**2026-10-25实施续记（America/Toronto）｜IMPLEMENTED_LOCAL / PROFILE_FROZEN / CI_NOT_RUN / INTERPRETER_PROVENANCE_OPEN / C1_OPEN。**
+**2026-10-25实施续记（America/Toronto）｜IMPLEMENTED_LOCAL / PROFILE_FROZEN / SOURCE_OPS_VERIFIED / FINAL_CI_PENDING / INTERPRETER_PROVENANCE_OPEN / C1_OPEN。**
 
 用户已授权按审计进行代码修改；两源码、6个测试文件和精确版本CI步骤已本地完成，见§9。以下§1～8保留2026-10-24的审计结论及当时状态，最新实现/验证状态以§9为准。
 
@@ -98,3 +98,5 @@ Python官网列出3.12.15为2026-09-30安全发布，当前3.12已是仅安全�
 - 修改ci.yml按既有selector可能触发全量lane，本批不改selector缩减或绕过门禁。
 - 已生成 [九源清单与审阅归档记录](evidence/c1-prep11-python31215-source-review-2026-10-25.md)，2个运行源码变化、7个原字节。当前工作树未提交，故sourceCommit明确为空；最终准确源码head及其CI完成后再固定正式候选身份与批准材料，旧PREP-10/R1-A/S5证据保持原对象限定。
 - 无owner/导入边/兼容路径/scanner baseline/17 Bundle、业务模块或数据库迁移变化。未运行项目测试或目标入口；只静态审阅语法/导入、配置一致性、差异/空白、摘要/归档和工作区状态。未安装解释器、执行Flow或进行维护/AWS/生产动作，尚未提交远端；C1继续OPEN。
+
+**远端交付与CI续记（2026-10-25）：**用户已授权代码与此前文档一并远端交付及最终CI全绿后合并dev。[PR #2946](https://github.com/sanqin888/sanqinMVP/pull/2946) 首个源码head为 `802a0ae8e4c1e53b935bc5eacd950e9280853880`，19个文件包含原回执/审计全部新增文件。实际 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 的ops-checks成功：Runtime848、Release45、精确CPython3.12.15回归203项通过；Browser E2E在Initialize containers拉取ECR Public PostgreSQL时连续返回Data limit exceeded，未进入测试，未记为E2E通过。最小修复只将CI服务镜像改为Docker Official Image上游 `docker.io/library/postgres:15-alpine`，保留同一标签、健康检查及全部测试门禁，不动业务/生产镜像或selector。修复head仍须实际CI全绿后合并，最终head/Checks/merge以PR事件为准；无需再次取得同分支CI修复授权。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批只交接任务，尚未启动构建/安装，C1仍OPEN。

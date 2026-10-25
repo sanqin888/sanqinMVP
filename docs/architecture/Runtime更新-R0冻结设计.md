@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**PR #2946远端验证续记：**19文件已完整提交，源码head `802a0ae8` 的 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 已通过Runtime848、Release45及精确3.12.15回归203项。E2E因ECR Public镜像拉取Data limit exceeded在测试前阻断，CI服务镜像已最小改回Docker Official上游同标签，最终head仍须全绿再合并；最终Checks/merge以 [PR事件](https://github.com/sanqin888/sanqinMVP/pull/2946) 为准。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批未启动，解释器来源/安装及C1继续OPEN。下方LOCAL/CI_NOT_RUN按实施审阅时点保留。
+
 **PREP-11 Python3.12.15实施（2026-10-25，本地待审）：**按用户授权，现候选配置固定3.12.15 final与 `/opt/sanq/python/3.12.15/bin/python3.12`，两运行源码和6个测试文件已同步；进程核对算法、v1字段结构、env/cwd/flags/身份及全部false/BLOCKED守卫保持。新增精确版本CI步骤保留原Runtime/Release门禁，尚未运行；[审计/实施记录](Runtime更新-C1-PREP-11-Python31215变更审计.md) 与 [新源码审阅清单](evidence/c1-prep11-python31215-source-review-2026-10-25.md) 区分未提交工作树和旧b7b7证据。**IMPLEMENTED_LOCAL / CI_NOT_RUN / INTERPRETER_SOURCE_AND_DEPLOYMENT_OPEN / C1_OPEN**。代码配置不代表解释器已存在、来源已认证或已获得正式效果权限。
 
 **2026-10-24 C1-PREP-11 平台只读回执准备（本地）：**PREP-10 [PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944) 已由最终 [CI #7558](https://github.com/sanqin888/sanqinMVP/actions/runs/40151007839) SUCCESS合并 `17188367`；修复后为纯Markdown文档检查，Runtime等重lane按原规则跳过，CI/selector未改。现进入P10-B，[PREP-11](Runtime更新-C1-PREP-11实际平台身份与包元数据只读回执.md) 已准备普通账号可执行的5条发行/架构/包revision/归属/路径metadata查询与RC标记，**现场输出尚未收到**。当前MCP无这些查询接口，由操作者在选定AWS终端取回；不运行目标Python、不安装/修复软件、不进行root交付或业务操作。Python3.12.3选择、九文件源码身份及完整候选门禁不变，C1仍OPEN；本批仅本地文档、未再次推送。

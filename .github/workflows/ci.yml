@@ -392,9 +392,10 @@ jobs:
 
     services:
       postgres:
-        # Docker Official PostgreSQL image via ECR Public to avoid Docker Hub 429 on hosted runners.
+        # Keep the Docker Official PostgreSQL 15 Alpine test image.
+        # ECR Public blocked pulls with Data limit exceeded in CI #7562.
         # Keep the same major-version/Alpine variant and existing health check.
-        image: public.ecr.aws/docker/library/postgres:15-alpine
+        image: docker.io/library/postgres:15-alpine
         env:
           POSTGRES_USER: sanq_e2e
           POSTGRES_PASSWORD: sanq_e2e

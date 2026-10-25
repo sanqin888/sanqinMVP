@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**PR #2946远端验证续记：**19文件已完整提交，源码head `802a0ae8` 的 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 已通过Runtime848、Release45及精确3.12.15回归203项。E2E因ECR Public镜像拉取Data limit exceeded在测试前阻断，CI服务镜像已最小改回Docker Official上游同标签，最终head仍须全绿再合并；最终Checks/merge以 [PR事件](https://github.com/sanqin888/sanqinMVP/pull/2946) 为准。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批未启动，解释器来源/安装及C1继续OPEN。下方LOCAL/CI_NOT_RUN按实施审阅时点保留。
+
 2026-10-25 **PREP-11 Python3.12.15实施（LOCAL / CI_NOT_RUN / C1_OPEN）**：按用户授权，launch/bootstrap两源码固定3.12.15及版本专属绝对路径；process_check逻辑保持，6个测试文件同步并新增2个输入绑定负例。新增精确版本CI回归，原Runtime/Release步骤保留。见 [实施记录](Runtime更新-C1-PREP-11-Python31215变更审计.md) 与 [九源审阅快照](evidence/c1-prep11-python31215-source-review-2026-10-25.md)。没有导入/owner/依赖边、兼容路径、scanner baseline、17 Bundle或业务模块变化；源码配置和未提交清单不认证实际解释器/平台，未安装或运行正式入口。
 
 2026-10-24 **C1-PREP-11 平台身份/包metadata只读命令（LOCAL / OPERATOR OUTPUT PENDING / C1 OPEN）**：PREP-10已由PR #2944/最终CI #7558 SUCCESS合并 `17188367`；本批 [工作包](Runtime更新-C1-PREP-11实际平台身份与包元数据只读回执.md) 只准备现有普通账号的5条固定读取及RC标记，不运行目标Python，不新增collector/入口/数据消费者或MCP能力。源码九文件、静态/动态依赖边、12-context owner/部署单元、债务/SCC/scanner baseline、兼容、17 Bundle、依赖/锁、CI和数据库均无变化。本地仅文档/命令静态核对；没有运行仓库测试/扫描、现场命令、root交付或实际效果。
