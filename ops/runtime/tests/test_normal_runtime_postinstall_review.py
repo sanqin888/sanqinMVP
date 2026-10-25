@@ -121,7 +121,10 @@ class PostinstallReviewTests(unittest.TestCase):
 
     def test_semantically_equal_reformatted_manifest_is_not_original_bytes(self):
         doc = json.loads(self.target_manifest)
-        (self.runtime / post.MANIFEST).write_bytes((json.dumps(doc, indent=2) + "\n").encode())
+        reformatted = canonical(doc)
+        self.assertEqual(json.loads(reformatted), doc)
+        self.assertNotEqual(reformatted, self.target_manifest)
+        (self.runtime / post.MANIFEST).write_bytes(reformatted)
         with self.assertRaisesRegex(ValueError, "manifest differs"):
             self.call()
 
