@@ -73,3 +73,12 @@ B8-3 使用独立实验 CRL，`nextUpdate=2026-10-26T00:04:02Z`；这是**局部
 6. **P2-D/P0-01 与生产：** Guard/ARMING admission、systemd service/socket、直接 daemon/shim writer、AWS/G06/S09 等仍保持单独 NO-GO 与审批。
 
 **M01-B9 退出：`AUDIT_DOC_CLOSED_LOCAL / TLS_B4_B8_PASS_SCOPED / OPTION_B_PREFERRED_NOT_IMPLEMENTED / FULL_FORMAL_CAS_NEGATIVE_MATRIX_OPEN / ANCHOR_NOT_PRESENT / CAS_NOT_RUN / DOC_PR_CI_GATE / P1_DENY / P0-01_NOT_RUN / PRODUCTION_NO-GO`。**
+
+
+## 6. B9-DECISION 决策合同交接（2026-10-24 最新）
+
+B9 的“优先候选 B”已经按用户本批远端交付授权，明确选择首版 **Option B / B1（Enrollment + 完整 CRL + fenced stop-and-replace）** 的**文档安全语义基线**：受信发行/注册分权、CRL 签名和版本/时钟 fail-closed、停服屏障与撤销线性化点 F、UNKNOWN 对账、证书轮换和 T01–T08 负例矩阵。详见 [B9-DECISION 双层撤销权威与 CRL 生命周期合同](Runtime更新-R2-A2-3-P2-C3C3-B9-DECISION双层撤销权威与CRL生命周期合同.md)。
+
+**此收口不提升运行权限**：可信 InstallationAnchor、CA/CRL operator、跨回滚最小版本源、可执行 fence、正式 enrollment 与联网 CAS 均未实现/未授权。现有本节早期“待决策”表述保留历史时点，不得把文档合并视为功能已实现。
+
+`B9_DECISION_DOC_FROZEN / OPTION_B_B1_SELECTED / IMPLEMENTATION_NOT_AUTHORIZED / P1_DENY / P0-01_NOT_RUN / PRODUCTION_NO-GO`
