@@ -1,5 +1,11 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1 P10-F2来源与安装只读审阅
+
+
+**2026-10-25 P10-F2本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READONLY_REVIEW_ONLY / C1_OPEN。** P10-F1 PR #2956最终head4004fdb6经CI #7589（docs-only）合并9e0f4e87。本批新增外置只读review库及19项聚焦测试，复用目标newest发布校验，借入目录FD核对实际17+Manifest/三保留文件，按当前准确Git SHA源码+发布元数据认证旧摘要身份，不要求旧Archive bytes；保持所有安装/维护/事务权限false。FD不自证固定生产路径、容器/挂载未实测，故不作为正式VERIFY_SOURCE completion。见[F2实现与证据限制](Runtime更新-C1-P10-F2来源与安装只读准入.md)。原九源/输入/17 Bundle及R2实现不变，无依赖或数据库迁移；AST/差异静态审阅，未执行项目测试/真实现场核查，未推送。
+
+
 ## 2026-10-25 — C1 P10-F1完整候选装配就绪审计
 
 **READINESS_AUDIT_COMPLETE_LOCAL / P10-F_OPEN / C1_OPEN。** 验收归档PR #2955经CI #7587十项成功合并7c368ca5；用户授权继续P10-F并另开R2。本批基于该dev核对固定九源/三模块loader与同组completion类型、12个能力方法的正式缺口、prepare默认newest和固定历史目标差异、持久准入/快照/安装边界，编制R2交接表与下一块来源/当前安装只读准入范围。没有新增纯内存流程或效果adapter，不改R2实现/9源/三输入/17 Bundle/原v1/依赖/业务/数据库，依赖图/owner/scanner基线不变。仅静态审阅，未运行项目测试/新CI或任何生产/AWS操作，无迁移；分支docs/c1-p10f-candidate-readiness-20261025，本地待审，未推送。详见[完整候选审计](Runtime更新-C1-P10-F完整候选装配就绪审计.md)。

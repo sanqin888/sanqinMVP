@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+**2026-10-25 P10-F2本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READONLY_REVIEW_ONLY / C1_OPEN。** P10-F1 PR #2956最终head4004fdb6经CI #7589（docs-only）合并9e0f4e87。本批新增外置只读review库及19项聚焦测试，复用目标newest发布校验，借入目录FD核对实际17+Manifest/三保留文件，按当前准确Git SHA源码+发布元数据认证旧摘要身份，不要求旧Archive bytes；保持所有安装/维护/事务权限false。FD不自证固定生产路径、容器/挂载未实测，故不作为正式VERIFY_SOURCE completion。见[F2实现与证据限制](Runtime更新-C1-P10-F2来源与安装只读准入.md)。原九源/输入/17 Bundle及R2实现不变，无依赖或数据库迁移；AST/差异静态审阅，未执行项目测试/真实现场核查，未推送。
+
+
 **2026-10-25 P10-F1 装配就绪审计（本地）：READINESS_AUDIT_COMPLETE_LOCAL / P10-F_OPEN / C1_OPEN。** 验收归档PR #2955/CI #7587十项成功已合并dev `7c368ca5`。本批核对11阶段+abort真实接线：bootstrap固定9源/只读、loader仅加载三个核心模块；新增adapter须另固集合和导入边界，保持同组StepCompletion类型。prepare默认newest发布策略与固定历史目标存在适用差异，不能静默换目标或放宽校验；核心Lock也不代表持久化准入。已整理[R2交接面及R3/R4开放项与切片](Runtime更新-C1-P10-F完整候选装配就绪审计.md)，R2由另一对话负责。下一块限定来源/当前安装只读准入，尚未编写新代码或接入效果；准确CPython3.12.15及原九源/输入、17 Bundle不变。无依赖图/owner/基线/兼容/数据库变化，无新运行或生产证据；未提交远端。
 
 
