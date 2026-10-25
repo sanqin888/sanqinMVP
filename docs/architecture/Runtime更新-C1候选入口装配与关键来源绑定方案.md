@@ -1,5 +1,10 @@
 # Runtime 更新 — C1 候选入口装配与关键来源绑定方案
 
+**2026-10-25 P10-F1 装配就绪审计（本地）：READINESS_AUDIT_COMPLETE_LOCAL / P10-F_OPEN / C1_OPEN。** 验收归档PR #2955/CI #7587十项成功已合并dev `7c368ca5`。本批核对11阶段+abort真实接线：bootstrap固定9源/只读、loader仅加载三个核心模块；新增adapter须另固集合和导入边界，保持同组StepCompletion类型。prepare默认newest发布策略与固定历史目标存在适用差异，不能静默换目标或放宽校验；核心Lock也不代表持久化准入。已整理[R2交接面及R3/R4开放项与切片](Runtime更新-C1-P10-F完整候选装配就绪审计.md)，R2由另一对话负责。下一块限定来源/当前安装只读准入，尚未编写新代码或接入效果；准确CPython3.12.15及原九源/输入、17 Bundle不变。无依赖图/owner/基线/兼容/数据库变化，无新运行或生产证据；未提交远端。
+
+本续记沿用准确CPython3.12.15 final及`/opt/sanq/python/3.12.15/bin/python3.12`；下方3.12.3、平台/交付未完成等为早期候选历史。九文件只读切片已完成限定验收；本批不把该结果升级为完整效果装配成功。
+
+
 > **最新进度（2026-10-24 / C1-PREP-10 LOCAL）：**PREP-09只读入口已由 PR #2943 / 最终CI #7553 SUCCESS（Runtime846/Release45）合并 `dev@b7b7f276`；[PREP-10](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 将该九文件候选与最终已测head逐blob绑定，准备准确源码包、校验清单和平台/交付/批准输入/只读验收顺序。该9文件切片的源码材料已固定，真实平台来源与受控交付尚未完成；完整效果候选仍未冻结。本文下方早期“待CI/入口未实现”等为历史状态；C1继续OPEN，Python3.12.3选择及原v1/guard/效果门禁不变。
 
 **C1-PREP-09 交付续记：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 源码 head `97ac6fd3` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS，Runtime 846（含新增32）/ Release 45，无需修复。用户已授权最终 head CI 全绿后合并 dev 并继续；本批先前 LOCAL/NOT_RUN/未推送为历史时点，最终 Checks/merge 以 PR 事件为准；真实来源/执行验收及 C1 仍 OPEN。

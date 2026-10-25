@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+**2026-10-25 P10-F1 装配就绪审计（本地）：READINESS_AUDIT_COMPLETE_LOCAL / P10-F_OPEN / C1_OPEN。** 验收归档PR #2955/CI #7587十项成功已合并dev `7c368ca5`。本批核对11阶段+abort真实接线：bootstrap固定9源/只读、loader仅加载三个核心模块；新增adapter须另固集合和导入边界，保持同组StepCompletion类型。prepare默认newest发布策略与固定历史目标存在适用差异，不能静默换目标或放宽校验；核心Lock也不代表持久化准入。已整理[R2交接面及R3/R4开放项与切片](Runtime更新-C1-P10-F完整候选装配就绪审计.md)，R2由另一对话负责。下一块限定来源/当前安装只读准入，尚未编写新代码或接入效果；准确CPython3.12.15及原九源/输入、17 Bundle不变。无依赖图/owner/基线/兼容/数据库变化，无新运行或生产证据；未提交远端。
+
+
 **2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
 
 
@@ -96,7 +99,7 @@
 | 工作 | 本批状态 | 完成条件/依赖 |
 | --- | --- | --- |
 | 基线对齐与已有证据盘点 | COMPLETE_LOCAL | R0 和 R1/S1/SYN 的现行适用范围统一；本包完成现有代码与证据复用登记 |
-| 正式候选准备 | READ_ONLY_ACCEPTANCE_COMPLETE_SCOPED / EFFECTS OPEN | 九文件只读正例及23项负例已完成；P10-F完整效果接线仍随R2/R3/R4准备 |
+| 正式候选准备 | READ_ONLY_ACCEPTANCE_COMPLETE_SCOPED / P10-F1_AUDITED_LOCAL / EFFECTS OPEN | 九源只读验收已归档；P10-F阶段/组件映射及就绪差异已审，真实能力装配和完整候选固定未完成，见P10-F1审计 |
 | 候选平台与来源绑定 | PYTHON_INSTALLED_VERIFIED_SCOPED | 已固定准确Python材料、关键7库、受保护路径/输入及同候选结果；新增效果对象仍需来源和安装保护 |
 | 同候选必要验证与 C1 裁定 | READ_ONLY_SCOPED_PASS / FINAL_C1_OPEN | 九文件入口限定验收完成，完整组合候选尚未形成，禁止推断生产放行或C1整体关闭 |
 
