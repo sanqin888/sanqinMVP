@@ -1,8 +1,10 @@
 # Runtime 更新 — C1-PREP-12 Python3.12.15可信构建与交付
 
-**2026-10-25（America/Toronto）｜IMPLEMENTED_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / CI_NOT_RUN / C1_OPEN。**
+**2026-10-25（America/Toronto）｜PREP-12工具已合并 / MANUAL_MAIN_ENTRY_ALIGNMENT_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / C1_OPEN。**
 
-用户已授权启动本包修改。PREP-11 PR #2946最终CI #7563十项检查全绿并合并 `dev@bdfb25af7de88ecafbb17b1fda71b305e5cfd17c`。本批已在 `feat/runtime-c1-prep12-trusted-python-build-20261025` 本地实现验签/构建材料工具与手动隔离构建工作流；尚未下载、验签、构建或安装解释器，也未运行新测试。目标仍是取得**适配Ubuntu22.04/Jammy x86_64、来源可核验的CPython3.12.15交付产物**，继续向实际平台验收推进。
+PREP-12工具已由 [PR #2947](https://github.com/sanqin888/sanqinMVP/pull/2947) 合并 `dev@d2fe275da39b67a4bbd5564863fd925810c0f606`；最终head `76de96050be5a8a38348b6e132d326346e6c0311` 的 [CI #7566](https://github.com/sanqin888/sanqinMVP/actions/runs/40187387143) 十项全绿（Runtime866 / Release45 / 精确CPython3.12.15回归203），新增18个工具测试已通过。dev合并提交的 [CI #7567](https://github.com/sanqin888/sanqinMVP/actions/runs/40187661795) 亦成功。当前用户选择整体dev→main方案以注册手动入口，本次仅完成本地工作流显示/说明与文档对齐；尚未提交本次修订、晋级main或运行构建。
+
+以下为首批实施背景（当时的本地状态）：用户已授权启动本包修改。PREP-11 PR #2946最终CI #7563十项检查全绿并合并 `dev@bdfb25af7de88ecafbb17b1fda71b305e5cfd17c`。本批已在 `feat/runtime-c1-prep12-trusted-python-build-20261025` 本地实现验签/构建材料工具与手动隔离构建工作流；尚未下载、验签、构建或安装解释器，也未运行新测试。目标仍是取得**适配Ubuntu22.04/Jammy x86_64、来源可核验的CPython3.12.15交付产物**，继续向实际平台验收推进。
 
 ## 已确定的输入
 
@@ -39,7 +41,7 @@
 | 文件 | 职责与边界 |
 | --- | --- |
 | `ops/runtime/c1_python_build_materials.py` | 非生产构建材料工具：Jammy/x86_64非root托管环境、固定repo/dev和准确源码提交检查；SHA256与GnuPG发布者核对；固定bytes安全解包；stage清单、关键动态库字节/Ubuntu包归属、交付归档及全材料SHA256SUMS |
-| `ops/runtime/tests/test_c1_python_build_materials.py` | 新增18个离线测试方法，覆盖环境/身份/提交拒绝、完整主密钥/签名状态、过期/撤销/弱摘要、多签名、hash前置拒绝、GPG失败不解包、不安全归档/链接/权限、动态库缺失/无归属、归档字节及false权限；测试尚未运行 |
+| `ops/runtime/tests/test_c1_python_build_materials.py` | 新增18个离线测试方法，覆盖环境/身份/提交拒绝、完整主密钥/签名状态、过期/撤销/弱摘要、多签名、hash前置拒绝、GPG失败不解包、不安全归档/链接/权限、动态库缺失/无归属、归档字节及false权限；已随PR #2947的Runtime回归通过，Jammy构建job尚未运行 |
 | `.github/workflows/c1-python31215-build.yml` | 仅 `workflow_dispatch` 且仅dev；contents:read、checkout不持久化凭据。在一次性22.04 runner准备依赖、验真源包、构建/DESTDIR暂存、实际产物smoke与C1回归，成功后上传审阅材料；失败只上传日志 |
 
 ### 固定来源与信任前提
@@ -52,7 +54,7 @@
 ### 受控构建与材料
 
 1. 首次远端交付仍需按AGENTS经用户审阅授权；PR的常规CI将通过既有Runtime测试发现机制执行新增18个方法。没有修改selector或旧CI门禁，新workflow文件按原规则可能触发全量CI。
-2. 工作流合并到dev后，由明确的手动触发运行；不会在PR、push、schedule或workflow_run中自动下载/编译。构建前核对实际dev SHA及工作流版本。
+2. 用户采用整体dev→main晋级，使仅手动工作流进入默认分支main并注册入口；仅合并dev不能保证出现网页Run workflow按钮。本工作流仍不在PR、push、schedule或workflow_run自动下载/编译。晋级后在Run workflow选择dev；job及工具都要求refs/heads/dev，选择main不会执行build。运行标题显示分支和完整源码SHA；实际材料仍以准确run/attempt、checkout SHA及工作流版本核对。
 3. runner先核对Jammy/x86_64、非root、托管环境及repo/dev；仅在一次性runner安装必要工具/开发库。源包先核hash和签名，再完整预检归档成员，最后从固定bytes解包；任何失败不生成成功receipt。
 4. 固定 `--prefix=/opt/sanq/python/3.12.15 --with-ensurepip=no CC=/usr/bin/cc`，make并发2；`make altinstall DESTDIR=<runner临时目录>/stage` 不写runner或生产机的真实目标prefix，也不替换系统python3。暂存解释器用原五键env与 `-I -S -B` 做版本/flags/stdlib smoke，再用它运行现有8个C1测试文件；新增工具测试先在Jammy宿主Python上执行。
 5. 记录configure/config.log、编译/altinstall日志、必要构建包完整版本、真实stdlib关键后端、解释器及选定扩展模块ldd结果。关键非虚拟动态库必须存在，取得准确文件SHA256及Ubuntu包归属/版本；未知来源对象阻断并专项审阅，不静默省略或启动全量消费追踪。
@@ -60,8 +62,19 @@
 
 ### 当前状态与剩余门禁
 
-**实际源包下载/验签、Jammy构建、18个新测试、真实产物回归和交付包均NOT_RUN。** 仅完成静态Python AST、YAML、内嵌shell语法、流程顺序、差异和工作区核对；没有MCP或缓存中的项目测试执行。
+**实际源包下载/验签、Jammy构建、真实产物回归和交付包均NOT_RUN。** 新增18个工具测试已在PR #2947 CI通过，不能替代Jammy构建job。本次入口对齐仅做YAML、内嵌shell、仅手动触发/仅dev守卫和差异静态审阅；未运行本批项目测试、CI或构建。
 
 真实安装仍不在本批代码中。取得成功材料后，须审阅准确CI run/attempt、源码SHA、源签名/主指纹、构建信任前提、关键依赖、归档摘要/成员/权限，再给出生产VM准确安装计划。重点包括目标目录是否存在、完整祖先owner/mode、与Jammy库版本的实际匹配、失败清理/恢复和系统Python保护。未获对应生产授权前，不解包到 `/opt`、不写root批准目录、不运行正式bootstrap或Flow。
 
 本批归Runtime/Ops；无生产启动入口、安装器、业务/数据库迁移、17 Bundle或跨上下文依赖变化。构建工具→标准库以及测试→构建工具均为同owner关系，不扩张normal_runtime源码装配清单或现有9文件候选。PREP-12与C1继续OPEN，构建代码完成不等于可信交付已验收。
+
+
+### 2026-10-25 整体晋级与手动运行流程（本地对齐）
+
+用户已选择整体dev→main方案，撤回尚未提交的dev限定push自动构建修改。仅保留workflow_dispatch，新增运行标题标识分支及完整SHA；Ubuntu22.04、版本/路径/源包摘要/发布者指纹、contents:read、回归、DESTDIR和false权限保持原合同。无normal_runtime源码、构建工具算法、17 Bundle或数据库改动。
+
+1. 本批修订先经审阅、授权远端交付及实际CI进入dev；按仓库规则，整体dev→main晋级另由用户控制，不在本批自动执行。
+2. 晋级前复核准确两端SHA、差异与实际合并结果CI。当前只读审计为main `ef5caa32704dd59217b1151a5976e826c843c98f`、dev `d2fe275da39b67a4bbd5564863fd925810c0f606`，dev比共同基线多183提交、树差异386路径；main独有一条历史合并记录，树与共同基线一致。后续提交会改变这些数字，不将此审计当未来合并CI。
+3. 整体晋级会带入支付/POS等改动及4份新增迁移；main push CI成功还会触发publish-images，发布API/Web镜像、成对证明和Runtime Bundle。现有17成员中deploy_release.py、release_contract.py相对main有变化；发布成功不代表已安装Runtime或生产迁移/部署就绪，生产DB实际应用状态未在本次核验。仓库审阅未见自动连接生产部署步骤。
+4. main具备工作流后，进入GitHub Actions→C1 Python 3.12.15 isolated build→Run workflow→选择dev→运行。记录准确dev SHA、run ID/attempt，等待验签、构建、实际产物smoke及回归全部成功。
+5. 成功下载 `c1-python31215-jammy-review-<SHA>`（14天）；失败读取 `c1-python31215-failure-<run_id>`（7天），先查失败步骤，不绕过校验。审阅原始来源/签名、摘要、关键库归属、归档清单与权限后，另行制定生产安装计划。当前仍未生成可信解释器交付包，不关闭PREP-12或C1。
