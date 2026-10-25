@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-24 **C1-PREP-10 九文件来源固定与只读验收准备（LOCAL / PLATFORM NOT_RUN / C1 OPEN）**：前批 PR #2943 经最终CI #7553 SUCCESS（Runtime846/Release45）合并 `b7b7f276`；本批 [工作包](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 与 [证据清单](evidence/c1-prep10-source-inventory-2026-10-24.json) 固定同一9文件/78,274源字节及源码审阅包，逐blob与最终已测head相同。仅文档/来源记录；没有任何源码、导入/动态装配边、运行消费方、owner/部署单元、跨上下文债务/SCC/scanner baseline、兼容/旧合同、17 Bundle、依赖/锁/CI或数据库变化。材料清单不被入口消费，不是新的批准/执行协议；未运行项目扫描/测试或真实入口，未交付生产/root材料。后续平台来源/真实输入及effects仍按原候选边界完成。
+
 **C1-PREP-09 交付续记：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 源码 head `97ac6fd3` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS，Runtime 846（含新增32）/ Release 45，无需修复。用户已授权最终 head CI 全绿后合并 dev 并继续；本批先前 LOCAL/NOT_RUN/未推送为历史时点，最终 Checks/merge 以 PR 事件为准；真实来源/执行验收及 C1 仍 OPEN。
 
 2026-10-24 **C1-PREP-09 Python 3.12.3 与只读 Bootstrap（LOCAL / TESTS NOT_RUN / C1 OPEN）**：用户已选择正常 AWS 执行器 Python3.12.3，沿用现有 v1。新增外置 `normal_runtime_bootstrap.py`，只有 stdlib 静态导入；同 Runtime/Ops 内通过固定八模块字节集合接入既有 candidate_scope → process_check/anchor/loader/parser 的装配路径，再取得同一 NormalUpdateFlow 类型，CLI 不调用 run。[工作包](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md) 登记固定三文件控制输入、最初 FD 门禁与私有支持模块生命周期、启动前信任限制。没有反向依赖、新跨上下文边/债务、上下文循环、12-context owner/部署单元、兼容登记/旧合同、scanner baseline、17 Bundle、依赖/锁、CI或数据库变化；原支持组件未改。32项真实组件/模拟根和进程测试已编写，仅 AST/导入/差异静态审阅，未扫描或运行项目测试，未创建 PR/部署。

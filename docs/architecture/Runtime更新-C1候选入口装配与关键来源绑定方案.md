@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 候选入口装配与关键来源绑定方案
 
+> **最新进度（2026-10-24 / C1-PREP-10 LOCAL）：**PREP-09只读入口已由 PR #2943 / 最终CI #7553 SUCCESS（Runtime846/Release45）合并 `dev@b7b7f276`；[PREP-10](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 将该九文件候选与最终已测head逐blob绑定，准备准确源码包、校验清单和平台/交付/批准输入/只读验收顺序。该9文件切片的源码材料已固定，真实平台来源与受控交付尚未完成；完整效果候选仍未冻结。本文下方早期“待CI/入口未实现”等为历史状态；C1继续OPEN，Python3.12.3选择及原v1/guard/效果门禁不变。
+
 **C1-PREP-09 交付续记：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 源码 head `97ac6fd3` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS，Runtime 846（含新增32）/ Release 45，无需修复。用户已授权最终 head CI 全绿后合并 dev 并继续；本批先前 LOCAL/NOT_RUN/未推送为历史时点，最终 Checks/merge 以 PR 事件为准；真实来源/执行验收及 C1 仍 OPEN。
 
 > **最新进度（2026-10-24 / C1-PREP-09 LOCAL）：**用户已确定正常 AWS 执行器采用 Python **3.12.3**，沿用 v1 的解释器/flags/身份/argv/env/cwd；[只读 Bootstrap 候选](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md) 现已写入源码及32项测试，将固定受保护控制文件、双 pins、八个支持模块固定字节加载与 PREP-07/08 装配入口接通。**测试未运行、未CI、未部署**；正式 Flow/效果接线及启动前信任、实际来源/权限验收仍 OPEN。下文 PREP-02 的“未新增 bootstrap/loader、平台尚未选定”保留其历史范围；Python 版本选择不认证实际 Ubuntu/包 revision/关键依赖，也不把只读装配升级为正常更新执行成功。

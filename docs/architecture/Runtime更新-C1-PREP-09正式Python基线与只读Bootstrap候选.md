@@ -1,5 +1,7 @@
 # Runtime 更新 — C1-PREP-09 正式 Python 基线与只读 Bootstrap 候选
 
+> **最终远端交付（2026-10-24）：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 最终head `3efa09f8763dbe870073a2a78847c0a19ac53466` 的 [CI #7553](https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415) SUCCESS，Runtime846（含新增32）/Release45；无需修复，已squash合并 `dev@b7b7f27682700447d37bcdabd456f22087a54892`。本包源码批已交付，下文首审/待最终CI语句保留历史时点。后续 [PREP-10](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 固定相同9源文件和交付审阅物料；真实平台/来源/交付/效果与C1最终验收仍OPEN。
+
 **2026-10-24（America/Toronto）｜PYTHON 3.12.3 SELECTED / BOOTSTRAP ASSEMBLY SOURCE_CI_VERIFIED / 32 TEST METHODS CI_VERIFIED / C1 OPEN。**
 
 用户明确确认 AWS VM 使用 Python **3.12.3**，并要求采用该版本开始下一项任务。本批据此选定正常更新执行器的 Python 版本，沿用已有 v1 的 `/usr/bin/python3.12`、Linux/x86_64、root 身份与 `-I -S -B` 声明，实现实际的**只读装配入口候选**。它不运行更新流程；正式执行能力、来源验收及同候选验证继续跟随 R2/R3/R4/R5。

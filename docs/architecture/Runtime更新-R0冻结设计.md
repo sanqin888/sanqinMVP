@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-24 C1-PREP-10 本地材料准备：**PREP-09 [PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 经最终 [CI #7553](https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415) SUCCESS（Runtime846 / Release45）合并 `b7b7f276`，无需修复。现固定同一九文件只读候选的操作器 commit、逐文件 Git blob/SHA256/大小与源码审阅包，9/9与最终CI head一致，78,274源字节；[PREP-10](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 与 [清单](evidence/c1-prep10-source-inventory-2026-10-24.json) 登记包原字节和后续平台/受控交付/批准输入/只读验收顺序。只是源码物料和步骤已本地准备；实际Python包/关键依赖来源、初始bootstrap信任、真实交付及同平台验收未完成，未生成launch/request/pins或运行入口，无生产/root/AWS操作。Python3.12.3选择不变，**C1仍OPEN**；本批只改文档/证据JSON，尚未推送。
+
 **C1-PREP-09 交付续记：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 源码 head `97ac6fd3` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS，Runtime 846（含新增32）/ Release 45，无需修复。用户已授权最终 head CI 全绿后合并 dev 并继续；本批先前 LOCAL/NOT_RUN/未推送为历史时点，最终 Checks/merge 以 PR 事件为准；真实来源/执行验收及 C1 仍 OPEN。
 
 **2026-10-24 C1-PREP-09 本地实现：**用户明确选择 AWS VM 的 **Python 3.12.3**，沿用 v1 Linux/x86_64、`/usr/bin/python3.12 -I -S -B`、root/固定 argv/env/cwd。新增 [正式 Python 基线与只读 Bootstrap 候选](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md)：固定事务审批目录三文件 → 双 pin/源码集合核对 → 8 个支持模块固定字节私有加载 → 原候选装配器；输入/源码退出复检与 FD 关闭先于交付，CLI 只报告 ASSEMBLY_ONLY，**不调用 Flow/效果**。32 项真实组件/模拟根与进程测试已编写、未运行；仅静态审阅，本批未提交远端。前批 PR #2941 最终 [CI #7548](https://github.com/sanqin888/sanqinMVP/actions/runs/40147153269) SUCCESS，已合并 `814c1489`；PR #2942 的 TLS 记录保留。**PYTHON VERSION SELECTED / BOOTSTRAP ASSEMBLY CANDIDATE LOCAL / C1 OPEN**；实际 Ubuntu/解释器包 revision/关键依赖与 bootstrap/批准 pins 的启动前可信来源、真实交付及同平台验收仍待完成。未部署或访问生产，无维护/AWS/安装许可；原 v1/false/guard/17 Bundle/依赖/CI/数据库不变。以下 PREP-02～08 的“未实现 bootstrap/平台未选定”是各批历史时点。
@@ -145,7 +147,7 @@
 
 | 门禁 | 关闭条件 | 当前状态及主要后续 |
 | --- | --- | --- |
-| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器及关键运行环境/依赖可信来源、实际执行位置/权限及必要的完整性核验；遇到未知动态加载、来源或路径替换风险才按 §4.1 专项追踪；当前安装健康与完整性绑定快照 | **OPEN / PYTHON 3.12.3 SELECTED / READ_ONLY BOOTSTRAP LOCAL**：见 [C1 最小基线与候选清单](Runtime更新-C1最小可信执行基线对齐与候选准备.md)及 [PREP-09](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md)；来源/实际交付/同候选验证仍待完成，最终同正式执行候选收口，不默认全量消费闭包、第三方见证或双 Archive 取回 |
+| C1 来源与可信执行 | 目标原 Archive/发布 proof、正常更新执行器及关键运行环境/依赖可信来源、实际执行位置/权限及必要的完整性核验；遇到未知动态加载、来源或路径替换风险才按 §4.1 专项追踪；当前安装健康与完整性绑定快照 | **OPEN / PYTHON 3.12.3 SELECTED / READ_ONLY BOOTSTRAP SOURCE_CI_VERIFIED / SOURCE PACKAGE LOCAL**：见 [C1 最小基线与候选清单](Runtime更新-C1最小可信执行基线对齐与候选准备.md)及 [PREP-09](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md)；来源/实际交付/同候选验证仍待完成，最终同正式执行候选收口，不默认全量消费闭包、第三方见证或双 Archive 取回 |
 | C2 生产模式可恢复的隔离环境 | 在无生产资产、隔离且独立核实身份的 Guest 上，从**已认证指定 Snapshot 创建独立新实例**，依 [C2-02 N-01–N-07（C2-CHANGE-02）](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 核验 A Snapshot 身份和来源、实际 clone rc、新 VM/VDI、选定 Guest 稳定基线及明确的运行时差异、合成服务、离机归档与独立审阅；**不要求原机 restore / Marker A/B / 新快照** | **CLOSED — ISOLATED SYNTHETIC RECOVERY ONLY / N-07 LIMITED-ACCEPTED（2026-10-18）**：两份已独立核对的归档 SHA/内部清单、22 项 Guest 比对（19 同值/3 预期差异）、准确 Snapshot `showvminfo` rc=0、独立 VM/base VDI `showmediuminfo` rc=0、Host-only 合成 HTTP 接管/停止共同证明该可丢弃隔离实验环境的指定恢复流程。**N-07 风险接受仅适用于这些准确合成资产**：原始 Mac Host 无独立签认、历史 SSH 外层 rc 缺失、本轮 Host 输出未另作离机封存，按 [B2B2 §9.6](C5-G2-B4B3B2B2-Ubuntu别名与可信锚点评审.md) 如实保留，不补造值。不能据此认证真实 AWS 平台、新代码可信来源、持续维护冻结、数据库/Uploads/供应商恢复或授权 Guest/root 操作；C1/C3–C8 仍独立，C5-G2 NO-GO |
 | C3 应用与存储一致性 | 本次 current/previous/env/running image、17+Manifest、C4、project/DB/Uploads 及外部安装副本相容，无 pending/未明事故 | OPEN：R3/R4，生产前另做当前主机核对 |
 | C4 维护排他与禁入 | 原策略离机记录→准确容器 no/正常停止→所有启动/写入入口持续禁入；跨 reboot/快照首启仍冻结，namespace/持有者覆盖完整，成功精确恢复 | OPEN：R2；按 MAINT-RESTART-01，不修改 Manifest Compose |
@@ -174,7 +176,7 @@
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
 | R0 | D1–D5、两项批准修订、C1–C8、矩阵及文档收口 | 本次文档审阅通过且远端交付已授权；不重复请求两项设计批准 |
-| R1 | 正式执行器最小可信基线、关键来源/平台及条件触发的专项风险取证（按 §4.1） | **IN PROGRESS / C1 OPEN**：R1-A 准确 Noble 七包、R1-B S5 三 FD/27 项 manifest 的 PASS_SCOPED 按原对象复用；R1C-1 及 PREP-03～08 核心/装配组件已交付。用户选定 AWS 正常执行器 Python3.12.3，PREP-09 只读 bootstrap 已本地实现、尚未CI/部署；真实执行效果未接线。[C1 总包](Runtime更新-C1最小可信执行基线对齐与候选准备.md)继续登记实际平台/包 revision/关键来源与输入、外置 Guard/CAS、发布物/权限和同候选验收缺口；旧全量闭包/见证不恢复为默认门禁，最终 C1 随正式执行候选完成 |
+| R1 | 正式执行器最小可信基线、关键来源/平台及条件触发的专项风险取证（按 §4.1） | **IN PROGRESS / C1 OPEN**：R1-A 准确 Noble 七包、R1-B S5 三 FD/27 项 manifest 的 PASS_SCOPED 按原对象复用；R1C-1 及 PREP-03～08 核心/装配组件已交付。用户选定 AWS 正常执行器 Python3.12.3，PREP-09 只读 bootstrap 已由PR #2943/最终CI #7553合并；PREP-10的9文件源码清单/包已本地准备，实际平台来源/交付/验收及真实效果接线仍待完成。[C1 总包](Runtime更新-C1最小可信执行基线对齐与候选准备.md)继续登记实际平台/包 revision/关键来源与输入、外置 Guard/CAS、发布物/权限和同候选验收缺口；旧全量闭包/见证不恢复为默认门禁，最终 C1 随正式执行候选完成 |
 | R2 | MAINT-RESTART-01：原策略/任务持久化、no/正常停止、跨重启维护与禁入、精确恢复 | **IN PROGRESS / R2-C4 OPEN**：真实生产清单有限核验、Fence/Boot Guard/Unit 安装清单/认证 Wire 离线合同已推进；Mac SQLite 进程级 PASS_SCOPED；C3C3-READ 只读现场能力已部分核对，实际 mTLS/服务和 Guard 联动待证，以该工作包最新续记为准。真实 Guard、持续写入禁入、P0-01/S03/G06/S09 均未完成；仅源码/候选准备可与 R1 并行，主机/服务/云操作仍须精确授权 |
 | R3 | RUNTIME-SNAPSHOT-01：受限 API 创建/等待/验证本次手动快照，离机轻量恢复清单、未知结果处理与保留 | PLANNED；准确 AWS 账户/Region/权限/盘先审，快照前必须 R2 持续冻结 |
 | R4 | 正式 Runtime installer + 准确快照→独立新 AWS 实例，首启冻结/数据/身份核对、单写者与人工切流 | PLANNED；组合正常执行来源、R2/R3；不部署旧故障主机自举链，不隐藏改外部 helper |
