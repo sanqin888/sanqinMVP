@@ -91,13 +91,29 @@ def install_python(materials):
     for dep in review["criticalNativeDependencies"]:
         require(sha(regular(Path(dep["realPath"]), 32 * 1024**2)) == dep["sha256"],
                 "critical native dependency differs")
+    # Hosted images may expose /opt to the runner group. This is lab fixture
+    # preparation after guard(), never recovery of an unsafe candidate path.
+    fd = os.open("/opt", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(fd)
+        os.fchown(fd, 0, 0)
+        os.fchmod(fd, 0o755)
+        after = os.fstat(fd)
+        (RESULTS / "opt-preparation.json").write_bytes(canonical({
+            "path": "/opt", "before": [before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)],
+            "after": [after.st_uid, after.st_gid, stat.S_IMODE(after.st_mode)],
+            "recursive": False, "productionAuthorized": False}))
+    finally:
+        os.close(fd)
     for path in (Path("/opt"), Path("/opt/sanq"), PREFIX.parent):
         if not path.exists() and not path.is_symlink():
             path.mkdir(mode=0o755)
             path.chmod(0o755)
         info = path.lstat()
         require(stat.S_ISDIR(info.st_mode) and info.st_uid == info.st_gid == 0
-                and not info.st_mode & 0o022, "unsafe interpreter parent")
+                and not info.st_mode & 0o022,
+                f"unsafe interpreter parent: {path} uid={info.st_uid} gid={info.st_gid} "
+                f"mode={stat.S_IMODE(info.st_mode):04o}")
     PREFIX.mkdir(mode=0o755)
     PREFIX.chmod(0o755)
     inventory = {row["name"]: row for row in review["members"]}
@@ -144,6 +160,9 @@ def run(materials):
     guard()
     os.umask(0o077)
     RESULTS.mkdir(mode=0o700)
+    (RESULTS / "preparation.json").write_bytes(canonical({
+        "runId": os.environ["GITHUB_RUN_ID"], "harnessCommit": os.environ["GITHUB_SHA"],
+        "status": "PREPARING", "casesStarted": 0, "productionAuthorized": False}))
     data = json.loads(regular(Path(__file__).parent / "fixtures/c1_assembly_inputs.json", 65536))
     require(set(data) == set(PINS), "unexpected fixture documents")
     inputs = {name: canonical(data[name]) for name in PINS}

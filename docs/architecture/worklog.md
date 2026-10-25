@@ -1,5 +1,10 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1隔离负例runner父目录准备修复
+
+**FIX_IMPLEMENTED_LOCAL / LAB_FAILED_BEFORE_CASES / C1_OPEN。** 前批PR #2952/CI #7579十项通过并合并b9523cd3。首次手动run40209172466在dev@6d855c9f完成材料/依赖校验后因unsafe interpreter parent失败，23 case均未启动；无验收artifact。基于最新dev创建fix/c1-negative-runner-opt-20261025，只修改外部lab：guard之后将一次性runner /opt本身经无链接目录FD设置root:root/0755，保留原祖先拒绝，增加前后元数据及case前PREPARING诊断；不递归、不改9源/3输入/23断言/17 Bundle/业务或数据库。A类内部原子修复，无依赖图/基线变化，无迁移。静态审阅；项目测试与修复后lab未运行、未推送。详见[隔离负例审计第7节](Runtime更新-C1同候选隔离负例缺口审计.md)。
+
+
 ## 2026-10-25 — C1 Jammy同候选隔离负例工具与手动工作流
 
 **2026-10-25 隔离负例工具实施（本地）：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LAB_NOT_RUN / C1_OPEN。**审计PR #2951已由CI #7577（docs-only）合并ff95601f。本批新增仅托管Jammy/dev手动可运行的外部lab工具、固定输入fixture、23个真实CLI/外层验收case及5个离线边界测试，复用构建run40192632845的准确Python产物，源码/双输入仍绑定711197d2。一次性runner可写其自己的root/prefix，禁止生产运行；不改9候选源码、17 Bundle、业务或数据库，无owner/依赖图/架构基线变化。AST/YAML/shell/独立输入摘要静态核对通过，未运行项目测试或lab、未推送。
