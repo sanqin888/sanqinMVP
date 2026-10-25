@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**2026-10-25 同候选负例缺口审计（本地）：**前批PR #2950完整7文件已由最终CI #7575（docs-only）合并3b0d6cf5。已静态核对准确711197d2的8测试文件/203方法，含32个bootstrap方法；fixture模拟进程、根和owner，不替代真实Jammy CLI负例。已复用现有覆盖并限定预启动信任/进程/输入/支持源码/成员/权限/链接对象的最小隔离验收家族，建议下一批实现一次性Jammy负例harness及手动工作流；未编写harness、未执行lab或生产负例。无依赖图/owner/基线、9源码、17 Bundle或数据库变化。详见 [隔离负例审计](Runtime更新-C1同候选隔离负例缺口审计.md)。AUDIT_COMPLETE_LOCAL / LAB_NOT_RUN / C1_OPEN。
+
 **2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。
 
 **2026-10-25 PREP-12整体晋级/手动入口对齐（本地）：**用户选择整体dev→main方案，撤回未提交的dev push自动构建入口；保留仅workflow_dispatch与dev双重守卫，运行标题显示分支/完整SHA。PREP-12工具已由PR #2947合并d2fe275d，CI #7566及dev #7567成功；本批尚无CI/远端提交/main晋级/真实构建。仅工作流显示、说明及操作文档变化，无依赖图/架构基线、normal_runtime、17 Bundle或数据库变化；main CI成功的镜像/Bundle自动发布与生产安装/部署分开。详见 [PREP-12](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)。
