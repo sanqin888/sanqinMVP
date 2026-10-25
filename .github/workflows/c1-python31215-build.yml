@@ -11,17 +11,18 @@ jobs:
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-22.04
     timeout-minutes: 40
-    env:
-      C1_BUILD_ROOT: ${{ runner.temp }}/sanq-c1-python31215
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Require isolated Jammy builder
+        env:
+          C1_BUILD_ROOT: ${{ runner.temp }}/sanq-c1-python31215
         run: |
           set -euo pipefail
           umask 077
+          printf 'C1_BUILD_ROOT=%s\n' "$C1_BUILD_ROOT" >> "$GITHUB_ENV"
           mkdir "$C1_BUILD_ROOT"
           mkdir "$C1_BUILD_ROOT/inputs" "$C1_BUILD_ROOT/logs"
           python3 ops/runtime/c1_python_build_materials.py preflight "$C1_BUILD_ROOT"
