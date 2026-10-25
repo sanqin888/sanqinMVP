@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-07 受保护候选装配与失败测试
 
-**2026-10-24（America/Toronto）｜REMOTE DELIVERY AUTHORIZED / 21 TEST METHODS AUTHORED / CI PENDING / SOURCE ASSEMBLY ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
+**2026-10-24（America/Toronto）｜SOURCE CI #7541 VERIFIED / 21 TEST METHODS INCLUDED / SOURCE ASSEMBLY ONLY / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
 
 前批 [PR #2939](https://github.com/sanqin888/sanqinMVP/pull/2939) 最终 head `ca69f3d293f49d1d7f5b37724facd51ec3d32c7f` 的 [CI #7538](https://github.com/sanqin888/sanqinMVP/actions/runs/40143868669) SUCCESS（Runtime 773 / Release 45，含 PREP-06 的30项），squash 合并 dev `c808484c45096e29dd9760892fcf33f0baa497ea`。用户授权合并后继续，本批以该最新 dev 为基线，在独立缓存完成下一项入口装配。用户现已授权本批远端 PR→dev、最终 head CI 全绿后合并并继续；发布复核 dev 仍为 `c808484c45096e29dd9760892fcf33f0baa497ea`，四份既有文档、六份前置源码、AGENTS 与 CI 的 Git blob 未漂移，通过独立缓存/GitHub 插件交付。共享工作区另一批 mTLS 文档/日志保留。
 
@@ -44,10 +44,12 @@ root:root 是传给 source capture 的真实文件/祖先 owner 策略，不等�
 
 覆盖完整顺序和源码FD先关闭/模块后关闭、同组类型/不可变容器；错 pin/规范请求在 I/O 前拒绝；无外部snapshot/owner/root/loader/callback参数；错误 bytes/额外源/缺祖先在 loader 前拒绝；语法/未知导入失败；初始化期父目录移动、源文件和权限漂移在 caller 前拒绝；无关父级变化允许；交付后固定代码不再读源路径；调用方异常/中断、同候选占用、registry漂移/外来项保留、原异常不被掩盖；无隐式Flow调用、缺能力仍拒绝/false字段及无CLI/第18成员。
 
-本地只进行 AST/静态导入和调用审阅、基线 Git blob、差异/空白与补丁可应用性核对。**21项已编写/审阅，尚未运行**；没有调用本批入口、执行模块或仓库 lint/build/test/扫描，前批 CI #7538 不覆盖本批代码。后续远端交付须以实际 ci.yml 的 Runtime/Release 与最终 head 全部必需 Checks 为准。
+本地只进行 AST/静态导入和调用审阅、基线 Git blob、差异/空白与补丁可应用性核对。**21项已由修复后源码 CI #7541 实际覆盖，Runtime 794 / Release 45 均 OK**；本地没有调用本批入口、执行模块或仓库 lint/build/test/扫描，前批 CI #7538 不作为本批验证。最终 head 全部必需 Checks 仍为合并门禁。首次 CI #7540 在嵌套装配测试结束时观察到旧FD从全进程基线消失；仅修正测试隔离：setUp先gc.collect回收不可达旧fixture，不在退出阶段收集，保留严格FD集合断言，并新增借入/dev/null FD的身份/存活和本次根FD关闭检查；21方法数、实现和guard不变。
 
 ## 5. 所有权与下一步
 
 新增同 owner 单向边 `normal_runtime_candidate_scope → normal_runtime_inputs / normal_runtime_source_anchor / normal_runtime_source_loader`，保持低层 reader/anchor/loader 的既有方向，仅在组合层连接时序；当前只有测试消费，无反向引用或新环。没有跨上下文边/债务、12-context owner/部署单元/兼容、依赖/锁、CI、Prisma/migration、17 Bundle、旧字段/guard 或 scanner baseline 变化，未运行扫描器，不宣称重新计算生产依赖基线。
 
 已同步 R0、C1总包、依赖图和工作日志，更新原 PREP-06 的最终CI/合并事实，保留 PR #2938 的 LAB_ONLY mTLS 限定结论。本批已获远端交付授权，使用独立功能分支 PR→dev，待实际 Runtime/Release 与最终 head 全部必需 Checks 全绿后才合并。后续先取得实际 CI，再随正式候选完成受信启动入口、实际平台/解释器/关键来源与保护输入、真实能力及必要验证；不再把分立组件或装配成功当已经收口。**C1 OPEN / REAL BOOTSTRAP NOT IMPLEMENTED / NO PRODUCTION AUTHORITY。**
+
+**同批远端验证：**[PR #2940](https://github.com/sanqin888/sanqinMVP/pull/2940) → dev；修复后源码 head `528088621f06ad7b445fd3cecf56cf3d5a6958c8` 的 [CI #7541](https://github.com/sanqin888/sanqinMVP/actions/runs/40145310353) SUCCESS，Runtime `794 tests / OK`（含本批21）、Release `45 tests / OK`，Runtime shell 语法检查通过。首次 CI #7540 的1项FD基线失败已仅在测试中修复：进入前gc.collect、保留退出时严格集合断言，并增加借入FD身份/存活及根FD关闭检查；未改实现或guard。当前同批只补验证记录，最终 head 仍须实际 CI 全绿才合并；最终 Checks/merge 状态以 PR 事件为准。
