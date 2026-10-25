@@ -83,3 +83,5 @@
 同批同步 R0、C1 总包、入口装配方案、依赖图、原 PREP-09 最终交付事实和工作日志。本批尚未提交远端；按首次交付流程停在本地供用户审阅，之后才进入 PR→dev 与实际 CI 门禁。现场 root 交付/运行及生产操作仍按原有准确对象门禁处理。
 
 **同批 CI 修复（#7556）：**完整8文件 head `69082af5` 的 Browser E2E 在 Initialize containers 阶段拉取 `public.ecr.aws/docker/library/postgres:15-alpine` 失败，注册表返回 `Data limit exceeded`，未进入测试。原独立 JSON 记录按现有 `change_scope.py` 的未知路径规则触发全量 lane；该记录无程序消费者，现将仓库展示改为 Markdown，保留包内原 JSON、原 SHA256 和来源材料。未改 CI/selector/测试或执行逻辑。完整文件已补齐到同一 [PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944)，最终 head 仍须全部必需检查全绿；本地未运行项目测试，C1 仍 OPEN。
+
+**同批修复后验证：**完整 Markdown 文档 head `712e99468a2f0f99eaad1fc2f7c31874ff38e577` 的 [CI #7557](https://github.com/sanqin888/sanqinMVP/actions/runs/40150848390) SUCCESS，`ci-change-scope` 实际通过，Runtime/Release/Browser等重lane按原选择器正常跳过；不作为本批新增运行测试通过。包内原 JSON及归档摘要不变，CI/selector未修改。用户已授权本批最终head必需检查全绿后合并dev并开始下一步；此前LOCAL/未推送为首次审阅状态，最终Checks/merge以 [PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944) 为准，C1仍OPEN。
