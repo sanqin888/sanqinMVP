@@ -1,6 +1,6 @@
 # Runtime 更新 — C1-PREP-09 正式 Python 基线与只读 Bootstrap 候选
 
-**2026-10-24（America/Toronto）｜PYTHON 3.12.3 SELECTED / BOOTSTRAP ASSEMBLY IMPLEMENTED_LOCAL / 32 TEST METHODS AUTHORED_NOT_RUN / C1 OPEN。**
+**2026-10-24（America/Toronto）｜PYTHON 3.12.3 SELECTED / BOOTSTRAP ASSEMBLY SOURCE_CI_VERIFIED / 32 TEST METHODS CI_VERIFIED / C1 OPEN。**
 
 用户明确确认 AWS VM 使用 Python **3.12.3**，并要求采用该版本开始下一项任务。本批据此选定正常更新执行器的 Python 版本，沿用已有 v1 的 `/usr/bin/python3.12`、Linux/x86_64、root 身份与 `-I -S -B` 声明，实现实际的**只读装配入口候选**。它不运行更新流程；正式执行能力、来源验收及同候选验证继续跟随 R2/R3/R4/R5。
 
@@ -80,3 +80,5 @@
 **本地退出：PYTHON VERSION SELECTED / READ_ONLY BOOTSTRAP CANDIDATE AUTHORED / TESTS NOT_RUN / NO PR / C1 OPEN。** 同步 R0、C1 总包、入口装配方案、依赖图和原批工作日志；不需要数据库迁移，无依赖/锁/CI、业务上下文、公共合同、兼容、17 Bundle 或生产变更。
 
 后续先在本批审阅及 CI 通过后，固定同候选的源码/输入可信交付与实际 Python/关键依赖来源，安排经准确授权的同平台只读入口验证；正式效果接线随 R2/R3/R4 的真实能力完成，不为等待这些能力再造一套模拟执行器。C1-PREP 整体与 C1 最终关闭条件不变，真实 root 交付/执行及生产操作须按各自对象单独批准。
+
+**同批远端验证续记（PR #2943）：**用户已授权本批远端提交、最终 head 全部必需 CI 全绿后合并 dev 并开始下一步。完整源码 head `97ac6fd38c6d6b1249636a6952a0bf4e027a966a` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS：Runtime `846 tests / OK`（含本批新增32）、Release `45 tests / OK`、Runtime shell 语法检查通过，无需 CI 修复。上述“未运行/未推送/未创建PR”是首次本地审阅时点；本地仍未运行项目测试，当前只补验证记录，最终 head 的 CI/合并以 [PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 实际事件为准。CI 不认证真实 AWS Python/来源/权限，也不授予任何效果权限，C1 仍 OPEN。
