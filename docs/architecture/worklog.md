@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1同候选隔离负例缺口审计
+
+**2026-10-25 同候选负例缺口审计（本地）：**前批PR #2950完整7文件已由最终CI #7575（docs-only）合并3b0d6cf5。已静态核对准确711197d2的8测试文件/203方法，含32个bootstrap方法；fixture模拟进程、根和owner，不替代真实Jammy CLI负例。已复用现有覆盖并限定预启动信任/进程/输入/支持源码/成员/权限/链接对象的最小隔离验收家族，建议下一批实现一次性Jammy负例harness及手动工作流；未编写harness、未执行lab或生产负例。无依赖图/owner/基线、9源码、17 Bundle或数据库变化。详见 [隔离负例审计](Runtime更新-C1同候选隔离负例缺口审计.md)。AUDIT_COMPLETE_LOCAL / LAB_NOT_RUN / C1_OPEN。
+
 ## 2026-10-25 — C1-PREP-12安装与同平台只读bootstrap验收收口
 
 **2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。 本批基于dev@711197d2建立docs/runtime-c1-prep12-install-bootstrap-acceptance-20261025，新增完整范围化回执并同步PREP-12/PREP-10/C1/R0/依赖图；仅文档，无运行源码/17 Bundle/架构基线/数据库变化。本批静态审阅，未新增项目测试、未推送；下一步先文档交付，再审计同候选负例与完整效果候选缺口。
