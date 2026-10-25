@@ -1,5 +1,10 @@
 # Current 12-context dependency graph
 
+**2026-10-25 F4-A本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / INERT_PREPARATION_ONLY / C1_OPEN。** F4文档PR #2959经CI #7595（docs-only）合并daaf98cf；按用户授权新增固定root私有父目录、dir_fd/O_EXCL静态目标create-only准备库及20项聚焦测试，保存17+原Manifest/原Archive、文件与全部目录fsync/FD读回及失败残片。只生成被动内容证据，不能resume/消费事务或安装，动态配置不复制；namespace/当前安装/维护/Flow与执行权限false。见[F4-A实现](Runtime更新-C1-P10-F4A-FD安全非活跃准备.md)。本批未调用源码或创建真实目录，R2/九源/v1/17 Bundle不变，无依赖图/owner/基线/迁移变化；仅静态审阅，20项测试未运行，未推送。
+
+已审阅：private_prepare到既有输入/FD锚点/发布/Bundle为Runtime/Ops同owner单向边；无跨上下文债务、循环或scanner基线变化，未执行架构扫描。
+
+
 **2026-10-25 P10-F4边界审计（本地）：BOUNDARY_AUDIT_COMPLETE_LOCAL / IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F3 PR #2958最终CI #7593成功（Runtime900/Release45/准确3.12.15回归232），已合并64245335。下一步已核对既有prepare的路径写入/目录fsync缺口与R2 CAS职责，形成[事务准入及非活跃准备边界](Runtime更新-C1-P10-F4事务准入与非活跃准备边界.md)：建议先FD安全create-only准备，静态目标材料与冻结后的动态状态分开；ledger后续结合R2身份，不冒充维护CAS或新增第二套epoch。拟议固定目录未创建，未实施新写入或schema；无源码/依赖图/owner/基线/17 Bundle/依赖/迁移/生产变化。本批未运行项目测试/新CI，未推送。
 
 
