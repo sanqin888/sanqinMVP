@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1-PREP-12整体晋级与手动构建入口对齐
+
+**IMPLEMENTED_LOCAL / CI_NOT_RUN / BUILD_NOT_RUN / C1_OPEN。** 用户选择整体dev→main方案，撤回未提交的dev push自动构建入口；基于PR #2947合并d2fe275d（CI #7566十项全绿及dev #7567成功），在现有本地分支保留仅workflow_dispatch，增加运行标题分支/完整SHA并说明main注册入口、手动选dev、核对准确运行及下载材料流程。记录整体晋级伴随main CI→API/Web镜像/Runtime Bundle自动发布、4份新增迁移及2个Bundle成员变化的审计范围；不等同生产部署许可。无依赖图、normal_runtime、构建工具算法、17 Bundle或数据库变化。YAML/shell/守卫与差异静态审阅完成，未运行项目测试/本批CI/构建、未提交远端或晋级main。详见 [PREP-12](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)。
+
 ## 2026-10-25 — C1-PREP-12 Python3.12.15可信构建与交付工具
 
 **IMPLEMENTED_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / CI_NOT_RUN / C1_OPEN。** 用户授权启动PREP-12修改，基于PREP-11 PR #2946最终CI #7563（十项全绿，Runtime848/Release45/精确3.12.15回归203）合并dev `bdfb25af7de88ecafbb17b1fda71b305e5cfd17c`，建立 `feat/runtime-c1-prep12-trusted-python-build-20261025`。已读AGENTS、R0/当前C1/PREP-12、旧Ubuntu来源链/采集器和相关CI。新增Runtime/Ops构建材料工具及18个离线测试方法，固定CPython3.12.15源包SHA256与Thomas Wouters完整主指纹，先验真后固定bytes安全解包；暂存成员、关键动态库字节与包归属、产物归档/日志/原始源签名材料及SHA256SUMS均保留审阅属性和false安装/执行权。新增仅workflow_dispatch/dev的Ubuntu22.04非root托管构建工作流，在一次性runner准备工具并用固定prefix与DESTDIR暂存，实际产物smoke/C1回归成功后才上传；无生产机root安装或系统Python替换。当前本地非已确认Jammy且无Docker，未通过MCP/缓存绕过项目执行限制；源包下载/验签/构建和新测试尚未执行。没有新增应用依赖/锁、17 Bundle/正常9源候选、生产入口、业务或数据库迁移变化；新工具/测试标准库关系均同owner，无跨上下文边/scanner baseline变化。静态AST/YAML/9段shell语法与差异已核对，首次远端交付待审，未推送；具体来源、流程和剩余安装门禁见 [PREP-12工作包](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)。

@@ -1,5 +1,8 @@
 name: C1 Python 3.12.15 isolated build
+run-name: C1 Python 3.12.15 / ${{ github.ref_name }} / ${{ github.sha }}
 
+# Register this manual entry on the default branch via the reviewed dev-to-main promotion.
+# Run workflow must select dev; both the job and build tool enforce that branch.
 on:
   workflow_dispatch:
 
