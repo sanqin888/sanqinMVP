@@ -206,6 +206,36 @@ def _current_publication(manifest, files, sha, archive_digest, fetch):
                  "current manifest member differs")
 
 
+def _pinned_observation(preserved_observation, request):
+    _require(type(preserved_observation) is bytes and 0 < len(preserved_observation) <= 16384
+             and digest(preserved_observation) == request["preservedStateSha256"],
+             "preserved observation differs from request")
+    observation = _json(preserved_observation)
+    _require(canonical(observation) == preserved_observation
+             and observation.get("schema") == "sanq.runtime.c1-preserved-observation.v1"
+             and observation.get("scope") == "READ_ONLY_BOOTSTRAP"
+             and observation.get("continuousMaintenanceVerified") is False
+             and observation.get("authorizedToMutateProduction") is False
+             and all(observation.get(k) == request[k] for k in
+                     ("currentRuntimeSha", "currentAppSha", "previousAppSha")),
+             "preserved observation identity differs")
+    return observation
+
+
+def _preserved_state(files, metadata, request, observation):
+    _require(observation.get("files") == {n: metadata[n] for n in PRESERVED},
+             "installed preserved observation changed")
+    state = _json(files[".sanq-release-state.json"])
+    _require(type(state.get("schemaVersion")) is int and state["schemaVersion"] == 1
+             and state.get("phase") == "active"
+             and state.get("current") == request["currentAppSha"]
+             and state.get("previous") == request["previousAppSha"], "application state differs")
+    image_shas = re.findall(rb"(?m)^SANQ_IMAGE_SHA=([^\r\n]*)\r?$", files[".env"])
+    _require(image_shas == [request["currentAppSha"].encode("ascii")]
+             and files[".sanq-backup-layout-activated"].strip() == b"SANQ_BACKUP_LAYOUT_C4_V1",
+             "application env or marker differs")
+
+
 def review_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha256,
                            expected_request_sha256, target_archive,
                            installed_root_fd, preserved_observation, fetch=github_json):
@@ -228,34 +258,14 @@ def review_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha25
              "target archive differs from request")
     _, target_files = validated_archive_files(target_archive, request["targetRuntimeSha"])
     validate_layout(target_files)
-    _require(type(preserved_observation) is bytes and 0 < len(preserved_observation) <= 16384
-             and digest(preserved_observation) == request["preservedStateSha256"],
-             "preserved observation differs from request")
-    observation = _json(preserved_observation)
-    _require(canonical(observation) == preserved_observation
-             and observation.get("schema") == "sanq.runtime.c1-preserved-observation.v1"
-             and observation.get("scope") == "READ_ONLY_BOOTSTRAP"
-             and observation.get("continuousMaintenanceVerified") is False
-             and observation.get("authorizedToMutateProduction") is False
-             and all(observation.get(k) == request[k] for k in
-                     ("currentRuntimeSha", "currentAppSha", "previousAppSha")),
-             "preserved observation identity differs")
+    observation = _pinned_observation(preserved_observation, request)
     with _installed(installed_root_fd) as (files, metadata):
         manifest = _json(files[MANIFEST])
         _current_publication(manifest, files, request["currentRuntimeSha"],
                              request["currentArchiveDigest"], fetch)
-        _require(observation.get("runtimeManifestSha256") == digest(files[MANIFEST])
-                 and observation.get("files") == {n: metadata[n] for n in PRESERVED},
+        _require(observation.get("runtimeManifestSha256") == digest(files[MANIFEST]),
                  "installed preserved observation changed")
-        state = _json(files[".sanq-release-state.json"])
-        _require(type(state.get("schemaVersion")) is int and state["schemaVersion"] == 1
-                 and state.get("phase") == "active"
-                 and state.get("current") == request["currentAppSha"]
-                 and state.get("previous") == request["previousAppSha"], "application state differs")
-        image_shas = re.findall(rb"(?m)^SANQ_IMAGE_SHA=([^\r\n]*)\r?$", files[".env"])
-        _require(image_shas == [request["currentAppSha"].encode("ascii")]
-                 and files[".sanq-backup-layout-activated"].strip() == b"SANQ_BACKUP_LAYOUT_C4_V1",
-                 "application env or marker differs")
+        _preserved_state(files, metadata, request, observation)
         changed = [n for n in SOURCE_FILES if target_files[n] != files[n]]
         _require(bool(changed), "no Runtime member changed")
         report = {"kind": "normal-runtime-readonly-review-v1",

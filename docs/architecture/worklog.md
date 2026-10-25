@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1 P10-F4-B3安装后目标独立只读复验
+
+**2026-10-25 F4-B3：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。** F4-B2 PR #2963经CI #7603（docs-only，1成功/9跳过）合并2240f5e0，无修复。本批新增[安装后目标独立只读复验](Runtime更新-C1-P10-F4B3安装后目标只读复验.md)及23项测试，保留原双pin request、F3固定路径/F2有限FD树，核对原批准Archive/原Manifest/17成员与原pin三动态文件。仅提取F2共用私有检查，原安装前语义不变；旧观察不升级冻结基线，实际挂载/维护/R2/策略恢复/业务放行/终结权限均false/BLOCKED。Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1/17 Bundle/依赖/迁移变化。已静态AST/差异审阅，未运行项目测试/新CI，分支feat/c1-p10f4b3-postinstall-review-20261025未推送；无root/VM/云/生产操作。
+
 ## 2026-10-25 — C1 P10-F4-B2终结与事故处置合同审阅
 
-**2026-10-25 F4-B2：CONTRACT_REVIEW_COMPLETE_LOCAL / FINALIZER_NOT_IMPLEMENTED / C1_OPEN。** F4-B1 [PR #2962](https://github.com/sanqin888/sanqinMVP/pull/2962)经[CI #7601](https://github.com/sanqin888/sanqinMVP/actions/runs/40231097040)成功合并e1b7d9eb：Runtime950/Release45/准确3.12.15回归282，含30新增测试，无修复。本批完成[终结与事故处置合同审阅](Runtime更新-C1-P10-F4B2终结与事故处置合同审阅.md)：现有非空ledger永久阻断，不能靠删除active或追加声明开放下一笔；需真实安装/保留状态/R2终态证据与配套多事务历史/崩溃协议。下一源码优先独立只读安装后目标复验；本批6份文档，无finalizer/schema升级、代码/依赖/迁移、R2或生产操作，无依赖图/债务/scanner基线变化，未运行新测试/CI、未推送。
+**2026-10-25 F4-B2：CONTRACT_REVIEW_MERGED_DEV / FINALIZER_NOT_IMPLEMENTED / C1_OPEN。** [PR #2963](https://github.com/sanqin888/sanqinMVP/pull/2963)最终head28a6478b10cf2ed6c29d8b3db0af97a7435fdf0a经[CI #7603](https://github.com/sanqin888/sanqinMVP/actions/runs/40232899946)成功（docs-only，1作业成功/9跳过）合并2240f5e0e0ec19faaf69f28deb2480b9edc116e6，无修复。本批6份文档归档F4-B1验收并完成[终结/事故处置合同审阅](Runtime更新-C1-P10-F4B2终结与事故处置合同审阅.md)：不能仅删active/靠Flow声明放行，需真实安装/保留状态/R2终态证据与多事务历史/崩溃协议；下一源码独立只读安装后复验。未运行Runtime测试，无代码/schema/依赖/数据库/owner/基线或生产变化。
 
 ## 2026-10-25 — C1 P10-F4-B1本机持久消费内核
 
