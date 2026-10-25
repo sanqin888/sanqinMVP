@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 P10-F2 来源与当前安装只读审阅
 
+**2026-10-25 P10-F3本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / FIXED_PATH_REVIEW_ONLY / C1_OPEN。** F2 PR #2957已由最终CI #7591成功（Runtime890/Release45/精确3.12.15回归222）合并63d44cb4，无需修复。本批新增固定/opt/sanq/runtime只读wrapper，复用既有祖先FD规则，持有路径scope内调用F2并退出复核；只新增点时绑定元数据，Host/namespace/维护/事务/Flow/权限仍未认证或false/BLOCKED。10项新测试已编写未运行，见[F3实现](Runtime更新-C1-P10-F3固定Runtime路径只读锚点.md)。无R2实现、原九源/v1/17 Bundle、依赖/数据库/生产变化；静态审阅，未推送。
+
+
 **2026-10-25｜IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READONLY_REVIEW_ONLY / P10-F_OPEN / C1_OPEN。**
 
 ## 1. 交付基线与本批边界

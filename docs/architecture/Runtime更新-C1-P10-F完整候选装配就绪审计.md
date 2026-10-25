@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 P10-F 完整候选装配就绪审计
 
+**2026-10-25 P10-F3本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / FIXED_PATH_REVIEW_ONLY / C1_OPEN。** F2 PR #2957已由最终CI #7591成功（Runtime890/Release45/精确3.12.15回归222）合并63d44cb4，无需修复。本批新增固定/opt/sanq/runtime只读wrapper，复用既有祖先FD规则，持有路径scope内调用F2并退出复核；只新增点时绑定元数据，Host/namespace/维护/事务/Flow/权限仍未认证或false/BLOCKED。10项新测试已编写未运行，见[F3实现](Runtime更新-C1-P10-F3固定Runtime路径只读锚点.md)。无R2实现、原九源/v1/17 Bundle、依赖/数据库/生产变化；静态审阅，未推送。
+
+
 **2026-10-25 P10-F2本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READONLY_REVIEW_ONLY / C1_OPEN。** P10-F1 PR #2956最终head4004fdb6经CI #7589（docs-only）合并9e0f4e87。本批新增外置只读review库及19项聚焦测试，复用目标newest发布校验，借入目录FD核对实际17+Manifest/三保留文件，按当前准确Git SHA源码+发布元数据认证旧摘要身份，不要求旧Archive bytes；保持所有安装/维护/事务权限false。FD不自证固定生产路径、容器/挂载未实测，故不作为正式VERIFY_SOURCE completion。见[F2实现与证据限制](Runtime更新-C1-P10-F2来源与安装只读准入.md)。原九源/输入/17 Bundle及R2实现不变，无依赖或数据库迁移；AST/差异静态审阅，未执行项目测试/真实现场核查，未推送。
 
 
