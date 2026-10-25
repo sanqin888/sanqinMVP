@@ -1,0 +1,432 @@
+{
+  "recordKind": "sanq.runtime.c1-isolated-negative-review.v1",
+  "recordIsExecutionAuthority": false,
+  "runId": 40210744043,
+  "runAttempt": 1,
+  "jobId": 121221230335,
+  "artifactId": 12605371801,
+  "artifactName": "c1-jammy-negative-40210744043-1",
+  "artifactZipSha256": "9392252c8eba14319ff56f621093b52363600bdb7c35128485634daacba3ad7d",
+  "artifactZipBytes": 18375,
+  "artifactExpiresAt": "2026-11-08T16:15:13Z",
+  "harnessCommit": "ecf8fc31c52a887784e3ecc3cebfb3c940b258c6",
+  "sourceCommit": "711197d2f31d1d6198d37f662e072e647f541efb",
+  "reviewScope": "ZIP digest, all 69 member bytes, 23 result records and raw stdout/stderr independently compared; no project code executed during review",
+  "highestStatus": "ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN",
+  "members": [
+    {
+      "path": "baseline/result.json",
+      "bytes": 248,
+      "sha256": "442c4042b8e5a6ce056110b6b4de50175385ec9a52b1bde325a911e4aa9fafc4",
+      "utf8": "{\"case\":\"baseline\",\"exitCode\":0,\"outcome\":\"PASS\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"stdoutSha256\":\"e85be81a77f34c2695826265a05a0a320085d9e0c4eabb66c6e8bbd85c5504ae\"}"
+    },
+    {
+      "path": "baseline/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "baseline/stdout",
+      "bytes": 553,
+      "sha256": "e85be81a77f34c2695826265a05a0a320085d9e0c4eabb66c6e8bbd85c5504ae",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"flowInvoked\":false,\"launchAuthorized\":false,\"launchMaterialsSha256\":\"1bcfe5482876c79239c9137750cd4b744c82c8604e46b293418c7b0bcae6b395\",\"mode\":\"ASSEMBLY_ONLY\",\"readyToInstall\":false,\"requestSha256\":\"54ee69fd11f188a0ff17b636c77c4213a2cf9bea83a3fa8b361a4de2db954cc6\",\"schema\":\"sanq.runtime.normal-update-bootstrap-result.v1\",\"sourceCommit\":\"711197d2f31d1d6198d37f662e072e647f541efb\",\"sourceProvenanceAuthenticated\":false,\"status\":\"CANDIDATE_ASSEMBLED\",\"transactionId\":\"c1-assembly-20261025-001\"}\n"
+    },
+    {
+      "path": "extra-B-argv/result.json",
+      "bytes": 266,
+      "sha256": "c80996bc981f602c6a281991ca35da4813f475016c23754708efe261c96926ff",
+      "utf8": "{\"case\":\"extra-B-argv\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "extra-B-argv/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "extra-B-argv/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "extra-environment/result.json",
+      "bytes": 271,
+      "sha256": "c22aba083fcc03524ecaea2c7c468462cabdf765dea5304e710a35cc3689633b",
+      "utf8": "{\"case\":\"extra-environment\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "extra-environment/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "extra-environment/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "extra-input/result.json",
+      "bytes": 265,
+      "sha256": "f50e205b1692e682f00810616b27f75a4bfa9a317a556fe538ed29696a2518ed",
+      "utf8": "{\"case\":\"extra-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "extra-input/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "extra-input/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "extra-source/result.json",
+      "bytes": 266,
+      "sha256": "3c458b3de8728c75448a8c5c00ecdf4136cd9acc7d018ad4c6a30279e56e5b93",
+      "utf8": "{\"case\":\"extra-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "extra-source/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "extra-source/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "fifo-source/result.json",
+      "bytes": 265,
+      "sha256": "e8f039c1933964f873808ffe48e7cf233ebd01a3fdad61c1213fea7c9282291a",
+      "utf8": "{\"case\":\"fifo-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "fifo-source/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "fifo-source/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "final-baseline/result.json",
+      "bytes": 254,
+      "sha256": "efdb54b7950f9ca5233d82931945d522f168704ca755b76101f2c8bff9dddeb8",
+      "utf8": "{\"case\":\"final-baseline\",\"exitCode\":0,\"outcome\":\"PASS\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"stdoutSha256\":\"e85be81a77f34c2695826265a05a0a320085d9e0c4eabb66c6e8bbd85c5504ae\"}"
+    },
+    {
+      "path": "final-baseline/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "final-baseline/stdout",
+      "bytes": 553,
+      "sha256": "e85be81a77f34c2695826265a05a0a320085d9e0c4eabb66c6e8bbd85c5504ae",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"flowInvoked\":false,\"launchAuthorized\":false,\"launchMaterialsSha256\":\"1bcfe5482876c79239c9137750cd4b744c82c8604e46b293418c7b0bcae6b395\",\"mode\":\"ASSEMBLY_ONLY\",\"readyToInstall\":false,\"requestSha256\":\"54ee69fd11f188a0ff17b636c77c4213a2cf9bea83a3fa8b361a4de2db954cc6\",\"schema\":\"sanq.runtime.normal-update-bootstrap-result.v1\",\"sourceCommit\":\"711197d2f31d1d6198d37f662e072e647f541efb\",\"sourceProvenanceAuthenticated\":false,\"status\":\"CANDIDATE_ASSEMBLED\",\"transactionId\":\"c1-assembly-20261025-001\"}\n"
+    },
+    {
+      "path": "hardlink-input/result.json",
+      "bytes": 268,
+      "sha256": "b9b100d0b23967e2b54beac82e802e32e934657a8b27db44d1fd8c45645ff455",
+      "utf8": "{\"case\":\"hardlink-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "hardlink-input/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "hardlink-input/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "held-hardlink",
+      "bytes": 864,
+      "sha256": "54ee69fd11f188a0ff17b636c77c4213a2cf9bea83a3fa8b361a4de2db954cc6",
+      "utf8": "{\"composeProject\":\"sanq-app\",\"currentAppSha\":\"ff5be8d5f3fefe2b30861fe59c1b859e110ce3b8\",\"currentArchiveDigest\":\"sha256:8bd4d6c3d6ad1a942841c8cd7c81d47067c70f553bc4f445120ed60fe3323c84\",\"currentRuntimeSha\":\"a84b72007e6b4e82c981101e56c897355757c0ff\",\"databaseVolume\":\"sanq-app_pgdata\",\"launchMaterialsSha256\":\"1bcfe5482876c79239c9137750cd4b744c82c8604e46b293418c7b0bcae6b395\",\"operation\":\"upgrade\",\"preservedStateSha256\":\"017a20fccf68bbf9327b23e27ddbd421ec97d03c580522e2da966606a88d9faa\",\"previousAppSha\":\"a84b72007e6b4e82c981101e56c897355757c0ff\",\"runtimeRoot\":\"/opt/sanq/runtime\",\"schema\":\"sanq.runtime.normal-update-request.v1\",\"targetArchiveDigest\":\"sha256:f1111edc9162f383a83c3b355a40ea17fc7ff2b21355e9d07b54a293561e34a3\",\"targetRuntimeSha\":\"913258eb17e93a4900f90443959abfa07c7db96d\",\"transactionId\":\"c1-assembly-20261025-001\",\"uploadsBind\":\"/srv/sanq/uploads\"}"
+    },
+    {
+      "path": "missing-input/result.json",
+      "bytes": 267,
+      "sha256": "31e1055d09c31dcdcf04a08551d9d23eb2bdbf36ba71d31442924d9acfc28dfd",
+      "utf8": "{\"case\":\"missing-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "missing-input/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "missing-input/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "missing-source/result.json",
+      "bytes": 268,
+      "sha256": "9a3df1435bca9f810a5e878ee5c8309a9404bdf9f468b74105d6e00bb02f240d",
+      "utf8": "{\"case\":\"missing-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "missing-source/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "missing-source/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "opt-preparation.json",
+      "bytes": 99,
+      "sha256": "d4a438a2d547570bbfb2674ba4a5a97f60677e130b0ede7d5179080aa140ea6e",
+      "utf8": "{\"after\":[0,0,493],\"before\":[0,0,511],\"path\":\"/opt\",\"productionAuthorized\":false,\"recursive\":false}"
+    },
+    {
+      "path": "preparation.json",
+      "bytes": 149,
+      "sha256": "a0591454591cdb9f3fbf7aac98a5fa7cf58c17f138e9b4958e6d5d1ef8a5cf80",
+      "utf8": "{\"casesStarted\":0,\"harnessCommit\":\"ecf8fc31c52a887784e3ecc3cebfb3c940b258c6\",\"productionAuthorized\":false,\"runId\":\"40210744043\",\"status\":\"PREPARING\"}"
+    },
+    {
+      "path": "public-input/result.json",
+      "bytes": 266,
+      "sha256": "d3517292e6b8c1950f94efe2180275b9c88a93717f76ae8e9d7802e43199b6fa",
+      "utf8": "{\"case\":\"public-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "public-input/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "public-input/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "public-source/result.json",
+      "bytes": 267,
+      "sha256": "a3869c6251913d7bb241e4ded7c615a517379ff8b0833ecb3209d887991d3532",
+      "utf8": "{\"case\":\"public-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "public-source/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "public-source/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "summary.json",
+      "bytes": 6143,
+      "sha256": "4131ee8b7d10ac3a18887964d18fc2696770a8d5f1bf3e77b12fb1048f64fd00",
+      "utf8": "{\"cases\":[{\"case\":\"baseline\",\"exitCode\":0,\"outcome\":\"PASS\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"stdoutSha256\":\"e85be81a77f34c2695826265a05a0a320085d9e0c4eabb66c6e8bbd85c5504ae\"},{\"case\":\"wrong-bootstrap\",\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"PREEXEC\",\"reason\":\"bootstrap preexec gate\",\"started\":false},{\"case\":\"wrong-interpreter-path\",\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"PREEXEC\",\"reason\":\"interpreter preexec gate\",\"started\":false},{\"case\":\"extra-environment\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"wrong-cwd\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"extra-B-argv\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"tamper-pins.json\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"tamper-launch.json\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"tamper-request.json\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"wrong-support\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"missing-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"extra-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"missing-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"extra-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"writable-ancestor\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"public-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"public-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"wrong-owner-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"symlink-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"symlink-source-directory\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"hardlink-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"fifo-source\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"},{\"case\":\"final-baseline\",\"exitCode\":0,\"outcome\":\"PASS\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"stdoutSha256\":\"e85be81a77f34c2695826265a05a0a320085d9e0c4eabb66c6e8bbd85c5504ae\"}],\"complete\":true,\"flowInvoked\":false,\"harnessCommit\":\"ecf8fc31c52a887784e3ecc3cebfb3c940b258c6\",\"productionAuthorized\":false,\"runId\":\"40210744043\",\"sourceCommit\":\"711197d2f31d1d6198d37f662e072e647f541efb\",\"transactionId\":\"c1-assembly-20261025-001\"}"
+    },
+    {
+      "path": "symlink-input/result.json",
+      "bytes": 267,
+      "sha256": "b826ad9ec89be459be4d1967ce2b53a55b9ae3aa3cd4c48d657f42b72567f0cf",
+      "utf8": "{\"case\":\"symlink-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "symlink-input/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "symlink-input/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "symlink-source-directory/result.json",
+      "bytes": 278,
+      "sha256": "ba33eedd005b177d2f0257904deeec97025675f790514baa995a0cdcd3eaf4ae",
+      "utf8": "{\"case\":\"symlink-source-directory\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "symlink-source-directory/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "symlink-source-directory/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "tamper-launch.json/result.json",
+      "bytes": 272,
+      "sha256": "4e97a2939018faafe418591db1d4c8a9b77f4fd558af7bf31c59215b48f9e4c4",
+      "utf8": "{\"case\":\"tamper-launch.json\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "tamper-launch.json/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "tamper-launch.json/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "tamper-pins.json/result.json",
+      "bytes": 270,
+      "sha256": "bc4d8bce20ae3166cd457ca7f84cdab41f6356b5e9b1d41d58addbacd7805653",
+      "utf8": "{\"case\":\"tamper-pins.json\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "tamper-pins.json/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "tamper-pins.json/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "tamper-request.json/result.json",
+      "bytes": 273,
+      "sha256": "6da2002d200517a994f0bed1895c9a3191dd64953315914c0651ff3d44c94d8d",
+      "utf8": "{\"case\":\"tamper-request.json\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "tamper-request.json/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "tamper-request.json/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "writable-ancestor/result.json",
+      "bytes": 271,
+      "sha256": "6efab1a4a6347cd7f00cb1cdbbd7e3e2fa08ba88d157c655f39feab8a8377bc4",
+      "utf8": "{\"case\":\"writable-ancestor\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "writable-ancestor/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "writable-ancestor/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "wrong-bootstrap/result.json",
+      "bytes": 125,
+      "sha256": "20865f3bd10db6ce51fdcf32e177b80154307fe43635e720b79574caebc9ea41",
+      "utf8": "{\"case\":\"wrong-bootstrap\",\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"PREEXEC\",\"reason\":\"bootstrap preexec gate\",\"started\":false}"
+    },
+    {
+      "path": "wrong-cwd/result.json",
+      "bytes": 263,
+      "sha256": "e432d0ce2d64c01f335a06c943bf1dc34ba5ec1af4ff885ddb9a3b82ece2c7a8",
+      "utf8": "{\"case\":\"wrong-cwd\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "wrong-cwd/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "wrong-cwd/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "wrong-interpreter-path/result.json",
+      "bytes": 134,
+      "sha256": "17f9a28572809172bd10ba78402db9de1d18487dc2b449373a58e69379929690",
+      "utf8": "{\"case\":\"wrong-interpreter-path\",\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"PREEXEC\",\"reason\":\"interpreter preexec gate\",\"started\":false}"
+    },
+    {
+      "path": "wrong-owner-input/result.json",
+      "bytes": 271,
+      "sha256": "7429a39dda7c928c88eb275a6b663ddfaed77a0c5e6ed8a4d969a0905055b9c2",
+      "utf8": "{\"case\":\"wrong-owner-input\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "wrong-owner-input/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "wrong-owner-input/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    },
+    {
+      "path": "wrong-support/result.json",
+      "bytes": 267,
+      "sha256": "6d945b9fc801976f7ad24c0dd861b81c94cd902d2d4f6eafc5db94da56c44ae5",
+      "utf8": "{\"case\":\"wrong-support\",\"exitCode\":2,\"outcome\":\"EXPECTED_REJECTION\",\"phase\":\"BOOTSTRAP\",\"started\":true,\"stderrSha256\":\"7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9\",\"stdoutSha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"}"
+    },
+    {
+      "path": "wrong-support/stderr",
+      "bytes": 132,
+      "sha256": "7b5e675a3709b72dbcbfc35e3a7586435d5315d3d09fa1e9d29c6b341ec89bf9",
+      "utf8": "{\"authorizedToMutateProduction\":false,\"decision\":\"BLOCKED\",\"failureType\":\"BootstrapBlocked\",\"flowInvoked\":false,\"status\":\"BLOCKED\"}\n"
+    },
+    {
+      "path": "wrong-support/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "utf8": ""
+    }
+  ]
+}
