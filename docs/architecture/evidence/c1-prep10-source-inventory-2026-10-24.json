@@ -1,0 +1,96 @@
+{
+  "authorizedToMutateProduction": false,
+  "c1Status": "OPEN",
+  "ciEvidence": {
+    "conclusion": "success",
+    "pullRequest": 2943,
+    "releaseTests": 45,
+    "runId": 40149478415,
+    "runNumber": 7553,
+    "runtimeTests": 846,
+    "sourceBlobsMatchingTestedHead": 9,
+    "testedHead": "3efa09f8763dbe870073a2a78847c0a19ac53466",
+    "url": "https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415"
+  },
+  "flowInvoked": false,
+  "interpreterPath": "/usr/bin/python3.12",
+  "launchAuthorized": false,
+  "platformEvidenceStatus": "NOT_COLLECTED_FOR_THIS_CANDIDATE",
+  "preparedOn": "2026-10-24",
+  "purpose": "READ_ONLY_CANDIDATE_SOURCE_REVIEW",
+  "readyToInstall": false,
+  "repository": "sanqin888/sanqinMVP",
+  "schema": "sanq.runtime.c1-candidate-source-inventory.v1",
+  "selectedPythonVersion": "3.12.3",
+  "sourceBranch": "dev",
+  "sourceBytes": 78274,
+  "sourceCommit": "b7b7f27682700447d37bcdabd456f22087a54892",
+  "sourceFileCount": 9,
+  "sourceFiles": [
+    {
+      "bytes": 17426,
+      "gitBlobSha1": "b2e7cd3c2f75fbff26b606705792d7b0930adb7f",
+      "name": "normal_runtime_bootstrap.py",
+      "repositoryPath": "ops/runtime/normal_runtime_bootstrap.py",
+      "sha256": "2f0e16223ca1bd00a38239a4bb4a8a0d4fddbd9c4c8ec1ed3388fb4fe4163caa"
+    },
+    {
+      "bytes": 2638,
+      "gitBlobSha1": "3eea1424350795f66925f3ac8049e4819fc2ccc7",
+      "name": "normal_runtime_candidate_scope.py",
+      "repositoryPath": "ops/runtime/normal_runtime_candidate_scope.py",
+      "sha256": "bc7d269e6e1aaccba66e0ed8fbf31068b282c538aa92e18ad3af40e3d992524a"
+    },
+    {
+      "bytes": 5383,
+      "gitBlobSha1": "53aa7b6d799514a335704de5ec0318639a325598",
+      "name": "normal_runtime_inputs.py",
+      "repositoryPath": "ops/runtime/normal_runtime_inputs.py",
+      "sha256": "423a20bf2dae9d1f8584002a59e0c30febd29eca008746e783c6b0535403d88c"
+    },
+    {
+      "bytes": 6233,
+      "gitBlobSha1": "5422eb4f534f86576fc06d7c52a6dd648776754e",
+      "name": "normal_runtime_launch.py",
+      "repositoryPath": "ops/runtime/normal_runtime_launch.py",
+      "sha256": "0f60df73e6e9ecd029f4d718cd922607dfff22dbed69e0c4ac0d04027a8ec4d2"
+    },
+    {
+      "bytes": 4149,
+      "gitBlobSha1": "f7dee5fb3aee503660ee638011cb2e5b2adc409a",
+      "name": "normal_runtime_process_check.py",
+      "repositoryPath": "ops/runtime/normal_runtime_process_check.py",
+      "sha256": "2310bbc1c9e21e7b2bf30f5842d0ba3e553b1aaf91ffc7437a5604407e6031cc"
+    },
+    {
+      "bytes": 8847,
+      "gitBlobSha1": "bd60a96d145c7c0e7f1472c75e54cf6dd42a3081",
+      "name": "normal_runtime_source_anchor.py",
+      "repositoryPath": "ops/runtime/normal_runtime_source_anchor.py",
+      "sha256": "48f9736d8bdac9ca030a162492ff1eb742245319f96a66b6b161b684cb6ebcac"
+    },
+    {
+      "bytes": 8861,
+      "gitBlobSha1": "027d30294340c1dccf2d0ca869895ffcd6329dd0",
+      "name": "normal_runtime_source_loader.py",
+      "repositoryPath": "ops/runtime/normal_runtime_source_loader.py",
+      "sha256": "93a53fedaba61105a07d623ff61e92179cab1cac819ea4ab583058569b4a1ecd"
+    },
+    {
+      "bytes": 10273,
+      "gitBlobSha1": "d444624684e77bfc9f9a33365c7c211973dfa807",
+      "name": "normal_runtime_source_snapshot.py",
+      "repositoryPath": "ops/runtime/normal_runtime_source_snapshot.py",
+      "sha256": "ee2e6d91a44635f78420cef6881f73126895eb3bf45315647e3573ccbd840fb4"
+    },
+    {
+      "bytes": 14464,
+      "gitBlobSha1": "866a5f53e8a57ef48e629f27dd799adc1759c12f",
+      "name": "normal_runtime_update.py",
+      "repositoryPath": "ops/runtime/normal_runtime_update.py",
+      "sha256": "29756e44c05e0d1a8ca976d75eae9932375d3f23798ed6c7c3ce99478848dacd"
+    }
+  ],
+  "sourceUrl": "https://github.com/sanqin888/sanqinMVP/tree/b7b7f27682700447d37bcdabd456f22087a54892/ops/runtime",
+  "startupApprovalStatus": "NOT_CREATED"
+}
