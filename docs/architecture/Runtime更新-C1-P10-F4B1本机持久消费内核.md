@@ -1,8 +1,10 @@
 # Runtime 更新 — C1 P10-F4-B1 本机持久消费内核
 
-**2026-10-25｜IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。**
+**2026-10-25 F4-B2：CONTRACT_REVIEW_COMPLETE_LOCAL / FINALIZER_NOT_IMPLEMENTED / C1_OPEN。** F4-B1 [PR #2962](https://github.com/sanqin888/sanqinMVP/pull/2962)经[CI #7601](https://github.com/sanqin888/sanqinMVP/actions/runs/40231097040)成功合并e1b7d9eb：Runtime950/Release45/准确3.12.15回归282，含30新增测试，无修复。本批完成[终结与事故处置合同审阅](Runtime更新-C1-P10-F4B2终结与事故处置合同审阅.md)：现有非空ledger永久阻断，不能靠删除active或追加声明开放下一笔；需真实安装/保留状态/R2终态证据与配套多事务历史/崩溃协议。下一源码优先独立只读安装后目标复验；本批6份文档，无finalizer/schema升级、代码/依赖/迁移、R2或生产操作，无依赖图/债务/scanner基线变化，未运行新测试/CI、未推送。
 
-F4-B设计已由[PR #2961](https://github.com/sanqin888/sanqinMVP/pull/2961)交付，最终head `59248a3ed128f7ed397efc400764ed0d92bfc7ff` 经[CI #7599](https://github.com/sanqin888/sanqinMVP/actions/runs/40229924297)成功，范围作业成功、其余9作业按docs-only跳过，无CI修复；合并dev `99c79221751c31acf35776619d30388b3d22dc67`。本切片基于该提交，在feat/c1-p10f4b1-durable-admission-20261025实施，未推送、未运行新CI。
+**2026-10-25｜MERGED_DEV / CI_VERIFIED_OFFLINE / LOCAL_CONSUMPTION_ONLY / C1_OPEN。**
+
+F4-B设计已由[PR #2961](https://github.com/sanqin888/sanqinMVP/pull/2961)交付，最终head `59248a3ed128f7ed397efc400764ed0d92bfc7ff` 经[CI #7599](https://github.com/sanqin888/sanqinMVP/actions/runs/40229924297)成功，范围作业成功、其余9作业按docs-only跳过，无CI修复；合并dev `99c79221751c31acf35776619d30388b3d22dc67`。本切片基于该提交，在feat/c1-p10f4b1-durable-admission-20261025实施。现由PR #2962最终head c55000c2862c0912a24371be4bb34f74f825ae25经CI #7601（run40231097040）成功，合并dev e1b7d9ebd6daa8c1bad358e1caeae7371b5ac291：4作业成功/6按范围跳过，Release45、Runtime950、准确CPython3.12.15回归282通过，包含30项新增测试，无CI修复。下文“未运行/未推送”保留为实施审阅时状态，以本段实际交付证据为准；不代表生产或真实断电验收。
 
 ## 1. 归属、入口与实际范围
 
