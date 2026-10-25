@@ -1,5 +1,8 @@
 # Current 12-context dependency graph
 
+**2026-10-25 F4-B本地设计：DESIGN_COMPLETE_LOCAL / IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F4-A PR #2960经最终CI #7597成功（Runtime920/Release45/准确3.12.15回归252）合并74b6aba6，含20新增测试，无需修复。现已审阅[一次性事务准入/全安装锁](Runtime更新-C1-P10-F4B一次性事务准入与全局锁设计.md)：锁与持久消费分开、未知claim阻断、关闭flock不重放、abort仅本attempt，终结器不靠Flow声明自动放行；与R2真实身份/epoch分工，不再造CAS。下一源码限定本机准入内核与事故分类；本批仅文档，无新锁/ledger/schema/代码、R2或生产变化，未运行新测试/CI、未推送，依赖图/owner/基线不变。
+
+
 **2026-10-25 F4-A本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / INERT_PREPARATION_ONLY / C1_OPEN。** F4文档PR #2959经CI #7595（docs-only）合并daaf98cf；按用户授权新增固定root私有父目录、dir_fd/O_EXCL静态目标create-only准备库及20项聚焦测试，保存17+原Manifest/原Archive、文件与全部目录fsync/FD读回及失败残片。只生成被动内容证据，不能resume/消费事务或安装，动态配置不复制；namespace/当前安装/维护/Flow与执行权限false。见[F4-A实现](Runtime更新-C1-P10-F4A-FD安全非活跃准备.md)。本批未调用源码或创建真实目录，R2/九源/v1/17 Bundle不变，无依赖图/owner/基线/迁移变化；仅静态审阅，20项测试未运行，未推送。
 
 已审阅：private_prepare到既有输入/FD锚点/发布/Bundle为Runtime/Ops同owner单向边；无跨上下文债务、循环或scanner基线变化，未执行架构扫描。
