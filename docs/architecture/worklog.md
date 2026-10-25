@@ -1,10 +1,21 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — C1-PREP-10 候选源码固定与只读验收准备
+
+**NINE SOURCES PINNED / SOURCE PACKAGE PREPARED_LOCAL / PLATFORM AND DELIVERY NOT_RUN / C1 OPEN。** 按用户“合并后开始下一步”，在 PREP-09 PR #2943 经最终CI #7553 SUCCESS（Runtime846/Release45）合并 `b7b7f27682700447d37bcdabd456f22087a54892` 后，新建 `docs/runtime-c1-prep10-source-delivery-20261024`。从GitHub按准确合并SHA取回九份只读候选源码，与最终head `3efa09f8763dbe870073a2a78847c0a19ac53466` 逐Git blob比对9/9相同，重算Git blob/SHA256/大小共78,274 bytes；生成 [候选源码清单](evidence/c1-prep10-source-inventory-2026-10-24.md) 和 [来源/只读验收工作包](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md)。制备源码审阅归档22,978 bytes，SHA256 `40d8d2d8fc7da7be7d15b06aff12c8ad413674e48853103c13476005a60b658c`，同环境重建相同、重新打开12成员逐字节一致；不执行包内源码，不生成未核实事务的launch/request/pins。同步R0/C1总包/入口方案/依赖图及原PREP-09最终交付事实，保留TLS并行记录。仅Runtime/Ops文档/来源记录，无源码/owner/导入/跨上下文边/兼容/scanner baseline、17 Bundle、依赖/锁/CI或数据库/迁移变化，不新增镜像测试；本地仅材料/JSON/差异静态核对，未运行项目test/scanner、目标Python或Host/Guest/root/AWS/生产操作。实际解释器包revision/关键依赖、启动前信任/真实受控交付及同平台只读实测仍待完成；Python3.12.3选择不变，完整效果候选未冻结。首次审阅待用户批准，**本批未推送/未创建PR**，C1最终随完整正式候选验收。
+
+**同批 CI 修复（#7556）：**完整8文件 head `69082af5` 的 Browser E2E 在 Initialize containers 阶段拉取 `public.ecr.aws/docker/library/postgres:15-alpine` 失败，注册表返回 `Data limit exceeded`，未进入测试。原独立 JSON 记录按现有 `change_scope.py` 的未知路径规则触发全量 lane；该记录无程序消费者，现将仓库展示改为 Markdown，保留包内原 JSON、原 SHA256 和来源材料。未改 CI/selector/测试或执行逻辑。完整文件已补齐到同一 [PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944)，最终 head 仍须全部必需检查全绿；本地未运行项目测试，C1 仍 OPEN。
+
+**同批修复后验证：**完整 Markdown 文档 head `712e99468a2f0f99eaad1fc2f7c31874ff38e577` 的 [CI #7557](https://github.com/sanqin888/sanqinMVP/actions/runs/40150848390) SUCCESS，`ci-change-scope` 实际通过，Runtime/Release/Browser等重lane按原选择器正常跳过；不作为本批新增运行测试通过。包内原 JSON及归档摘要不变，CI/selector未修改。用户已授权本批最终head必需检查全绿后合并dev并开始下一步；此前LOCAL/未推送为首次审阅状态，最终Checks/merge以 [PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944) 为准，C1仍OPEN。
+
+
 ## 2026-10-24 — C1-PREP-09 正式 Python 基线与只读 Bootstrap 候选
 
 **PYTHON3.12.3 SELECTED / BOOTSTRAP ASSEMBLY LOCAL / 32 TEST METHODS AUTHORED_NOT_RUN / C1 OPEN。** 用户确认 AWS VM 的Python3.12.3并要求采用；从 `dev@9a20a026` 新建 MCP-workspace 分支 `feat/runtime-c1-prep09-bootstrap-20261024`，保留PR #2942 TLS文档，核实PREP-08的PR #2941/最终CI #7548 SUCCESS已合并 `814c1489`。新增standalone `normal_runtime_bootstrap.py`：沿用v1固定解释器/flags/root/argv/env/cwd，只收txid，先核对进程，再以no-follow持有固定审批三文件/源码及祖先FD，核对双pins和bootstrap自身+八模块字节；私有namespace只从固定bytes装配既有reader/anchor/parser/loader/scope/process核对与同一核心。输入/源码退出复检及FD关闭先于caller，CLI在全部context正常退出后才输出ASSEMBLY_ONLY；不调用Flow、不创建控制文件或真实能力/执行权。新增32项有明确虚拟根/属主/进程fixture桥接的真实组件与失败测试，**未运行**。同步 [工作包](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md)、R0、C1总包/入口装配方案及依赖图；仅Runtime/Ops内部新增，不改原v1/支持组件/false/guard、17 Bundle、owner/跨上下文边/兼容/scanner baseline、依赖/锁/CI或Prisma/迁移。Python版本选择不证明Ubuntu/包revision/关键依赖或bootstrap/批准pins可信来源；root权限和自洽hash不形成来源权威。仅AST/导入顺序、基线摘要/差异/空白/状态静态核对，未运行项目lint/build/test/scanner、入口或Host/Guest/Docker/AWS/生产命令；未部署，首次审阅待用户批准远端PR→dev，**未推送/未创建PR**。C1最终随真实正式候选验收；下一步是同候选来源/受控交付与同平台只读验证，效果随R2/R3/R4完成。
 
 **同批远端验证续记（PR #2943）：**用户已授权本批远端提交、最终 head 全部必需 CI 全绿后合并 dev 并开始下一步。完整源码 head `97ac6fd38c6d6b1249636a6952a0bf4e027a966a` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS：Runtime `846 tests / OK`（含本批新增32）、Release `45 tests / OK`、Runtime shell 语法检查通过，无需 CI 修复。上述“未运行/未推送/未创建PR”是首次本地审阅时点；本地仍未运行项目测试，当前只补验证记录，最终 head 的 CI/合并以 [PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 实际事件为准。CI 不认证真实 AWS Python/来源/权限，也不授予任何效果权限，C1 仍 OPEN。
+
+**同批最终交付：**最终head `3efa09f8763dbe870073a2a78847c0a19ac53466` 的 [CI #7553](https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415) SUCCESS（Runtime846/Release45），无需CI修复；[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 已squash合并 `b7b7f27682700447d37bcdabd456f22087a54892`。PREP-09源码批已交付，原LOCAL/NOT_RUN与最终head待验为历史状态；C1真实来源/平台/效果验收仍OPEN。
 
 
 ## 2026-10-24～25 — P2-C3C3 M01-B9 安全证据收口与双层撤销优先候选

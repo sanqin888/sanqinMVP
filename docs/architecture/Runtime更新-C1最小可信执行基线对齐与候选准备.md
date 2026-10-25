@@ -1,5 +1,9 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+**PREP-10远端续记：**[PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944) 修复后 [CI #7557](https://github.com/sanqin888/sanqinMVP/actions/runs/40150848390) SUCCESS（纯Markdown文档检查；Runtime等重lane按原规则跳过）。仓库只保留来源JSON的Markdown审阅视图，包内原JSON/摘要未变；CI/selector未改，最终head/merge见PR事件。真实平台/交付及C1仍OPEN。
+
+**最新进度（C1-PREP-10，本地待审）：**PREP-09已由 [PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) / 最终 [CI #7553](https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415) SUCCESS（Runtime846 / Release45）合并 `b7b7f276`。本批 [候选源码固定与只读验收准备](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 固定9源码/78,274 bytes、逐文件Git blob/SHA256及源码包，9/9与已测head相同；[清单](evidence/c1-prep10-source-inventory-2026-10-24.md)为来源材料记录，未交付/运行任何真实入口。Python3.12.3已选定，实际平台/包revision/关键来源、root受控交付、真实批准输入与同平台必要验证仍OPEN，完整效果候选未冻结。本批未推送；以下各批LOCAL/NOT_RUN及CI待定语句按其历史时点保留。
+
 **C1-PREP-09 交付续记：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 源码 head `97ac6fd3` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS，Runtime 846（含新增32）/ Release 45，无需修复。用户已授权最终 head CI 全绿后合并 dev 并继续；本批先前 LOCAL/NOT_RUN/未推送为历史时点，最终 Checks/merge 以 PR 事件为准；真实来源/执行验收及 C1 仍 OPEN。
 
 **2026-10-24（America/Toronto）｜C1 OPEN / BASELINE ALIGNED_LOCAL / CANDIDATE PREPARATION STARTED / FINAL CANDIDATE NOT FROZEN / NO PRODUCTION AUTHORITY。**
@@ -46,7 +50,7 @@
 | 项 | 组件/输入及当前定位 | 候选准备的实际缺口 |
 | --- | --- | --- |
 | I01 正常流程核心 | `ops/runtime/normal_runtime_update.py`：`NormalUpdateFlow.run`，`UpdateCapabilities` 仅定义能力接口 | 保留同一核心，登记最终接线组件和阶段；不能另造仅认证时使用的假执行器 |
-| I02 启动入口 | PREP-03～08 的 reader/anchor/parser/loader/scope/process 核对已合并；PREP-09 本地新增 `normal_runtime_bootstrap.py` 只读入口，消费受保护输入与固定支持字节 | 本批源码/32项测试尚未 CI；待 bootstrap/批准 pins 的启动前可信来源、实际交付及同平台必要验证；正式执行及真实能力接线仍 OPEN |
+| I02 启动入口 | PREP-03～09 已合并；只读bootstrap及32项测试已由最终CI #7553通过；PREP-10固定9文件源码清单/包，Git blob与最终已测head一致 | 操作器源码材料已固定；待初始bootstrap/批准pins的启动前可信来源、实际交付及同平台必要验证；完整执行与真实能力接线仍OPEN |
 | I03 真实平台 | 用户已明确采用 AWS VM 的 Python **3.12.3**，沿用 Linux x86_64、`/usr/bin/python3.12`、`-I -S -B` 的现有 v1；R2 Jammy 实验平台独立 | Python 版本选择完成；准确 AWS 主机/Ubuntu/架构、包 revision/已安装字节和关键依赖来源及保护仍须核实；不把用户版本确认或 Jammy 3.10.12 结果当来源验收 |
 | I04 关键运行依赖 | 核心使用标准库；旧静态线索含 libm/libz/libexpat/libc；若实际选用 CAS/TLS，还涉及 sqlite3/SSL 及其真实后端 | 按最终组件识别会影响安全/稳定的执行依赖及来源；已有准确成员可复用，新增或变更对象补来源，风险对象才专项追踪；本表不是完整依赖认证 |
 | I05 目标发布物 | `build_bundle.py` 的固定 17 成员 + 生成的 `runtime-release.json`；`runtime_trust.py` / release proof 规则已有 | 待选准确 main 发布 SHA、原 Archive digest/原字节、配对镜像 digest 和同 publish run proof；目标 Runtime、应用 SHA 与操作器源码版本分别登记 |
@@ -56,7 +60,7 @@
 | I09 快照能力 | `create_and_verify_snapshot` 目前是 Protocol，未有正常流程的真实 AWS adapter | R3 准备准确执行位置、最小权限与实现/输入清单；C1 审查执行来源，AWS 对象/恢复点真实性归 R3 |
 | I10 正式交接 | `handoff` 无正常流程的真实接线；`offline_root_private_installer.py` 仍是受限合成 fixture | R4 准备真实安装/交接候选和路径/权限/持久化方式，保留实验 guard，禁止直接把 lab 限制移除当实现 |
 | I11 复验与退出 | `verify_installed`、`restore_original_policies`、`verify_restored`、`release_business` 目前无真实能力实现 | 登记最终核验工具、原策略记录和最后业务放行边界；未知/中断保持维护，其效果验收随 R2/R4/R5 |
-| I12 安装位置与输入保护 | PREP-09 本地将固定 sourceRoot 与 `/root/sanq-runtime-operator/normal-update-approvals/<txid>` 三文件的 FD/祖先/权限/集合/退出复检接入只读 bootstrap；VB-04D1 的 Guard 路径另属 R2 | 没有创建真实目录/控制文件或安装任何组件；外部批准 pins/源码的可信交付和实际 owner/mode/祖先、关键效果输入仍待同候选验收，读回自洽不认证来源 |
+| I12 安装位置与输入保护 | PREP-09 将固定 sourceRoot 与 `/root/sanq-runtime-operator/normal-update-approvals/<txid>` 三文件的 FD/祖先/权限/集合/退出复检接入只读 bootstrap；VB-04D1 的 Guard 路径另属 R2 | 没有创建真实目录/控制文件或安装任何组件；外部批准 pins/源码的可信交付和实际 owner/mode/祖先、关键效果输入仍待同候选验收，读回自洽不认证来源 |
 
 **外置对象也必须登记。** 固定 17 Bundle 不含正常更新操作器、Boot Guard 或离机 CAS；不能把它们算作未获批准的第 18 成员，也不能因其在 Bundle 外便省略来源、安装权限和完整性。是否最终选用某离线模块，由真实候选装配决定；不要求把全部实验文件打进生产。
 
@@ -75,7 +79,7 @@
 | 工作 | 本批状态 | 完成条件/依赖 |
 | --- | --- | --- |
 | 基线对齐与已有证据盘点 | COMPLETE_LOCAL | R0 和 R1/S1/SYN 的现行适用范围统一；本包完成现有代码与证据复用登记 |
-| 正式候选准备 | STARTED / READ_ONLY BOOTSTRAP LOCAL / EFFECTS OPEN | I01–I12 底表与 PREP-03～08 组件已交付；PREP-09 只读入口源码/测试待 CI、交付和验收，真实执行接线随 R2/R3/R4，不为未存在对象编造 hash |
+| 正式候选准备 | READ_ONLY BOOTSTRAP SOURCE_CI_VERIFIED / SOURCE PACKAGE LOCAL / EFFECTS OPEN | PREP-03～09已交付；PREP-10九文件清单/包和验收顺序本地完成，实际可信交付与同平台验证仍待完成；完整效果接线随R2/R3/R4，不为未存在对象编造hash |
 | 候选平台与来源绑定 | PYTHON 3.12.3 SELECTED / PROVENANCE OPEN | 用户已确定正常执行器 Python；核实准确现场平台/包 revision、关键依赖和启动前来源、实际交付/权限；匹配的稳定证据直接复用 |
 | 同候选必要验证与 C1 裁定 | OPEN / NOT RUN | 正式候选可执行后，按精确授权进行受控验证和内部独立核对；不得转用无关演示、早期合成成功或不同平台局部结果 |
 
