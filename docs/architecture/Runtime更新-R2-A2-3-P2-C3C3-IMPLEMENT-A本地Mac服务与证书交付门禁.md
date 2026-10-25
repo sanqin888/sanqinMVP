@@ -1,5 +1,7 @@
 # R2-A2-3 — P2-C3C3-IMPLEMENT-A Mac Host-only mTLS 服务候选及证书交付门禁
 
+> **最新状态索引（M01-B9）：** M01-B4～B8 无 CAS 的 TLS 正反向实验与时间/CRL 静态检查已 `PASS_SCOPED`，Option B（Enrollment + CRL）仅定为后续优先候选；正式 CAS/enrollment/SQLite/InstallationAnchor/Guard 仍 `BLOCKED/NOT_RUN`。详见本文件 §6 与 [M01-B9 审计及候选决策](Runtime更新-R2-A2-3-P2-C3C3-M01-B9安全证据收口与双层撤销候选决策.md)。下文旧 `NOT_RUN` 是历史时点。
+
 > **2026-10-24 / LAB_ONLY_MTLS_CORE_CLOSED PASS_SCOPED 4/4 / REAL_CAS_NOT_RUN / PRODUCTION NO-GO**。DESIGN-B 已通过 PR #2932 / CI #7515，IMPLEMENT-A 实验 CAS 服务候选源码及单元测试已通过 PR #2934 / CI #7520 合并 `dev`。本轮从最新 `dev` 独立补交 **M00～M01 真实 Mac/Recovery Guest 的 TLS-only 现场回执**，保留并行 C1 工作，不修改服务代码；**GitHub CI 仅验证文档/代码门禁，现场 TLS 验收以操作者真实双端终端记录为准**。
 
 ## 1. 审前规范与架构归属
@@ -213,3 +215,22 @@ Recovery Guest `/etc/sanq-maintenance` 和 `/etc/sanq-maintenance/installation-a
 `IMPLEMENT-A PR#2934 CI#7520 MERGED / LAB_ONLY_MTLS_CORE_CLOSED PASS_SCOPED 4_OF_4 / POST_TEST_39443_NO_VISIBLE_LISTENER / FULL_NEGATIVE_MATRIX_OPEN / FORMAL_ANCHOR_NOT_PRESENT / CAS_NOT_RUN / P1_DENY / P0-01_NOT_RUN / PRODUCTION NO-GO`。
 
 原 IMPLEMENT-A 源码已通过 PR #2934 / CI #7520 合并。本次仅同步操作者现场证据；下一步先只读审计 EKU、过期/未生效、撤销和 session resumption 扩展负例。真正 CAS 仍需正式受信身份门禁。
+
+## 6. M01-B9 扩展安全负例证据收口与后续撤销决策（最新快照）
+
+> **2026-10-24～25 操作者双端回执；B9 只读仓库基线 `dev@814c14898ce01f915c345af7426de95b3c753bb5`。** 本节是 **B8 实测完成之后的最新阶段结论**，覆盖上述较早 M01-B7 时点的 `FULL_NEGATIVE_MATRIX_OPEN` 和 `bad EKU / expiry / CRL / session NOT_RUN` 历史表述，**不篡改历史回执**。详见 [M01-B9 安全证据收口与双层撤销候选决策](Runtime更新-R2-A2-3-P2-C3C3-M01-B9安全证据收口与双层撤销候选决策.md)。
+
+| 已完成的范围 | 关键证据 | 结论 |
+| --- | --- | --- |
+| M01-B4～B7 | TLSv1.2 + AES-GCM 正向双向握手；缺 client cert、CA 错 code19、IP SAN 错 code64 拒绝 | `CORE_TLS_PASS_SCOPED` |
+| M01-B8-1 | 正确 CA / 公钥但 serverAuth-only 错 EKU：离线 error26；Ubuntu `unsupported_certificate` Alert43；Mac `NO_CERTIFICATE_RETURNED` | `BAD_EKU_DENIED_PASS_SCOPED`；Mac 内部精确拒绝步骤未证明 |
+| M01-B8-2 | 指定时点离线 notYetValid error9、有效控制 OK、expired error10；真实过期服务器证书 Guest verify_code10、Mac certificate_expired alert | `TIME_OFFLINE_AND_EXPIRED_LIVE_PASS_SCOPED` |
+| M01-B8-3 | CRL 加载计数 `crl=1`、静态 revoked error23；原客户端握手成功，撤销测试客户端收到 certificate_revoked Alert；Mac `NO_CERTIFICATE_RETURNED` | `CRL_LAB_DENIAL_PASS_SCOPED`；不是仓库实际服务的 CRL 防护证明 |
+| M01-B8-4 | `OP_NO_TICKET` 可配置、两次认证握手成功；双端第二次 `session_reused=False`，server `hits=0` | `SESSION_REUSE_NOT_OBSERVED_PASS_SCOPED`；非所有恢复路径永不复用证明 |
+| M01-B8 最终端口 | Mac `lsof -nP -iTCP:39443 -sTCP:LISTEN` 无输出 | 停止后的该次检查快照未观察到监听 |
+
+**安全实现审阅差距：** 仓库 `maintenance_mtls_hostonly_lab_service.py::tls_context()` 设置 TLS1.2、`CERT_REQUIRED`、指定 CA 和 `OP_NO_TICKET`，但**没有**加载 CRL，也**没有**启用 `VERIFY_CRL_CHECK_LEAF`；14 项离线单元测试中的 SSLContext mock 及 `revoked=true` 逻辑负例不能替代真实 CAS 服务。该服务在握手后读取 enrollment 并检查 identity/role/anchor/pin，**尚未验证撤销与正在执行的 CAS COMMIT 之间无竞态**。正式 `InstallationAnchor` 仍缺失，真实 `serve_manually`、enrollment、SQLite CAS、C3C4 客户端、P1/Guard 均未执行。
+
+**选定的后续优先方案：Option B — Enrollment + X.509 CRL 双层撤销。** 本次用户批准的是**文档上的实施方向**，不代表批准 CRL 权威/维护机制、代码改动、创建正式身份或真实 CAS 执行。下一批需单独冻结：受信 Anchor 来源，完整 CRL 总账的 owner/签发/轮换/原子交付与 fail-closed，enrollment 的 role/pin/撤销语义，已建立连接及 SQLite 提交的撤销线性化，DER 指纹与 PEM 文件哈希边界，然后评审代码影响、替代方案并单独申请实施授权。B8 测试 CRL 只含局部证书撤销，`nextUpdate=2026-10-26T00:04:02Z`，禁止直接用于正式 CAS。
+
+**退出状态：`M01-B9 AUDIT_DOC_CLOSED_LOCAL / M01-B4_TO_B8_TLS_EXPERIMENT_PASS_SCOPED / OPTION_B_PREFERRED_NOT_IMPLEMENTED / FORMAL_CAS_ENROLLMENT_BLOCKED / CAS_NOT_RUN / P1_DENY / P0-01_NOT_RUN / PRODUCTION_NO-GO`。** 本次只同步文档，不授权私钥/CA 操作、网络服务、SQLite、Docker、VM/AWS 或生产变更。
