@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-24 — R2-A2-3 P2-C3C3 B9-DECISION 双层撤销合同冻结（文档交付）
+
+**DOC_SEMANTICS_FROZEN / B1_OPTION_SELECTED / IMPLEMENTATION_NOT_AUTHORIZED。** 基于 M01-B9 PR #2942 的 scoped TLS 证据与当前 `dev@17188367684a155b7217881d695c8c615589e940` 只读审阅，形成 [B9-DECISION 双层撤销权威与 CRL 生命周期合同](Runtime更新-R2-A2-3-P2-C3C3-B9-DECISION双层撤销权威与CRL生命周期合同.md)：D01–D08 明确 CA/CRL 发行权威、Enrollment 审批权威、双层 AND/OR 拒绝、发行总账/CRL Number/时效/原子交付与受信 anti-rollback 前置；首版 B1 采用 fenced stop-and-replace，要求在 `REVOCATION_EFFECTIVE` 生效点 F 前证明全部旧 writer/事务/SSLContext 停止，UNKNOWN 只读对账；T01–T08 作为未来验收矩阵。运营建议 CRL ≤24 小时、提前 ≥6 小时刷新，正式运行前再审参数。未修改代码、证书/CRL、Enrollment/SQLite、Guard/VM/Docker/生产；正式 InstallationAnchor 和独立版本权威仍缺失，后续实施需单独授权。`P1 DENY / P0-01 NOT_RUN / PRODUCTION NO-GO`。
+
 ## 2026-10-24 — C1-PREP-10 候选源码固定与只读验收准备
 
 **NINE SOURCES PINNED / SOURCE PACKAGE PREPARED_LOCAL / PLATFORM AND DELIVERY NOT_RUN / C1 OPEN。** 按用户“合并后开始下一步”，在 PREP-09 PR #2943 经最终CI #7553 SUCCESS（Runtime846/Release45）合并 `b7b7f27682700447d37bcdabd456f22087a54892` 后，新建 `docs/runtime-c1-prep10-source-delivery-20261024`。从GitHub按准确合并SHA取回九份只读候选源码，与最终head `3efa09f8763dbe870073a2a78847c0a19ac53466` 逐Git blob比对9/9相同，重算Git blob/SHA256/大小共78,274 bytes；生成 [候选源码清单](evidence/c1-prep10-source-inventory-2026-10-24.md) 和 [来源/只读验收工作包](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md)。制备源码审阅归档22,978 bytes，SHA256 `40d8d2d8fc7da7be7d15b06aff12c8ad413674e48853103c13476005a60b658c`，同环境重建相同、重新打开12成员逐字节一致；不执行包内源码，不生成未核实事务的launch/request/pins。同步R0/C1总包/入口方案/依赖图及原PREP-09最终交付事实，保留TLS并行记录。仅Runtime/Ops文档/来源记录，无源码/owner/导入/跨上下文边/兼容/scanner baseline、17 Bundle、依赖/锁/CI或数据库/迁移变化，不新增镜像测试；本地仅材料/JSON/差异静态核对，未运行项目test/scanner、目标Python或Host/Guest/root/AWS/生产操作。实际解释器包revision/关键依赖、启动前信任/真实受控交付及同平台只读实测仍待完成；Python3.12.3选择不变，完整效果候选未冻结。首次审阅待用户批准，**本批未推送/未创建PR**，C1最终随完整正式候选验收。
