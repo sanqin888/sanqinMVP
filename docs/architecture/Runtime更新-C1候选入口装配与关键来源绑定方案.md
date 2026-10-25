@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 候选入口装配与关键来源绑定方案
 
+**2026-10-25 F4-B3：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。** F4-B2 PR #2963经CI #7603（docs-only，1成功/9跳过）合并2240f5e0，无修复。本批新增[安装后目标独立只读复验](Runtime更新-C1-P10-F4B3安装后目标只读复验.md)及23项测试，保留原双pin request、F3固定路径/F2有限FD树，核对原批准Archive/原Manifest/17成员与原pin三动态文件。仅提取F2共用私有检查，原安装前语义不变；旧观察不升级冻结基线，实际挂载/维护/R2/策略恢复/业务放行/终结权限均false/BLOCKED。Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1/17 Bundle/依赖/迁移变化。已静态AST/差异审阅，未运行项目测试/新CI，分支feat/c1-p10f4b3-postinstall-review-20261025未推送；无root/VM/云/生产操作。
+
 **2026-10-25 F4-B1：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B设计PR #2961经CI #7599（docs-only，1成功/9跳过）合并dev 99c79221，无修复。新增[本机持久消费内核](Runtime更新-C1-P10-F4B1本机持久消费内核.md)及30项测试：固定既有全安装flock、create-only claim/永久消费副本、文件与父目录fsync、持锁handle、同attempt abort和有界只读事故分类；退出/SIGKILL不清claim，未知阻断。未接Flow/F2/F3/F4-A或R2/云/生产，无效果权限/终结器；仅静态AST与差异审阅，未执行项目测试，分支feat/c1-p10f4b1-durable-admission-20261025未推送。Runtime/Ops同owner单向依赖，无依赖图/债务/scanner基线、九源/v1/17 Bundle、包依赖或数据库迁移变化。下一步先取得实际CI，再审阅独立终结/事故处置与可信组合。
 
 **2026-10-25 P10-F1 装配就绪审计（本地）：READINESS_AUDIT_COMPLETE_LOCAL / P10-F_OPEN / C1_OPEN。** 验收归档PR #2955/CI #7587十项成功已合并dev `7c368ca5`。本批核对11阶段+abort真实接线：bootstrap固定9源/只读、loader仅加载三个核心模块；新增adapter须另固集合和导入边界，保持同组StepCompletion类型。prepare默认newest发布策略与固定历史目标存在适用差异，不能静默换目标或放宽校验；核心Lock也不代表持久化准入。已整理[R2交接面及R3/R4开放项与切片](Runtime更新-C1-P10-F完整候选装配就绪审计.md)，R2由另一对话负责。下一块限定来源/当前安装只读准入，尚未编写新代码或接入效果；准确CPython3.12.15及原九源/输入、17 Bundle不变。无依赖图/owner/基线/兼容/数据库变化，无新运行或生产证据；未提交远端。

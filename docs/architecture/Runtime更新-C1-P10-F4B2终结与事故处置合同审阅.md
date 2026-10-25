@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 P10-F4-B2 终结与事故处置合同审阅
 
+**2026-10-25 F4-B3：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。** F4-B2 PR #2963经CI #7603（docs-only，1成功/9跳过）合并2240f5e0，无修复。本批新增[安装后目标独立只读复验](Runtime更新-C1-P10-F4B3安装后目标只读复验.md)及23项测试，保留原双pin request、F3固定路径/F2有限FD树，核对原批准Archive/原Manifest/17成员与原pin三动态文件。仅提取F2共用私有检查，原安装前语义不变；旧观察不升级冻结基线，实际挂载/维护/R2/策略恢复/业务放行/终结权限均false/BLOCKED。Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1/17 Bundle/依赖/迁移变化。已静态AST/差异审阅，未运行项目测试/新CI，分支feat/c1-p10f4b3-postinstall-review-20261025未推送；无root/VM/云/生产操作。
+
 **2026-10-25｜CONTRACT_REVIEW_COMPLETE_LOCAL / FINALIZER_NOT_IMPLEMENTED / P10-F_OPEN / C1_OPEN。**
 
 基于dev `e1b7d9ebd6daa8c1bad358e1caeae7371b5ac291`。F4-B1由[PR #2962](https://github.com/sanqin888/sanqinMVP/pull/2962)交付；最终head `c55000c2862c0912a24371be4bb34f74f825ae25` 的[CI #7601](https://github.com/sanqin888/sanqinMVP/actions/runs/40231097040)成功，4作业成功、6业务lane按范围跳过。实际ops job121282829813中Release45、Runtime950、准确CPython3.12.15回归282通过，包含全部30项新增测试，无CI修复。证明本机FD/flock/持久消费内核通过离线回归，不等于生产准入、断电或R2验收。
