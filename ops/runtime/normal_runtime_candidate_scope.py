@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Iterator
 
 from normal_runtime_inputs import parse_pinned_update_inputs
+from normal_runtime_process_check import require_current_launch_process
 from normal_runtime_source_anchor import (
     AnchoredSourceSnapshot, capture_anchored_candidate_sources,
 )
@@ -45,6 +46,8 @@ def assemble_pinned_normal_candidate(
         launch_bytes, request_bytes,
         expected_launch_sha256=expected_launch_sha256,
         expected_request_sha256=expected_request_sha256)
+    require_current_launch_process(
+        parsed.request.launch, expected_launch_sha256=expected_launch_sha256)
     with ExitStack() as loaded_modules:
         with capture_anchored_candidate_sources(
             parsed.request.launch,
