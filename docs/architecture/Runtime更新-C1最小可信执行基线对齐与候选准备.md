@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+**2026-10-25 PREP-12本地实施：**PREP-11已由PR #2946 / CI #7563十项全绿合并 `bdfb25af`。用户现授权 [Python3.12.15可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，新增固定来源/主指纹验签、安全解包、stage清单/关键库归属及归档材料工具、18个离线测试方法和仅dev手动触发的Jammy隔离构建工作流；源码验签/构建/测试均未执行，产物未生成、未推送。**IMPLEMENTED_LOCAL / BUILD_NOT_RUN / C1_OPEN**。现有9文件候选、全部guard、17 Bundle、owner/跨上下文边/scanner baseline、业务和数据库保持原样；构建与测试仅同Runtime/Ops owner关系。
+
 **PR #2946远端验证续记：**19文件已完整提交，源码head `802a0ae8` 的 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 已通过Runtime848、Release45及精确3.12.15回归203项。E2E因ECR Public镜像拉取Data limit exceeded在测试前阻断，CI服务镜像已最小改回Docker Official上游同标签，最终head仍须全绿再合并；最终Checks/merge以 [PR事件](https://github.com/sanqin888/sanqinMVP/pull/2946) 为准。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批未启动，解释器来源/安装及C1继续OPEN。下方LOCAL/CI_NOT_RUN按实施审阅时点保留。
 
 **PREP-11当前状态（2026-10-25，本地待审）：**用户已授权按审计实施，launch/bootstrap现固定 **CPython3.12.15 final / `/opt/sanq/python/3.12.15/bin/python3.12`**；process_check算法保持，6个测试文件同步，新增2个旧材料/混合绑定拒绝方法。原CI门禁保留，新增setup-python@v6的精确3.12.15回归步骤，未执行。见 [实施续记](Runtime更新-C1-PREP-11-Python31215变更审计.md) 和 [九源审阅快照](evidence/c1-prep11-python31215-source-review-2026-10-25.md)。**IMPLEMENTED_LOCAL / CI_NOT_RUN / INTERPRETER_PROVENANCE_OPEN / C1_OPEN**。代码路径已选定，实际构建产物/来源、安装与Jammy验收尚未完成；下方旧状态保留历史范围。

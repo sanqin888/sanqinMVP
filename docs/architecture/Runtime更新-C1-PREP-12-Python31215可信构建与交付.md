@@ -1,8 +1,8 @@
 # Runtime 更新 — C1-PREP-12 Python3.12.15可信构建与交付
 
-**2026-10-25（America/Toronto）｜NEXT TASK / NOT STARTED / REQUIRES PREP-11 FINAL CI AND DEV MERGE / C1 OPEN。**
+**2026-10-25（America/Toronto）｜IMPLEMENTED_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / CI_NOT_RUN / C1_OPEN。**
 
-本包是用户要求的合并后下一阶段任务，尚未启动。目标是取得**适配Ubuntu22.04/Jammy x86_64、来源可核验的CPython3.12.15交付产物**，继续向实际平台验收推进。
+用户已授权启动本包修改。PREP-11 PR #2946最终CI #7563十项检查全绿并合并 `dev@bdfb25af7de88ecafbb17b1fda71b305e5cfd17c`。本批已在 `feat/runtime-c1-prep12-trusted-python-build-20261025` 本地实现验签/构建材料工具与手动隔离构建工作流；尚未下载、验签、构建或安装解释器，也未运行新测试。目标仍是取得**适配Ubuntu22.04/Jammy x86_64、来源可核验的CPython3.12.15交付产物**，继续向实际平台验收推进。
 
 ## 已确定的输入
 
@@ -30,3 +30,38 @@
 ## 新对话启动内容
 
 继续SanQ C1-PREP-12：基于PREP-11 PR #2946最终合并状态，推进Python3.12.15可信构建与交付。版本与路径已经确定为CPython3.12.15 final及 `/opt/sanq/python/3.12.15/bin/python3.12`。先读AGENTS、R0及本包，核对最终dev和源码身份，确认隔离Jammy/x86_64构建环境；目标是验真源包、形成可交付解释器产物并取得实际回归结果。生产VM的软件安装、root交付、bootstrap运行和任何真实更新效果，按准确操作对象及原授权规则分别处理。不要重复版本比较，也不要把旧Noble取证或CI缓存当新解释器来源证明。
+
+
+## 2026-10-25 实施记录与操作顺序
+
+本地代码已完成，实际产物尚未生成。当前执行环境未确认是Jammy，也没有Docker；SanQ MCP不提供任意远程shell，不能借仓库工具在生产VM编译。采用GitHub托管 `ubuntu-22.04` 的手动工作流作为可审阅隔离构建路线，不要求生产VM先安装编译器。
+
+| 文件 | 职责与边界 |
+| --- | --- |
+| `ops/runtime/c1_python_build_materials.py` | 非生产构建材料工具：Jammy/x86_64非root托管环境、固定repo/dev和准确源码提交检查；SHA256与GnuPG发布者核对；固定bytes安全解包；stage清单、关键动态库字节/Ubuntu包归属、交付归档及全材料SHA256SUMS |
+| `ops/runtime/tests/test_c1_python_build_materials.py` | 新增18个离线测试方法，覆盖环境/身份/提交拒绝、完整主密钥/签名状态、过期/撤销/弱摘要、多签名、hash前置拒绝、GPG失败不解包、不安全归档/链接/权限、动态库缺失/无归属、归档字节及false权限；测试尚未运行 |
+| `.github/workflows/c1-python31215-build.yml` | 仅 `workflow_dispatch` 且仅dev；contents:read、checkout不持久化凭据。在一次性22.04 runner准备依赖、验真源包、构建/DESTDIR暂存、实际产物smoke与C1回归，成功后上传审阅材料；失败只上传日志 |
+
+### 固定来源与信任前提
+
+- 源包：`https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tar.xz`，SHA256仍为本包已列出的准确值；签名候选为同URL加 `.asc`。
+- Python官方[OpenPGP元数据](https://www.python.org/downloads/metadata/pgp/)将3.12源文件签名归Thomas Wouters，链接公钥为 `https://github.com/Yhg1s.gpg`。代码固定完整主指纹 **`7169605F62C751356D054A26A821E680E5FA6305`**，不把短key ID/GOODSIG姓名当身份。公钥允许正常自签名/有效期更新，但主指纹不得自动改变。
+- 验真同时要求源包准确SHA256、GnuPG退出成功、唯一VALIDSIG归属准确主密钥（允许其签名子密钥）、现代SHA256/384/512，以及无过期/撤销/错误状态。没有hash/key/version/安装路径的CLI覆盖选项。原始源包、签名、公钥随成功材料保留，供离机复核。
+- 声明的有限信任前提包括审阅后的仓库工作流、GitHub托管builder、系统Python/GnuPG/编译工具及Ubuntu APT信任。构建receipt和归档SHA只绑定实际观察与字节，不递归证明builder/内核，也不能自己授予生产信任。独立于本批的旧Noble采集器保持原用途，不将其扩展成Jammy/CPython源包认证工具。
+
+### 受控构建与材料
+
+1. 首次远端交付仍需按AGENTS经用户审阅授权；PR的常规CI将通过既有Runtime测试发现机制执行新增18个方法。没有修改selector或旧CI门禁，新workflow文件按原规则可能触发全量CI。
+2. 工作流合并到dev后，由明确的手动触发运行；不会在PR、push、schedule或workflow_run中自动下载/编译。构建前核对实际dev SHA及工作流版本。
+3. runner先核对Jammy/x86_64、非root、托管环境及repo/dev；仅在一次性runner安装必要工具/开发库。源包先核hash和签名，再完整预检归档成员，最后从固定bytes解包；任何失败不生成成功receipt。
+4. 固定 `--prefix=/opt/sanq/python/3.12.15 --with-ensurepip=no CC=/usr/bin/cc`，make并发2；`make altinstall DESTDIR=<runner临时目录>/stage` 不写runner或生产机的真实目标prefix，也不替换系统python3。暂存解释器用原五键env与 `-I -S -B` 做版本/flags/stdlib smoke，再用它运行现有8个C1测试文件；新增工具测试先在Jammy宿主Python上执行。
+5. 记录configure/config.log、编译/altinstall日志、必要构建包完整版本、真实stdlib关键后端、解释器及选定扩展模块ldd结果。关键非虚拟动态库必须存在，取得准确文件SHA256及Ubuntu包归属/版本；未知来源对象阻断并专项审阅，不静默省略或启动全量消费追踪。
+6. 暂存清单拒绝外逃/绝对符号链接、硬链接、特殊文件和组/其他可写对象；安全内部相对链接可保留。归档元数据归一为root不代表实际安装owner已认证。产物及原始来源材料、日志、成员清单和SHA256SUMS仅在全部步骤成功后上传，保留14天；失败日志保留7天，应在实际运行后及时取回准确产物并建立长期证据引用。
+
+### 当前状态与剩余门禁
+
+**实际源包下载/验签、Jammy构建、18个新测试、真实产物回归和交付包均NOT_RUN。** 仅完成静态Python AST、YAML、内嵌shell语法、流程顺序、差异和工作区核对；没有MCP或缓存中的项目测试执行。
+
+真实安装仍不在本批代码中。取得成功材料后，须审阅准确CI run/attempt、源码SHA、源签名/主指纹、构建信任前提、关键依赖、归档摘要/成员/权限，再给出生产VM准确安装计划。重点包括目标目录是否存在、完整祖先owner/mode、与Jammy库版本的实际匹配、失败清理/恢复和系统Python保护。未获对应生产授权前，不解包到 `/opt`、不写root批准目录、不运行正式bootstrap或Flow。
+
+本批归Runtime/Ops；无生产启动入口、安装器、业务/数据库迁移、17 Bundle或跨上下文依赖变化。构建工具→标准库以及测试→构建工具均为同owner关系，不扩张normal_runtime源码装配清单或现有9文件候选。PREP-12与C1继续OPEN，构建代码完成不等于可信交付已验收。
