@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 P10-F 完整候选装配就绪审计
 
+**2026-10-25 P10-F2本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READONLY_REVIEW_ONLY / C1_OPEN。** P10-F1 PR #2956最终head4004fdb6经CI #7589（docs-only）合并9e0f4e87。本批新增外置只读review库及19项聚焦测试，复用目标newest发布校验，借入目录FD核对实际17+Manifest/三保留文件，按当前准确Git SHA源码+发布元数据认证旧摘要身份，不要求旧Archive bytes；保持所有安装/维护/事务权限false。FD不自证固定生产路径、容器/挂载未实测，故不作为正式VERIFY_SOURCE completion。见[F2实现与证据限制](Runtime更新-C1-P10-F2来源与安装只读准入.md)。原九源/输入/17 Bundle及R2实现不变，无依赖或数据库迁移；AST/差异静态审阅，未执行项目测试/真实现场核查，未推送。
+
+
 **2026-10-25（America/Toronto）｜P10-F1 READINESS_AUDIT_COMPLETE_LOCAL / P10-F OPEN / C1 OPEN。**
 
 本批接续用户“继续P10-F，我另开对话进行R2”的授权，基于 `dev@7c368ca50a921bf05592a8f7a9cd56d40e1d6896`。验收归档PR #2955最终head78457ee5的CI #7587十项成功并合并该基线；准确九源711197d2的AWS只读正例与run40210744043的23项隔离结果继续按[原归档](evidence/c1-jammy-negative-acceptance-2026-10-25.md)范围复用。P10-F1是本批审计子项，不是新增执行模式或审批协议。
@@ -72,7 +75,7 @@ R4以[交付安装约束](Runtime交付与安装约束.md)为准：root真实act
 | 子项 | 产出及完成条件 | 可并行 / 必要前置 |
 | --- | --- | --- |
 | P10-F1（本批） | 准确源码差异、阶段/owner表、R2交接面、R3/R4开放项与验证范围 | READINESS_AUDIT_COMPLETE_LOCAL；无新运行证据 |
-| P10-F2（下一源码候选） | 聚焦来源/当前安装只读准入：复用既有发布校验，核对目标原bytes及当前17+Manifest/动态身份，返回有界拒绝/审阅证据；不能仅重造boolean模型 | 可先于R2验收实现；先明确目标发布选择、当前观察刷新及实际受保护输入/FD接口；此子项不消费真实事务、不调用Flow或任何效果 |
+| P10-F2（本地源码） | 已实现目标newest发布核验+当前历史发布元数据/17源码原字节+借入目录FD/三保留文件审阅，19项测试已编写未运行，见F2文档 | IMPLEMENTED_LOCAL / TESTS_NOT_RUN；根路径/容器实时性/事务/维护未认证，不调用Flow或效果，不是正式准入 |
 | 后续准备/准入持久化 | 正式create-only准备桥接、跨进程一次性ledger/事故归属和源/输入生命周期；逐项明确写入范围 | 在相关实现前审持久化位置、锁/复用与未知状态；不拿core Lock当完成 |
 | 组合加载与能力装配 | 入选adapter固定bytes/有限导入、同组类型、无构造副作用、持有scope贯穿实际调用 | 随已选真实组件准备；新增集合/输入/入口必须新固候选 |
 | R3/R4真实能力与组合验收 | 经限定审阅实现快照/安装复验；准确同候选正常路径、必要失败/中断、恢复原策略及最终放行 | 实际执行分别满足R2/R3/R4/R5授权及门禁；不能用placeholder补齐12个callable便放行 |
