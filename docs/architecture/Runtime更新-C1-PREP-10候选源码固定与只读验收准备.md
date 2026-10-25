@@ -1,5 +1,8 @@
 # Runtime 更新 — C1-PREP-10 候选源码固定与只读验收准备
 
+**2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
+
+
 **2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。
 
 **PR #2946远端验证续记：**19文件已完整提交，源码head `802a0ae8` 的 [CI #7562](https://github.com/sanqin888/sanqinMVP/actions/runs/40166026342) 已通过Runtime848、Release45及精确3.12.15回归203项。E2E因ECR Public镜像拉取Data limit exceeded在测试前阻断，CI服务镜像已最小改回Docker Official上游同标签，最终head仍须全绿再合并；最终Checks/merge以 [PR事件](https://github.com/sanqin888/sanqinMVP/pull/2946) 为准。下一任务为 [PREP-12可信构建与交付](Runtime更新-C1-PREP-12-Python31215可信构建与交付.md)，本批未启动，解释器来源/安装及C1继续OPEN。下方LOCAL/CI_NOT_RUN按实施审阅时点保留。
@@ -58,10 +61,10 @@
 | 阶段 | 要完成的具体工作 | 当前状态 |
 | --- | --- | --- |
 | P10-A 源码物料 | 固定合并 SHA、最终 CI head、九文件 Git blob/SHA256/大小与归档原字节 | **COMPLETE_LOCAL / 9_OF_9 MATCH** |
-| P10-B 实际平台 | 绑定操作者确认的准确 AWS 正常执行主机；只读确认 Ubuntu/架构/主机标识、Python 包 revision/成员归属/真实路径及关键对象字节和保护条件 | **METADATA RECEIVED / PYTHON3.12.15 PROFILE_LOCAL / PROVENANCE OPEN**；代码已配置，实际产物来源/保护及同平台验证未完成 |
-| P10-C 启动前可信交付 | 用准确源码清单、匹配的平台来源证据和受信外部工具核对；经单独批准，在无覆盖的受控位置交付9源码，核对root:root/0700目录、0400或0600单链接文件、祖先及读回原字节 | **NOT_AUTHORIZED / NOT_RUN**；无 root 目录或文件已创建 |
-| P10-D 输入批准 | 从已核实真实版本/状态构造同一事务的规范 launch/request，固定独立双摘要；经批准交付准确三文件，保持源码目录只含9份源码 | **INPUTS_NOT_SELECTED / APPROVAL_NOT_CREATED** |
-| P10-E 只读入口 | 启动前信任成立后，在明确批准的同平台环境以原v1固定argv/env/cwd运行只读 bootstrap，核对退出码/完整报告/无效果；实际负例安排在经批准的可丢弃同平台环境 | **NOT_AUTHORIZED / NOT_RUN** |
+| P10-B 实际平台 | 已固定Jammy22.04.5/x86_64、CPython3.12.15准确材料/路径，7关键库与8368成员验收；现场回执及来源证据范围见PREP-12记录 | **PYTHON_INSTALLED_VERIFIED_SCOPED**；不扩张为全平台/依赖闭包认证 |
+| P10-C 启动前可信交付 | AWS九源711197d2已按固定摘要root受保护交付，目录0700/文件0400，操作者提供读回回执 | **ROOT_SOURCE_DELIVERY_PASS_SCOPED**；不是候选自认证 |
+| P10-D 输入批准 | c1-assembly-20261025-001三份规范原件及独立pins已root交付，launch/request摘要见验收归档 | **APPROVAL_DELIVERY_PASS_SCOPED**；仅ASSEMBLY_ONLY，不授予效果权限 |
+| P10-E 只读入口 | AWS只读正例RC0与run40210744043同候选Jammy隔离23用例完成；原始结果已归档 | **READ_ONLY_ACCEPTANCE_COMPLETE_SCOPED**；2基线+2外层拒绝+19 CLI拒绝，C1最终不关闭 |
 | P10-F 完整候选 | 接入已完成验收的 R2/R3/R4 真实能力，再按受影响源码/输入重固版本和同候选验证 | **OPEN**，不拿本九文件切片替代完整候选 |
 
 ### P10-B 的最小只读范围
