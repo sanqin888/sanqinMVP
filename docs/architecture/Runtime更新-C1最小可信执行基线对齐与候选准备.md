@@ -1,5 +1,8 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+**2026-10-25 P10-F4边界审计（本地）：BOUNDARY_AUDIT_COMPLETE_LOCAL / IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F3 PR #2958最终CI #7593成功（Runtime900/Release45/准确3.12.15回归232），已合并64245335。下一步已核对既有prepare的路径写入/目录fsync缺口与R2 CAS职责，形成[事务准入及非活跃准备边界](Runtime更新-C1-P10-F4事务准入与非活跃准备边界.md)：建议先FD安全create-only准备，静态目标材料与冻结后的动态状态分开；ledger后续结合R2身份，不冒充维护CAS或新增第二套epoch。拟议固定目录未创建，未实施新写入或schema；无源码/依赖图/owner/基线/17 Bundle/依赖/迁移/生产变化。本批未运行项目测试/新CI，未推送。
+
+
 **2026-10-25 P10-F3本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / FIXED_PATH_REVIEW_ONLY / C1_OPEN。** F2 PR #2957已由最终CI #7591成功（Runtime890/Release45/精确3.12.15回归222）合并63d44cb4，无需修复。本批新增固定/opt/sanq/runtime只读wrapper，复用既有祖先FD规则，持有路径scope内调用F2并退出复核；只新增点时绑定元数据，Host/namespace/维护/事务/Flow/权限仍未认证或false/BLOCKED。10项新测试已编写未运行，见[F3实现](Runtime更新-C1-P10-F3固定Runtime路径只读锚点.md)。无R2实现、原九源/v1/17 Bundle、依赖/数据库/生产变化；静态审阅，未推送。
 
 
