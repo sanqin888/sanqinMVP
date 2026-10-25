@@ -1,4 +1,7 @@
-import type { PaymentTransaction } from '../domain/payment-transaction';
+import type {
+  PaymentTransaction,
+  PaymentTransactionSnapshot,
+} from '../domain/payment-transaction';
 import type { PaymentStatus } from '../domain/payment.types';
 
 export type PaymentTransactionUniqueField =
@@ -29,6 +32,17 @@ export interface PaymentTransactionRepository {
   saveIfCurrentStatus(
     transaction: PaymentTransaction,
     expectedStatus: PaymentStatus,
+    expectedObservation?: Pick<
+      PaymentTransactionSnapshot,
+      'updatedAt' | 'resultCode' | 'failureCode'
+    >,
+  ): Promise<ConditionalPaymentSaveResult>;
+  /** Atomic, one-time claim for an uncertain original Terminal Sale replay. */
+  claimUncertainResultCode(
+    paymentId: string,
+    expectedResultCode: string,
+    claimedResultCode: string,
+    expectedFailureCode: string,
   ): Promise<ConditionalPaymentSaveResult>;
 }
 

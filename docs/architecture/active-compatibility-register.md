@@ -12,6 +12,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
 | `accounting.provider-correction-structural-v2.v1` | active read expansion / v2 POST gated | persisted Provider correction v1 source-line authority → v2 effective line ID + explicit immutable source/evidence provenance | v1/v2 typed hash and reader parity; SC-D safe editor; controlled Fantuan 10→12 DELTA and Analytics parity; separately authorized v1 retirement | After production-controlled repair and consumer evidence; no forced removal |
+| `payments.sandbox-r2-recovery-to-pem.v1` | active Sandbox coexistence / retire later | R2 504-only manual endpoint → PEM case/approval/execution audit using same Payments CAS and Checkout/Benefits owner recovery | exact 504 checkpoint parity, audited ALL_ATTEMPTS_FAILED Case acceptance, migration and isolated Compact acceptance, zero old endpoint consumers | after PEM Sandbox acceptance and explicit contraction approval |
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; canonical charged-total/surcharge/tip + reversal authority complete; durable Accounting payment-fact cutover deliberately recorded; one settlement cycle reconciled; pre-cutover Accounting facts resolved; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
 | `accounting.clover-fee-reclassification-bridge.v1` | active legacy-history bridge | specialized Clover Pending reclassification Journal → ordered baseline before common Provider Correction Case | inventory all legacy source facts; strict posting-vector parity; controlled later common correction where required; no supported flow still needs bridge read | Remove only after Correction-E production inventory + controlled legacy-Clover verification |
@@ -104,7 +105,7 @@ side effects show no current source path that deliberately fans one successful
 preparation transition through both mechanisms, so no compatibility ID is required.
 The deprecated private `OrderEventsBus` accepted/prep naming remains an ordinary
 future atomic cleanup candidate rather than active compatibility debt. Detailed
-evidence is recorded in `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
+evidence is recorded in `docs/archive/architecture/phase-5-commerce-orders-fulfillment.md`.
 
 The former Next rewrite versus `app/api/[...path]` proxy overlap was resolved in
 PR #2020 by making the App Router BFF the single regular JSON API entry.
@@ -113,3 +114,7 @@ Every new non-atomic compatibility path must add a unique `compat_id`, all
 required lifecycle fields in the JSON register, and an `@compat <compat_id>`
 annotation at the code path. The scanner rejects an annotation that is absent
 from the register.
+
+## 已归档关闭证据的路径
+
+第三批只将已关闭工作包的证据指向 [归档索引](../archive/README.md) 下的同字节副本；JSON 与本视图同步维护。所有 compat_id、active/closed 状态、owner、退出条件和证据含义不变，历史迁移与生产事实不改写。

@@ -1,0 +1,44 @@
+{
+  "authorizedToMutateProduction": false,
+  "case": "H-04/S8",
+  "crossProcessQuiescenceVerified": false,
+  "endedUtc": "2026-10-14T15:00:44.846781+00:00",
+  "failures": [
+    "Blocked: holder does not retain fixture cwd"
+  ],
+  "faults": [],
+  "kind": "c5-g2b2b9-h3d-s8-disposable-review-v0",
+  "lab": "/tmp/sanq-g2b2b-lab-h3d-b1fx667m",
+  "mountNamespaceCoverageVerified": false,
+  "newConsumerAdmissionPrevented": false,
+  "observations": {},
+  "postCleanupHolder": {
+    "pid": 1771,
+    "result": "GONE",
+    "startTicks": null
+  },
+  "postCleanupUnitState": {
+    "ActiveState": "inactive",
+    "LoadState": "not-found",
+    "MainPID": "0",
+    "SubState": "dead"
+  },
+  "pre": {
+    "fixture": {
+      "dev": 2050,
+      "ino": 1048622
+    },
+    "payload": {
+      "dev": 2050,
+      "ino": 1048624
+    },
+    "unitAbsent": true,
+    "utc": "2026-10-14T15:00:44.598097+00:00"
+  },
+  "readyToInstall": false,
+  "reportedPass": false,
+  "rootLevelWholeHostExclusionVerified": false,
+  "sourceSha256": "f5d588f5365b0d80a98772b972aaa46fbbafae4b085476f0be08bcb8d37b3d80",
+  "startedUtc": "2026-10-14T15:00:44.573352+00:00",
+  "unit": "sanq-g2b2b-lab-h3d-01b3e19ae101.service"
+}

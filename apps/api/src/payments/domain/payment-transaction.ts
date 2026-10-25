@@ -243,6 +243,22 @@ export class PaymentTransaction {
     return this.snapshot.status;
   }
 
+  /** Classify a confirmed reversal without exposing provider wire result codes. */
+  get reversalOutcome(): 'VOIDED' | 'REFUNDED' | null {
+    const snapshot = this.snapshot;
+    if (
+      snapshot.status !== 'SUCCEEDED' ||
+      snapshot.operation === 'SALE' ||
+      !snapshot.providerPaymentId ||
+      snapshot.refundedAmountCents !== snapshot.amountCents
+    ) {
+      return null;
+    }
+    return snapshot.operation === 'REFUND' || snapshot.providerRefundId
+      ? 'REFUNDED'
+      : 'VOIDED';
+  }
+
   toSnapshot(): PaymentTransactionSnapshot {
     return { ...this.snapshot };
   }

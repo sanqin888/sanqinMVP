@@ -1,23 +1,43 @@
 # C5-U2D — Abort & Clean Reinstall / Recovery Kit architecture amendment
 
-**Status: DOCUMENTATION PROPOSAL FOR USER REVIEW / NOT IMPLEMENTED / PRODUCTION NO-GO**  
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
+
+## 当前替代关系
+
+本篇旧 crypt/Drive mandatory Kit / 故障主机自举 clean reinstall 已由 AWS 快照方案替代为本次更新默认恢复路线；保留原源码与历史合成证据，不再要求完成旧真实传输适配才推进更新。每日独立备份、配置/密钥 escrow 与新 Runtime 目标来源验证仍保留。
+
+## 历史方案原文（本次更新已替代，非执行手册）
+
+> **R0 现行口径（2026-10-17 Toronto）：**用户已批准 D1–D5 推荐方案；[Runtime 更新 R0 冻结设计](Runtime更新-R0冻结设计.md) 统一当前决策、门禁与执行顺序。**R0 DESIGN FROZEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**。设计批准不等于真实安装、恢复验收或生产命令授权；S2 暂缓不表示现役备份 timer 已停。
+
+**Status: D1–D5 APPROVED / R0 DESIGN FROZEN / S1 MERGED CI GREEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED**
+
+> 2026-10-11 S1 implementation record:
+> [Protected Config Snapshot / old-plan retirement](./c5-u2d-s1-protected-config-snapshot-2026-10-11.md).
+> S1 merged as PR #2789 / dev merge 7723262e (CI #7164 PR and #7165 dev green).
+> G2-A PR #2791 已合并；它提供历史 Archive 来源核对契约，
+> 不提供真实特权安装器或远端 Kit 适配。See
+> [G2 architecture contract](./c5-g2-trusted-runtime-contract-2026-10-13.md).
+> No sudoers, backup service, live Runtime or production install is authorized.  
 **Date:** 2026-10-11 (America/Toronto)  
 **Read-only baseline:** `origin/dev` `ffae689ec332d0499cefd9957273f6635041780d` (PR #2785 merged).  
-**Change type:** Explicitly proposed recovery-policy and backup-contract change; no implementation or production authorization is inferred from this document.
+**Change type:** 已批准的 R0 恢复/备份设计合同；尚未部署，不推导 Guest/root 或生产执行权限。
 
-## 1. Decision requested and unchanged objective
+> **2026-10-17 documentation-only navigation:** prior U2D design, 2B2-B root-lab evidence and the retired 2B2-C cold plan are consolidated in [Runtime historical decisions and evidence](./Runtime历史决策与证据索引.md), including their fixed-version originals and explicit limits. [Inherited Runtime constraints](./Runtime交付与安装约束.md) preserve the surviving rules. This adds no implementation, acceptance PASS or production authority.
 
-The operator's preferred policy is **Abort & Clean Reinstall**: if host power loss, process crash or another exceptional interruption occurs **during Runtime installation/update**, abandon that installation transaction outright. Do not resume the prior transaction, replay intermediate journal phases, auto-rollback the application/database, or require restoration of the exact prior filesystem-transaction execution point. After independent inspection and authorization, reconstruct a complete, trusted Runtime **from external GitHub/GHCR publication material and encrypted off-VM recovery configuration** in a new private location, then install and verify it as a **new transaction**.
+## 1. 已批准决策与目标
+
+已批准 D5 的现行策略是 **Abort & Clean Reinstall**： if host power loss, process crash or another exceptional interruption occurs **during Runtime installation/update**, abandon that installation transaction outright. Do not resume the prior transaction, replay intermediate journal phases, auto-rollback the application/database, or require restoration of the exact prior filesystem-transaction execution point. After independent inspection and authorization, reconstruct a complete, trusted Runtime **from external GitHub/GHCR publication material and encrypted off-VM recovery configuration** in a new private location, then install and verify it as a **new transaction**.
 
 This is a manual incident-recovery tradeoff: longer downtime is acceptable for an exceptionally rare event; silent unattended repair is not a requirement. **An ordinary VM restart outside an active Runtime installation is NOT a trigger for mandatory Runtime reinstall.** Application deploy/rollback remains under `ops/release/deploy_release.py`.
 
 Retain the original C5 final objective: an operator-triggered, controlled one-command GHCR application release path with no production `/home/ubuntu/sanq-app` source checkout dependency, and separate approval for Runtime source updates. No new permanent root launcher/daemon, open sudo interface, symlink-based active Runtime, arbitrary MCP root execution, or application/database cutover is proposed.
 
-This amendment is the **proposed prospective recovery contract**. The earlier U2D installer design, 2B2-B isolated root evidence and U2D-2B2-C cold-power-loss plan remain historical records; no earlier `PASS`/`NOT EXECUTED` is rewritten. The proposed replacement of C2-C2's default three-checkpoint forensic gate takes effect **only after explicit architecture/acceptance approval**.
+本修订现为**已批准且冻结的 R0 恢复合同**。旧 U2D、2B2-B 及 2B2-C 保留历史事实与原 `PASS`/`NOT EXECUTED`。D5 已批准取消三检查点冷掉电取证作为 v1 默认门禁；进程中断、重复中断、独立外部重装仍必须完成，掉电持久性仍 NOT VERIFIED。
 
-## 2. Existing facts versus requested additions
+## 2. 已有事实与已批准但尚未实现的增量
 
-| Area | Verified repo/current contract | Proposed addition; NOT deployed |
+| Area | 仓库核对/历史现场事实（不是本次重新检查主机） | R0 已批准增量；NOT deployed |
 | --- | --- | --- |
 | Daily scheduled backup | `sanq-backup.service` executes `/home/ubuntu/backup-db.sh` as `ubuntu`; project-config tar currently contains **only** `.env` and `docker-compose.yml` and uploads to `gdrive_secure:config` | Include independently validated root-only release state and C4 marker in a safe daily configuration snapshot |
 | Dynamic identities | `.env` is ubuntu:ubuntu `0600`; `.sanq-release-state.json` root:root `0600`; `.sanq-backup-layout-activated` root:root `0644` | A restricted root component is required to read the protected state; **never** broaden permissions to make `ubuntu` read it |
@@ -34,7 +54,7 @@ The production U2C point-in-time source identity was `a84b72007e6b4e82c981101e56
 
 After independent operator consent for a specific Runtime source update, and **before any active-Runtime mutation**, establish a maintenance/quiescence barrier, freeze the selected versions and capture a complete off-VM `Runtime Recovery Kit`. Upload and independently **read back, decrypt and verify** the kit from `gdrive_secure`; only a matched, fresh, explicitly verified kit for the exact operation can satisfy the install preflight. A local archive, rclone upload exit 0 or remote listing alone is **not** an acceptable PASS. Failure at any step: **BLOCKED / no Runtime modification**.
 
-Suggested logical remote prefix: `gdrive_secure:runtime-recovery/<unique-transaction-id>/`. This is a design suggestion, not an existing production directory or permission grant. A unique transaction id must prevent accidental overwrite/reuse; Google Drive/rclone storage is not intrinsically append-only or cryptographically authoritative. Record external release-source proof separately, and review write/remove permissions and retention before implementation.
+D3 冻结逻辑用途为 `gdrive_secure:runtime-recovery/<txid>/`，不是已创建的生产目录。R3 首先验证真实 txid/精确对象 ID、create-only、冲突拒绝、无 update/delete 及完整独立解密读回；优先验证 Drive 预分配 ID 与既有 rclone crypt 格式组合。检查后上传或单独 `copy --immutable` 不足；不自研密码算法。适配器不提供对账户管理员的 WORM 保证；现行要求不能满足则停止并另审后端/权限/成本/依赖，不降低合同。外部 provenance 独立核对；current/previous/目标与未关闭事故恢复集无自动 prune，不套 daily 30 天或 GitHub Artifact 90 天清理。
 
 The Kit must at least carry:
 
@@ -46,6 +66,8 @@ The Kit must at least carry:
 Production database dumps, uploads files and Nginx/SSL archives stay under their existing separate DR backup ownership; a Runtime Recovery Kit does **not** silently replace those backups or restore business data. The off-VM Kit must not store raw keys in plaintext logs, Git, status descriptions or user-visible audit reports.
 
 ### Option 1 (SUPPLEMENTARY): enrich scheduled daily configuration backup
+
+**D4：S2 在首版 v1/C5 验收后独立推进，不作为首次更新或 recovery 激活前置。** 首次更新仍必须证明现役日常备份健康、独立 DR 可用与本次 mandatory preinstall Kit 完整；S2 暂缓不停止现役 timer。以下 daily helper/sudoers/接线均为后续范围。
 
 Preserve the existing daily job's trigger, DB/Uploads/Messaging/Nginx duties and existing `gdrive_secure:config` purpose. Design a **shared restricted snapshot owner** used by both modes; daily snapshots should additionally include the exact protected release state and C4 marker alongside `.env` and Compose. Keep existing historical daily objects/retention until a separately approved policy change. The daily snapshot is an availability fallback, **not a guaranteed latest/quiescent reinstall input**.
 
@@ -70,28 +92,26 @@ The daily and pre-install modes have different concurrency requirements: a sched
 
 Do not equate 'a crypt-encrypted backup exists' with 'this is the latest valid production state'; integrity, provenance, recency and compatibility are separate gates. The C4 marker is **evidence of prior activation, not authority to skip C4 layout/storage checks on restore**.
 
-## 5. Test and acceptance contract (proposed amendment, NOT a claim of PASS)
+## 5. R0 已冻结验收合同（NOT a claim of PASS）
 
 **Required before production-capable recovery implementation is activated:**
 
-- Scheduled daily: root `0600` release-state read without permission relaxation, complete fixed-file bundle, encrypted upload + decrypt/readback, retention and failure isolation; fail closed on concurrent/pending deploy without concealing an incomplete scheduled run.
+- 首次 v1 更新前：现役 daily backup 健康与独立 DR 可用。新增 daily helper 的 root `0600` 读取、固定文件包、crypt/读回、retention/failure isolation 和并发/pending fail-closed 属于 **v1/C5 后 S2 自身验收**，不再阻塞首次 mandatory preinstall/recovery；不放宽权限。
 - Mandatory pre-install: source/manifest/digest match, running application-state coherence, full remote readback, expired artifact fallback, prior successful Kit preservation, remote failure/stale/partial/corrupt kit => **no active Runtime write**.
 - Recovery: interruption during prepare and across active handoff, occupied prior journal/candidate, independently selected external recovery point, same-version clean reinstall, fresh secret preservation, cross-process exclusion, and repeated interruption => **new isolated transaction, never resume/overwrite**.
 - Root/ownership: malicious symlink/hardlink/race, FD-safe file reading/writing, path and snapshot isolation, fixed root helper arguments/permissions, sudoers lint and refusal, authentic reviewed installer source.
 - Run on a genuinely isolated Linux ext4 VM with synthetic credentials plus CI unit tests; demonstrate at least one **complete end-to-end external-source restore** without any damaged Runtime input. Demonstrate a failed/incomplete snapshot is not marked recoverable. Production source handoff and legacy checkout retirement retain independent deployment approval and verification gates.
 
-The existing three specific cold-power-loss forensic checkpoints are **proposed to be retired from the default U2D acceptance scope**, not retrospectively marked VERIFIED. Real cold-power-loss durability is **NOT VERIFIED** unless that specific test actually runs. Alternative interruption + independent reinstall evidence proves only its actual tested behavior; unexpected on-disk states still require fail-closed handling and may require separate recovery investigation. If the project's safety owner retains physical/virtual power-loss proof as mandatory, keep it as a separate explicitly scoped gate pending approval.
+D5 已批准：旧三检查点冷掉电取证退出首版默认验收，原 NOT EXECUTED 与历史证据不改写、不删除。真实物理/虚拟掉电持久性仍 **NOT VERIFIED**；SIGKILL 不等价掉电。必须完成 R0 A14–A17 的进程中断、重复中断和独立外部新事务重装；未知状态停止，磁盘/系统损坏转完整 DR。若将来要证明掉电落盘保证，另开明确范围。
 
-## 6. Implementation readiness audit: required outputs in next conversation
+## 6. 实施队列与权限边界
 
-Start at latest `origin/dev`, reread `AGENTS.md` and current CI, inspect `ops/backup/backup-db.sh`, protected Nginx helper/sudoers, `sanq-backup.service`, `ops/release/deploy_release.py`, Runtime bundle/trust/staging code, backup runbook, and production consumer evidence. **READ ONLY; do not implement, deploy or change production permissions during the audit.**
+R0 已完成设计/文档收口，下一批 R1 真实执行基线/依赖与见证；R2 维护禁入、R3 真实 Kit、R4 安装/独立重装、R5 同候选矩阵和独立 C8 交付，详细次序与必填字段以 R0 为准。此前“下一对话只读审计”为当时任务，不能覆盖当前已批准路线。C2 Guest 可恢复环境与精确 root 命令仍需先行满足；本文件不提供执行授权。
 
-Produce: (a) precise owner/permission/consumer graph for daily and preflight; (b) minimal shared protected snapshot component and interfaces including exact file inventory; (c) remote namespace, credential, encrypted archive integrity/readback, provenance and retention/freshness contract; (d) lock/quiescence and release-state consistency plan; (e) how to make original Archive + metadata reproducibly obtainable beyond CI retention; (f) separate daily and preflight failure handling with exhaustive test matrix; (g) scoped implementation slices and all new privilege, external-service, and production approval gates; (h) a verifiable reinstall drill plan from external sources; (i) rollback and no-data-mutation rules.
+不扩 17 成员、不改变 Prisma/schema、app release owner、现役 backup/VM 服务或云配置。外部 helper/sudoers/script/service 的安装和兼容性仍单独做 C4-style 审查；不能以 R0 或 S1 代替。
 
-**Do not** expand the 17 Runtime member allowlist, change Prisma/schema, the app release controller, current backup/VM services or cloud configuration during this documentation gate. Any later implementation changing external helper/sudoers or installed backup script/service must pass separate C4-style compatibility and operator installation review because those are installed outside the Runtime Archive.
+## 7. 当前结论
 
-## 7. Current disposition / next approval
+`D1–D5 APPROVED / R0 DESIGN FROZEN / S1 MERGED CI GREEN / C5-G2 NO-GO / S2 DAILY CONFIG EXPANSION PAUSED`。
 
-`TR-0 DOCUMENTATION PROPOSED / RECOVERY KIT + DAILY BACKUP CONTRACT AWAITING USER REVIEW / NO IMPLEMENTATION OR PRODUCTION AUTHORIZATION`.
-
-This proposal does **not** close the original U2D-2B2-C evidence, authorize MacBook VM/snapshot deletion, or constitute a production root install/backups mutation. After document review, normal repository workflow: explicit permission for remote `dev` PR, GitHub Actions green, merge; only then begin a separate **read-only implementation readiness audit**, and request distinct approval before code changes.
+S1 PR #2789 与 G2-A PR #2791 已合并；B4B-3A PR #2848 / CI #7315 已通过，但仅为合成清单校验。本次没有真实执行闭包、远端 Kit、安装或 daily cutover 验收。C1–C8 仍按 R0 登记，不把源码/CI 当生产 PASS。旧冷掉电持久性仍 NOT VERIFIED；不删除 Mac/VirtualBox 或原始证据。

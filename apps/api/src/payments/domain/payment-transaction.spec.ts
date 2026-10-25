@@ -129,6 +129,58 @@ describe('PaymentTransaction', () => {
     ).toThrow('externalPaymentId cannot change once recorded');
   });
 
+  it.each([
+    { operation: 'VOID' as const, providerRefundId: null, expected: 'VOIDED' },
+    {
+      operation: 'VOID' as const,
+      providerRefundId: 'refund-1',
+      expected: 'REFUNDED',
+    },
+    {
+      operation: 'REFUND' as const,
+      providerRefundId: 'refund-1',
+      expected: 'REFUNDED',
+    },
+  ])(
+    'classifies the actual confirmed reversal without changing the requested operation: %p',
+    (facts) => {
+      const payment = PaymentTransaction.create({
+        ...baseInput,
+        operation: facts.operation,
+      })
+        .transitionTo('PROCESSING')
+        .applyProviderOutcome({
+          status: 'SUCCEEDED',
+          providerPaymentId: 'original-payment',
+          providerRefundId: facts.providerRefundId,
+          refundedAmountCents: baseInput.amountCents,
+        });
+      expect(payment.reversalOutcome).toBe(facts.expected);
+      expect(
+        PaymentTransaction.restore(payment.toSnapshot()).reversalOutcome,
+      ).toBe(facts.expected);
+      expect(payment.toSnapshot().operation).toBe(facts.operation);
+    },
+  );
+
+  it('does not classify a Sale or an unconfirmed reversal as successful', () => {
+    const sale = PaymentTransaction.create(baseInput)
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome({ status: 'SUCCEEDED', providerPaymentId: 'sale' });
+    const unknown = PaymentTransaction.create({
+      ...baseInput,
+      operation: 'VOID',
+    })
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome({
+        status: 'UNKNOWN',
+        providerPaymentId: 'sale',
+        providerRefundId: 'refund',
+      });
+    expect(sale.reversalOutcome).toBeNull();
+    expect(unknown.reversalOutcome).toBeNull();
+  });
+
   it('rejects invalid identifiers, money and currency at the domain boundary', () => {
     expect(() =>
       PaymentTransaction.create({ ...baseInput, attemptId: '   ' }),

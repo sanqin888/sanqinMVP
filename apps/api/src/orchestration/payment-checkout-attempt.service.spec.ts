@@ -10,6 +10,7 @@ import type {
   PaymentOrderPreparationPort,
   PreparedPaymentOrderSnapshot,
 } from '../orders/public-api';
+import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PrismaService } from '../prisma/prisma.service';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 
@@ -117,6 +118,7 @@ const createHarness = () => {
         orderStableId: data.orderStableId,
         expiresAt: data.expiresAt,
         finalizedAt: null,
+        benefitsReleasedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       } as PaymentCheckoutAttempt;
@@ -131,7 +133,21 @@ const createHarness = () => {
       const idMatches = where.id === undefined || where.id === row.id;
       const attemptMatches =
         where.attemptId === undefined || where.attemptId === row.attemptId;
-      if (!statusMatches || !idMatches || !attemptMatches) return { count: 0 };
+      const releaseCheckpointMatches =
+        where.benefitsReleasedAt === undefined ||
+        where.benefitsReleasedAt === row.benefitsReleasedAt;
+      const paymentIdentityMatches =
+        where.paymentTransactionId === undefined ||
+        where.paymentTransactionId === row.paymentTransactionId;
+      if (
+        !statusMatches ||
+        !idMatches ||
+        !attemptMatches ||
+        !paymentIdentityMatches ||
+        !releaseCheckpointMatches
+      ) {
+        return { count: 0 };
+      }
       row = {
         ...row,
         ...data,
@@ -325,7 +341,202 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
-  it('releases payment holds exactly once when an external reversal cancels an in-flight checkout', async () => {
+  it('reads recent Store unresolved POS checkouts before their expiry', async () => {
+    const harness = createHarness();
+    const createdAt = new Date('2026-10-17T20:28:00.000Z');
+    const updatedAt = new Date('2026-10-17T20:29:00.000Z');
+    harness.paymentCheckoutAttempt.findMany.mockResolvedValueOnce([
+      {
+        attemptId: 'new-unknown',
+        status: 'RECONCILING',
+        externalAmountCents: 1695,
+        currency: 'CAD',
+        createdAt,
+        updatedAt,
+      },
+      {
+        attemptId: 'other-terminal',
+        status: 'PROCESSING',
+        externalAmountCents: 2260,
+        currency: 'CAD',
+        createdAt,
+        updatedAt,
+      },
+    ]);
+
+    const result =
+      await harness.service.findPosCardPaymentActiveReviewItems(storeStableId);
+
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        status: {
+          in: [
+            'PROCESSING',
+            'UNKNOWN',
+            'RECONCILING',
+            'SUCCEEDED',
+            'FINALIZING',
+          ],
+        },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { attemptId: 'asc' }],
+      take: 10,
+      select: {
+        attemptId: true,
+        status: true,
+        externalAmountCents: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(result).toEqual([
+      {
+        attemptId: 'new-unknown',
+        checkoutStatus: 'RECONCILING',
+        externalAmountCents: 1695,
+        currency: 'CAD',
+        createdAt: '2026-10-17T20:28:00.000Z',
+        updatedAt: '2026-10-17T20:29:00.000Z',
+      },
+      {
+        attemptId: 'other-terminal',
+        checkoutStatus: 'PROCESSING',
+        externalAmountCents: 2260,
+        currency: 'CAD',
+        createdAt: '2026-10-17T20:28:00.000Z',
+        updatedAt: '2026-10-17T20:29:00.000Z',
+      },
+    ]);
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('builds a bounded store-scoped long-wait/release-pending review without live ledger claims', async () => {
+    const harness = createHarness();
+    const now = new Date('2026-10-13T18:00:00.000Z');
+    harness.paymentCheckoutAttempt.findMany.mockResolvedValueOnce([
+      {
+        attemptId: 'long-wait',
+        status: 'UNKNOWN',
+        expiresAt: new Date('2026-10-13T17:50:00.000Z'),
+        updatedAt: new Date('2026-10-13T17:55:00.000Z'),
+        tenderAllocationJson: {
+          pointsCents: 200,
+          balanceCents: 300,
+          couponDiscountCents: 100,
+        },
+      },
+      {
+        attemptId: 'release-pending',
+        status: 'CANCELLED',
+        expiresAt: new Date('2026-10-13T17:59:00.000Z'),
+        updatedAt: new Date('2026-10-13T17:59:30.000Z'),
+        tenderAllocationJson: {},
+      },
+    ]);
+
+    const items = await harness.service.findPosCardPaymentReviewItems(
+      storeStableId,
+      now,
+    );
+
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        OR: [
+          {
+            status: {
+              in: [
+                'PROCESSING',
+                'UNKNOWN',
+                'RECONCILING',
+                'SUCCEEDED',
+                'FINALIZING',
+              ],
+            },
+            expiresAt: { lte: now },
+          },
+          {
+            status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+            benefitsReleasedAt: null,
+          },
+        ],
+      },
+      orderBy: [{ expiresAt: 'asc' }, { attemptId: 'asc' }],
+      take: 25,
+      select: {
+        attemptId: true,
+        status: true,
+        expiresAt: true,
+        updatedAt: true,
+        tenderAllocationJson: true,
+      },
+    });
+    expect(items).toEqual([
+      {
+        attemptId: 'long-wait',
+        checkoutStatus: 'UNKNOWN',
+        reviewReason: 'LONG_WAIT',
+        preparedExpiresAt: '2026-10-13T17:50:00.000Z',
+        updatedAt: '2026-10-13T17:55:00.000Z',
+        pointsCents: 200,
+        balanceCents: 300,
+        couponDiscountCents: 100,
+      },
+      {
+        attemptId: 'release-pending',
+        checkoutStatus: 'CANCELLED',
+        reviewReason: 'RELEASE_PENDING',
+        preparedExpiresAt: '2026-10-13T17:59:00.000Z',
+        updatedAt: '2026-10-13T17:59:30.000Z',
+        pointsCents: null,
+        balanceCents: null,
+        couponDiscountCents: null,
+      },
+    ]);
+  });
+
+  it('queries only confirmed POS terminal checkouts with incomplete Benefits release', async () => {
+    const harness = createHarness();
+    await expect(
+      harness.service.findPendingBenefitsReleases(null),
+    ).resolves.toEqual([]);
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+      },
+      orderBy: { id: 'asc' },
+      take: 25,
+      select: { id: true, attemptId: true },
+    });
+
+    const afterId = '00000000-0000-0000-8000-000000000001';
+    await harness.service.findPendingBenefitsReleases(afterId);
+    expect(harness.paymentCheckoutAttempt.findMany).toHaveBeenLastCalledWith({
+      where: {
+        source: 'POS_TERMINAL',
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+        id: { gt: afterId },
+      },
+      orderBy: { id: 'asc' },
+      take: 25,
+      select: { id: true, attemptId: true },
+    });
+  });
+
+  it('replays idempotent payment releases on a repeated external reversal', async () => {
     const harness = createHarness();
     await harness.service.prepare({
       source: 'POS_TERMINAL',
@@ -346,10 +557,138 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(second.status).toBe('CANCELLED');
     expect(
       harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledTimes(2);
+    expect(harness.getRow()?.benefitsReleasedAt).toBeInstanceOf(Date);
+  });
+
+  it('only cancels a never-dispatched PROCESSING checkout with a CAS and owner RELEASE', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    await harness.service.claimProviderStart('attempt-1');
+    const cancelled =
+      await harness.service.cancelAfterConfirmedNoDispatch('attempt-1');
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(cancelled.benefitsReleasedAt).toBeInstanceOf(Date);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
     ).toHaveBeenCalledTimes(1);
     expect(
       harness.paymentCouponReservations.releasePaymentCoupons,
     ).toHaveBeenCalledTimes(1);
+    const again =
+      await harness.service.cancelAfterConfirmedNoDispatch('attempt-1');
+    expect(again.status).toBe('CANCELLED');
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a durable pending checkpoint when coupon release fails and repairs it on retry', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    await harness.service.claimProviderStart('attempt-1');
+    jest
+      .mocked(harness.paymentCouponReservations.releasePaymentCoupons)
+      .mockRejectedValueOnce(new Error('transient coupon release failure'));
+
+    await expect(
+      harness.service.markExternallyReversedAndRelease('attempt-1'),
+    ).rejects.toThrow('transient coupon release failure');
+    expect(harness.getRow()?.status).toBe('CANCELLED');
+    expect(harness.getRow()?.benefitsReleasedAt).toBeNull();
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(1);
+
+    await harness.service.releaseReservations('attempt-1');
+    expect(harness.getRow()?.benefitsReleasedAt).toBeInstanceOf(Date);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a stale successful payment when a concurrent checkout cancellation wins', async () => {
+    const harness = createHarness();
+    const prepared = await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    await harness.service.claimProviderStart('attempt-1');
+    const succeeded = PaymentTransaction.create({
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      attemptId: 'attempt-1',
+      idempotencyKey: prepared.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: 700,
+      currency: 'CAD',
+    })
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome({
+        status: 'SUCCEEDED',
+        providerPaymentId: 'clover-1',
+      });
+
+    await harness.service.markExternallyReversedAndRelease('attempt-1');
+    await expect(
+      harness.service.markFromPayment('attempt-1', succeeded),
+    ).rejects.toMatchObject({
+      response: { code: 'PAYMENT_CHECKOUT_FINAL_STATUS_CONFLICT' },
+    });
+    expect(harness.getRow()?.status).toBe('CANCELLED');
+  });
+
+  it('never checkpoints a release while Terminal checkout is uncertain', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    const row = harness.getRow();
+    if (!row) throw new Error('missing checkout row');
+    row.status = 'UNKNOWN';
+    await harness.service.markDefinitiveFailureAndRelease(
+      'attempt-1',
+      'FAILED',
+    );
+    expect(harness.getRow()?.status).toBe('UNKNOWN');
+    expect(harness.getRow()?.benefitsReleasedAt).toBeNull();
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).not.toHaveBeenCalled();
   });
 
   it('reuses the persisted immutable snapshot without requoting on duplicate start', async () => {

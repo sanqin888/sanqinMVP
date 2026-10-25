@@ -1,6 +1,6 @@
 # SanQ backup and recovery runbook
 
-> **2026-10-11 PROPOSAL ONLY / NOT DEPLOYED:** [C5-U2D Abort & Clean Reinstall / Recovery Kit](../architecture/c5-u2d-abort-clean-reinstall-recovery-kit-2026-10-11.md) proposes a mandatory encrypted, remotely read-back pre-install Runtime Recovery Kit plus supplementary daily snapshots of root-only release state and the C4 marker. **Current production daily config archives still contain only `.env` and `docker-compose.yml`.** No new root helper, sudoers scope, backup service or production cloud change is authorized by this design note.
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。
 
 > **Production C4-P2-C status (2026-10-09 UTC):** The separately authorized
 > runtime/data cutover is complete. Active layout: `/opt/sanq/runtime`,

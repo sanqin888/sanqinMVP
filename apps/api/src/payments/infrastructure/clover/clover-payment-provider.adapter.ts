@@ -8,6 +8,7 @@ import type {
   PaymentTerminalProvider,
   RefundPaymentRequest,
   StartPaymentRequest,
+  TerminalCustomerInteractionStatus,
   VoidPaymentRequest,
 } from '../../application/payment-provider.port';
 import type { PaymentProviderOutcome } from '../../domain/payment.types';
@@ -18,6 +19,21 @@ import {
 } from './ecommerce/clover-ecommerce.mapper';
 import { CloverPlatformPaymentsGateway } from './platform/clover-platform-payments.gateway';
 import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
+
+// After a positive Terminal VOID ACK, Platform may briefly lag the terminal.
+// Retry only read-only canonical queries for this specific not-yet-visible state.
+// These delays are bounded; no subsequent Terminal VOID/Refund is permitted.
+const VOID_CANONICAL_RECHECK_DELAYS_MS = [500, 1000, 2000, 3000] as const;
+// Refund has a canonical /refunds/{id} read when the Terminal supplies an ID.
+// Keep its GET-only retry window small: the POS BFF has a 25s upstream timeout,
+// while any individual Platform GET can already take up to 10s.
+const REFUND_CANONICAL_RECHECK_DELAYS_MS = [500, 1000] as const;
+const REFUND_CANONICAL_RECHECK_START_CUTOFF_MS = 12_000;
+const REFUND_CANONICAL_PENDING_CODES = new Set([
+  'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+  'CLOVER_PLATFORM_REFUND_STATUS_PENDING',
+  'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+]);
 
 const unsupportedSource = (source: string): PaymentProviderOutcome => ({
   status: 'FAILED',
@@ -47,6 +63,30 @@ export class CloverPaymentProviderAdapter
       };
     }
     return this.terminal.getAvailability();
+  }
+
+  prepareOriginalSaleResume(): Promise<boolean> {
+    return this.terminal.prepareOriginalSaleResume();
+  }
+
+  clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean> {
+    return this.terminal.clearTimedOutSaleDisplay(externalPaymentId);
+  }
+
+  cancelCustomerConfirmation(): Promise<void> {
+    return this.terminal.cancelCustomerConfirmation();
+  }
+
+  completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry = true,
+  ): Promise<boolean> {
+    return this.terminal.completeCustomerInteraction(
+      status,
+      failureCode,
+      allowRetry,
+    );
   }
 
   async startPayment(
@@ -218,18 +258,35 @@ export class CloverPaymentProviderAdapter
             'Terminal void was not sent because Platform v3 canonical reversal read is not configured',
         };
       }
-      const execution = await this.terminal.voidPayment(request);
       if (
-        execution.status === 'FAILED' ||
-        execution.status === 'CANCELLED' ||
         request.amountCents === undefined ||
+        !Number.isSafeInteger(request.amountCents) ||
+        request.amountCents <= 0 ||
         !request.currency ||
+        !/^[A-Z]{3}$/.test(request.currency) ||
         request.expectedTipRefundCents === undefined ||
-        request.expectedAdditionalChargeRefundCents === undefined
+        !Number.isSafeInteger(request.expectedTipRefundCents) ||
+        request.expectedTipRefundCents < 0 ||
+        request.expectedAdditionalChargeRefundCents === undefined ||
+        !Number.isSafeInteger(request.expectedAdditionalChargeRefundCents) ||
+        request.expectedAdditionalChargeRefundCents < 0
       ) {
+        return {
+          status: 'FAILED',
+          paymentId: request.paymentId,
+          attemptId: request.attemptId,
+          idempotencyKey: request.idempotencyKey,
+          providerPaymentId: request.providerPaymentId,
+          failureCode: 'CLOVER_VOID_EXPECTED_FACTS_MISSING',
+          failureMessage:
+            'Terminal void requires original amount, currency, tip and additional-charge facts before execution',
+        };
+      }
+      const execution = await this.terminal.voidPayment(request);
+      if (execution.status === 'FAILED' || execution.status === 'CANCELLED') {
         return execution;
       }
-      const canonical = await this.platform.getCanonicalReversal({
+      const canonicalRequest = {
         paymentId: request.paymentId,
         attemptId: request.attemptId,
         idempotencyKey: request.idempotencyKey,
@@ -238,11 +295,34 @@ export class CloverPaymentProviderAdapter
         providerRefundId: execution.providerRefundId,
         amountCents: request.amountCents,
         currency: request.currency,
-        operation: 'VOID',
+        operation: 'VOID' as const,
         expectedTipRefundCents: request.expectedTipRefundCents,
         expectedAdditionalChargeRefundCents:
           request.expectedAdditionalChargeRefundCents,
-      });
+      };
+      let canonical =
+        await this.platform.getCanonicalReversal(canonicalRequest);
+      // A successful Terminal ACK is not finality. Only a narrowly defined
+      // propagation delay can justify bounded GET-only rechecks. Any invalid
+      // facts, conflict or uncertain query must stop without another write.
+      if (
+        execution.status === 'SUCCEEDED' &&
+        execution.evidence === 'EXECUTION' &&
+        execution.providerPaymentId === request.providerPaymentId
+      ) {
+        for (const delayMs of VOID_CANONICAL_RECHECK_DELAYS_MS) {
+          if (
+            canonical.status !== 'UNKNOWN' ||
+            canonical.evidence !== 'CANONICAL' ||
+            canonical.failureCode !== 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE'
+          ) {
+            break;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+          canonical =
+            await this.platform.getCanonicalReversal(canonicalRequest);
+        }
+      }
       return this.mergeTerminalObservation(execution, canonical);
     }
     return Promise.resolve({
@@ -284,11 +364,12 @@ export class CloverPaymentProviderAdapter
             'Terminal refund requires original currency, tip and additional-charge facts',
         };
       }
+      const executionStartedAt = Date.now();
       const execution = await this.terminal.refundPayment(request);
       if (execution.status === 'FAILED' || execution.status === 'CANCELLED') {
         return execution;
       }
-      const canonical = await this.platform.getCanonicalReversal({
+      const canonicalRequest = {
         paymentId: request.paymentId,
         attemptId: request.attemptId,
         idempotencyKey: request.idempotencyKey,
@@ -297,11 +378,45 @@ export class CloverPaymentProviderAdapter
         providerRefundId: execution.providerRefundId,
         amountCents: request.amountCents,
         currency: request.currency,
-        operation: 'REFUND',
+        operation: 'REFUND' as const,
         expectedTipRefundCents: request.expectedTipRefundCents,
         expectedAdditionalChargeRefundCents:
           request.expectedAdditionalChargeRefundCents,
-      });
+      };
+      let canonical =
+        await this.platform.getCanonicalReversal(canonicalRequest);
+      // A positive Terminal execution is provisional. Only known propagation
+      // states warrant more canonical GETs, never a second refund POST. Unknown
+      // HTTP, malformed facts, mismatched IDs and explicit FAILED stop here.
+      if (
+        execution.status === 'SUCCEEDED' &&
+        execution.evidence === 'EXECUTION' &&
+        execution.providerPaymentId === request.providerPaymentId
+      ) {
+        for (const delayMs of REFUND_CANONICAL_RECHECK_DELAYS_MS) {
+          if (
+            canonical.status !== 'UNKNOWN' ||
+            canonical.evidence !== 'CANONICAL' ||
+            !REFUND_CANONICAL_PENDING_CODES.has(canonical.failureCode ?? '') ||
+            (canonical.providerRefundId &&
+              execution.providerRefundId &&
+              canonical.providerRefundId !== execution.providerRefundId) ||
+            Date.now() - executionStartedAt + delayMs >=
+              REFUND_CANONICAL_RECHECK_START_CUTOFF_MS
+          ) {
+            break;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+          if (
+            Date.now() - executionStartedAt >=
+            REFUND_CANONICAL_RECHECK_START_CUTOFF_MS
+          ) {
+            break;
+          }
+          canonical =
+            await this.platform.getCanonicalReversal(canonicalRequest);
+        }
+      }
       return this.mergeTerminalObservation(execution, canonical);
     }
     return Promise.resolve({

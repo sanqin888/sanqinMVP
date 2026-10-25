@@ -64,12 +64,31 @@ export type PaymentTerminalAvailability = {
   available: boolean;
   terminalId?: string | null;
   providerState?: string | null;
+  /** True only when the device actually supplied state/status in its response.
+   * A legacy AVAILABLE fallback is never sufficient for a financial decision. */
+  providerStateExplicit?: boolean;
   failureCode?: string | null;
   failureMessage?: string | null;
 };
 
+export type TerminalCustomerInteractionStatus =
+  | 'SUCCEEDED'
+  | 'DECLINED'
+  | 'CANCELLED'
+  | 'FAILED';
+
 export interface PaymentTerminalProvider {
   getAvailability(): Promise<PaymentTerminalAvailability>;
+  /** Only clear the display when the device reports idle; never a money decision. */
+  prepareOriginalSaleResume(): Promise<boolean>;
+  /** Display-only cleanup after Sale 504; never establishes financial cancellation. */
+  clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean>;
+  cancelCustomerConfirmation(): Promise<void>;
+  completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry?: boolean,
+  ): Promise<boolean>;
 }
 
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');

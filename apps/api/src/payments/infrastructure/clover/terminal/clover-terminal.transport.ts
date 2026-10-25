@@ -7,6 +7,7 @@ import type {
   PaymentTerminalAvailability,
   RefundPaymentRequest,
   StartPaymentRequest,
+  TerminalCustomerInteractionStatus,
   VoidPaymentRequest,
 } from '../../../application/payment-provider.port';
 import type { PaymentProviderOutcome } from '../../../domain/payment.types';
@@ -31,7 +32,12 @@ type CloverTerminalRequestAttempt =
 
 type CloverTerminalPaymentRequest = {
   amount: number;
+  capture: true;
+  final: true;
   externalPaymentId: string;
+  deviceOptions?: {
+    cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'];
+  };
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -118,7 +124,17 @@ const failureOutcome = (
   if (operation === 'STATUS') {
     return { status: 'UNKNOWN', failureCode: code, failureMessage: message };
   }
-  if (result.httpStatus === 209 || isCancelled(message)) {
+  if (result.httpStatus === 504) {
+    return {
+      status: 'UNKNOWN',
+      // Keep the original Sale HTTP status distinguishable from a later
+      // canonical NOT_FOUND observation, without storing provider payloads.
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: code,
+      failureMessage: message,
+    };
+  }
+  if (result.httpStatus === 209) {
     return {
       status: 'CANCELLED',
       resultCode: code,
@@ -126,7 +142,11 @@ const failureOutcome = (
       failureMessage: null,
     };
   }
-  if (result.httpStatus === 500 || result.httpStatus === 504) {
+  if (
+    isCancelled(message) ||
+    result.httpStatus === 500 ||
+    result.httpStatus === 504
+  ) {
     return { status: 'UNKNOWN', failureCode: code, failureMessage: message };
   }
   if (isDeclined(message)) {
@@ -201,8 +221,11 @@ export const mapTerminalPaymentResponse = (
   }
 
   if (isCancelled(details)) {
+    // A cancellation word in a 200 response is not definitive Sale evidence.
+    // Only the original Sale's HTTP 209 (above) or canonical Platform truth
+    // may unlock member benefits.
     return {
-      status: 'CANCELLED',
+      status: 'UNKNOWN',
       externalPaymentId: resolvedExternalPaymentId,
       providerPaymentId,
       providerOrderId,
@@ -212,8 +235,9 @@ export const mapTerminalPaymentResponse = (
       chargedTotalCents,
       surchargeCents,
       resultCode: resultCode || 'CANCELLED',
-      failureCode: null,
-      failureMessage: null,
+      failureCode: 'CLOVER_TERMINAL_CANCEL_TEXT_UNVERIFIED',
+      failureMessage:
+        'Non-definitive cancellation text requires reconciliation',
     };
   }
 
@@ -333,9 +357,14 @@ const mapTerminalReversalResponse = (
       stringValue(result.body, 'code') ??
       stringValue(asRecord(result.body?.error), 'code') ??
       `CLOVER_${operation}_HTTP_${result.httpStatus}`;
-    const uncertainStatus = [500, 503, 504].includes(result.httpStatus);
+    // Only documented validation/authorization/unsupported-operation refusals
+    // prove that no reversal was performed. A gateway error (including 502),
+    // timeout or an unrecognized response must not grant a fresh financial key.
+    const definitiveRejection = [400, 401, 403, 415, 501].includes(
+      result.httpStatus,
+    );
     return {
-      status: uncertainStatus ? 'UNKNOWN' : 'FAILED',
+      status: definitiveRejection ? 'FAILED' : 'UNKNOWN',
       providerPaymentId: request.providerPaymentId ?? undefined,
       terminalId,
       failureCode: code,
@@ -383,11 +412,13 @@ export const mapTerminalAvailabilityResponse = (
       failureMessage: message,
     };
   }
-  const providerState =
+  const reportedState =
     stringValue(result.body, 'state') ??
     stringValue(result.body, 'status') ??
-    stringValue(asRecord(result.body?.device), 'status') ??
-    'AVAILABLE';
+    stringValue(asRecord(result.body?.device), 'status');
+  // Keep ordinary availability compatibility; R2 must distinguish this
+  // fallback from a state explicitly reported by the physical terminal.
+  const providerState = reportedState ?? 'AVAILABLE';
   const upper = normalized(providerState);
   const busy = /BUSY|IN_PROGRESS|PROCESSING/.test(upper);
   const unavailable = /OFFLINE|DISCONNECTED|UNAVAILABLE|ERROR/.test(upper);
@@ -397,6 +428,7 @@ export const mapTerminalAvailabilityResponse = (
     available: !busy && !unavailable,
     terminalId,
     providerState,
+    providerStateExplicit: reportedState != null,
   };
 };
 
@@ -421,6 +453,24 @@ const uncertain = (
 @Injectable()
 export class CloverTerminalTransport {
   private readonly logger = new AppLogger(CloverTerminalTransport.name);
+  // Serializes Sale and display cleanup within this API process. A future
+  // multi-instance rollout requires a durable terminal-scoped coordination gate.
+  private deviceMutationQueue: Promise<void> = Promise.resolve();
+
+  private async withDeviceMutation<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.deviceMutationQueue;
+    let release: () => void = () => undefined;
+    const completion = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.deviceMutationQueue = previous.then(() => completion);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
 
   constructor(
     private readonly config: CloverProviderConfig,
@@ -477,6 +527,176 @@ export class CloverTerminalTransport {
     return mapTerminalAvailabilityResponse(attempt.result, terminalId);
   }
 
+  /**
+   * Only reset display after a confirmed original Sale HTTP 504. A bare 200
+   * empty body/{} was observed on the Compact Sandbox after that timeout; it
+   * is ambiguous payment evidence, never financial NOT_FOUND or cancellation.
+   * An explicit idle device permits a display-only Welcome when the transport
+   * is not running another Sale in this process.
+   */
+  async clearTimedOutSaleDisplay(externalPaymentId: string): Promise<boolean> {
+    if (!this.hasStaticConfiguration() || !externalPaymentId) return false;
+    return this.withDeviceMutation(async () => {
+      const lookup = await this.request(
+        `/connect/v1/payments/external/${encodeURIComponent(externalPaymentId)}`,
+        { method: 'GET', timeoutSeconds: 5 },
+      );
+      if (lookup.kind !== 'response') return false;
+      const { body, httpStatus, rawText } = lookup.result;
+      const lookupExternalId =
+        stringValue(body, 'externalPaymentId') ??
+        stringValue(asRecord(body?.payment), 'externalPaymentId');
+      const explicitlyNotFound =
+        httpStatus === 200 &&
+        normalized(stringValue(body, 'queryStatus')) === 'NOT_FOUND' &&
+        lookupExternalId === externalPaymentId &&
+        !asRecord(body?.payment);
+      const emptyResponse =
+        httpStatus === 200 &&
+        (rawText.trim() === '' ||
+          (body !== null && Object.keys(body).length === 0));
+      if (httpStatus !== 404 && !explicitlyNotFound && !emptyResponse) {
+        this.logger.warn(
+          '[CloverTerminalTransport] timeout display cleanup skipped: original device payment read is not safe for display cleanup',
+        );
+        return false;
+      }
+      // Never treat the empty device read as a payment outcome. Only the
+      // explicit device state can permit UI recovery; no Cancel or new Sale.
+      return this.welcomeWhenIdle(3);
+    });
+  }
+
+  /** Require an explicit idle state; HTTP 200 without a state is not proof. */
+  async prepareOriginalSaleResume(): Promise<boolean> {
+    return this.withDeviceMutation(() => this.welcomeWhenIdle(1));
+  }
+
+  private async welcomeWhenIdle(maxChecks: number): Promise<boolean> {
+    for (let check = 0; check < maxChecks; check += 1) {
+      const attempt = await this.request('/connect/v1/device/status', {
+        method: 'GET',
+        timeoutSeconds: 5,
+      });
+      if (attempt.kind !== 'response' || !attempt.result.ok) return false;
+      const body = attempt.result.body;
+      const state =
+        stringValue(body, 'state') ??
+        stringValue(body, 'status') ??
+        stringValue(asRecord(body?.device), 'status');
+      if (state && /^(AVAILABLE|IDLE|READY)$/.test(normalized(state))) {
+        return this.showWelcomeScreen();
+      }
+      if (check + 1 < maxChecks) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+    return false;
+  }
+
+  // A device interaction is not a payment operation. Never re-issue a Sale here.
+  async completeCustomerInteraction(
+    status: TerminalCustomerInteractionStatus,
+    failureCode?: string | null,
+    allowRetry = true,
+  ): Promise<boolean> {
+    if (status === 'SUCCEEDED' || status === 'CANCELLED') {
+      await this.showWelcomeScreen();
+      return false;
+    }
+
+    // Do not invite a second payment for configuration/authorization errors.
+    if (
+      !allowRetry ||
+      (failureCode &&
+        /^(invalid_request|CLOVER_PLATFORM_MISCONFIGURED|CLOVER_TERMINAL_(MISCONFIGURED|CREDENTIAL_UNAVAILABLE|EXTERNAL_PAYMENT_ID_))/.test(
+          failureCode,
+        ))
+    ) {
+      await this.request('/connect/v1/device/display', {
+        method: 'POST',
+        body: {
+          text:
+            status === 'DECLINED'
+              ? 'Card declined. Please ask the cashier.'
+              : 'Payment unavailable. Please ask the cashier.',
+          beep: true,
+        },
+        timeoutSeconds: 5,
+      });
+      return false;
+    }
+
+    const message = /INSUFFICIENT/i.test(failureCode ?? '')
+      ? 'Insufficient funds. Try another card?'
+      : status === 'DECLINED'
+        ? 'Card declined. Would you like to try again?'
+        : 'Payment not completed. Would you like to retry?';
+    const attempt = await this.request('/connect/v1/device/read-confirmation', {
+      method: 'POST',
+      body: {
+        text: message,
+        acceptText: 'Retry',
+        rejectText: 'Cancel',
+        beep: true,
+      },
+      // The HTTP POS request has already returned; wait for customer action.
+      timeoutSeconds: 0,
+    });
+    if (attempt.kind !== 'response') {
+      this.logger.warn(
+        '[CloverTerminalTransport] customer retry prompt outcome uncertain',
+      );
+      return false;
+    }
+    if (attempt.result.httpStatus === 200) {
+      if (attempt.result.body?.response === true) {
+        await this.showWelcomeScreen();
+        return true;
+      }
+      if (attempt.result.body?.response === false) {
+        await this.showWelcomeScreen();
+        return false;
+      }
+    }
+    if (attempt.result.httpStatus === 209) {
+      await this.showWelcomeScreen();
+    } else {
+      this.logger.warn(
+        `[CloverTerminalTransport] customer retry prompt failed status=${attempt.result.httpStatus}`,
+      );
+    }
+    return false;
+  }
+
+  async cancelCustomerConfirmation(): Promise<void> {
+    // An acknowledgement only stops the device UI; it never establishes
+    // cancellation of a financial transaction.
+    const attempt = await this.request('/connect/v1/device/cancel', {
+      method: 'POST',
+      timeoutSeconds: 5,
+    });
+    if (attempt.kind !== 'response' || !attempt.result.ok) {
+      this.logger.warn(
+        '[CloverTerminalTransport] customer confirmation cancel not acknowledged',
+      );
+    }
+  }
+
+  private async showWelcomeScreen(): Promise<boolean> {
+    const attempt = await this.request('/connect/v1/device/welcome', {
+      method: 'POST',
+      timeoutSeconds: 5,
+    });
+    if (attempt.kind !== 'response' || attempt.result.httpStatus !== 200) {
+      this.logger.warn(
+        '[CloverTerminalTransport] welcome screen was not confirmed',
+      );
+      return false;
+    }
+    return true;
+  }
+
   async startPayment(
     request: StartPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
@@ -500,13 +720,34 @@ export class CloverTerminalTransport {
       };
     }
 
+    return this.withDeviceMutation(() =>
+      this.startPaymentOnDevice(request, terminalId, externalPaymentId),
+    );
+  }
+
+  private async startPaymentOnDevice(
+    request: StartPaymentRequest,
+    terminalId: string,
+    externalPaymentId: string,
+  ): Promise<PaymentProviderOutcome> {
+    // Always run a final Sale; Canadian merchants do not support Auth/PreAuth.
     const body: CloverTerminalPaymentRequest = {
       amount: request.amountCents,
+      capture: true,
+      final: true,
       externalPaymentId,
     };
+    if (this.config.terminalSandboxManualEntryEnabled) {
+      body.deviceOptions = {
+        cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'],
+      };
+    }
     const attempt = await this.request('/connect/v1/payments', {
       method: 'POST',
       idempotencyKey: request.idempotencyKey,
+      // Customer may leave the card unattended; only an explicit action or
+      // provider/network failure should end the foreground Sale.
+      timeoutSeconds: 0,
       body,
     });
     if (attempt.kind === 'credential_unavailable') {
@@ -531,7 +772,10 @@ export class CloverTerminalTransport {
         externalPaymentId,
         terminalId,
       ),
-      evidence: 'EXECUTION',
+      evidence:
+        attempt.result.httpStatus === 209
+          ? 'TERMINAL_SALE_CANCELLED'
+          : 'EXECUTION',
     };
   }
 
@@ -606,9 +850,12 @@ export class CloverTerminalTransport {
         terminalId,
       );
     }
+    // Device Cancel must bypass the long-running Sale/Welcome queue and use a
+    // bounded command ACK timeout. A timeout remains UNKNOWN, never final.
     const attempt = await this.request('/connect/v1/device/cancel', {
       method: 'POST',
       idempotencyKey: `${request.idempotencyKey}:cancel`,
+      timeoutSeconds: 5,
       body: {},
     });
     if (attempt.kind === 'credential_unavailable') {
@@ -661,35 +908,64 @@ export class CloverTerminalTransport {
       };
     }
 
-    const attempt = await this.request(
-      `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/void`,
-      {
-        method: 'POST',
-        idempotencyKey: request.idempotencyKey,
-        body: { voidReason: 'USER_CANCEL' },
-      },
-    );
-    if (attempt.kind === 'credential_unavailable') {
-      return {
-        status: 'FAILED',
-        terminalId,
-        failureCode: attempt.failureCode,
-        failureMessage: attempt.failureMessage,
-      };
-    }
-    if (attempt.kind === 'uncertain') {
-      return uncertain(
-        'CLOVER_VOID_REQUEST_UNCERTAIN',
-        'Clover Terminal void request did not receive a response',
-        terminalId,
+    return this.withDeviceMutation<PaymentProviderOutcome>(async () => {
+      const attempt = await this.request(
+        `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/void`,
+        {
+          method: 'POST',
+          idempotencyKey: request.idempotencyKey,
+          body: { voidReason: 'USER_CANCEL' },
+        },
       );
-    }
-    return mapTerminalReversalResponse(
-      attempt.result,
-      request,
-      terminalId,
-      'VOID',
-    );
+      if (attempt.kind === 'credential_unavailable') {
+        return {
+          status: 'FAILED',
+          terminalId,
+          failureCode: attempt.failureCode,
+          failureMessage: attempt.failureMessage,
+        };
+      }
+      if (attempt.kind === 'uncertain') {
+        return uncertain(
+          'CLOVER_VOID_REQUEST_UNCERTAIN',
+          'Clover Terminal void request did not receive a response',
+          terminalId,
+        );
+      }
+      const outcome = mapTerminalReversalResponse(
+        attempt.result,
+        request,
+        terminalId,
+        'VOID',
+      );
+      const refund = asRecord(attempt.result.body?.refund);
+      const returnedPaymentId =
+        stringValue(asRecord(refund?.payment), 'id') ??
+        stringValue(attempt.result.body, 'paymentId') ??
+        stringValue(asRecord(attempt.result.body?.payment), 'id');
+      const acknowledged =
+        returnedPaymentId === providerPaymentId &&
+        (normalized(stringValue(attempt.result.body, 'voidStatus')) ===
+          'SENT_TO_SERVER' ||
+          Boolean(outcome.providerRefundId));
+      // An acknowledgement permits display cleanup only after explicit device
+      // IDLE. It never establishes financial finality; the adapter still reads v3.
+      if (outcome.status === 'SUCCEEDED' && acknowledged) {
+        try {
+          const welcomed = await this.welcomeWhenIdle(1);
+          if (!welcomed) {
+            this.logger.warn(
+              '[CloverTerminalTransport] void Welcome deferred: device was not explicitly idle or Welcome failed',
+            );
+          }
+        } catch (error) {
+          this.logger.warn(
+            `[CloverTerminalTransport] void Welcome unavailable: ${this.errorMessage(error)}`,
+          );
+        }
+      }
+      return outcome;
+    });
   }
 
   async refundPayment(
@@ -719,35 +995,55 @@ export class CloverTerminalTransport {
       };
     }
 
-    const attempt = await this.request(
-      `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`,
-      {
-        method: 'POST',
-        idempotencyKey: request.idempotencyKey,
-        body: { fullRefund: true },
-      },
-    );
-    if (attempt.kind === 'credential_unavailable') {
-      return {
-        status: 'FAILED',
-        terminalId,
-        failureCode: attempt.failureCode,
-        failureMessage: attempt.failureMessage,
-      };
-    }
-    if (attempt.kind === 'uncertain') {
-      return uncertain(
-        'CLOVER_REFUND_REQUEST_UNCERTAIN',
-        'Clover Terminal refund request did not receive a response',
-        terminalId,
+    return this.withDeviceMutation(async () => {
+      const attempt = await this.request(
+        `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`,
+        {
+          method: 'POST',
+          idempotencyKey: request.idempotencyKey,
+          body: { fullRefund: true },
+        },
       );
-    }
-    return mapTerminalReversalResponse(
-      attempt.result,
-      request,
-      terminalId,
-      'REFUND',
-    );
+      if (attempt.kind === 'credential_unavailable') {
+        return {
+          status: 'FAILED' as const,
+          terminalId,
+          failureCode: attempt.failureCode,
+          failureMessage: attempt.failureMessage,
+        };
+      }
+      if (attempt.kind === 'uncertain') {
+        return uncertain(
+          'CLOVER_REFUND_REQUEST_UNCERTAIN',
+          'Clover Terminal refund request did not receive a response',
+          terminalId,
+        );
+      }
+      const outcome = mapTerminalReversalResponse(
+        attempt.result,
+        request,
+        terminalId,
+        'REFUND',
+      );
+      // REST Pay Display keeps spinning until Welcome. This is strictly
+      // display-only: require explicit device IDLE and a refund execution ID;
+      // a Welcome failure must never rewrite or infer financial finality.
+      if (outcome.status === 'SUCCEEDED' && outcome.providerRefundId) {
+        try {
+          const welcomed = await this.welcomeWhenIdle(1);
+          if (!welcomed) {
+            this.logger.warn(
+              '[CloverTerminalTransport] refund Welcome deferred: device was not explicitly idle or Welcome failed',
+            );
+          }
+        } catch (error) {
+          this.logger.warn(
+            `[CloverTerminalTransport] refund Welcome unavailable: ${this.errorMessage(error)}`,
+          );
+        }
+      }
+      return outcome;
+    });
   }
 
   private async request(
@@ -755,6 +1051,7 @@ export class CloverTerminalTransport {
     options: {
       method: 'GET' | 'POST';
       idempotencyKey?: string;
+      timeoutSeconds?: number;
       body?: Record<string, unknown> | CloverTerminalPaymentRequest;
     },
   ): Promise<CloverTerminalRequestAttempt> {
@@ -813,6 +1110,7 @@ export class CloverTerminalTransport {
     options: {
       method: 'GET' | 'POST';
       idempotencyKey?: string;
+      timeoutSeconds?: number;
       body?: Record<string, unknown> | CloverTerminalPaymentRequest;
     },
     token: string,
@@ -820,16 +1118,17 @@ export class CloverTerminalTransport {
     const apiBase = this.config.terminalApiBase;
     const terminalId = this.config.terminalDeviceId;
     const posId = this.config.terminalRemoteAppId;
-    const timeoutSeconds = this.config.terminalTimeoutSeconds;
+    const timeoutSeconds =
+      options.timeoutSeconds ?? this.config.terminalTimeoutSeconds;
     if (!apiBase || !terminalId || !posId || timeoutSeconds === undefined) {
       return null;
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      (timeoutSeconds + 5) * 1000,
-    );
+    const timer =
+      timeoutSeconds === 0
+        ? null
+        : setTimeout(() => controller.abort(), (timeoutSeconds + 5) * 1000);
     const headers: Record<string, string> = {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -858,7 +1157,7 @@ export class CloverTerminalTransport {
       );
       return null;
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     }
 
     const rawText = await response.text();

@@ -1,0 +1,189 @@
+{
+  "authorizedToMutateProduction": false,
+  "case": "H-05",
+  "cleanupFailures": [],
+  "cleanupUnitActions": {
+    "sanq-g2b2b-lab-h5-v33-review05.service": {
+      "action": "already-unloaded",
+      "before": {
+        "ActiveState": "inactive",
+        "LoadState": "not-found",
+        "MainPID": "0",
+        "SubState": "dead",
+        "UnitFileState": ""
+      },
+      "resetExit": null,
+      "stopExit": null
+    },
+    "sanq-g2b2b-lab-h5-v33-review05.timer": {
+      "action": "already-unloaded",
+      "before": {
+        "AccuracyUSec": "1min",
+        "ActiveState": "inactive",
+        "LoadState": "not-found",
+        "NextElapseUSecRealtime": "",
+        "RandomizedDelayUSec": "0",
+        "SubState": "dead",
+        "UnitFileState": ""
+      },
+      "resetExit": null,
+      "stopExit": null
+    }
+  },
+  "crossProcessQuiescenceVerified": false,
+  "deadlinesSec": {
+    "dispatch": 45,
+    "helperLifetime": 180,
+    "helperReadyAfterParent": 15,
+    "witness": 90
+  },
+  "endedUtc": "2026-10-15T20:52:38.491987+00:00",
+  "failureDiagnostics": null,
+  "failures": [],
+  "fixture": "/tmp/sanq-g2b2b-lab-h5-v33-f5oqwrbw",
+  "held": {
+    "afterWitnessWindow": {
+      "cgroup": "0::/system.slice/sanq-g2b2b-lab-h5-v33-review05.service",
+      "cwdHeld": true,
+      "fdHeld": true,
+      "fixture": {
+        "dev": 2050,
+        "ino": 1048598
+      },
+      "payload": {
+        "dev": 2050,
+        "ino": 1048599
+      },
+      "payloadFdNumbers": [
+        3
+      ],
+      "pid": 1959,
+      "ppid": 1,
+      "startTicks": 149689,
+      "uid": 0
+    },
+    "helperOrRcloneStillAlive": true,
+    "mockHelper": {
+      "cgroup": "0::/system.slice/sanq-g2b2b-lab-h5-v33-review05.service",
+      "cwdHeld": true,
+      "fdHeld": true,
+      "fixture": {
+        "dev": 2050,
+        "ino": 1048598
+      },
+      "payload": {
+        "dev": 2050,
+        "ino": 1048599
+      },
+      "payloadFdNumbers": [
+        3
+      ],
+      "pid": 1959,
+      "ppid": 1,
+      "startTicks": 149689,
+      "uid": 0
+    },
+    "reason": "synthetic timer inactive or auto-unloaded while helper holds cwd/fd",
+    "timerInactive": true,
+    "timerState": {
+      "AccuracyUSec": "1min",
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "NextElapseUSecRealtime": "",
+      "RandomizedDelayUSec": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    }
+  },
+  "hostAdapterCalls": 0,
+  "hypotheticalRuntimeHandoff": "BLOCKED",
+  "independentWitnessProvided": false,
+  "independentWitnessRequired": true,
+  "kind": "c5-g2b2b9-h5-disposable-negative-v33",
+  "mountNamespaceCoverageVerified": false,
+  "newConsumerAdmissionPrevented": false,
+  "parentStarted": {
+    "parentPid": 1957,
+    "parentStartTicks": 149679,
+    "utc": "2026-10-15T20:51:07.207172+00:00"
+  },
+  "post": {
+    "sanq-g2b2b-lab-h5-v33-review05.service": {
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "MainPID": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    },
+    "sanq-g2b2b-lab-h5-v33-review05.timer": {
+      "AccuracyUSec": "1min",
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "NextElapseUSecRealtime": "",
+      "RandomizedDelayUSec": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    }
+  },
+  "pre": {
+    "sanq-g2b2b-lab-h5-v33-review05.service": {
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "MainPID": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    },
+    "sanq-g2b2b-lab-h5-v33-review05.timer": {
+      "AccuracyUSec": "1min",
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "NextElapseUSecRealtime": "",
+      "RandomizedDelayUSec": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    }
+  },
+  "ready": {
+    "pid": 1959,
+    "startTicks": 149689,
+    "utc": "2026-10-15T20:51:07.320977+00:00"
+  },
+  "readyToInstall": false,
+  "reportedPass": true,
+  "rootLevelWholeHostExclusionVerified": false,
+  "run": "RUN05",
+  "runtimeHandoffAttempted": false,
+  "sourceSha256": "0ae08883199dfae54e120d9727f63c1e15ae352ce3c1a8ba1d399d3e1e53d9bf",
+  "startedUtc": "2026-10-15T20:51:05.104451+00:00",
+  "timerSettingsRequested": {
+    "AccuracySec": "1us",
+    "OnActiveSec": "2s",
+    "RandomizedDelaySec": "0"
+  },
+  "timerTransition": {
+    "action": "already-unloaded",
+    "after": {
+      "AccuracyUSec": "1min",
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "NextElapseUSecRealtime": "",
+      "RandomizedDelayUSec": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    },
+    "before": {
+      "AccuracyUSec": "1min",
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "NextElapseUSecRealtime": "",
+      "RandomizedDelayUSec": "0",
+      "SubState": "dead",
+      "UnitFileState": ""
+    },
+    "stopExit": null
+  },
+  "units": [
+    "sanq-g2b2b-lab-h5-v33-review05.timer",
+    "sanq-g2b2b-lab-h5-v33-review05.service"
+  ]
+}

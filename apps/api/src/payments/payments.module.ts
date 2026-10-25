@@ -6,6 +6,13 @@ import {
   TerminalPaymentService,
 } from './application/create-payment-attempt.use-case';
 import { RefundPaymentService } from './application/refund-payment.service';
+import { PaymentExceptionCaseService } from './application/payment-exception-case.service';
+import { PaymentExceptionPaymentGuardService } from './application/payment-exception-payment-guard.service';
+import {
+  PAYMENT_EXCEPTION_CASE_REPOSITORY,
+  type PaymentExceptionCaseRepository,
+} from './application/payment-exception-case.repository';
+import { SandboxTerminalManualRecoveryService } from './application/sandbox-terminal-manual-recovery.service';
 import {
   PAYMENT_PROVIDER_TRANSACTION_LOOKUP,
   type PaymentProviderTransactionLookup,
@@ -31,14 +38,46 @@ import {
 } from './application/payment-transaction.repository';
 import { CloverPaymentProviderAdapter } from './infrastructure/clover/clover-payment-provider.adapter';
 import { CloverProviderInfrastructureModule } from './infrastructure/clover/clover-provider-infrastructure.module';
-import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
+import {
+  PrismaPaymentTransactionRepository,
+  PrismaPaymentTerminalOperationRepository,
+  PrismaPaymentExceptionCaseRepository,
+} from './infrastructure/prisma/prisma-payment-transaction.repository';
+import {
+  PAYMENT_TERMINAL_OPERATION_REPOSITORY,
+  type PaymentTerminalOperationRepository,
+} from './application/payment-terminal-operation.repository';
 import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/prisma-payment-webhook-event.repository';
 
 @Module({
   imports: [PrismaModule, CloverProviderInfrastructureModule],
   providers: [
     PrismaPaymentTransactionRepository,
+    PrismaPaymentTerminalOperationRepository,
     PrismaPaymentWebhookEventRepository,
+    PrismaPaymentExceptionCaseRepository,
+    {
+      provide: PaymentExceptionCaseService,
+      useFactory: (repository: PaymentExceptionCaseRepository) =>
+        new PaymentExceptionCaseService(repository),
+      inject: [PAYMENT_EXCEPTION_CASE_REPOSITORY],
+    },
+    {
+      provide: PaymentExceptionPaymentGuardService,
+      useFactory: (
+        sandbox: SandboxTerminalManualRecoveryService,
+        terminal: TerminalPaymentService,
+      ) => new PaymentExceptionPaymentGuardService(sandbox, terminal),
+      inject: [SandboxTerminalManualRecoveryService, TerminalPaymentService],
+    },
+    {
+      provide: PAYMENT_EXCEPTION_CASE_REPOSITORY,
+      useExisting: PrismaPaymentExceptionCaseRepository,
+    },
+    {
+      provide: PAYMENT_TERMINAL_OPERATION_REPOSITORY,
+      useExisting: PrismaPaymentTerminalOperationRepository,
+    },
     {
       provide: PAYMENT_TRANSACTION_REPOSITORY,
       useExisting: PrismaPaymentTransactionRepository,
@@ -90,16 +129,40 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
         transactions: PaymentTransactionRepository,
         provider: PaymentProvider,
         terminalProvider: PaymentTerminalProvider,
+        operations: PaymentTerminalOperationRepository,
       ) =>
         new TerminalPaymentService(
           createAttempt,
           transactions,
           provider,
           terminalProvider,
+          operations,
         ),
       inject: [
         CreatePaymentAttemptUseCase,
         PAYMENT_TRANSACTION_REPOSITORY,
+        PAYMENT_PROVIDER,
+        PAYMENT_TERMINAL_PROVIDER,
+        PAYMENT_TERMINAL_OPERATION_REPOSITORY,
+      ],
+    },
+    {
+      provide: SandboxTerminalManualRecoveryService,
+      useFactory: (
+        terminalPayments: TerminalPaymentService,
+        operations: PaymentTerminalOperationRepository,
+        provider: PaymentProvider,
+        terminalProvider: PaymentTerminalProvider,
+      ) =>
+        new SandboxTerminalManualRecoveryService(
+          terminalPayments,
+          operations,
+          provider,
+          terminalProvider,
+        ),
+      inject: [
+        TerminalPaymentService,
+        PAYMENT_TERMINAL_OPERATION_REPOSITORY,
         PAYMENT_PROVIDER,
         PAYMENT_TERMINAL_PROVIDER,
       ],
@@ -147,6 +210,9 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
     PAYMENT_TRANSACTION_REPOSITORY,
     PAYMENT_WEBHOOK_EVENT_REPOSITORY,
     TerminalPaymentService,
+    SandboxTerminalManualRecoveryService,
+    PaymentExceptionCaseService,
+    PaymentExceptionPaymentGuardService,
     RefundPaymentService,
     PaymentReverseSyncService,
   ],

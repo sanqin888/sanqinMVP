@@ -1,4 +1,5 @@
 import { PaymentMethod } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
@@ -252,6 +253,125 @@ describe('PosCardRefundOrchestrationService', () => {
     expect(harness.transactions.findById).not.toHaveBeenCalled();
     expect(harness.orders.createFullRefund).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    { ageMs: -1, operation: 'REFUND' },
+    { ageMs: 0, operation: 'VOID' },
+    { ageMs: 1_499_999, operation: 'VOID' },
+    { ageMs: 1_500_000, operation: 'VOID' },
+    { ageMs: 1_500_001, operation: 'REFUND' },
+    { ageMs: null, operation: 'REFUND' },
+  ])(
+    'selects the full-reversal route at the completedAt boundary: %p',
+    async ({ ageMs, operation }) => {
+      const now = Date.parse('2026-10-20T15:00:00.000Z');
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+      try {
+        const harness = createHarness();
+        const sale = PaymentTransaction.restore({
+          ...successfulSale().toSnapshot(),
+          completedAt: ageMs === null ? null : new Date(now - ageMs),
+        });
+        harness.orders.getByStableIdForStore.mockResolvedValue(order());
+        harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
+        harness.transactions.findById.mockResolvedValue(sale);
+        harness.transactions.findByAttemptId.mockResolvedValue(null);
+        harness.refunds.startOrRecover.mockResolvedValue(reversal('UNKNOWN'));
+        clock.mockClear();
+        await harness.service.refundFullOrder(
+          '4750_Yonge_Street',
+          'order_stable_1',
+          {
+            reason: 'Boundary audit',
+            operatorName: 'Staff',
+            refundMethod: PaymentMethod.CARD,
+          },
+        );
+        expect(harness.refunds.startOrRecover).toHaveBeenCalledWith(
+          expect.objectContaining({ operation }),
+        );
+        expect(harness.orders.createFullRefund).not.toHaveBeenCalled();
+        expect(clock).toHaveBeenCalledTimes(ageMs === null ? 0 : 1);
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
+
+  it('recovers the same UNKNOWN VOID beyond the window with the same financial identity', async () => {
+    const digest = createHash('sha256')
+      .update('pos-full-refund\norder_stable_1')
+      .digest('hex');
+    const existing = PaymentTransaction.restore({
+      ...reversal('UNKNOWN').toSnapshot(),
+      attemptId: `refund_${digest.slice(0, 48)}`,
+      idempotencyKey: `refund_${digest}`,
+    });
+    const harness = createHarness();
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
+    harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
+    harness.transactions.findById.mockResolvedValue(
+      PaymentTransaction.restore({
+        ...successfulSale().toSnapshot(),
+        completedAt: new Date(Date.now() - 3_600_000),
+      }),
+    );
+    harness.transactions.findByAttemptId.mockResolvedValue(existing);
+    harness.refunds.startOrRecover.mockResolvedValue(existing);
+    await harness.service.refundFullOrder(
+      '4750_Yonge_Street',
+      'order_stable_1',
+      {
+        reason: 'Recover original',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
+      },
+    );
+    expect(harness.refunds.startOrRecover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'VOID',
+        attemptId: existing.attemptId,
+        idempotencyKey: existing.idempotencyKey,
+      }),
+    );
+    expect(harness.transactions.findByAttemptId).toHaveBeenCalledTimes(1);
+    expect(harness.orders.createFullRefund).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { providerRefundId: null, reversalOutcome: 'VOIDED' },
+    { providerRefundId: 'clover-refund-1', reversalOutcome: 'REFUNDED' },
+  ])(
+    'projects the confirmed actual outcome while retaining VOID: %p',
+    async (facts) => {
+      const harness = createHarness();
+      const confirmed = PaymentTransaction.restore({
+        ...reversal('SUCCEEDED').toSnapshot(),
+        providerRefundId: facts.providerRefundId,
+      });
+      harness.orders.getByStableIdForStore.mockResolvedValue(order());
+      harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
+      harness.transactions.findById.mockResolvedValue(successfulSale());
+      harness.transactions.findByAttemptId.mockResolvedValue(confirmed);
+      harness.refunds.startOrRecover.mockResolvedValue(confirmed);
+      harness.orders.createFullRefund.mockResolvedValue({
+        order: order({ status: 'refunded' }),
+        outcome: 'refunded',
+      });
+      await expect(
+        harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
+          reason: 'Confirmed reversal',
+          operatorName: 'Staff',
+          refundMethod: PaymentMethod.CARD,
+        }),
+      ).resolves.toMatchObject({
+        operation: 'VOID',
+        status: 'SUCCEEDED',
+        reversalOutcome: facts.reversalOutcome,
+      });
+      expect(harness.orders.createFullRefund).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('starts a fresh idempotent reversal only after a previous managed attempt is definitively failed', async () => {
     const harness = createHarness();

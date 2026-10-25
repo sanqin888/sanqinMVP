@@ -188,6 +188,14 @@ POS 请求退款
 
 不得在 Clover 未确认退款成功时提前把 Order 标记为 refunded。
 
+**Phase E VOID 安全约束（2026-10-20，PR #2884源码CI #7407通过；最终head门禁/设备验收仍独立）：**
+
+- 请求的 `operation=VOID` 与 Provider 实际执行的撤销/退款属于两个事实。实际类别由 Payments 对已确认 reversal 派生，经既有编排向 POS 兼容新增可选 `reversalOutcome`，不能靠 UI 的25分钟计算或 Clover ACK猜成功，也不重写历史 operation/伪造 Refund ID。
+- 不确定的 Terminal reversal HTTP/网络结果保持 UNKNOWN；只有明确拒绝可终态失败。原UNKNOWN/RECONCILING使用原身份查询，不因本地窗口过期或响应丢失获得新幂等key。首发前校验完整金额/币种/tip/additional facts，preflight不写回零退款观察覆盖已记录累计。
+- VOID已知Refund ID仍核对原Payment唯一关系；voided与Refund冲突保持UNKNOWN。设备同进程队列只协调显示/调用，明确关联ACK及显式空闲才可Welcome；Welcome不决定资金最终性，失败不得补发金融操作。多实例设备协调仍是独立门禁。
+- POS响应丢失应提示核验原交易、禁止重复撤销/退款；Provider确认后才能成功提示，真VOID与VOID转换Refund分别显示。必须分别记录CI、设备与本地持久化验收，不能由源码准备升级为Phase E关闭。详见[Phase E本地准备](clover-pos-phase-plan.md)。
+
+
 ### 3.7 Clover -> SanQ 反向同步
 
 Clover webhook 用于外部 payment update、Dashboard/device refund 等反向同步和最终一致性。Webhook 不作为 POS 刷卡成功的唯一主确认路径；主链路优先使用当前支付请求的同步/状态结果，Webhook + reconciliation 负责外部变化和恢复。
@@ -354,6 +362,8 @@ CREATED
 - `RECONCILING`：使用 provider payment ID / externalPaymentId / idempotency key 恢复事实。
 
 不得依赖“金额相同 + 时间接近”猜测支付。
+
+**仅隔离 Sandbox 的受控人工例外（C-2C7 R2）：** 原始 Terminal Sale HTTP 504、Platform v3 最新查询 NOT_FOUND、设备 IDLE/AVAILABLE/READY，以及 Clover Test Merchant 上人工观察到的 Open / No Payments，仍然不等于 Clover 已确认取消。为了处理真实 Dev Kit 的历史未决交易，已单独授权在明确启用的本地 Sandbox 中让已登录并绑定设备的 POS 操作员承担核查风险、记录 Clover Order ID、说明、身份和不可变审计，经 Payments 原身份 CAS 后将本地付款结案为带专用 operator-attested marker 的 `FAILED`，不得记为 `CLOVER_CANCELLED`。Orchestration 只能在 Benefits-owned RELEASE 完成后、再次查证 canonical 未付款并完成设备空闲/Welcome 检查后解除 Terminal Fence。此例外不适用于生产、Web Ecommerce 或任何仅凭 NOT_FOUND 自动判定的流程；后续若出现迟到成功付款必须作为人工财务冲突处理，不能默默覆盖或假装取消。详细门禁见 `docs/payments/clover-pos-phase-plan.md` §R2。
 
 ## 7. 幂等与重复扣款边界
 

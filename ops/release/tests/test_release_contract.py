@@ -225,5 +225,24 @@ class ReleaseContractTests(unittest.TestCase):
                     release.run_seal(args)
 
 
+    def test_batch_a_exact_previous_seal_and_superseding_status(self):
+        statuses = [valid_status()]
+        exact = release.sealed_release_for_sha(SHA_OLD, lambda path: statuses)
+        self.assertEqual(exact["sourceSha"], SHA_OLD)
+        self.assertEqual(exact["images"]["sanq-api"]["digest"], DIGEST)
+        self.assertEqual(exact["images"]["sanq-web"]["ref"],
+                         f"ghcr.io/sanqin888/sanq-web:{SHA_OLD}")
+        for bad in (
+            [],
+            [valid_status(creator="attacker")],
+            [valid_status(state="failure"), valid_status()],
+            [valid_status(state="pending"), valid_status()],
+            [{**valid_status(), "description": "no real digest"}],
+        ):
+            with self.subTest(bad=bad), self.assertRaises(release.ReleaseContractError):
+                release.sealed_release_for_sha(SHA_OLD, lambda _path: bad)
+        with self.assertRaises(release.ReleaseContractError):
+            release.sealed_release_for_sha("invalid-sha", lambda _path: statuses)
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { PaymentTransaction as PrismaPaymentTransactionRecord } from '@prisma/client';
+import {
+  Prisma,
+  type PaymentTransaction as PrismaPaymentTransactionRecord,
+  type PaymentTerminalOperation as Row,
+  type PaymentExceptionCase as CaseRow,
+} from '@prisma/client';
 
 import {
   PaymentProviderTransactionIdentityConflictError,
@@ -26,6 +31,13 @@ import {
   type PaymentTransactionRepository,
 } from '../../application/payment-transaction.repository';
 import { PaymentTransaction } from '../../domain/payment-transaction';
+import type {
+  PaymentTerminalOperationRepository,
+  SandboxManualUnpaidDecision,
+  SandboxManualUnpaidInput,
+  TerminalCancelClaim,
+  TerminalOperation,
+} from '../../application/payment-terminal-operation.repository';
 import {
   parsePaymentMethod,
   parsePaymentOperation,
@@ -36,6 +48,12 @@ import {
   type PaymentStatus,
 } from '../../domain/payment.types';
 import { PrismaService } from '../../../prisma/prisma.service';
+import type {
+  PaymentExceptionCase,
+  PaymentExceptionCaseRepository,
+  PaymentExceptionDecisionInput,
+  PaymentExceptionOpenInput,
+} from '../../application/payment-exception-case.repository';
 
 const toDomain = (row: PrismaPaymentTransactionRecord): PaymentTransaction =>
   PaymentTransaction.restore({
@@ -677,11 +695,19 @@ export class PrismaPaymentTransactionRepository
   async saveIfCurrentStatus(
     transaction: PaymentTransaction,
     expectedStatus: PaymentStatus,
+    expectedObservation?: Pick<
+      ReturnType<PaymentTransaction['toSnapshot']>,
+      'updatedAt' | 'resultCode' | 'failureCode'
+    >,
   ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
     const snapshot = transaction.toSnapshot();
     try {
       const result = await this.prisma.paymentTransaction.updateMany({
-        where: { id: snapshot.id, status: expectedStatus },
+        where: {
+          id: snapshot.id,
+          status: expectedStatus,
+          ...(expectedObservation ?? {}),
+        },
         data: this.mutableData(transaction),
       });
       const current = await this.findById(snapshot.id);
@@ -696,6 +722,33 @@ export class PrismaPaymentTransactionRepository
       if (field) throw new PaymentTransactionUniquenessError(field);
       throw error;
     }
+  }
+
+  async claimUncertainResultCode(
+    paymentId: string,
+    expectedResultCode: string,
+    claimedResultCode: string,
+    expectedFailureCode: string,
+  ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
+    const claimed = await this.prisma.paymentTransaction.updateMany({
+      where: {
+        id: paymentId,
+        source: 'POS_TERMINAL',
+        operation: 'SALE',
+        status: { in: ['UNKNOWN', 'RECONCILING'] },
+        resultCode: expectedResultCode,
+        failureCode: expectedFailureCode,
+        providerPaymentId: null,
+      },
+      data: { resultCode: claimedResultCode },
+    });
+    const transaction = await this.findById(paymentId);
+    if (!transaction) {
+      throw new Error(
+        `Payment transaction ${paymentId} disappeared during resume claim`,
+      );
+    }
+    return { updated: claimed.count === 1, transaction };
   }
 
   async saveSuccessfulSaleObservation(
@@ -1111,5 +1164,591 @@ export class PrismaPaymentTransactionRepository
       processedAt: snapshot.processedAt,
       completedAt: snapshot.completedAt,
     };
+  }
+}
+
+// Co-located with the existing Payments Prisma adapter to preserve the
+// architecture scanner's controlled Payments -> Runtime persistence edge.
+// The terminal operation has an independent class and application-owned port.
+@Injectable()
+export class PrismaPaymentTerminalOperationRepository implements PaymentTerminalOperationRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private map(row: Row): TerminalOperation {
+    return {
+      terminalId: row.terminalId,
+      storeStableId: row.storeStableId,
+      attemptId: row.attemptId,
+      paymentTransactionId: row.paymentTransactionId,
+      externalPaymentId: row.externalPaymentId,
+      state: row.state,
+      cancelRequestedAt: row.cancelRequestedAt,
+    };
+  }
+
+  async findByAttemptId(attemptId: string): Promise<TerminalOperation | null> {
+    const row = await this.prisma.paymentTerminalOperation.findUnique({
+      where: { attemptId },
+    });
+    return row ? this.map(row) : null;
+  }
+
+  async reserve(
+    terminalId: string,
+    storeStableId: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const current = await this.prisma.paymentTerminalOperation.findUnique({
+      where: { terminalId },
+    });
+    if (!current) {
+      try {
+        await this.prisma.paymentTerminalOperation.create({
+          data: { terminalId, storeStableId, attemptId, state: 'RESERVED' },
+        });
+        return true;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          return false;
+        }
+        throw error;
+      }
+    }
+    if (current.attemptId === attemptId) {
+      return (
+        current.storeStableId === storeStableId && current.state === 'RESERVED'
+      );
+    }
+    if (current.state !== 'FINALIZED') return false;
+    const replaced = await this.prisma.paymentTerminalOperation.updateMany({
+      where: {
+        terminalId,
+        attemptId: current.attemptId,
+        state: 'FINALIZED',
+      },
+      data: {
+        storeStableId,
+        attemptId,
+        paymentTransactionId: null,
+        externalPaymentId: null,
+        state: 'RESERVED',
+        cancelRequestedAt: null,
+        cancelAcknowledgedAt: null,
+      },
+    });
+    return replaced.count === 1;
+  }
+
+  async claimDispatch(
+    attemptId: string,
+    paymentTransactionId: string,
+    externalPaymentId: string,
+  ): Promise<boolean> {
+    const claimed = await this.prisma.paymentTerminalOperation.updateMany({
+      where: {
+        attemptId,
+        state: 'RESERVED',
+        paymentTransactionId: null,
+      },
+      data: {
+        paymentTransactionId,
+        externalPaymentId,
+        state: 'SALE_IN_FLIGHT',
+      },
+    });
+    return claimed.count === 1;
+  }
+
+  async requestCancel(
+    attemptId: string,
+    storeStableId: string,
+  ): Promise<TerminalCancelClaim> {
+    const current = await this.findByAttemptId(attemptId);
+    if (!current || current.storeStableId !== storeStableId) {
+      return { operation: null, sendDeviceCancel: false, requested: false };
+    }
+    if (current.state === 'RESERVED' || current.state === 'SALE_IN_FLIGHT') {
+      const claimed = await this.prisma.paymentTerminalOperation.updateMany({
+        where: {
+          attemptId,
+          storeStableId,
+          state: current.state,
+        },
+        data: {
+          state: 'CANCEL_REQUESTED',
+          cancelRequestedAt: new Date(),
+        },
+      });
+      if (claimed.count === 1) {
+        return {
+          operation: { ...current, state: 'CANCEL_REQUESTED' },
+          sendDeviceCancel: current.state === 'SALE_IN_FLIGHT',
+          requested: true,
+        };
+      }
+    }
+    return {
+      operation: await this.findByAttemptId(attemptId),
+      sendDeviceCancel: false,
+      requested: false,
+    };
+  }
+
+  async acknowledgeCancel(attemptId: string): Promise<void> {
+    await this.prisma.paymentTerminalOperation.updateMany({
+      where: { attemptId, state: 'CANCEL_REQUESTED' },
+      data: { state: 'CANCEL_ACKED', cancelAcknowledgedAt: new Date() },
+    });
+  }
+
+  async complete(attemptId: string): Promise<void> {
+    await this.prisma.paymentTerminalOperation.updateMany({
+      where: {
+        attemptId,
+        state: {
+          in: [
+            'RESERVED',
+            'SALE_IN_FLIGHT',
+            'CANCEL_REQUESTED',
+            'CANCEL_ACKED',
+          ],
+        },
+      },
+      data: { state: 'FINALIZED' },
+    });
+  }
+
+  async getSandboxManualUnpaidDecision(
+    attemptId: string,
+  ): Promise<SandboxManualUnpaidDecision | null> {
+    const row = await this.prisma.paymentTerminalSandboxRecovery.findUnique({
+      where: { attemptId },
+    });
+    if (!row) return null;
+    return {
+      attemptId: row.attemptId,
+      paymentTransactionId: row.paymentTransactionId,
+      terminalId: row.terminalId,
+      storeStableId: row.storeStableId,
+      externalPaymentId: row.externalPaymentId,
+      actorUserStableId: row.actorUserStableId,
+      cloverOrderId: row.cloverOrderId,
+      operatorNote: row.operatorNote,
+      originalResultCode: row.originalResultCode,
+      originalFailureCode: row.originalFailureCode,
+      canonicalCheckedAt: row.canonicalCheckedAt,
+      benefitsReleasedAt: row.benefitsReleasedAt,
+      terminalFinalizedAt: row.terminalFinalizedAt,
+      lateCanonicalAt: row.lateCanonicalAt,
+      lateProviderPaymentId: row.lateProviderPaymentId,
+    };
+  }
+
+  async noteSandboxLateCanonicalSuccess(
+    attemptId: string,
+    providerPaymentId: string | null,
+  ): Promise<void> {
+    await this.prisma.paymentTerminalSandboxRecovery.updateMany({
+      where: { attemptId, lateCanonicalAt: null },
+      data: {
+        lateCanonicalAt: new Date(),
+        lateProviderPaymentId: providerPaymentId,
+      },
+    });
+  }
+
+  async claimSandboxManualUnpaid(
+    input: SandboxManualUnpaidInput,
+  ): Promise<'CLAIMED' | 'ALREADY_CLAIMED' | 'CONFLICT'> {
+    const eligible =
+      (input.originalResultCode === 'CLOVER_TERMINAL_SALE_HTTP_504' &&
+        input.originalFailureCode === 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND') ||
+      input.originalFailureCode === 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED';
+    if (!eligible) return 'CONFLICT';
+    return this.prisma.$transaction(
+      async (tx): Promise<'CLAIMED' | 'ALREADY_CLAIMED' | 'CONFLICT'> => {
+        const existing = await tx.paymentTerminalSandboxRecovery.findUnique({
+          where: { attemptId: input.attemptId },
+        });
+        if (existing) {
+          return existing.paymentTransactionId === input.paymentTransactionId &&
+            existing.storeStableId === input.storeStableId &&
+            existing.terminalId === input.terminalId
+            ? 'ALREADY_CLAIMED'
+            : 'CONFLICT';
+        }
+        const fence = await tx.paymentTerminalOperation.updateMany({
+          where: {
+            terminalId: input.terminalId,
+            storeStableId: input.storeStableId,
+            attemptId: input.attemptId,
+            paymentTransactionId: input.paymentTransactionId,
+            externalPaymentId: input.externalPaymentId,
+            state: 'SALE_IN_FLIGHT',
+            cancelRequestedAt: null,
+          },
+          data: { state: 'NEEDS_REVIEW' },
+        });
+        if (fence.count !== 1) return 'CONFLICT';
+        const payment = await tx.paymentTransaction.updateMany({
+          where: {
+            id: input.paymentTransactionId,
+            attemptId: input.attemptId,
+            source: 'POS_TERMINAL',
+            operation: 'SALE',
+            provider: 'CLOVER',
+            status: 'RECONCILING',
+            resultCode:
+              input.originalResultCode === 'UNRECORDED'
+                ? null
+                : input.originalResultCode,
+            failureCode: input.originalFailureCode,
+            providerPaymentId: null,
+            externalPaymentId: input.externalPaymentId,
+          },
+          data: {
+            status: 'FAILED',
+            resultCode: 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID',
+            failureCode: 'SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT',
+            failureMessage:
+              'Sandbox operator-assessed unpaid. This is not Clover-confirmed cancellation.',
+            completedAt: new Date(),
+          },
+        });
+        if (payment.count !== 1) {
+          // Throw so that the earlier fence claim rolls back in this transaction.
+          throw new Error('SANDBOX_MANUAL_UNPAID_PAYMENT_CAS_CONFLICT');
+        }
+        await tx.paymentTerminalSandboxRecovery.create({
+          data: input,
+        });
+        return 'CLAIMED';
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async checkpointSandboxBenefitsReleased(attemptId: string): Promise<void> {
+    const decision =
+      await this.prisma.paymentTerminalSandboxRecovery.findUnique({
+        where: { attemptId },
+        select: { attemptId: true },
+      });
+    if (!decision) {
+      throw new Error('Sandbox manual recovery decision missing');
+    }
+    await this.prisma.paymentTerminalSandboxRecovery.updateMany({
+      where: { attemptId, benefitsReleasedAt: null },
+      data: { benefitsReleasedAt: new Date() },
+    });
+  }
+
+  async finalizeSandboxManualUnpaid(attemptId: string): Promise<boolean> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const decision = await tx.paymentTerminalSandboxRecovery.findUnique({
+          where: { attemptId },
+        });
+        if (
+          !decision ||
+          !decision.benefitsReleasedAt ||
+          decision.lateCanonicalAt
+        ) {
+          return false;
+        }
+        const operation = await tx.paymentTerminalOperation.findUnique({
+          where: { terminalId: decision.terminalId },
+        });
+        if (
+          !operation ||
+          operation.attemptId !== attemptId ||
+          operation.storeStableId !== decision.storeStableId ||
+          operation.paymentTransactionId !== decision.paymentTransactionId
+        ) {
+          return false;
+        }
+        if (operation.state === 'FINALIZED') {
+          return decision.terminalFinalizedAt !== null;
+        }
+        if (operation.state !== 'NEEDS_REVIEW') return false;
+        const payment = await tx.paymentTransaction.findUnique({
+          where: { id: decision.paymentTransactionId },
+          select: { status: true, resultCode: true },
+        });
+        if (
+          payment?.status !== 'FAILED' ||
+          payment.resultCode !== 'POS_TERMINAL_SANDBOX_OPERATOR_UNPAID'
+        ) {
+          return false;
+        }
+        const updated = await tx.paymentTerminalOperation.updateMany({
+          where: {
+            terminalId: decision.terminalId,
+            attemptId,
+            state: 'NEEDS_REVIEW',
+          },
+          data: { state: 'FINALIZED' },
+        });
+        if (updated.count !== 1) return false;
+        await tx.paymentTerminalSandboxRecovery.update({
+          where: { attemptId },
+          data: { terminalFinalizedAt: new Date() },
+        });
+        return true;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+}
+
+const toCase = (row: CaseRow): PaymentExceptionCase => ({
+  caseStableId: row.caseStableId,
+  attemptId: row.attemptId,
+  storeStableId: row.storeStableId,
+  paymentTransactionId: row.paymentTransactionId,
+  externalPaymentId: row.externalPaymentId,
+  amountCents: row.amountCents,
+  currency: row.currency,
+  action: row.action as PaymentExceptionCase['action'],
+  mode: row.mode as PaymentExceptionCase['mode'],
+  status: row.status as PaymentExceptionCase['status'],
+  requestedByStableId: row.requestedByStableId,
+  operatorNote: row.operatorNote,
+  cloverOrderId: row.cloverOrderId,
+  approvedByStableId: row.approvedByStableId,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
+});
+
+/**
+ * Payments infrastructure. All decisions and audit rows use one transaction.
+ * No cross-context tables or raw Clover payload are written here.
+ */
+@Injectable()
+export class PrismaPaymentExceptionCaseRepository implements PaymentExceptionCaseRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async open(input: PaymentExceptionOpenInput): Promise<PaymentExceptionCase> {
+    const row = await this.prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.paymentExceptionCase.findUnique({
+          where: { attemptId: input.attemptId },
+        });
+        if (existing) {
+          if (
+            existing.storeStableId !== input.storeStableId ||
+            existing.paymentTransactionId !== input.paymentTransactionId ||
+            existing.externalPaymentId !== input.externalPaymentId ||
+            existing.amountCents !== input.amountCents ||
+            existing.currency !== input.currency ||
+            existing.action !== input.action ||
+            existing.mode !== input.mode ||
+            existing.requestedByStableId !== input.requestedByStableId
+          ) {
+            throw new Error('PAYMENT_EXCEPTION_DUPLICATE_ATTEMPT_CONFLICT');
+          }
+          return existing;
+        }
+        const created = await tx.paymentExceptionCase.create({
+          data: {
+            attemptId: input.attemptId,
+            storeStableId: input.storeStableId,
+            paymentTransactionId: input.paymentTransactionId,
+            externalPaymentId: input.externalPaymentId,
+            amountCents: input.amountCents,
+            currency: input.currency,
+            action: input.action,
+            mode: input.mode,
+            status: input.mode === 'SANDBOX' ? 'APPROVED' : 'REQUESTED',
+            requestedByStableId: input.requestedByStableId,
+            operatorNote: input.operatorNote,
+            cloverOrderId: input.cloverOrderId,
+          },
+        });
+        await tx.paymentExceptionEvidence.create({
+          data: {
+            caseStableId: created.caseStableId,
+            source: 'SANQ_PAYMENT_SNAPSHOT',
+            resultCode: input.evidenceCode,
+            description:
+              'Operator request snapshot only; execution requires independent fresh provider evidence',
+            observedAt: new Date(),
+          },
+        });
+        return created;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+    return toCase(row);
+  }
+
+  async get(caseStableId: string): Promise<PaymentExceptionCase | null> {
+    const row = await this.prisma.paymentExceptionCase.findUnique({
+      where: { caseStableId },
+    });
+    return row ? toCase(row) : null;
+  }
+
+  async findByAttempt(attemptId: string): Promise<PaymentExceptionCase | null> {
+    const row = await this.prisma.paymentExceptionCase.findUnique({
+      where: { attemptId },
+    });
+    return row ? toCase(row) : null;
+  }
+
+  async list(storeStableId?: string): Promise<PaymentExceptionCase[]> {
+    const rows = await this.prisma.paymentExceptionCase.findMany({
+      where: storeStableId ? { storeStableId } : undefined,
+      orderBy: [{ updatedAt: 'desc' }, { caseStableId: 'asc' }],
+      take: 50,
+    });
+    return rows.map(toCase);
+  }
+
+  async appendEvidence(
+    caseStableId: string,
+    source: string,
+    resultCode: string,
+    description: string,
+  ): Promise<void> {
+    await this.prisma.paymentExceptionEvidence.create({
+      data: {
+        caseStableId,
+        source,
+        resultCode,
+        description,
+        observedAt: new Date(),
+      },
+    });
+  }
+
+  async decide(
+    input: PaymentExceptionDecisionInput,
+  ): Promise<PaymentExceptionCase | null> {
+    const row = await this.prisma.$transaction(
+      async (tx) => {
+        const previous = await tx.paymentExceptionCase.findUnique({
+          where: { caseStableId: input.caseStableId },
+        });
+        if (!previous || previous.mode !== 'PRODUCTION') return null;
+        if (previous.requestedByStableId === input.actorStableId) {
+          throw new Error('PAYMENT_EXCEPTION_SELF_APPROVAL_FORBIDDEN');
+        }
+        if (previous.status !== 'REQUESTED') {
+          throw new Error('PAYMENT_EXCEPTION_ALREADY_DECIDED');
+        }
+        const changed = await tx.paymentExceptionCase.updateMany({
+          where: { caseStableId: input.caseStableId, status: 'REQUESTED' },
+          data: {
+            status: input.decision,
+            approvedByStableId:
+              input.decision === 'APPROVED' ? input.actorStableId : null,
+            approvedAt: input.decision === 'APPROVED' ? new Date() : null,
+            decidedAt: new Date(),
+          },
+        });
+        if (changed.count !== 1) {
+          throw new Error('PAYMENT_EXCEPTION_APPROVAL_RACE');
+        }
+        await tx.paymentExceptionApproval.create({
+          data: {
+            caseStableId: input.caseStableId,
+            actorStableId: input.actorStableId,
+            decision: input.decision,
+            note: input.note,
+          },
+        });
+        return tx.paymentExceptionCase.findUniqueOrThrow({
+          where: { caseStableId: input.caseStableId },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+    return row ? toCase(row) : null;
+  }
+
+  async claimExecution(
+    caseStableId: string,
+  ): Promise<'CLAIMED' | 'BUSY' | 'DONE'> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const current = await tx.paymentExceptionCase.findUnique({
+          where: { caseStableId },
+        });
+        if (!current) throw new Error('PAYMENT_EXCEPTION_CASE_NOT_FOUND');
+        if (current.status === 'COMPLETED') return 'DONE';
+        if (current.status === 'REJECTED' || current.status === 'REQUESTED') {
+          return 'BUSY';
+        }
+        // An interrupted process can be resumed after the lease expires. The
+        // underlying payment/fence claim and Benefits RELEASE remain idempotent.
+        const leaseExpired = new Date(Date.now() - 120_000);
+        const allowed =
+          current.status === 'APPROVED' ||
+          current.status === 'NEEDS_REVIEW' ||
+          (current.status === 'EXECUTING' && current.updatedAt < leaseExpired);
+        if (!allowed) return 'BUSY';
+        const updated = await tx.paymentExceptionCase.updateMany({
+          where: {
+            caseStableId,
+            status: current.status,
+            updatedAt: current.updatedAt,
+          },
+          data: { status: 'EXECUTING' },
+        });
+        if (updated.count !== 1) return 'BUSY';
+        await tx.paymentExceptionExecution.upsert({
+          where: { caseStableId },
+          create: { caseStableId, action: current.action },
+          update: {
+            lastAttemptAt: new Date(),
+            attempts: { increment: 1 },
+            failureCode: null,
+          },
+        });
+        return 'CLAIMED';
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async finishExecution(
+    caseStableId: string,
+    complete: boolean,
+    failureCode?: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const updated = await tx.paymentExceptionCase.updateMany({
+          where: { caseStableId, status: 'EXECUTING' },
+          data: { status: complete ? 'COMPLETED' : 'NEEDS_REVIEW' },
+        });
+        if (updated.count !== 1) return;
+        await tx.paymentExceptionExecution.update({
+          where: { caseStableId },
+          data: {
+            finishedAt: complete ? new Date() : null,
+            failureCode: complete
+              ? null
+              : (failureCode ?? 'RECOVERY_INCOMPLETE'),
+          },
+        });
+        await tx.paymentExceptionEvidence.create({
+          data: {
+            caseStableId,
+            source: 'SANQ_RECOVERY_CHECKPOINT',
+            resultCode: complete
+              ? 'RECOVERY_COMPLETED'
+              : 'RECOVERY_NEEDS_REVIEW',
+            description: failureCode ?? 'Owner checkpoints evaluated',
+            observedAt: new Date(),
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 }

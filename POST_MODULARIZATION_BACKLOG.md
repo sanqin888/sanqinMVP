@@ -1,5 +1,20 @@
 # SanQ Post-Modularization Backlog
 
+## Runtime 更新专项队列（R0 已冻结，2026-10-18 两项修订已批准）
+
+当前决策/进度见 [R0](docs/architecture/Runtime更新-R0冻结设计.md)；详细操作合同见 [AWS 快照与维护冻结方案](docs/architecture/Runtime更新-AWS快照与维护冻结方案.md)。本专项不改变其他产品队列优先级。
+
+| 批次 | 范围 | 状态 |
+| --- | --- | --- |
+| R0 | 已批准代码快照、拍快照前 no/停服/禁入及全仓文档对齐 | 本批文档已审阅、远端交付已明确授权；最终 head CI/合并以本批 PR 为准 |
+| R1 | 实际正常更新执行器/平台与目标发布来源；复用已有有限证据 | IN PROGRESS；恢复专用旧自举链退出必做 |
+| R2 | 原策略记录、no/停服、跨重启冻结与禁入、精确恢复 | PLANNED |
+| R3 | 受限 API 创建/等待/核对本次手动快照、故障 VM 外轻量清单 | PLANNED；替代 crypt/Drive mandatory Kit |
+| R4 | 正常正式安装与准确快照→独立 AWS 实例，首启维护、单写者/切流 | PLANNED；替代故障机 clean reinstall |
+| R5 | 同候选端到端/故障/真实 AWS 恢复矩阵，再独立 C8 交付 | PLANNED；不重复旧默认路线实测 |
+
+下一批先对齐真实生产资产、外部协调器/生产执行器接口、最小 IAM、策略持久化与恢复清单，再实施。**C5-G2 NO-GO**；S2 新 daily 扩充在 v1/C5 后独立推进；现役 daily 健康/独立 DR/escrow 继续前置。旧 backup drill 的有限关闭不等于新 Runtime/AWS 恢复验收；下文旧 readiness R1–R5 与本专项不同。仅本批文档，无代码/云/生产执行。
+
 Status: **ACTIVE / PRIORITIZED POST-MODULARIZATION ROADMAP — DO NOT REOPEN THE CLOSED MODULARIZATION PROGRAM**  
 Created: 2026-09-19  
 Priority audit: 2026-09-19  
@@ -371,7 +386,7 @@ This should be a dedicated workstation project, not a small PWA-manifest patch.
 
 2026-09-25 A4-C1 is MERGED / CI GREEN through PR #2543 / squash `06afc5b5`; CI #6397 passed Web/API/printer-agent plus the new Windows workstation PowerShell gate. The repository now owns the bounded Windows workstation launcher under `tools/windows-pos-workstation`, preserving the installed POS PWA/browser-profile authority, Customer Display local-sync contract and existing printer-agent runtime.
 
-2026-09-28 A4-C2 plus both store-found hardening fixes are MERGED / CI GREEN and the A4-D store installation gate is VERIFIED. PR #2545 / squash `8b1cac46` (CI #6404) added startup/recovery, PR #2577 / squash `6fbac600` (CI #6518) moved fullscreen to targeted Chromium-native F11, and PR #2578 / squash `29d1ab2c` passed merged-head CI #6522 after fixing Windows PowerShell 5.1 implicit `ConfigPath` resolution. Store verification already proved Task Scheduler logon launch plus periodic recovery for POS-only, Display-only and both-window closure; the operator has now also completed the real-store A4-D installation successfully on the corrected source. A4 source/cutover work is therefore handed off to A5-A. The remaining network/session/device/PWA-cache/printer resilience scenarios stay as operational runbook observations rather than unfinished A4 source work. Recovery/fullscreen/auth/device/display-sync/print ownership semantics are unchanged. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
+2026-09-28 A4-C2 plus both store-found hardening fixes are MERGED / CI GREEN and the A4-D store installation gate is VERIFIED. PR #2545 / squash `8b1cac46` (CI #6404) added startup/recovery, PR #2577 / squash `6fbac600` (CI #6518) moved fullscreen to targeted Chromium-native F11, and PR #2578 / squash `29d1ab2c` passed merged-head CI #6522 after fixing Windows PowerShell 5.1 implicit `ConfigPath` resolution. Store verification already proved Task Scheduler logon launch plus periodic recovery for POS-only, Display-only and both-window closure; the operator has now also completed the real-store A4-D installation successfully on the corrected source. A4 source/cutover work is therefore handed off to A5-A. The remaining network/session/device/PWA-cache/printer resilience scenarios stay as operational runbook observations rather than unfinished A4 source work. Recovery/fullscreen/auth/device/display-sync/print ownership semantics are unchanged. Detailed work-package state: `docs/archive/architecture/postmod-a4-windows-pos-workstation.md`.
 
 ### 4.5 A5 — Critical browser E2E, staged
 
@@ -379,7 +394,7 @@ Priority: **P1 QUALITY GATE**
 Complexity: **H**  
 State: **CLOSED / A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 MERGED + CI GREEN (#2583 / `8226f627` / CI #6539) / A5-C2 MERGED + CI GREEN (#2584 / `f5133dde` / CI #6543) / A5-D1 MERGED + CI GREEN (#2585 / `b3552526` / CI #6545) / A5-D2 MERGED + CI GREEN (#2586 / `89acbcde` / CI #6548) / A5-D3 MERGED + CI GREEN (#2587 / `82d10dc1` / CI #6552)**  
 Dependency authorization: **GRANTED 2026-09-28 for `@playwright/test`.**  
-Detailed plan/audit: `docs/architecture/postmod-a5-browser-e2e.md`
+Detailed plan/audit: `docs/archive/architecture/postmod-a5-browser-e2e.md`
 
 A5-A confirmed that the current Web had Jest tests but no configured browser E2E runner, no `test:e2e` script and no Playwright/Cypress project configuration; API Supertest coverage was process-local and CI had no disposable PostgreSQL + real Web/API browser stack. A5-B1 is now merged through PR #2580 / `e7477ef2`; authoritative CI #6529 passed the PostgreSQL-backed `browser-e2e` job with committed migration replay, fail-closed `sanq_e2e` fixtures, real API, production Web/BFF and Chromium assertions. The user-generated pnpm 9.0.0 lockfile was reviewed and merged with only the expected Playwright and Next optional-peer resolution changes. A5-B2-A now locally adds stable Staff identity/routing journeys: ADMIN and ACCOUNTANT canonical landing, Accounting root canonicalization, ACCOUNTANT denied Admin routing, STAFF POS admission failing closed without device credentials, and Admin logout/session revocation. CI #6531 exposed and corrected an initial test assumption that a STAFF session should exist before device admission: the canonical `purpose=pos` login must reject missing `posDeviceId`/`posDeviceKey` with 403 and create no session. CI #6532 then clarified the middleware split: a completely unauthenticated `/store/pos` request redirects with `next=/store/pos` only, while the login page infers the POS device-binding UI from that target; `needDevice=1` is reserved for the separate existing-session/missing-device branch. Device claim, admitted STAFF session and authenticated STAFF cross-surface denial remain Stage 2/A5-D. B2-A merged through PR #2581 / `0627931b`; authoritative CI #6533 passed after the browser suite proved the exact fail-closed POS admission semantics. B2-B merged through PR #2582 / `c8775b1c`; authoritative CI #6535 passed the real Admin action-MFA browser journey with LogEmailProvider, OTP verification and the guarded Loyalty rules write. A5-C is split into C1 Customer identity/benefits and C2 controlled quote/checkout. C1 merged through PR #2583 / `8226f627`; authoritative CI #6539 passed after CI #6537 corrected the E2E fixture to the production digits-only persisted phone normalization / actual `+1 416...` display shape and CI #6538 narrowed a duplicate `$20.00` UI locator without weakening business assertions. C2 merged through PR #2584 / `f5133dde`; authoritative CI #6543 passed the isolated Customer/Coupon/points/stored-balance journey after CI #6541 corrected two Prettier-only seed formatting failures and CI #6542 exposed the browser runtime's missing CI-local `CLOVER_PRICING_TOKEN_SECRET`. The final journey proves the canonical `$5 item - $1 coupon - $1 point + $0.39 HST = $3.39` server quote, full stored-balance `externalPaymentCents=0`, direct thank-you navigation and a persisted authenticated `paid` / `STORE_BALANCE` Order without a wallet or real Clover/Apple Pay/Google Pay provider call. A5-D is split into D1 POS device claim/Staff admission, D2 controlled order acceptance -> durable PrintJob, and D3 POS/Customer Display/PWA reload behavior. D1 merged through PR #2585 / `b3552526`; authoritative CI #6545 passed the existing ACTIVE-device claim, real httpOnly device cookies, STAFF `purpose=pos` session and guarded `e2e_store` context journey. D2 merged through PR #2586 / `89acbcde`; authoritative CI #6548 is green. CI #6547 confirmed the AUTO PrintJob was already durable but exposed an expected observation race between customer and kitchen offline dispatch writes; the final journey waits until both requested targets settle at `PENDING + CLIENT_OFFLINE` and then passes without production changes. D3 local source adds a third isolated POS device and browser coverage for the actual workstation/browser boundary: language-neutral `/store/pos` resolves into the localized authenticated POS surface, `/pos.webmanifest` retains the independent POS identity/start URL, the real POS menu UI writes the cart snapshot, a second same-context `/store/display` page projects that snapshot read-only, and a POS reload preserves signed Staff/device cookies plus the cart/display state. CI #6550 calibrated the loopback canonical origin so host-only cookies are created after the real `/store/pos` middleware redirect. CI #6551 then established that the current production-style Turbopack browser job has no observable `navigator.serviceWorker.ready` registration; D3 therefore does not claim service-worker registration/update/cache semantics or silently change the PWA runtime. That finding is a separate PWA-runtime follow-up candidate. D3 temporarily disables the disposable store's auto-accept through the existing guarded setting while the full POS page is mounted, then restores it, preventing D2 order consumption without changing production defaults. Offline-cache/update recovery and Windows dual-screen/window recovery remain operational evidence rather than browser-CI claims.
 
@@ -740,7 +755,7 @@ Depends on: **B2 production closeout — satisfied 2026-09-22**.
 
 Current state: **PRODUCTION VERIFIED / CLOSED — B1 MIGRATION APPLIED — B2/C/D MERGED + CI GREEN + DEPLOYED + VERIFIED — INCLUDED / EXCLUDED / MIXED-ACCOUNT V2 PATHS VERIFIED — MANAGEMENT VS CANONICAL RECONCILED**.
 
-Detailed audit/design: `docs/architecture/accounting-expense-funding-attribution.md`.
+Detailed audit/design: `docs/archive/architecture/accounting-expense-funding-attribution.md`.
 
 EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. EFA-B2 merged through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d` with CI #6150 green and provides the grouped canonical v2 posting engine without adding a JournalLine funding dimension. EFA-C merged through PR #2470 / `42e25b04` after CI #6155 passed; current Expense/Inbox writes and UI now use version-2 split funding, confirmed-unposted v2 completion is split-level, historical v1 allocation reads/completion remain, records dual-read both authorities, and account policy configuration is available in Settings.
 
@@ -756,7 +771,7 @@ Priority: **P1/P2**
 Complexity: **H**  
 Depends on: **B1 + B2 + EFA — satisfied 2026-09-22**.
 
-Current state: **PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO GRAPH CHANGE / B4 NEXT** at latest documentation baseline `origin/dev@b5d64e0e`. B3-A merged through PR #2475 / squash `9c92eeda`; B3-B through PR #2476 / squash `ec2cff0f`; B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`; merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D live API-to-canonical-Journal reconciliation passed on 2026-09-23. Detailed audit/design/closeout: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
+Current state: **PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO GRAPH CHANGE / B4 NEXT** at latest documentation baseline `origin/dev@b5d64e0e`. B3-A merged through PR #2475 / squash `9c92eeda`; B3-B through PR #2476 / squash `ec2cff0f`; B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`; merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D live API-to-canonical-Journal reconciliation passed on 2026-09-23. Detailed audit/design/closeout: `docs/archive/architecture/accounting-b3-trial-balance-readiness.md`.
 
 The readiness audit proves the existing canonical Journal/CoA is sufficient: production snapshot has 1,501 Journal entries / 4,897 lines, debit=credit=`7,798,968c`, zero unbalanced entries and zero explicit opening Journals. Account-class reconstruction reconciles Assets=`2,104,938c`, Liabilities=`816,109c` and cumulative recorded earnings=`1,288,829c` to zero under the current management-opening policy. B3 therefore does not redesign Journal or revenue/expense posting.
 
@@ -838,7 +853,7 @@ Avoid polishing current mixed-authority widgets immediately before replacing the
 Priority: **P2**  
 Complexity: **M**  
 Depends on: **B2 terminology / financial contract stabilization — satisfied; B4 closed**  
-State: **B5 PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION**. B5-B1: PR #2511 / squash `35ba5d52` / CI #6291 green. B5-B2: PR #2513 / squash `c64c07d3` / final head `7a8b09eb` / CI #6298 green. B5-C1: PR #2514 / final head `d8f21ca6` / squash `af57715f` / CI #6303 green. B5-C2: PR #2515 / final head `6f455230` / squash `dfa8e21c` / CI #6306 green. B5-D: PR #2520 / final head `3371e8a4` / squash `7a6908ac` / CI #6327 green; production verified on `main@7a6908ac`. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
+State: **B5 PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION**. B5-B1: PR #2511 / squash `35ba5d52` / CI #6291 green. B5-B2: PR #2513 / squash `c64c07d3` / final head `7a8b09eb` / CI #6298 green. B5-C1: PR #2514 / final head `d8f21ca6` / squash `af57715f` / CI #6303 green. B5-C2: PR #2515 / final head `6f455230` / squash `dfa8e21c` / CI #6306 green. B5-D: PR #2520 / final head `3371e8a4` / squash `7a6908ac` / CI #6327 green; production verified on `main@7a6908ac`. Detailed work package: `docs/archive/architecture/admin-business-reports-b5.md`.
 
 B5 is now scoped as a store operating-monitoring surface, not merely a cleanup of the old Sales page. The product target is Today-first anomaly detection and explanation across Order count, Order total, average Order total, time-of-day, channel, fulfillment, product/package demand, production demand and execution health while canonical financial reporting remains Accounting-owned.
 
@@ -875,7 +890,7 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 ### 5.1 Admin Data consolidation — Sales Analytics + Management P&L
 
 State: **PRODUCTION VERIFIED / CLOSED — DATA-A-F complete; Sales item-mix follow-up PR #2676 / CI #6849 / squash `90308226`; DATA-F PR #2677 / CI #6851 / squash `86057bbf`; no DATA-G planned**  
-Detailed plan: `docs/architecture/admin-data-sales-management-analytics.md`
+Detailed plan: `docs/archive/architecture/admin-data-sales-management-analytics.md`
 
 The approved follow-on keeps Accounting as the money/projection owner while moving management-facing consumption toward Admin:
 
@@ -947,7 +962,7 @@ Priority: **P1 PARALLEL PRODUCT WORK**
 Complexity: **M**  
 Hard dependency: none  
 State: **PRODUCTION VERIFIED / CLOSED — MKT-A-F complete; MKT-F PR #2644 / final head `0ca96b20` / CI #6735 / squash `087cbb06`; no MKT-G planned**  
-Detailed plan: `docs/architecture/admin-marketing-overview.md`
+Detailed plan: `docs/archive/architecture/admin-marketing-overview.md`
 
 Before MKT-C, `/admin/promotions` was primarily a navigation landing page for Daily Special,
 coupons/bundles and automatic/loyalty promotions while Admin secondary navigation already
@@ -1016,7 +1031,7 @@ Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**
 Complexity: **H**  
 Hard dependency: none  
 State: **PRODUCTION VERIFIED / CLOSED / SLICE 1-2B PRODUCTION VERIFIED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B MERGED (#2620 / CI #6658 / `c08f02c6`) / SLICE 4 MERGED (#2621 / CI #6663 / `94fc6564`) / PRODUCTION `main@94fc6564` VERIFIED / NO MIGRATION**  
-Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
+Detailed plan: `docs/archive/architecture/postmod-catalog-store-menu.md`
 
 Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`; Slice 4 merged through PR #2621 / CI #6663 / `94fc6564`. Production now runs `main@94fc6564`: API/Web/Uber worker are healthy with no post-deploy error matches; the deployed API has no legacy full route and no API/Web log evidence of `/admin/menu/full` requests; Catalog ownership remains 7 live Categories / 23 live Option Group Templates / 33 live Items with zero NULL or foreign Store owners, physical NOT NULL intact and cross-Store option bindings/components at 0/0. The split Admin workspaces and narrow Marketing/Homepage/POS contracts are therefore accepted as production cutover, and this workstream is closed.
 

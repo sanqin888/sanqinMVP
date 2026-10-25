@@ -30,7 +30,12 @@ type CloverPlatformCanonicalReversalRequest =
   };
 
 const PAYMENT_EXPAND = 'additionalCharges,cardTransaction,refunds,order';
+// Clover reconciliation guide documents voids on a payment collection query.
+// Do not change ordinary single-Payment reads or Refund/Sale contracts.
+const VOID_COLLECTION_EXPAND = 'voids,refunds';
 const PLATFORM_TIMEOUT_MS = 10_000;
+const PAYMENT_COLLECTION_PAGE_SIZE = 50;
+const PAYMENT_COLLECTION_MAX_ROWS = 500;
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -366,14 +371,64 @@ const mapPlatformPaymentCollection = (
       'Clover Platform has not exposed the payment yet',
     );
   }
-  if (elements.length !== 1) {
-    return platformPaymentUnknown(
-      request,
-      'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
-      'Clover Platform returned more than one payment for externalPaymentId',
-    );
+  if (elements.length === 1) return mapPlatformPayment(elements[0], request);
+
+  // A physical Compact can create several FAIL payment rows and eventually
+  // one SUCCESS during a single external Sale. No row may be ignored, and
+  // collection completeness is established by the paginated caller.
+  const seenIds = new Set<string>();
+  let cloverOrderId: string | undefined;
+  let success: Record<string, unknown> | null = null;
+  for (const value of elements) {
+    const payment = asRecord(value);
+    const id = stringValue(payment, 'id');
+    const orderId = stringValue(asRecord(payment?.order), 'id');
+    const externalId = stringValue(payment, 'externalPaymentId');
+    const amount = integerValue(payment, 'amount');
+    const currency = (
+      stringValue(payment, 'currency') ??
+      stringValue(asRecord(payment?.order), 'currency')
+    )?.toUpperCase();
+    const result = stringValue(payment, 'result')?.toUpperCase();
+    if (
+      !id ||
+      seenIds.has(id) ||
+      !orderId ||
+      (cloverOrderId !== undefined && cloverOrderId !== orderId) ||
+      externalId !== request.externalPaymentId ||
+      amount !== request.amountCents ||
+      currency !== request.currency.toUpperCase() ||
+      (result !== 'FAIL' && result !== 'SUCCESS')
+    ) {
+      return platformPaymentUnknown(
+        request,
+        'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+        'Clover multi-attempt collection contains mismatched or unresolved records',
+      );
+    }
+    seenIds.add(id);
+    cloverOrderId = orderId;
+    if (result === 'SUCCESS') {
+      if (success) {
+        return platformPaymentUnknown(
+          request,
+          'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+          'Clover returned multiple successful payments for one external Sale',
+        );
+      }
+      success = payment;
+    }
   }
-  return mapPlatformPayment(elements[0], request);
+
+  if (success) return mapPlatformPayment(success, request);
+  // NOT a final declined Payment identity: only the original Sale's observed
+  // HTTP 209 may consume this exhaustive all-FAIL collection as cancel evidence.
+  return platformPaymentUnknown(
+    request,
+    'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+    'Every payment in the complete original Sale collection is FAIL',
+    { amountCents: request.amountCents, currency: request.currency },
+  );
 };
 
 const reversalUnknown = (
@@ -405,7 +460,26 @@ const mapPlatformRefund = (
 
   const providerRefundId = stringValue(refund, 'id');
   const amountCents = integerValue(refund, 'amount');
-  const tipCents = integerValue(refund, 'tipAmount');
+  if (
+    refund.currency !== undefined &&
+    stringValue(refund, 'currency')?.toUpperCase() !==
+      request.currency.toUpperCase()
+  ) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_CURRENCY_MISMATCH',
+      'Clover Platform refund currency conflicts with the original payment',
+      providerRefundId,
+    );
+  }
+  // Clover Platform may omit tipAmount for a zero-tip refund. Only infer zero
+  // when the original frozen canonical Sale explicitly had no tip; a missing
+  // nonzero tip or a malformed supplied value remains UNKNOWN.
+  const tipCents =
+    integerValue(refund, 'tipAmount') ??
+    (refund.tipAmount === undefined && request.expectedTipRefundCents === 0
+      ? 0
+      : undefined);
   const payment = asRecord(refund.payment);
   const providerPaymentId = stringValue(payment, 'id');
   if (!providerRefundId) {
@@ -439,6 +513,38 @@ const mapPlatformRefund = (
       request,
       'CLOVER_PLATFORM_REFUND_AMOUNT_MISMATCH',
       'Clover Platform refund amount does not match the requested full refund',
+      providerRefundId,
+    );
+  }
+  // An existing refund ID/HTTP 200 is not financial finality when Clover
+  // explicitly reports a pending, failed or subsequently voided refund.
+  if (refund.voided !== undefined && refund.voided !== false) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+      'Clover Platform refund has been voided or has an invalid voided flag',
+      providerRefundId,
+    );
+  }
+  const refundStatus = stringValue(refund, 'status');
+  if (
+    refund.status !== undefined &&
+    (!refundStatus ||
+      !['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'REFUNDED'].includes(
+        refundStatus.toUpperCase(),
+      ))
+  ) {
+    // Only an explicitly recognized in-flight status is eligible for
+    // read-only finality rechecks. FAILED and unknown statuses stay separate.
+    const pending = refundStatus?.toUpperCase() === 'PENDING';
+    return reversalUnknown(
+      request,
+      pending
+        ? 'CLOVER_PLATFORM_REFUND_STATUS_PENDING'
+        : 'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+      pending
+        ? 'Clover Platform refund is still pending canonical finality'
+        : 'Clover Platform refund does not report a recognized completed status',
       providerRefundId,
     );
   }
@@ -584,22 +690,114 @@ export class CloverPlatformPaymentsGateway {
       );
     }
 
-    const params = new URLSearchParams({
-      filter: `externalPaymentId=${externalPaymentId}`,
-      expand: PAYMENT_EXPAND,
-    });
-    const collection = await this.request(
-      `/v3/merchants/${encodeURIComponent(merchantId)}/payments?${params.toString()}`,
-    );
-    if (!collection) {
-      return platformPaymentUnknown(
-        request,
-        'CLOVER_PLATFORM_PAYMENT_COLLECTION_QUERY_UNCERTAIN',
-        'Clover Platform externalPaymentId query did not receive a response',
+    // Explicitly page through the entire external identity, including FAIL
+    // records from prior card attempts. A full page requires another read;
+    // a failed/invalid/over-limit page must never authorize payment finality.
+    const allPayments: unknown[] = [];
+    for (
+      let offset = 0;
+      offset < PAYMENT_COLLECTION_MAX_ROWS;
+      offset += PAYMENT_COLLECTION_PAGE_SIZE
+    ) {
+      const params = new URLSearchParams({
+        filter: `externalPaymentId=${externalPaymentId}`,
+        expand: PAYMENT_EXPAND,
+        limit: String(PAYMENT_COLLECTION_PAGE_SIZE),
+        offset: String(offset),
+      });
+      const collection = await this.request(
+        `/v3/merchants/${encodeURIComponent(merchantId)}/payments?${params.toString()}`,
       );
+      if (!collection) {
+        return platformPaymentUnknown(
+          request,
+          'CLOVER_PLATFORM_PAYMENT_COLLECTION_QUERY_UNCERTAIN',
+          'Clover Platform externalPaymentId collection page was unavailable',
+        );
+      }
+      if (!collection.ok) return this.httpUnknown(request, collection);
+      const page = collection.body?.elements;
+      const pageRows =
+        Array.isArray(page) && page.length <= PAYMENT_COLLECTION_PAGE_SIZE
+          ? recordsFromArray(page)
+          : null;
+      if (!pageRows) {
+        return platformPaymentUnknown(
+          request,
+          'CLOVER_PLATFORM_PAYMENT_COLLECTION_INVALID',
+          'Clover Platform returned an invalid collection page',
+        );
+      }
+      allPayments.push(...pageRows);
+      if (pageRows.length < PAYMENT_COLLECTION_PAGE_SIZE) {
+        return mapPlatformPaymentCollection({ elements: allPayments }, request);
+      }
     }
-    if (!collection.ok) return this.httpUnknown(request, collection);
-    return mapPlatformPaymentCollection(collection.body, request);
+    return platformPaymentUnknown(
+      request,
+      'CLOVER_PLATFORM_PAYMENT_COLLECTION_INCOMPLETE',
+      'Clover external Sale exceeded the bounded exhaustive collection limit',
+    );
+  }
+
+  /**
+   * Clover's reconciliation guide exposes voids through the externalPaymentId
+   * collection. Do not treat partial pagination, malformed rows or unrelated
+   * payments as a unique original-Payment void.
+   */
+  private async readExpandedVoidPayment(
+    merchantId: string,
+    providerPaymentId: string,
+    externalPaymentId: string | undefined,
+    amountCents: number,
+  ): Promise<Record<string, unknown> | null> {
+    if (!externalPaymentId) return null;
+    let matchingPayment: Record<string, unknown> | null = null;
+    for (
+      let offset = 0;
+      offset < PAYMENT_COLLECTION_MAX_ROWS;
+      offset += PAYMENT_COLLECTION_PAGE_SIZE
+    ) {
+      const params = new URLSearchParams({
+        filter: `externalPaymentId=${externalPaymentId}`,
+        expand: VOID_COLLECTION_EXPAND,
+        limit: String(PAYMENT_COLLECTION_PAGE_SIZE),
+        offset: String(offset),
+      });
+      const result = await this.request(
+        `/v3/merchants/${encodeURIComponent(merchantId)}/payments?${params.toString()}`,
+      );
+      if (!result?.ok) return null;
+      const rawRows = result.body?.elements;
+      const rows =
+        Array.isArray(rawRows) && rawRows.length <= PAYMENT_COLLECTION_PAGE_SIZE
+          ? recordsFromArray(rawRows)
+          : null;
+      if (!rows) return null;
+      for (const row of rows) {
+        if (stringValue(row, 'externalPaymentId') !== externalPaymentId) {
+          return null;
+        }
+        if (stringValue(row, 'id') !== providerPaymentId) continue;
+        const refundRows = elementRecords(row, 'refunds');
+        const reportedResult = stringValue(row, 'result');
+        const expandedState = normalizePlatformResult(reportedResult);
+        if (
+          matchingPayment ||
+          integerValue(row, 'amount') !== amountCents ||
+          !refundRows ||
+          refundRows.length > 0 ||
+          (reportedResult !== undefined &&
+            expandedState !== 'SUCCEEDED' &&
+            expandedState !== 'CANCELLED')
+        ) {
+          return null;
+        }
+        matchingPayment = row;
+      }
+      if (rows.length < PAYMENT_COLLECTION_PAGE_SIZE) return matchingPayment;
+    }
+    return null;
   }
 
   async getCanonicalReversal(
@@ -623,13 +821,11 @@ export class CloverPlatformPaymentsGateway {
     }
 
     const knownRefundId = request.providerRefundId?.trim();
-    if (knownRefundId) {
+    if (knownRefundId && request.operation !== 'VOID') {
       return this.getCanonicalRefundById(
         request,
         knownRefundId,
-        request.operation === 'VOID'
-          ? 'CLOVER_VOID_CONVERTED_TO_REFUND'
-          : 'CLOVER_REFUND_CONFIRMED',
+        'CLOVER_REFUND_CONFIRMED',
       );
     }
 
@@ -673,70 +869,6 @@ export class CloverPlatformPaymentsGateway {
       );
     }
 
-    const resultCode = stringValue(payment, 'result');
-    const normalizedResult = normalizePlatformResult(resultCode);
-    if (request.operation === 'VOID' && normalizedResult === 'CANCELLED') {
-      const tipCents = integerValue(payment, 'tipAmount');
-      if (
-        tipCents === undefined ||
-        tipCents < 0 ||
-        tipCents !== request.expectedTipRefundCents
-      ) {
-        return reversalUnknown(
-          request,
-          'CLOVER_PLATFORM_VOID_TIP_MISMATCH',
-          'Clover Platform void tip does not match the original canonical tip facts',
-        );
-      }
-      const additionalCharges = elementRecords(payment, 'additionalCharges');
-      if (!additionalCharges) {
-        return reversalUnknown(
-          request,
-          'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
-          'Clover Platform void facts do not match the original additional charges',
-        );
-      }
-      const additionalChargeCents = sumMoney(additionalCharges);
-      if (
-        additionalChargeCents === null ||
-        additionalChargeCents !== request.expectedAdditionalChargeRefundCents
-      ) {
-        return reversalUnknown(
-          request,
-          'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
-          'Clover Platform void facts do not match the original additional charges',
-        );
-      }
-      const surchargeRows = additionalCharges.filter(
-        (charge) =>
-          stringValue(charge, 'type')?.trim().toUpperCase() ===
-          'CREDIT_SURCHARGE',
-      );
-      const surchargeCents = sumMoney(surchargeRows);
-      if (surchargeCents === null) {
-        return reversalUnknown(
-          request,
-          'CLOVER_PLATFORM_VOID_SURCHARGE_INVALID',
-          'Clover Platform returned an invalid surcharge on the voided payment',
-        );
-      }
-      return {
-        ...canonicalBase(request),
-        status: 'SUCCEEDED',
-        providerPaymentId,
-        amountCents: request.amountCents,
-        currency: request.currency,
-        refundedAmountCents: request.amountCents,
-        tipCents,
-        surchargeCents,
-        chargedTotalCents:
-          request.amountCents + tipCents + additionalChargeCents,
-        resultCode: 'CLOVER_VOID_CONFIRMED',
-        failureCode: null,
-        failureMessage: null,
-      };
-    }
-
     const refunds = elementRecords(payment, 'refunds');
     if (!refunds) {
       return reversalUnknown(
@@ -745,8 +877,182 @@ export class CloverPlatformPaymentsGateway {
         'Clover Platform returned invalid reversal refund facts',
       );
     }
+    const resultCode = stringValue(payment, 'result');
+    const normalizedResult = normalizePlatformResult(resultCode);
+    if (request.operation === 'VOID') {
+      if (
+        payment?.voided !== undefined &&
+        typeof payment.voided !== 'boolean'
+      ) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_EVIDENCE_INVALID',
+          'Clover returned invalid payment void evidence',
+        );
+      }
+      // The single-Payment response may continue reporting SUCCESS even after
+      // Clover records a separate void. Only a bounded, exact-identity
+      // collection result may supplement its reversal evidence.
+      const singlePaymentVoids = elementRecords(payment, 'voids');
+      const externalPaymentId = stringValue(payment, 'externalPaymentId');
+      const paymentVoiding = resultCode?.trim().toLowerCase() === 'voiding';
+      const shouldReadVoidCollection =
+        (normalizedResult === 'SUCCEEDED' || paymentVoiding) &&
+        payment?.voided !== true &&
+        singlePaymentVoids?.length === 0 &&
+        refunds.length === 0 &&
+        !knownRefundId &&
+        Boolean(externalPaymentId);
+      const expandedVoidPayment = shouldReadVoidCollection
+        ? await this.readExpandedVoidPayment(
+            merchantId,
+            providerPaymentId,
+            externalPaymentId,
+            request.amountCents,
+          )
+        : null;
+      const voids = elementRecords(expandedVoidPayment ?? payment, 'voids');
+      this.logger.debug(
+        `[CloverPlatformPaymentsGateway] VOID canonical state=${normalizedResult} collection=${shouldReadVoidCollection ? (expandedVoidPayment ? 'matched' : 'unconfirmed') : 'skipped'} externalIdentity=${externalPaymentId ? 'present' : 'missing'} voidCount=${voids?.length ?? 'invalid'}`,
+      );
+      const expandedVoided = expandedVoidPayment?.voided;
+      const voided = expandedVoided ?? payment?.voided;
+      if (
+        !voids ||
+        (expandedVoided !== undefined && typeof expandedVoided !== 'boolean') ||
+        (payment?.voided !== undefined &&
+          expandedVoided !== undefined &&
+          payment.voided !== expandedVoided)
+      ) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_EVIDENCE_INVALID',
+          'Clover returned invalid payment void evidence',
+        );
+      }
+      const hasVoidEvidence =
+        normalizedResult === 'CANCELLED' || voided === true || voids.length > 0;
+      if (hasVoidEvidence) {
+        if (knownRefundId || refunds.length > 0) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
+            'Clover reports both a voided payment and refund activity; manual review is required',
+            knownRefundId,
+          );
+        }
+        if (
+          voided === false ||
+          (!paymentVoiding &&
+            normalizedResult !== 'CANCELLED' &&
+            normalizedResult !== 'SUCCEEDED')
+        ) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_STATE_CONFLICT',
+            'Clover void evidence conflicts with the payment state',
+          );
+        }
+        // The expansion is scoped to this exact payment. Supplied relations,
+        // amounts and currency must agree. No independent Void ID is invented.
+        const voidEntry = voids.length === 1 ? voids[0] : null;
+        const invalidVoidEntry =
+          voidEntry !== null &&
+          (!stringValue(voidEntry, 'id') ||
+            (voidEntry.payment !== undefined &&
+              stringValue(asRecord(voidEntry.payment), 'id') !==
+                providerPaymentId) ||
+            (voidEntry.paymentId !== undefined &&
+              stringValue(voidEntry, 'paymentId') !== providerPaymentId) ||
+            (voidEntry.status !== undefined &&
+              !['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'VOIDED'].includes(
+                stringValue(voidEntry, 'status')?.toUpperCase() ?? '',
+              )) ||
+            (voidEntry.amount !== undefined &&
+              integerValue(voidEntry, 'amount') !== request.amountCents) ||
+            (voidEntry.currency !== undefined &&
+              stringValue(voidEntry, 'currency')?.toUpperCase() !==
+                request.currency.toUpperCase()));
+        if (voids.length > 1 || invalidVoidEntry) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+            'Clover void relation does not uniquely match the original payment',
+          );
+        }
+        // VOIDING is never financial finality even if a unique void appears;
+        // later GETs must confirm an allowed final payment state.
+        if (paymentVoiding) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+            'Clover payment is still voiding; canonical finality is not yet visible',
+          );
+        }
+        const tipCents = integerValue(payment, 'tipAmount');
+        if (
+          tipCents === undefined ||
+          tipCents < 0 ||
+          tipCents !== request.expectedTipRefundCents
+        ) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_TIP_MISMATCH',
+            'Clover Platform void tip does not match the original canonical tip facts',
+          );
+        }
+        const additionalCharges = elementRecords(payment, 'additionalCharges');
+        if (!additionalCharges) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
+            'Clover Platform void facts do not match the original additional charges',
+          );
+        }
+        const additionalChargeCents = sumMoney(additionalCharges);
+        if (
+          additionalChargeCents === null ||
+          additionalChargeCents !== request.expectedAdditionalChargeRefundCents
+        ) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
+            'Clover Platform void facts do not match the original additional charges',
+          );
+        }
+        const surchargeRows = additionalCharges.filter(
+          (charge) =>
+            stringValue(charge, 'type')?.trim().toUpperCase() ===
+            'CREDIT_SURCHARGE',
+        );
+        const surchargeCents = sumMoney(surchargeRows);
+        if (surchargeCents === null) {
+          return reversalUnknown(
+            request,
+            'CLOVER_PLATFORM_VOID_SURCHARGE_INVALID',
+            'Clover Platform returned an invalid surcharge on the voided payment',
+          );
+        }
+        return {
+          ...canonicalBase(request),
+          status: 'SUCCEEDED',
+          providerPaymentId,
+          amountCents: request.amountCents,
+          currency: request.currency,
+          refundedAmountCents: request.amountCents,
+          tipCents,
+          surchargeCents,
+          chargedTotalCents:
+            request.amountCents + tipCents + additionalChargeCents,
+          resultCode: 'CLOVER_VOID_CONFIRMED',
+          failureCode: null,
+          failureMessage: null,
+        };
+      }
+    }
+
     if (refunds.length === 0) {
-      if (normalizedResult === 'FAILED') {
+      if (normalizedResult === 'FAILED' && !knownRefundId) {
         return {
           ...canonicalBase(request),
           status: 'FAILED',
@@ -777,6 +1083,14 @@ export class CloverPlatformPaymentsGateway {
         request,
         'CLOVER_PLATFORM_REVERSAL_REFUND_ID_MISSING',
         'Clover Platform refund relation is missing its refund id',
+      );
+    }
+    if (knownRefundId && discoveredRefundId !== knownRefundId) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_REFUND_IDENTITY_CONFLICT',
+        'The original payment refund relation does not match the acknowledged refund',
+        knownRefundId,
       );
     }
     return this.getCanonicalRefundById(

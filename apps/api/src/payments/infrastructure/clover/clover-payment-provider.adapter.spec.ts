@@ -5,8 +5,14 @@ import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport
 import type { CloverMerchantAccessTokenService } from './oauth/clover-merchant-access-token.service';
 import {
   CloverTerminalTransport,
+  mapTerminalAvailabilityResponse,
   mapTerminalPaymentResponse,
 } from './terminal/clover-terminal.transport';
+
+const fetchRequestUrl = (input: Parameters<typeof fetch>[0]): string => {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+};
 
 describe('CloverPaymentProviderAdapter', () => {
   const createAdapter = () => {
@@ -28,6 +34,19 @@ describe('CloverPaymentProviderAdapter', () => {
       platform,
       platformConfigured,
     };
+  };
+
+  const refundRequest = {
+    paymentId: 'refund-payment-internal',
+    attemptId: 'refund-attempt',
+    source: 'POS_TERMINAL' as const,
+    idempotencyKey: 'refund-idempotency',
+    operation: 'REFUND' as const,
+    providerPaymentId: 'terminal-payment-1',
+    amountCents: 2000,
+    currency: 'CAD',
+    expectedTipRefundCents: 0,
+    expectedAdditionalChargeRefundCents: 48,
   };
 
   it('routes Web Ecommerce through the Ecommerce transport and normalizes success', async () => {
@@ -190,6 +209,37 @@ describe('CloverPaymentProviderAdapter', () => {
     });
   });
 
+  it('preserves the original HTTP 504 replay marker only when Platform does not find a payment', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    jest.spyOn(terminal, 'startPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'EXECUTION',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_HTTP_504',
+    });
+    jest.spyOn(platform, 'getCanonicalPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+    await expect(
+      adapter.startPayment({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        amountCents: 1000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+  });
+
   it('recovers a lost Terminal response through Platform v3 externalPaymentId lookup', async () => {
     const { adapter, terminal, platform } = createAdapter();
     jest.spyOn(terminal, 'startPayment').mockResolvedValue({
@@ -273,6 +323,213 @@ describe('CloverPaymentProviderAdapter', () => {
     expect(terminalStatus).not.toHaveBeenCalled();
   });
 
+  const voidRequest = {
+    paymentId: 'void-internal-1',
+    attemptId: 'void-attempt-1',
+    source: 'POS_TERMINAL' as const,
+    idempotencyKey: 'void-idempotency-1',
+    operation: 'VOID' as const,
+    providerPaymentId: 'payment-1',
+    amountCents: 2000,
+    currency: 'CAD',
+    expectedTipRefundCents: 0,
+    expectedAdditionalChargeRefundCents: 48,
+  };
+
+  it.each([
+    { amountCents: undefined },
+    { amountCents: 0 },
+    { amountCents: 1.5 },
+    { currency: undefined },
+    { currency: ' ' },
+    { expectedTipRefundCents: undefined },
+    { expectedTipRefundCents: -1 },
+    { expectedAdditionalChargeRefundCents: undefined },
+    { expectedAdditionalChargeRefundCents: Number.NaN },
+  ])(
+    'rejects incomplete VOID facts before a Terminal request: %p',
+    async (facts) => {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment');
+      const read = jest.spyOn(platform, 'getCanonicalReversal');
+      await expect(
+        adapter.voidPayment({ ...voidRequest, ...facts }),
+      ).resolves.toMatchObject({
+        status: 'FAILED',
+        failureCode: 'CLOVER_VOID_EXPECTED_FACTS_MISSING',
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
+
+  it('waits for late Canonical VOID finality with GET-only rechecks after one Terminal ACK', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValueOnce({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'payment-1',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        })
+        .mockResolvedValueOnce({
+          status: 'SUCCEEDED',
+          evidence: 'CANONICAL',
+          paymentId: voidRequest.paymentId,
+          attemptId: voidRequest.attemptId,
+          idempotencyKey: voidRequest.idempotencyKey,
+          providerPaymentId: 'payment-1',
+          amountCents: 2000,
+          currency: 'CAD',
+          refundedAmountCents: 2000,
+          tipCents: 0,
+          chargedTotalCents: 2048,
+          resultCode: 'CLOVER_VOID_CONFIRMED',
+        });
+      const pending = adapter.voidPayment(voidRequest);
+      await jest.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          operation: 'VOID',
+          providerPaymentId: 'payment-1',
+          idempotencyKey: voidRequest.idempotencyKey,
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns UNKNOWN after bounded VOID read-only rechecks when finality never appears', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'payment-1',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        });
+      const pending = adapter.voidPayment(voidRequest);
+      await jest.advanceTimersByTimeAsync(6500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(5);
+      // Later manual recovery reuses the same identity without another VOID.
+      read.mockResolvedValueOnce({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        providerPaymentId: 'payment-1',
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+      });
+      await expect(
+        adapter.getPaymentStatus(voidRequest),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(6);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    'CLOVER_PLATFORM_REVERSAL_QUERY_UNCERTAIN',
+    'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
+  ])(
+    'does not recheck an unsafe canonical observation: %s',
+    async (failureCode) => {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          failureCode,
+        });
+      await expect(adapter.voidPayment(voidRequest)).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('never rechecks a Terminal VOID response with a mismatched provider Payment ID', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    const send = jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+      status: 'SUCCEEDED',
+      evidence: 'EXECUTION',
+      providerPaymentId: 'different-payment',
+    });
+    const read = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+    await expect(adapter.voidPayment(voidRequest)).resolves.toMatchObject({
+      status: 'UNKNOWN',
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('canonicalizes an uncertain VOID response without claiming a failure', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    jest.spyOn(terminal, 'voidPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_VOID_HTTP_502',
+      providerPaymentId: 'payment-1',
+    });
+    const read = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+    await expect(adapter.voidPayment(voidRequest)).resolves.toMatchObject({
+      status: 'UNKNOWN',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
   it('treats Terminal refund execution as provisional until Platform v3 confirms canonical refund facts', async () => {
     const { adapter, terminal, platform } = createAdapter();
     const terminalRefund = jest
@@ -334,30 +591,295 @@ describe('CloverPaymentProviderAdapter', () => {
     );
   });
 
-  it('keeps an Interac-style device refund unresolved until Platform v3 exposes canonical truth', async () => {
+  it.each([
+    'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+    'CLOVER_PLATFORM_REFUND_STATUS_PENDING',
+  ])('GET-rechecks propagating Refund %s', async (failureCode) => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValueOnce({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          failureCode,
+        })
+        .mockResolvedValueOnce({
+          status: 'SUCCEEDED',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          amountCents: 2000,
+          currency: 'CAD',
+          refundedAmountCents: 2000,
+          tipCents: 0,
+          chargedTotalCents: 2048,
+          resultCode: 'CLOVER_REFUND_CONFIRMED',
+        });
+      const pending = adapter.refundPayment(refundRequest);
+      await jest.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        providerRefundId: 'terminal-refund-1',
+        resultCode: 'CLOVER_REFUND_CONFIRMED',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          operation: 'REFUND',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          idempotencyKey: refundRequest.idempotencyKey,
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('discovers a Refund relation without a Terminal Refund ID', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValueOnce({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        })
+        .mockResolvedValueOnce({
+          status: 'SUCCEEDED',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'discovered-refund-1',
+          refundedAmountCents: 2000,
+          tipCents: 0,
+          chargedTotalCents: 2048,
+          resultCode: 'CLOVER_REFUND_CONFIRMED',
+        });
+      const pending = adapter.refundPayment(refundRequest);
+      await jest.advanceTimersByTimeAsync(500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        providerRefundId: 'discovered-refund-1',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenLastCalledWith(
+        expect.objectContaining({ providerRefundId: undefined }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not recheck after uncertain Terminal Refund ACK', async () => {
     const { adapter, terminal, platform } = createAdapter();
-    jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+    const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      providerPaymentId: 'terminal-payment-1',
+      failureCode: 'CLOVER_REFUND_REQUEST_UNCERTAIN',
+    });
+    const read = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+    await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject({
+      status: 'UNKNOWN',
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unresolved Refund UNKNOWN and recovers its original ID later', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerPaymentId: 'terminal-payment-1',
+          providerRefundId: 'terminal-refund-1',
+          failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+        });
+      const pending = adapter.refundPayment(refundRequest);
+      await jest.advanceTimersByTimeAsync(1500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        providerRefundId: 'terminal-refund-1',
+        failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+      });
+      expect(read).toHaveBeenCalledTimes(3);
+      read.mockResolvedValueOnce({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        resultCode: 'CLOVER_REFUND_CONFIRMED',
+      });
+      await expect(
+        adapter.getPaymentStatus(refundRequest),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        providerRefundId: 'terminal-refund-1',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    'CLOVER_PLATFORM_REFUND_AMOUNT_MISMATCH',
+    'CLOVER_PLATFORM_REFUND_PAYMENT_ID_MISMATCH',
+    'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+    'CLOVER_PLATFORM_REFUND_QUERY_UNCERTAIN',
+  ])('does not recheck unsafe Refund %s', async (failureCode) => {
+    const { adapter, terminal, platform } = createAdapter();
+    const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
       status: 'SUCCEEDED',
       evidence: 'EXECUTION',
-      providerPaymentId: 'interac-payment-1',
-      providerRefundId: 'interac-refund-1',
-      terminalId: 'device-1',
+      providerPaymentId: 'terminal-payment-1',
+      providerRefundId: 'terminal-refund-1',
     });
-    jest.spyOn(platform, 'getCanonicalReversal').mockResolvedValue({
+    const read = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        providerRefundId: 'terminal-refund-1',
+        failureCode,
+      });
+    await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject({
       status: 'UNKNOWN',
-      evidence: 'CANONICAL',
-      paymentId: 'interac-refund-internal',
-      attemptId: 'interac-refund-attempt',
-      idempotencyKey: 'interac-refund-idempotency',
-      providerPaymentId: 'interac-payment-1',
-      amountCents: 2000,
-      currency: 'CAD',
-      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
-      failureMessage: 'refund is not visible yet',
+      failureCode,
     });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
 
-    await expect(
-      adapter.refundPayment({
+  it.each([
+    ['different-payment', 'terminal-refund-1'],
+    ['terminal-payment-1', 'other-refund'],
+  ])(
+    'does not recheck mismatched Refund identity: %s / %s',
+    async (terminalPaymentId, canonicalRefundId) => {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: terminalPaymentId,
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          providerRefundId: canonicalRefundId,
+          failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+        });
+      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject(
+        {
+          status: 'UNKNOWN',
+        },
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not launch a GET beyond the elapsed-time cutoff', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockImplementation(() => {
+          jest.setSystemTime(Date.now() + 13_000);
+          return {
+            status: 'UNKNOWN',
+            evidence: 'CANONICAL',
+            providerRefundId: 'terminal-refund-1',
+            failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+          };
+        });
+      await expect(adapter.refundPayment(refundRequest)).resolves.toMatchObject(
+        {
+          status: 'UNKNOWN',
+        },
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps Interac Refund unresolved after bounded GETs', async () => {
+    jest.useFakeTimers();
+    try {
+      const { adapter, terminal, platform } = createAdapter();
+      const send = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'interac-payment-1',
+        providerRefundId: 'interac-refund-1',
+        terminalId: 'device-1',
+      });
+      const read = jest
+        .spyOn(platform, 'getCanonicalReversal')
+        .mockResolvedValue({
+          status: 'UNKNOWN',
+          evidence: 'CANONICAL',
+          paymentId: 'interac-refund-internal',
+          attemptId: 'interac-refund-attempt',
+          idempotencyKey: 'interac-refund-idempotency',
+          providerPaymentId: 'interac-payment-1',
+          amountCents: 2000,
+          currency: 'CAD',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+          failureMessage: 'refund is not visible yet',
+        });
+      const pending = adapter.refundPayment({
         paymentId: 'interac-refund-internal',
         attemptId: 'interac-refund-attempt',
         source: 'POS_TERMINAL',
@@ -368,15 +890,21 @@ describe('CloverPaymentProviderAdapter', () => {
         currency: 'CAD',
         expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 0,
-      }),
-    ).resolves.toMatchObject({
-      status: 'UNKNOWN',
-      evidence: 'CANONICAL',
-      providerPaymentId: 'interac-payment-1',
-      providerRefundId: 'interac-refund-1',
-      terminalId: 'device-1',
-      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
-    });
+      });
+      await jest.advanceTimersByTimeAsync(1500);
+      await expect(pending).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        providerPaymentId: 'interac-payment-1',
+        providerRefundId: 'interac-refund-1',
+        terminalId: 'device-1',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(3);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('uses Platform v3 reversal truth instead of REST Pay for refund reconciliation', async () => {
@@ -470,6 +998,78 @@ describe('CloverPaymentProviderAdapter', () => {
   });
 });
 
+describe('R2 terminal availability state evidence', () => {
+  const response = (body: Record<string, unknown> | null) =>
+    mapTerminalAvailabilityResponse(
+      { httpStatus: 200, ok: true, body, rawText: '' },
+      'compact-test-1',
+    );
+
+  it('preserves the ordinary AVAILABLE fallback but flags empty HTTP 200 as inferred', () => {
+    expect(response(null)).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      terminalId: 'compact-test-1',
+      providerState: 'AVAILABLE',
+      providerStateExplicit: false,
+    });
+    expect(response({})).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerStateExplicit: false,
+    });
+    expect(response({ device: {} })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerStateExplicit: false,
+    });
+    expect(response({ state: '' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerStateExplicit: false,
+    });
+  });
+
+  it('preserves explicit raw states for R2 without changing ordinary availability mapping', () => {
+    expect(response({ status: 'IDLE' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'IDLE',
+      providerStateExplicit: true,
+    });
+    expect(response({ state: 'READY' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'READY',
+      providerStateExplicit: true,
+    });
+    expect(response({ device: { status: 'AVAILABLE' } })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'AVAILABLE',
+      providerStateExplicit: true,
+    });
+    expect(response({ state: 'BUSY' })).toMatchObject({
+      state: 'BUSY',
+      available: false,
+      providerState: 'BUSY',
+      providerStateExplicit: true,
+    });
+    expect(response({ status: 'PROCESSING' })).toMatchObject({
+      state: 'BUSY',
+      available: false,
+      providerState: 'PROCESSING',
+      providerStateExplicit: true,
+    });
+    expect(response({ status: 'UNKNOWN' })).toMatchObject({
+      state: 'AVAILABLE',
+      available: true,
+      providerState: 'UNKNOWN',
+      providerStateExplicit: true,
+    });
+  });
+});
+
 describe('CloverTerminalTransport', () => {
   const terminalToken = ['terminal', 'oauth', 'fixture'].join('-');
   const ecommerceToken = ['ecommerce', 'fixture'].join('-');
@@ -495,6 +1095,11 @@ describe('CloverTerminalTransport', () => {
     ecommerceBase: process.env.CLOVER_BASE,
     ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
     merchantId: process.env.CLOVER_UNIFIED_MERCHANT_ID,
+    webMerchantId: process.env.CLOVER_MERCHANT_ID,
+    platformBase: process.env.CLOVER_UNIFIED_PLATFORM_API_BASE,
+    runtime: process.env.NODE_ENV,
+    databaseUrl: process.env.DATABASE_URL,
+    sandboxManual: process.env.CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED,
     base: process.env.CLOVER_TERMINAL_API_BASE,
     device: process.env.CLOVER_TERMINAL_DEVICE_ID,
     pos: process.env.CLOVER_TERMINAL_REMOTE_APP_ID,
@@ -507,6 +1112,7 @@ describe('CloverTerminalTransport', () => {
     setEnv('CLOVER_TERMINAL_DEVICE_ID', 'device-1');
     setEnv('CLOVER_TERMINAL_REMOTE_APP_ID', 'raid-1');
     setEnv('CLOVER_TERMINAL_TIMEOUT_SECONDS', '10');
+    deleteEnv('CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED');
   });
 
   afterEach(() => {
@@ -518,10 +1124,581 @@ describe('CloverTerminalTransport', () => {
     restore('CLOVER_BASE', original.ecommerceBase);
     restore('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
     restore('CLOVER_UNIFIED_MERCHANT_ID', original.merchantId);
+    restore('CLOVER_MERCHANT_ID', original.webMerchantId);
+    restore('CLOVER_UNIFIED_PLATFORM_API_BASE', original.platformBase);
+    restore('NODE_ENV', original.runtime);
+    restore('DATABASE_URL', original.databaseUrl);
+    restore(
+      'CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED',
+      original.sandboxManual,
+    );
     restore('CLOVER_TERMINAL_API_BASE', original.base);
     restore('CLOVER_TERMINAL_DEVICE_ID', original.device);
     restore('CLOVER_TERMINAL_REMOTE_APP_ID', original.pos);
     restore('CLOVER_TERMINAL_TIMEOUT_SECONDS', original.timeout);
+  });
+
+  const manualEntrySale = {
+    paymentId: 'payment-manual-test',
+    attemptId: 'attempt-manual-test',
+    amountCents: 1482,
+    currency: 'CAD',
+    paymentMethod: 'CARD' as const,
+    source: 'POS_TERMINAL' as const,
+    idempotencyKey: 'attempt-manual-test-key',
+    externalPaymentId: 'external-manual-test',
+  };
+
+  it('preserves the original Sale body by default (no manual card entry)', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 209 }));
+    await expect(
+      createTerminalTransport().startPayment(manualEntrySale),
+    ).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
+      amount: 1482,
+      capture: true,
+      final: true,
+      externalPaymentId: 'external-manual-test',
+    });
+  });
+
+  it('adds MANUAL alongside existing entry methods only in opted-in isolated Sandbox', async () => {
+    setEnv('NODE_ENV', 'development');
+    setEnv('DATABASE_URL', 'postgresql://test:test@127.0.0.1:5432/restaurant');
+    setEnv('CLOVER_MERCHANT_ID', 'web-production-merchant');
+    setEnv(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+      'https://apisandbox.dev.clover.com',
+    );
+    setEnv('CLOVER_TERMINAL_API_BASE', 'https://apisandbox.dev.clover.com');
+    setEnv('CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED', 'true');
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 209 }));
+    await expect(
+      createTerminalTransport().startPayment(manualEntrySale),
+    ).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
+      amount: 1482,
+      capture: true,
+      final: true,
+      externalPaymentId: 'external-manual-test',
+      deviceOptions: {
+        cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'],
+      },
+    });
+  });
+
+  it('sends MANUAL methods to the private Compact LAN endpoint', async () => {
+    setEnv('NODE_ENV', 'development');
+    setEnv('DATABASE_URL', 'postgresql://test:test@127.0.0.1:5432/restaurant');
+    setEnv('CLOVER_MERCHANT_ID', 'web-production-merchant');
+    setEnv(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+      'https://apisandbox.dev.clover.com',
+    );
+    setEnv('CLOVER_TERMINAL_API_BASE', 'https://192.168.2.219:12346');
+    setEnv('CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED', 'true');
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 209 }));
+
+    await createTerminalTransport().startPayment(manualEntrySale);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://192.168.2.219:12346/connect/v1/payments',
+    );
+    const requestBody = fetchSpy.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected stringified Terminal Sale request body');
+    }
+    expect(JSON.parse(requestBody)).toMatchObject({
+      amount: 1482,
+      capture: true,
+      final: true,
+      externalPaymentId: 'external-manual-test',
+      deviceOptions: {
+        cardEntryMethods: ['EMV', 'NFC', 'MANUAL', 'MAG_STRIPE'],
+      },
+    });
+  });
+
+  it('clears only an absent original 504 payment on an explicitly idle device', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(
+      createTerminalTransport().clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+    expect(
+      fetchSpy.mock.calls.every(
+        (call) =>
+          call[1]?.method !== 'POST' ||
+          call[0] !== 'https://clover.example.test/connect/v1/payments',
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts only an explicitly correlated NOT_FOUND device read for display cleanup', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            queryStatus: 'NOT_FOUND',
+            externalPaymentId: 'different',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            queryStatus: 'NOT_FOUND',
+            externalPaymentId: 'external-504',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'AVAILABLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const transport = createTerminalTransport();
+    await expect(
+      transport.clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(false);
+    await expect(
+      transport.clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('clears the observed HTTP 200 empty JSON device read only after explicit IDLE', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(
+      createTerminalTransport().clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('accepts HTTP 200 empty body for display cleanup, not an arbitrary JSON primitive', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('null', { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'AVAILABLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const transport = createTerminalTransport();
+    await expect(
+      transport.clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(false);
+    await expect(
+      transport.clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not reset a returned payment or an uninterpretable nonempty device response', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            payment: {
+              externalPaymentId: 'external-504',
+              result: 'PROCESSING',
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ queryStatus: 'PROCESSING' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response('not-json', { status: 200 }));
+    const transport = createTerminalTransport();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        transport.clearTimedOutSaleDisplay('external-504'),
+      ).resolves.toBe(false);
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+      'https://clover.example.test/connect/v1/device/cancel',
+    );
+    expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+  });
+
+  it('waits for a busy Compact to become IDLE before sending one Welcome', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const pending =
+        createTerminalTransport().clearTimedOutSaleDisplay('external-504');
+      await jest.advanceTimersByTimeAsync(2000);
+      await expect(pending).resolves.toBe(true);
+      expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+        'https://clover.example.test/connect/v1/payments/external/external-504',
+        'https://clover.example.test/connect/v1/device/status',
+        'https://clover.example.test/connect/v1/device/status',
+        'https://clover.example.test/connect/v1/device/welcome',
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops after three busy checks without sending Welcome or Cancel', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response(null, { status: 404 }))
+        .mockImplementation(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ status: 'BUSY' }), { status: 200 }),
+          ),
+        );
+      const pending =
+        createTerminalTransport().clearTimedOutSaleDisplay('external-504');
+      await jest.advanceTimersByTimeAsync(4000);
+      await expect(pending).resolves.toBe(false);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+        'https://clover.example.test/connect/v1/device/welcome',
+      );
+      expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+        'https://clover.example.test/connect/v1/device/cancel',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('never infers IDLE from repeated state-less status responses', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockImplementation(() =>
+          Promise.resolve(new Response('{}', { status: 200 })),
+        );
+      const pending =
+        createTerminalTransport().clearTimedOutSaleDisplay('external-504');
+      await jest.advanceTimersByTimeAsync(4000);
+      await expect(pending).resolves.toBe(false);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy.mock.calls.map((call) => call[0])).not.toContain(
+        'https://clover.example.test/connect/v1/device/welcome',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns false without financial actions if Welcome itself fails', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 503 }));
+    await expect(
+      createTerminalTransport().clearTimedOutSaleDisplay('external-504'),
+    ).resolves.toBe(false);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('serializes a new Sale behind an in-flight Welcome in one API process', async () => {
+    let resolveWelcome: (value: Response) => void = () => undefined;
+    let notifyWelcome: () => void = () => undefined;
+    const welcomePending = new Promise<Response>((resolve) => {
+      resolveWelcome = resolve;
+    });
+    const welcomeStarted = new Promise<void>((resolve) => {
+      notifyWelcome = resolve;
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockImplementationOnce(() => {
+        notifyWelcome();
+        return welcomePending;
+      })
+      .mockResolvedValueOnce(new Response('{}', { status: 209 }));
+    const terminal = createTerminalTransport();
+    const cleanup = terminal.clearTimedOutSaleDisplay('external-504');
+    await welcomeStarted;
+    const sale = terminal.startPayment({
+      paymentId: 'payment-2',
+      attemptId: 'attempt-2',
+      amountCents: 2000,
+      currency: 'CAD',
+      paymentMethod: 'CARD',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-2-sale',
+      externalPaymentId: 'external-2',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    resolveWelcome(new Response(null, { status: 200 }));
+    await expect(cleanup).resolves.toBe(true);
+    await expect(sale).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy.mock.calls[3]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/payments',
+    );
+  });
+
+  it('waits for an in-flight Sale to finish before checking or clearing its display', async () => {
+    let resolveSale: (value: Response) => void = () => undefined;
+    let notifySale: () => void = () => undefined;
+    const salePending = new Promise<Response>((resolve) => {
+      resolveSale = resolve;
+    });
+    const saleStarted = new Promise<void>((resolve) => {
+      notifySale = resolve;
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementationOnce(() => {
+        notifySale();
+        return salePending;
+      })
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const terminal = createTerminalTransport();
+    const sale = terminal.startPayment({
+      paymentId: 'payment-2',
+      attemptId: 'attempt-2',
+      amountCents: 2000,
+      currency: 'CAD',
+      paymentMethod: 'CARD',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-2-sale',
+      externalPaymentId: 'external-2',
+    });
+    await saleStarted;
+    const cleanup = terminal.clearTimedOutSaleDisplay('external-504');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    resolveSale(new Response('{}', { status: 209 }));
+    await expect(sale).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    await expect(cleanup).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments',
+      'https://clover.example.test/connect/v1/payments/external/external-504',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('does not send Welcome when a device is still busy', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ state: 'BUSY' }), { status: 200 }),
+      );
+    await expect(
+      createTerminalTransport().prepareOriginalSaleResume(),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/status',
+    );
+  });
+
+  it('does not infer idle from a successful but state-less status response', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    await expect(
+      createTerminalTransport().prepareOriginalSaleResume(),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets a confirmed-idle Compact to Welcome before original payment resume', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ state: 'AVAILABLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    await expect(
+      createTerminalTransport().prepareOriginalSaleResume(),
+    ).resolves.toBe(true);
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+  });
+
+  it('tags only the original Sale HTTP 209 with definitive terminal cancellation evidence', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 209 })),
+      );
+    const transport = createTerminalTransport();
+    await expect(
+      transport.startPayment({
+        paymentId: 'payment-1',
+        attemptId: 'attempt-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt-1-sale',
+        externalPaymentId: 'external-1',
+      }),
+    ).resolves.toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    await expect(
+      transport.cancelPayment({
+        paymentId: 'payment-1',
+        attemptId: 'attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt-1-sale',
+        externalPaymentId: 'external-1',
+      }),
+    ).resolves.not.toMatchObject({
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+  });
+
+  it('lets device Cancel interrupt the original waiting Sale without entering the Sale/Welcome queue', async () => {
+    let releaseSale!: (response: Response) => void;
+    let saleStarted!: () => void;
+    const seenSale = new Promise<void>((resolve) => {
+      saleStarted = resolve;
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url.endsWith('/connect/v1/payments')) {
+        saleStarted();
+        return new Promise<Response>((resolve) => {
+          releaseSale = resolve;
+        });
+      }
+      if (url.endsWith('/connect/v1/device/cancel')) {
+        return Promise.resolve(new Response('{}', { status: 200 }));
+      }
+      throw new Error(`Unexpected Clover request: ${url}`);
+    });
+    const terminal = createTerminalTransport();
+    const sale = terminal.startPayment({
+      paymentId: 'payment-1',
+      attemptId: 'attempt-1',
+      amountCents: 2000,
+      currency: 'CAD',
+      paymentMethod: 'CARD',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-1-sale',
+      externalPaymentId: 'external-1',
+    });
+    await seenSale;
+    // If Cancel were enqueued behind Sale this await would never resolve.
+    const ack = await terminal.cancelPayment({
+      paymentId: 'payment-1',
+      attemptId: 'attempt-1',
+      source: 'POS_TERMINAL',
+      idempotencyKey: 'attempt-1-sale',
+      externalPaymentId: 'external-1',
+    });
+    expect(ack.status).toBe('UNKNOWN');
+    expect(ack.failureCode).toBe('CLOVER_TERMINAL_CANCEL_ACKNOWLEDGED');
+    releaseSale(new Response('{}', { status: 209 }));
+    expect(await sale).toMatchObject({
+      status: 'CANCELLED',
+      evidence: 'TERMINAL_SALE_CANCELLED',
+    });
+    expect(fetchSpy.mock.calls.map((call) => call[0])).toEqual([
+      'https://clover.example.test/connect/v1/payments',
+      'https://clover.example.test/connect/v1/device/cancel',
+    ]);
   });
 
   it('sends Cloud REST Pay Display sale with the Unified database OAuth token and Terminal headers', async () => {
@@ -569,7 +1746,7 @@ describe('CloverTerminalTransport', () => {
       Authorization: `Bearer ${terminalToken}`,
       'X-Clover-Device-Id': 'device-1',
       'X-POS-Id': 'raid-1',
-      'X-Clover-Timeout': '10',
+      'X-Clover-Timeout': '0',
       'Idempotency-Key': 'attempt-1-sale',
     });
     expect(getAccessToken).toHaveBeenCalledWith(unifiedMerchantId, {});
@@ -579,8 +1756,132 @@ describe('CloverTerminalTransport', () => {
     }
     expect(JSON.parse(requestBody)).toEqual({
       amount: 2000,
+      capture: true,
+      final: true,
       externalPaymentId: 'external-1',
     });
+    expect(init?.headers).toMatchObject({ 'X-Clover-Timeout': '0' });
+  });
+
+  it('returns the Compact to Welcome after completed payment without another Sale', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('SUCCEEDED'),
+    ).resolves.toBe(false);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('shows a decline reason with Retry and returns the customer confirmation', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ response: true }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED', 'INSUFFICIENT_FUNDS'),
+    ).resolves.toBe(true);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/read-confirmation',
+    );
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.headers).toMatchObject({ 'X-Clover-Timeout': '0' });
+    expect(init?.method).toBe('POST');
+    if (typeof init?.body !== 'string') {
+      throw new Error(
+        'Expected Clover confirmation request body to be JSON text',
+      );
+    }
+    expect(JSON.parse(init.body)).toEqual({
+      text: 'Insufficient funds. Try another card?',
+      acceptText: 'Retry',
+      rejectText: 'Cancel',
+      beep: true,
+    });
+  });
+
+  it('returns to Welcome when the customer rejects Retry', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ response: false }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED'),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/welcome',
+    );
+  });
+
+  it('shows staff guidance for a nonretryable provider error without charging again', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('FAILED', 'invalid_request'),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/display',
+    );
+    const init = fetchSpy.mock.calls[0]?.[1];
+    if (typeof init?.body !== 'string') {
+      throw new Error('Expected Clover display request body to be JSON text');
+    }
+    expect(JSON.parse(init.body)).toEqual({
+      text: 'Payment unavailable. Please ask the cashier.',
+      beep: true,
+    });
+  });
+
+  it('does not offer a device Retry for callers that disable confirmation', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED', null, false),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://clover.example.test/connect/v1/device/display',
+    );
+  });
+
+  it('does not force Welcome or re-charge if customer confirmation has an uncertain response', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValue(new Error('connection interrupted'));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.completeCustomerInteraction('DECLINED'),
+    ).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('force-refreshes the Unified OAuth credential once after Terminal HTTP 401', async () => {
@@ -681,6 +1982,355 @@ describe('CloverTerminalTransport', () => {
       throw new Error('Expected Clover refund request body to be JSON text');
     }
     expect(JSON.parse(init.body)).toEqual({ fullRefund: true });
+  });
+
+  it('shows Welcome after an acknowledged refund only when the device reports explicit IDLE', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            refund: { id: 'refund-1', payment: { id: 'payment-1' } },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ state: 'IDLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerRefundId: 'refund-1',
+    });
+    expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+      'https://clover.example.test/connect/v1/payments/payment-1/refunds',
+      'https://clover.example.test/connect/v1/device/status',
+      'https://clover.example.test/connect/v1/device/welcome',
+    ]);
+    expect(fetchSpy.mock.calls[1]?.[1]?.method).toBe('GET');
+    expect(fetchSpy.mock.calls[2]?.[1]?.method).toBe('POST');
+  });
+
+  it.each([{ state: 'BUSY' }, {}])(
+    'does not force Welcome without an explicitly idle refund device: %p',
+    async (deviceState) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              refund: { id: 'refund-1', payment: { id: 'payment-1' } },
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(deviceState), { status: 200 }),
+        );
+      const transport = createTerminalTransport();
+
+      await expect(
+        transport.refundPayment({
+          paymentId: 'refund-internal-1',
+          attemptId: 'refund-attempt-1',
+          source: 'POS_TERMINAL',
+          idempotencyKey: 'refund-idempotency-1',
+          operation: 'REFUND',
+          providerPaymentId: 'payment-1',
+          amountCents: 2000,
+          currency: 'CAD',
+        }),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        providerRefundId: 'refund-1',
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('preserves refund execution evidence when display-only Welcome fails', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            refund: { id: 'refund-1', payment: { id: 'payment-1' } },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: 'AVAILABLE' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }));
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerRefundId: 'refund-1',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not attempt Welcome after an unconfirmed refund execution', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ code: 'DEVICE_BUSY' }), { status: 503 }),
+      );
+    const transport = createTerminalTransport();
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({ status: 'UNKNOWN' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  const voidRequest = {
+    paymentId: 'void-internal-1',
+    attemptId: 'void-attempt-1',
+    source: 'POS_TERMINAL' as const,
+    idempotencyKey: 'void-idempotency-1',
+    operation: 'VOID' as const,
+    providerPaymentId: 'payment-1',
+    amountCents: 2000,
+    currency: 'CAD',
+    expectedTipRefundCents: 0,
+    expectedAdditionalChargeRefundCents: 0,
+  };
+  const voidAck = {
+    paymentId: 'payment-1',
+    voidStatus: 'SENT_TO_SERVER',
+  };
+
+  it.each(['VOID', 'REFUND'] as const)(
+    'keeps ambiguous %s HTTP errors UNKNOWN and never clears the device',
+    async (operation) => {
+      for (const httpStatus of [408, 409, 429, 500, 502, 503, 504, 507]) {
+        const fetchSpy = jest
+          .spyOn(global, 'fetch')
+          .mockImplementation(() =>
+            Promise.resolve(new Response('{}', { status: httpStatus })),
+          );
+        const transport = createTerminalTransport();
+        const outcome =
+          operation === 'VOID'
+            ? await transport.voidPayment(voidRequest)
+            : await transport.refundPayment({
+                ...voidRequest,
+                operation: 'REFUND',
+              });
+        expect(outcome.status).toBe('UNKNOWN');
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(fetchSpy.mock.calls[0][1]?.headers).toMatchObject({
+          'Idempotency-Key': voidRequest.idempotencyKey,
+        });
+        fetchSpy.mockRestore();
+      }
+    },
+  );
+
+  it.each([400, 415, 501])(
+    'preserves explicit VOID refusal HTTP %i',
+    async (httpStatus) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response('{}', { status: httpStatus }));
+      await expect(
+        createTerminalTransport().voidPayment(voidRequest),
+      ).resolves.toMatchObject({ status: 'FAILED' });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    { paymentId: 'payment-1', voidStatus: 'SENT_TO_SERVER' },
+    { refund: { id: 'refund-1', payment: { id: 'payment-1' } } },
+  ])(
+    'returns an acknowledged VOID to Welcome only after explicit IDLE: %p',
+    async (ack) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(ack), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response('{"state":"IDLE"}', { status: 200 }),
+        )
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      await expect(
+        createTerminalTransport().voidPayment(voidRequest),
+      ).resolves.toMatchObject({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+      });
+      expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+        'https://clover.example.test/connect/v1/payments/payment-1/void',
+        'https://clover.example.test/connect/v1/device/status',
+        'https://clover.example.test/connect/v1/device/welcome',
+      ]);
+    },
+  );
+
+  it.each([{ state: 'BUSY' }, {}, { state: 'UNKNOWN' }])(
+    'does not force VOID Welcome from ambiguous device state: %p',
+    async (deviceState) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(voidAck), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(deviceState), { status: 200 }),
+        );
+      await createTerminalTransport().voidPayment(voidRequest);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(
+        fetchSpy.mock.calls.every(
+          ([url]) => !fetchRequestUrl(url).endsWith('/welcome'),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    {},
+    { paymentId: 'other-payment', voidStatus: 'SENT_TO_SERVER' },
+    { refund: { id: 'refund-without-original-payment' } },
+  ])('does not clear an uncorrelated VOID acknowledgement: %p', async (ack) => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(ack), { status: 200 }));
+    await createTerminalTransport().voidPayment(voidRequest);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves VOID execution evidence when display-only Welcome fails', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(voidAck), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('{"state":"READY"}', { status: 200 }))
+      .mockRejectedValueOnce(new Error('Welcome connection lost'));
+    await expect(
+      createTerminalTransport().voidPayment(voidRequest),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'EXECUTION',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not clear the device after cancelled or lost VOID responses', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 209 }))
+      .mockRejectedValueOnce(new Error('socket closed'));
+    const transport = createTerminalTransport();
+    await expect(transport.voidPayment(voidRequest)).resolves.toMatchObject({
+      status: 'CANCELLED',
+    });
+    await expect(transport.voidPayment(voidRequest)).resolves.toMatchObject({
+      status: 'UNKNOWN',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds a new Sale behind the complete VOID and Welcome device interaction', async () => {
+    let releaseWelcome: (response: Response) => void = () => undefined;
+    let welcomeStarted: () => void = () => undefined;
+    const pendingWelcome = new Promise<Response>((resolve) => {
+      releaseWelcome = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      welcomeStarted = resolve;
+    });
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((url) => {
+      const path = fetchRequestUrl(url);
+      if (path.endsWith('/void')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(voidAck), { status: 200 }),
+        );
+      }
+      if (path.endsWith('/status')) {
+        return Promise.resolve(
+          new Response('{"state":"IDLE"}', { status: 200 }),
+        );
+      }
+      if (path.endsWith('/welcome')) {
+        welcomeStarted();
+        return pendingWelcome;
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            payment: { id: 'new-payment', amount: 2000, result: 'SUCCESS' },
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+    const transport = createTerminalTransport();
+    const voidResult = transport.voidPayment(voidRequest);
+    await started;
+    const saleResult = transport.startPayment({
+      paymentId: 'new-sale',
+      attemptId: 'new-attempt',
+      idempotencyKey: 'new-sale-key',
+      externalPaymentId: 'new-external',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      amountCents: 2000,
+      currency: 'CAD',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    releaseWelcome(new Response('{}', { status: 200 }));
+    await Promise.all([voidResult, saleResult]);
+    expect(
+      fetchSpy.mock.calls.map(
+        ([url]) => fetchRequestUrl(url).split('/connect/v1')[1],
+      ),
+    ).toEqual([
+      '/payments/payment-1/void',
+      '/device/status',
+      '/device/welcome',
+      '/payments',
+    ]);
   });
 
   it('sends USER_CANCEL void to the original Clover payment', async () => {
@@ -913,6 +2563,49 @@ describe('CloverTerminalTransport', () => {
 });
 
 describe('Clover Terminal response mapping', () => {
+  it('distinguishes original Sale HTTP 209 from non-definitive cancellation text', () => {
+    expect(
+      mapTerminalPaymentResponse(
+        { httpStatus: 209, ok: false, rawText: '', body: null },
+        2000,
+        'external-1',
+        'device-1',
+      ),
+    ).toMatchObject({
+      status: 'CANCELLED',
+      resultCode: 'CLOVER_CANCELLED',
+    });
+    expect(
+      mapTerminalPaymentResponse(
+        {
+          httpStatus: 200,
+          ok: true,
+          rawText: '',
+          body: { result: 'CANCELLED' },
+        },
+        2000,
+        'external-1',
+        'device-1',
+      ),
+    ).toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_TERMINAL_CANCEL_TEXT_UNVERIFIED',
+    });
+    expect(
+      mapTerminalPaymentResponse(
+        {
+          httpStatus: 400,
+          ok: false,
+          rawText: '',
+          body: { message: 'cancel not acknowledged' },
+        },
+        2000,
+        'external-1',
+        'device-1',
+      ),
+    ).toMatchObject({ status: 'UNKNOWN' });
+  });
+
   it('records Clover surcharge and total charged amount from provider facts', () => {
     expect(
       mapTerminalPaymentResponse(
@@ -952,7 +2645,10 @@ describe('Clover Terminal response mapping', () => {
         'external-1',
         'device-1',
       ),
-    ).toMatchObject({ status: 'UNKNOWN' });
+    ).toMatchObject({
+      status: 'UNKNOWN',
+      resultCode: 'CLOVER_TERMINAL_SALE_HTTP_504',
+    });
   });
 
   it('maps an explicit decline as DECLINED', () => {
@@ -1100,6 +2796,129 @@ describe('Clover Platform Payments Gateway', () => {
     expect(collectionUrl).toContain('filter=externalPaymentId%3Dexternal-1');
   });
 
+  const mockCollection = (elements: unknown[]) => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ elements }), {
+          status: 200,
+        }),
+      ),
+    );
+    return fetchSpy;
+  };
+  const readCollection = () =>
+    createPlatformGateway().getCanonicalPayment({
+      ...platformRequest,
+      providerPaymentId: null,
+    });
+
+  it('maps complete multi-FAIL rows to non-final unpaid evidence', async () => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'decline-2', result: 'FAIL' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      failureCode: 'CLOVER_PLATFORM_ALL_ATTEMPTS_FAILED',
+      providerPaymentId: undefined,
+    });
+  });
+
+  it('selects one canonical success after checking failed predecessors', async () => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'approved-2', result: 'SUCCESS' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'approved-2',
+      chargedTotalCents: 2048,
+    });
+  });
+
+  it.each([
+    ['different external identity', { externalPaymentId: 'someone-else' }],
+    ['different order', { order: { id: 'another-order', currency: 'CAD' } }],
+    ['different amount', { amount: 1999 }],
+    ['different currency', { currency: 'USD' }],
+    ['pending payment', { result: 'PENDING' }],
+    ['duplicate payment id', { id: 'decline-1' }],
+    ['missing payment id', { id: undefined }],
+  ])('rejects multiple payments containing %s', async (_label, bad) => {
+    mockCollection([
+      platformPayment({ id: 'decline-1', result: 'FAIL' }),
+      platformPayment({ id: 'decline-2', result: 'FAIL', ...bad }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('rejects two successes on the same external Sale', async () => {
+    mockCollection([
+      platformPayment({ id: 'approved-1' }),
+      platformPayment({ id: 'approved-2' }),
+    ]);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_IDENTITY_CONFLICT',
+    });
+  });
+
+  it('reads all collection pages before concluding every attempt failed', async () => {
+    const failedPage = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const first = new Response(JSON.stringify({ elements: failedPage }), {
+      status: 200,
+    });
+    const last = new Response(
+      JSON.stringify({ elements: [platformPayment({ id: 'approved-51' })] }),
+      { status: 200 },
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(last);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'approved-51',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0]).toContain('offset=0');
+    expect(fetchSpy.mock.calls[1]?.[0]).toContain('offset=50');
+    expect(fetchSpy.mock.calls[1]?.[0]).toContain('limit=50');
+  });
+
+  it('keeps the Sale uncertain if a later collection page is unavailable', async () => {
+    const failedPage = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const first = new Response(JSON.stringify({ elements: failedPage }), {
+      status: 200,
+    });
+    const error = new Response('{}', { status: 500 });
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    fetchSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(error);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_HTTP_500',
+    });
+  });
+
+  it('rejects an external Sale exceeding the collection limit', async () => {
+    const page = Array.from({ length: 50 }, (_, index) =>
+      platformPayment({ id: `decline-${index}`, result: 'FAIL' }),
+    );
+    const fetchSpy = mockCollection(page);
+    await expect(readCollection()).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_COLLECTION_INCOMPLETE',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(10);
+  });
+
   it('does not finalize when canonical amount mismatches the prepared amount', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(platformPayment({ amount: 1999 })), {
@@ -1227,6 +3046,142 @@ describe('Clover Platform Payments Gateway', () => {
     expect(url).toContain('expand=');
   });
 
+  it('keeps a just-acknowledged Refund ID UNKNOWN when Platform returns 404', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 }),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      providerRefundId: 'clover-refund-1',
+      failureCode: 'CLOVER_PLATFORM_REFUND_NOT_FOUND',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchRequestUrl(fetchSpy.mock.calls[0][0])).toContain(
+      '/refunds/clover-refund-1',
+    );
+  });
+
+  it('confirms a zero-tip full refund when Clover omits tipAmount and additionalCharges', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'clover-refund-1',
+          amount: 2000,
+          payment: { id: 'clover-payment-1' },
+          status: 'SUCCESS',
+          voided: false,
+        }),
+        { status: 200 },
+      ),
+    );
+    const gateway = createPlatformGateway();
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'clover-payment-1',
+      providerRefundId: 'clover-refund-1',
+      refundedAmountCents: 2000,
+      tipCents: 0,
+      chargedTotalCents: 2000,
+    });
+  });
+
+  it('keeps zero-tip inference fail-closed for a missing nonzero tip', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'clover-refund-1',
+          amount: 2000,
+          payment: { id: 'clover-payment-1' },
+          status: 'SUCCESS',
+          voided: false,
+        }),
+        { status: 200 },
+      ),
+    );
+    const gateway = createPlatformGateway();
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 400,
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    });
+  });
+
+  it.each([
+    [
+      { status: 'PENDING', voided: false },
+      'CLOVER_PLATFORM_REFUND_STATUS_PENDING',
+    ],
+    [
+      { status: 'FAILED', voided: false },
+      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    ],
+    [
+      { status: 'unrecognized', voided: false },
+      'CLOVER_PLATFORM_REFUND_STATUS_UNCONFIRMED',
+    ],
+    [
+      { status: 'SUCCESS', voided: true },
+      'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+    ],
+    [
+      { status: 'SUCCESS', voided: 'false' },
+      'CLOVER_PLATFORM_REFUND_VOIDED_OR_INVALID',
+    ],
+  ] as const)(
+    'does not confirm a refund with nonfinal or voided provider facts %p',
+    async (facts, failureCode) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'clover-refund-1',
+            amount: 2000,
+            payment: { id: 'clover-payment-1' },
+            ...facts,
+          }),
+          { status: 200 },
+        ),
+      );
+      const gateway = createPlatformGateway();
+
+      await expect(
+        gateway.getCanonicalReversal({
+          ...platformRequest,
+          operation: 'REFUND',
+          providerRefundId: 'clover-refund-1',
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 0,
+        }),
+      ).resolves.toMatchObject({ status: 'UNKNOWN', failureCode });
+    },
+  );
+
   it('keeps canonical refund UNKNOWN when provider tip does not match the original sale', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -1258,6 +3213,169 @@ describe('Clover Platform Payments Gateway', () => {
     });
   });
 
+  it.each([
+    { result: 'voided', refunds: { elements: [{ id: 'refund-1' }] } },
+    { result: 'voided', refunds: { elements: [] }, knownRefundId: 'refund-1' },
+  ])(
+    'keeps conflicting void and refund evidence UNKNOWN: %p',
+    async (facts) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify(platformPayment(facts)), { status: 200 }),
+        );
+      await expect(
+        createPlatformGateway().getCanonicalReversal({
+          ...platformRequest,
+          operation: 'VOID',
+          providerRefundId: facts.knownRefundId,
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 48,
+        }),
+      ).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode: 'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    { refunds: { elements: [] }, result: 'SUCCESS' },
+    { refunds: { elements: [] }, result: 'void_failed' },
+    { refunds: { elements: [{ id: 'other-refund' }] }, result: 'SUCCESS' },
+    {
+      refunds: { elements: [{ id: 'known-refund' }, { id: 'other-refund' }] },
+      result: 'SUCCESS',
+    },
+  ])(
+    'validates aggregate payment evidence even with a known VOID refund ID: %p',
+    async (facts) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify(platformPayment(facts)), { status: 200 }),
+        );
+      await expect(
+        createPlatformGateway().getCanonicalReversal({
+          ...platformRequest,
+          operation: 'VOID',
+          providerRefundId: 'known-refund',
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 48,
+        }),
+      ).resolves.toMatchObject({ status: 'UNKNOWN' });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchRequestUrl(fetchSpy.mock.calls[0][0])).toContain(
+        '/payments/clover-payment-1',
+      );
+    },
+  );
+
+  it('confirms a known VOID-converted refund only after its original Payment relation agrees', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            platformPayment({
+              refunds: { elements: [{ id: 'known-refund' }] },
+            }),
+          ),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'known-refund',
+            amount: 2000,
+            tipAmount: 0,
+            currency: 'CAD',
+            payment: { id: 'clover-payment-1' },
+            additionalCharges: {
+              elements: [{ type: 'CREDIT_SURCHARGE', amount: 48 }],
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        providerRefundId: 'known-refund',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
+      providerRefundId: 'known-refund',
+      resultCode: 'CLOVER_VOID_CONVERTED_TO_REFUND',
+      refundedAmountCents: 2000,
+      tipCents: 0,
+      chargedTotalCents: 2048,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { tipAmount: undefined },
+    { tipAmount: 1 },
+    { additionalCharges: { elements: [{ amount: 49 }] } },
+  ])(
+    'refuses incomplete or mismatched true VOID charge facts: %p',
+    async (facts) => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify(platformPayment({ result: 'voided', ...facts })),
+            { status: 200 },
+          ),
+        );
+      await expect(
+        createPlatformGateway().getCanonicalReversal({
+          ...platformRequest,
+          operation: 'VOID',
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 48,
+        }),
+      ).resolves.toMatchObject({ status: 'UNKNOWN' });
+    },
+  );
+
+  it.each(['USD', null, 123])(
+    'rejects an explicitly conflicting refund currency: %p',
+    async (currency) => {
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'known-refund',
+            amount: 2000,
+            tipAmount: 0,
+            currency,
+            payment: { id: 'clover-payment-1' },
+          }),
+          { status: 200 },
+        ),
+      );
+      await expect(
+        createPlatformGateway().getCanonicalReversal({
+          ...platformRequest,
+          operation: 'REFUND',
+          providerRefundId: 'known-refund',
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 0,
+        }),
+      ).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode: 'CLOVER_PLATFORM_REFUND_CURRENCY_MISMATCH',
+      });
+    },
+  );
+
   it('confirms a canonical void from the payment result without requiring a refund row', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(platformPayment({ result: 'voided' })), {
@@ -1283,6 +3401,318 @@ describe('Clover Platform Payments Gateway', () => {
       chargedTotalCents: 2048,
       resultCode: 'CLOVER_VOID_CONFIRMED',
     });
+  });
+
+  it('confirms VOID from voided=true despite SUCCESS', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(platformPayment({ result: 'SUCCESS', voided: true })),
+          { status: 200 },
+        ),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
+      providerPaymentId: 'clover-payment-1',
+      refundedAmountCents: 2000,
+      resultCode: 'CLOVER_VOID_CONFIRMED',
+    });
+    const url = fetchRequestUrl(fetchSpy.mock.calls[0][0]);
+    expect(decodeURIComponent(url)).toContain(
+      'expand=additionalCharges,cardTransaction,refunds,order',
+    );
+    expect(decodeURIComponent(url)).not.toContain(',voids');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms independent collection void despite SUCCESS', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(platformPayment()), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            elements: [
+              platformPayment({
+                result: 'SUCCESS',
+                voids: {
+                  elements: [
+                    {
+                      id: 'clover-void-1',
+                      payment: { id: 'clover-payment-1' },
+                      amount: 2000,
+                      currency: 'CAD',
+                    },
+                  ],
+                },
+              }),
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'clover-payment-1',
+      resultCode: 'CLOVER_VOID_CONFIRMED',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const collectionUrl = fetchRequestUrl(fetchSpy.mock.calls[1][0]);
+    expect(decodeURIComponent(collectionUrl)).toContain(
+      'filter=externalPaymentId=external-1',
+    );
+    expect(decodeURIComponent(collectionUrl)).toContain('expand=voids');
+  });
+
+  it('probes a VOIDING payment collection but never treats an in-flight payment as final', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(platformPayment({ result: 'VOIDING' })), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            elements: [
+              platformPayment({
+                result: 'VOIDING',
+                voids: {
+                  elements: [
+                    {
+                      id: 'clover-void-1',
+                      payment: { id: 'clover-payment-1' },
+                      amount: 2000,
+                      currency: 'CAD',
+                      status: 'COMPLETED',
+                    },
+                  ],
+                },
+              }),
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      decodeURIComponent(fetchRequestUrl(fetchSpy.mock.calls[1][0])),
+    ).toContain('expand=voids,refunds');
+  });
+
+  it.each([
+    [
+      'an unrelated original Payment',
+      { elements: [platformPayment({ id: 'other-payment' })] },
+    ],
+    [
+      'a mismatched external payment identity',
+      { elements: [platformPayment({ externalPaymentId: 'other-external' })] },
+    ],
+    [
+      'a mismatched original amount',
+      { elements: [platformPayment({ amount: 1999, voided: true })] },
+    ],
+    [
+      'a contradictory collection refund',
+      {
+        elements: [
+          platformPayment({
+            voided: true,
+            refunds: { elements: [{ id: 'other-refund' }] },
+          }),
+        ],
+      },
+    ],
+    ['an invalid collection payload', { elements: 'invalid' }],
+  ] as const)(
+    'does not accept collection void evidence from %s',
+    async (_label, collection) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(platformPayment()), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(collection), { status: 200 }),
+        );
+      await expect(
+        createPlatformGateway().getCanonicalReversal({
+          ...platformRequest,
+          operation: 'VOID',
+          expectedTipRefundCents: 0,
+          expectedAdditionalChargeRefundCents: 48,
+        }),
+      ).resolves.toMatchObject({
+        status: 'UNKNOWN',
+        failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('never treats a non-exhaustive VOID collection as final', async () => {
+    const page = Array.from({ length: 50 }, (_unused, index) =>
+      platformPayment({
+        id: index === 0 ? 'clover-payment-1' : `other-payment-${index}`,
+        voided: true,
+      }),
+    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(platformPayment()), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ elements: page }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('', { status: 503 }));
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    [
+      'payment result SUCCESS without void evidence',
+      { result: 'SUCCESS' },
+      'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+    ],
+    [
+      'invalid voided flag',
+      { result: 'SUCCESS', voided: 'true' },
+      'CLOVER_PLATFORM_VOID_EVIDENCE_INVALID',
+    ],
+    [
+      'explicit false contradicts a voided result',
+      { result: 'voided', voided: false },
+      'CLOVER_PLATFORM_VOID_STATE_CONFLICT',
+    ],
+    [
+      'voided true contradicts failed payment result',
+      { result: 'void_failed', voided: true },
+      'CLOVER_PLATFORM_VOID_STATE_CONFLICT',
+    ],
+    [
+      'void record contradicts original Payment ID',
+      { voids: { elements: [{ id: 'void-1', payment: { id: 'other' } }] } },
+      'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    ],
+    [
+      'void amount differs',
+      { voids: { elements: [{ id: 'void-1', amount: 1999 }] } },
+      'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    ],
+    [
+      'void currency differs',
+      { voids: { elements: [{ id: 'void-1', currency: 'USD' }] } },
+      'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    ],
+    [
+      'void record is missing its identity',
+      { voids: { elements: [{}] } },
+      'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    ],
+    [
+      'void record is only an acknowledgement',
+      { voids: { elements: [{ id: 'void-1', status: 'SENT_TO_SERVER' }] } },
+      'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    ],
+    [
+      'multiple void records are ambiguous',
+      { voids: { elements: [{ id: 'void-1' }, { id: 'void-2' }] } },
+      'CLOVER_PLATFORM_VOID_IDENTITY_CONFLICT',
+    ],
+    [
+      'unparseable expanded void relation',
+      { voids: { elements: 'invalid' } },
+      'CLOVER_PLATFORM_VOID_EVIDENCE_INVALID',
+    ],
+    [
+      'void evidence conflicts with refund relation',
+      {
+        voided: true,
+        refunds: { elements: [{ id: 'refund-1' }] },
+      },
+      'CLOVER_PLATFORM_VOID_REFUND_CONFLICT',
+    ],
+  ] as const)('fails closed for %s', async (_name, facts, failureCode) => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(platformPayment(facts)), { status: 200 }),
+      );
+    await expect(
+      createPlatformGateway().getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedTipRefundCents: 0,
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({ status: 'UNKNOWN', failureCode });
+  });
+
+  it('keeps ordinary Refund query expansion unchanged', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          platformPayment({
+            refunds: { elements: [] },
+          }),
+        ),
+        { status: 200 },
+      ),
+    );
+    await createPlatformGateway().getCanonicalReversal({
+      ...platformRequest,
+      operation: 'REFUND',
+      expectedTipRefundCents: 0,
+      expectedAdditionalChargeRefundCents: 48,
+    });
+    const url = fetchRequestUrl(fetchSpy.mock.calls[0][0]);
+    expect(decodeURIComponent(url)).toContain(
+      'expand=additionalCharges,cardTransaction,refunds,order',
+    );
+    expect(decodeURIComponent(url)).not.toContain(',voids');
   });
 
   it('accepts a void that Clover converted into a canonical refund', async () => {

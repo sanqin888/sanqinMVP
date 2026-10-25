@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
+import type { PaymentExceptionCase } from "@/lib/contracts/payment-exceptions";
 import type { CreateOrderInput, OrderDiscountDisplayEntry } from "@shared/order";
 
 /**
@@ -193,6 +194,13 @@ export type PosCardPaymentResult = {
     | "UNKNOWN"
     | "RECONCILING"
     | "FAILED";
+  customerRetryRequested?: boolean;
+  customerPromptPending?: boolean;
+  canResumeOriginalSale?: boolean;
+  terminalInteractionTimedOut?: boolean;
+  benefitsReleaseComplete?: boolean;
+  terminalReadyForNextSale?: boolean;
+  cancellationPending?: boolean;
   failureCode: string | null;
   failureMessage: string | null;
   externalAmountCents: number;
@@ -206,9 +214,116 @@ export type PosCardPaymentResult = {
   pickupCode: string | null;
 };
 
+export type PosCardPaymentReviewItem = {
+  attemptId: string;
+  checkoutStatus: PosCardPaymentResult["status"] | "FINALIZING";
+  reviewReason: "LONG_WAIT" | "RELEASE_PENDING";
+  preparedExpiresAt: string;
+  updatedAt: string;
+  pointsCents: number | null;
+  balanceCents: number | null;
+  couponDiscountCents: number | null;
+};
+
+export type PosCardPaymentActiveReviewItem = {
+  attemptId: string;
+  checkoutStatus: PosCardPaymentResult["status"] | "FINALIZING";
+  /** Card-eligible remainder, not the full order value or captured amount. */
+  externalAmountCents: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PosCardPaymentBenefitsReview = {
+  /** Backward-compatible historic LONG_WAIT / RELEASE_PENDING queue. */
+  items: PosCardPaymentReviewItem[];
+  /** Independent recent unresolved Store queue, no preparation deadline gate. */
+  activeItems?: PosCardPaymentActiveReviewItem[];
+};
+
+export async function fetchPosCardPaymentBenefitsReview() {
+  return apiFetch<PosCardPaymentBenefitsReview>(
+    "/pos/payments/card/benefits-review",
+  );
+}
+
+export type { PaymentExceptionCase } from "@/lib/contracts/payment-exceptions";
+
+export function fetchPosPaymentExceptionCase(attemptId: string) {
+  return apiFetch<PaymentExceptionCase | null>(
+    `/pos/payments/exceptions/attempt/${enc(attemptId)}`,
+  );
+}
+
+export function createPosPaymentExceptionCase(
+  attemptId: string,
+  input: { operatorNote: string; cloverOrderId?: string },
+) {
+  return apiFetch<PaymentExceptionCase>(
+    `/pos/payments/exceptions/attempt/${enc(attemptId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...input, confirmation: "CONFIRM REVIEW" }),
+    },
+  );
+}
+
+export function executePosPaymentExceptionCase(caseStableId: string) {
+  return apiFetch<PaymentExceptionCase>(
+    `/pos/payments/exceptions/case/${enc(caseStableId)}/execute`,
+    { method: "POST" },
+  );
+}
+
+export type PosCardPaymentReviewDetail = PosCardPaymentResult & {
+  currency?: string;
+  paymentStatus: PosCardPaymentResult["status"] | null;
+  resultCode: string | null;
+  externalPaymentId: string | null;
+  providerPaymentId: string | null;
+  terminalOperationState: string | null;
+  terminalId: string | null;
+  sandboxManualRecoveryEnabled: boolean;
+  sandboxOperatorUnpaidAccepted: boolean;
+  sandboxRecoveryTerminalFinalized: boolean;
+  sandboxLateCanonicalPayment: boolean;
+};
+
+export function manuallyCloseSandboxUnpaid(
+  attemptId: string,
+  input: { confirmation: "CONFIRM UNPAID"; cloverOrderId: string; operatorNote: string },
+) {
+  return apiFetch<PosCardPaymentResult>(
+    `/pos/payments/card/review/${enc(attemptId)}/manual-close-unpaid`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function fetchPosCardPaymentReviewAttempt(attemptId: string) {
+  return apiFetch<PosCardPaymentReviewDetail>(
+    `/pos/payments/card/review/${enc(attemptId)}`,
+  );
+}
+
+/** Recheck the original identity; never dispatch a new Sale. */
+export function recheckPosCardPaymentReviewAttempt(attemptId: string) {
+  return apiFetch<PosCardPaymentResult>(
+    "/pos/payments/card/review/" + enc(attemptId) + "/recheck",
+    { method: "POST" },
+  );
+}
+
 export type PosCardPaymentRequest = {
   attemptId: string;
   idempotencyKey: string;
+  retryPromptEnabled?: boolean;
+  asyncTerminalFlow?: boolean;
   order: CreateOrderInput;
 };
 
@@ -232,6 +347,15 @@ export async function startPosCardPayment(input: PosCardPaymentRequest) {
 
 export async function recoverPosCardPayment(input: PosCardPaymentRequest) {
   return apiFetch<PosCardPaymentResult>("/pos/payments/card/recover", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+/** Manual same-identity recovery, never creates a fresh Sale identity. */
+export async function resumeOriginalPosCardPayment(input: PosCardPaymentRequest) {
+  return apiFetch<PosCardPaymentResult>("/pos/payments/card/resume-original", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -345,8 +469,10 @@ export type ManagedCardRefundResult<T> = {
     | "FAILED"
     | null;
   operation: "REFUND" | "VOID" | null;
+  reversalOutcome?: "VOIDED" | "REFUNDED" | null;
   order: T;
   refundedCardBaseCents: number | null;
+  refundedTipCents: number | null;
   refundedAdditionalChargeCents: number | null;
   refundedCustomerTotalCents: number | null;
   failureCode: string | null;

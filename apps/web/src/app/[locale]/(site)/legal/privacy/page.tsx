@@ -1,6 +1,7 @@
 // apps/web/src/app/[locale]/legal/privacy/page.tsx
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { isLocale } from "@/lib/i18n/locales";
 import type { Locale } from "@/lib/i18n/locales";
 import { notFound } from "next/navigation";
@@ -36,8 +37,8 @@ export default function PrivacyPage({
         </h1>
         <p className="text-xs text-slate-500">
           {isZh
-            ? "生效及最后更新日期：2026-08-22。本隐私政策说明 SANQIN RESTAURANT 在运营 SanQ Roujiamo（三秦肉夹馍）网站、会员与在线点餐服务时如何收集、使用、披露和保护个人信息。"
-            : "Effective and last updated: 2026-08-22. This Privacy Policy explains how SANQIN RESTAURANT collects, uses, discloses, and protects personal information when operating the SanQ Roujiamo website, membership program, and online ordering services."}
+            ? "生效及最后更新日期：2026-10-21。本隐私政策适用于 SANQIN RESTAURANT 运营的 SanQ Roujiamo（三秦肉夹馍）网站、会员、在线点餐及 sanq.ca 门店管理与 Clover 支付集成应用，说明我们如何收集、使用、披露和保护个人信息及相关商户交易资料。门店应用服务于 SanQ 自营门店及其获授权人员。"
+            : "Effective and last updated: 2026-10-21. This Privacy Policy covers the SanQ Roujiamo website, membership program, online ordering, and the sanq.ca store-management and Clover payment integration app operated by SANQIN RESTAURANT. It explains our handling of personal information and related merchant transaction records. The store app serves SanQ-operated stores and their authorized personnel."}
         </p>
       </header>
 
@@ -60,6 +61,16 @@ export default function PrivacyPage({
             {isZh
               ? "订单与交易信息：菜品、选项、订单备注、金额、优惠、积分或储值余额使用情况、支付状态、取餐/配送方式与时间等。"
               : "Order and transaction information, including items, options, order notes, amounts, discounts, points or Store Balance usage, payment status, fulfillment method, and timing."}
+          </li>
+          <li>
+            {isZh
+              ? "Clover 商户与支付资料：在商户授权和实际业务需要范围内，我们从 Clover 接收商户名称、联系资料、门店及设备标识，以及订单、付款、退款和撤销交易的标识、时间、状态、金额、币种、税费、小费和附加费。Clover 提供时，我们也接收卡组织与卡号末四位等有限银行卡摘要，用于核对交易。"
+              : "Clover merchant and payment records: within the merchant's authorization and operational needs, we receive merchant names and contact details, store and device identifiers, and order, payment, refund, and void identifiers, times, statuses, amounts, currencies, taxes, tips, and additional charges from Clover. Where Clover supplies them, we also receive limited card summaries, such as card brand and last four digits, to identify transactions."}
+          </li>
+          <li>
+            {isZh
+              ? "门店操作与支持资料：获授权人员的账户标识、操作时间、支付或退款操作记录，以及你为查询交易或寻求支持而提供的信息。电子收据所需邮箱或手机号可由 Clover 直接处理；SanQ 仅在自己的通知或支持流程实际接收这些资料时处理。"
+              : "Store-operation and support records: authorized personnel's account identifiers, action times, payment or refund activity, and information you provide for transaction inquiries or support. Clover may handle electronic-receipt email addresses or phone numbers directly; SanQ handles those details when it actually receives them through its own notification or support workflows."}
           </li>
           <li>
             {isZh
@@ -96,6 +107,11 @@ export default function PrivacyPage({
           </li>
           <li>
             {isZh
+              ? "将门店订单与 Clover 付款、退款或撤销记录关联，核对实际收款和费用、处理交易争议、记录授权操作，并支持门店财务核对和客户服务。Clover 授权或选择电子收据不会自动订阅 SanQ 营销消息。"
+              : "To match store orders with Clover payments, refunds, or voids; verify collections and charges; address transaction disputes; record authorized actions; and support store financial reconciliation and customer service. Authorizing Clover access or choosing an electronic receipt does not automatically subscribe anyone to SanQ marketing."}
+          </li>
+          <li>
+            {isZh
               ? "在你明确同意营销邮件的情况下，向你发送新品、活动或优惠信息；营销订阅与订单通知、验证码等服务消息分开管理。"
               : "With your express marketing-email consent, to send information about new items, promotions, or special offers. Marketing subscriptions are managed separately from service messages such as order notifications and verification codes."}
           </li>
@@ -124,8 +140,8 @@ export default function PrivacyPage({
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "Clover：在线支付处理及支付状态相关服务。我们不在 SanQ 系统中保存完整银行卡号。"
-              : "Clover, for online payment processing and payment-status services. SanQ does not store full card numbers in its own systems."}
+              ? "Clover 及相关支付服务：处理线上和门店终端银行卡支付、退款、撤销及适用的支付收据，并提供获授权的商户和交易资料供 SanQ 核对。完整银行卡资料及 PIN 等敏感验证信息由 Clover 安全支付界面或设备处理；SanQ 系统不保存完整卡号、CVV 或 PIN。"
+              : "Clover and related payment services, for online and in-store terminal card payments, refunds, voids, applicable payment receipts, and authorized merchant and transaction records used for reconciliation. Clover's secure payment interfaces or devices handle full card details and sensitive verification information. SanQ does not store full card numbers, CVV, or PIN."}
           </li>
           <li>
             {isZh
@@ -158,6 +174,19 @@ export default function PrivacyPage({
               : "Disclosures required by law or reasonably necessary for business operations, such as responding to valid legal process or handling information in connection with a permitted business reorganization or asset transfer."}
           </li>
         </ul>
+        <p>
+          {isZh
+            ? "Clover 对其自行处理的信息另有隐私说明，可查看："
+            : "For information Clover handles under its own privacy practices, see:"}{" "}
+          <a
+            className="text-slate-900 underline"
+            href="https://www.clover.com/privacy-policy"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {isZh ? "Clover 隐私声明" : "Clover Privacy Notice"}
+          </a>
+        </p>
       </section>
 
       <section className="space-y-2">
@@ -168,6 +197,11 @@ export default function PrivacyPage({
           {isZh
             ? "我们采取合理的技术、组织和访问控制措施来保护个人信息。不同类别的信息会根据其用途、账户或订单存续需要、争议处理、安全需要以及适用的税务、会计或法律要求保存不同期限；当信息不再具有合理业务或法律用途时，我们会按适当方式删除、匿名化或限制继续使用。"
             : "We use reasonable technical, organizational, and access-control measures to protect personal information. Retention periods vary by data type based on the purpose for which the information is used, account or order requirements, dispute and security needs, and applicable tax, accounting, or legal obligations. When information is no longer reasonably required, we delete, anonymize, or otherwise restrict further use as appropriate."}
+        </p>
+        <p>
+          {isZh
+            ? "访问商户与支付资料仅限履行相关工作需要的获授权人员和服务供应商。服务供应商可能在加拿大境内或境外处理信息，境外处理的信息可能受当地法律约束。交易、退款及审计记录可能因税务、会计、争议处理或安全需要而在停止使用应用后继续保留；断开 Clover 连接不会自动删除这些既有记录。"
+            : "Access to merchant and payment records is limited to authorized personnel and providers who need it for their work. Providers may process information inside or outside Canada, where local laws may apply. Transaction, refund, and audit records may need to remain after app use ends for tax, accounting, dispute, or security purposes. Disconnecting Clover does not automatically erase existing records."}
         </p>
       </section>
 
@@ -193,8 +227,8 @@ export default function PrivacyPage({
           </li>
           <li>
             {isZh
-              ? "如你希望提出隐私问题、访问/更正请求或投诉，可发送邮件至 support@sanq.ca，并注明“Privacy / 隐私”。"
-              : "For privacy questions, access/correction requests, or complaints, email support@sanq.ca and include “Privacy” in the subject or message."}
+              ? "你也可以申请删除不再需要的信息、撤回可撤回的同意，或提出隐私投诉。请发送邮件至 support@sanq.ca，注明“Privacy / 隐私”。我们会在必要的身份或授权核验后，按适用要求处理；法定保存或交易争议等需要可能限制删除，撤回必要信息处理的同意可能影响相关服务。"
+              : "You may also request deletion of information no longer needed, withdraw consent where available, or raise a privacy complaint. Email support@sanq.ca with “Privacy” in the subject or message. We handle requests under applicable requirements after necessary identity or authority checks. Legal retention or transaction disputes may limit deletion, and withdrawing consent for necessary processing may affect the related service."}
           </li>
         </ul>
       </section>
@@ -213,6 +247,11 @@ export default function PrivacyPage({
             {isZh
               ? "用于改进服务体验的可选分析事件只有在你同意后才会启用；分析事件可能包含页面路径、语言、事件参数，以及服务器处理请求时产生的 IP 地址和 User-Agent。"
               : "Optional analytics events used to improve the service are enabled only after you consent. Analytics records may include page path, language, event parameters, and the IP address and User-Agent associated with the server request."}
+          </li>
+          <li>
+            {isZh
+              ? "本站目前不将浏览器的 Do Not Track 信号自动转换为站内偏好；可选分析以你在本站记录的同意设置为准。第三方登录、地图及支付服务可能按各自隐私政策使用其自身的 Cookie 或类似技术。"
+              : "The site does not currently translate browser Do Not Track signals into site preferences; optional analytics follows the consent settings recorded on this site. Third-party sign-in, mapping, and payment services may use their own cookies or similar technologies under their own privacy policies."}
           </li>
         </ul>
       </section>
@@ -247,6 +286,29 @@ export default function PrivacyPage({
           {isZh
             ? "隐私负责人：SANQIN RESTAURANT Privacy Officer。邮箱：support@sanq.ca。地址：Unit 138, 4750 Yonge St, North York, ON M2N 5M6, Canada。"
             : "Privacy Officer: SANQIN RESTAURANT Privacy Officer. Email: support@sanq.ca. Address: Unit 138, 4750 Yonge St, North York, ON M2N 5M6, Canada."}
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh
+            ? "10. Clover 授权与停止连接"
+            : "10. Clover authorization & disconnection"}
+        </h2>
+        <p>
+          {isZh
+            ? "SanQ 自营门店由有权代表商户的人员授权连接 Clover。我们在受保护的服务端保管维持连接所需的授权凭据。应用仅在商户授予的权限及相关门店业务需要范围内访问资料，用于本政策列明的支付、订单核对、审计及支持，不将这些资料出售或用于无关的跨商户广告。"
+            : "An authorized merchant representative connects Clover for the SanQ-operated store. We keep the authorization credentials needed for the connection on protected servers. The app accesses records within granted permissions and the store's operational needs for the payment, order reconciliation, audit, and support purposes described here. These records are not sold or used for unrelated advertising across merchants."}
+        </p>
+        <p>
+          {isZh
+            ? "有权代表商户的人员可使用 Clover 提供的授权或应用管理方式撤销访问，或联系 support@sanq.ca 安排停止连接。依赖该授权的功能将受到影响；停止连接不等于取消或退还已经完成的付款。Clover 自行持有的信息及相关请求适用其隐私声明，我们会在自身处理范围内配合核查。"
+            : "Authorized merchant representatives may revoke access through Clover's authorization or app-management facilities, or contact support@sanq.ca to arrange disconnection. Features relying on that authorization will be affected; disconnection does not cancel or refund completed payments. Clover's Privacy Notice governs information it holds independently and related requests. We assist with inquiries within our own processing scope."}
+        </p>
+        <p>
+          <Link className="text-slate-900 underline" href={`/${locale}/legal/contact`}>
+            {isZh ? "隐私与应用支持联系方式" : "Privacy and app support contacts"}
+          </Link>
         </p>
       </section>
     </div>

@@ -1,5 +1,7 @@
 # 2026-10-08 — GHCR → VM deployment simplification and abandoned C5-B3 cleanup
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
 **Status: LOCAL SOURCE / USER REVIEW PENDING / NO LOCAL TESTS / NO REMOTE PR / NO PRODUCTION CHANGE.**
 
 ## User-approved scope
@@ -49,6 +51,17 @@ The installed root-owned `/opt/sanq/runtime/runtime-release.json` and its full `
 Application image SHA is now independent of the installed Runtime source SHA. `verify_runtime_release()` verifies the installed Runtime manifest's historical API/Web image reference shape and uses an independent GitHub compare of installed Runtime source SHA to the sealed application SHA. Only a bounded forward main ancestry with complete, explicit changed-file metadata and **no changes anywhere in the Runtime Bundle's SOURCE_FILES** may reuse the installed Runtime. GitHub comparison that is missing/too large/truncated, any Runtime file change or divergent history blocks instead of guessing compatibility. Source-level equality of Runtime files is a conservative compatibility proxy, not proof that every API requires no new Compose/env contract. This gate must be independently reviewed during controlled production testing.
 
 The existing `release_contract.discover_release()` and Docker RepoDigest checks still authenticate the candidate GHCR pair. Conditional migration logic from PR #2755 remains unchanged. This first batch does **not** install a new Runtime or remove the production MCP checkout. Existing Runtime's controller source remains older until separately authorized installed Runtime handoff; no production deployment is performed here.
+
+## 2026-10-16 — Batch A06 Prisma migrate-status fail-closed tightening (local review)
+
+**LOCAL SOURCE + REGRESSION TESTS AUTHORED / NOT EXECUTED / NO PR OR CI / NO PRODUCTION UPDATE.**
+Source branch: `feat/c5-batch-a-a06-prisma-status-guard-20261016`, based on latest `origin/dev` after A08 PR #2834 merge.
+
+The committed `pnpm-lock.yaml` resolves Prisma CLI **6.19.1**. Its upstream `packages/migrate/src/commands/MigrateStatus.ts` outputs one of two acceptable states for the existing controller: complete clean status (`exit 0` plus `Database schema is up to date!`) or complete pending-only status (`exit 1` plus migration count, exact pending names, and the development/production command guidance). The existing parser accepted any `exit 0` including empty output and accepted `exit 1` with a partial pending substring plus unfamiliar text. Other `exit 1` meanings include drift, missing migration table and failed migrations.
+
+A06 changes **only** `ops/release/deploy_release.py`'s read-only status classification and `ops/release/tests/test_deploy_release.py`. It enforces full bounded stdout grammar, PostgreSQL datasource/schema banner, count/heading agreement, unique bounded migration names, recognized CLI command guidance, explicit clean success, and empty stderr. Any unexpected output or noncanonical CLI variant is **BLOCKED** before the release controller creates PENDING or mutates application state; no automatic migration is introduced. Existing explicit `--apply-migrations` plus SQL safety review remain mandatory for pending SQL. The output grammar is intentionally coupled to Prisma CLI 6.19.1 and may need a separately reviewed update if the future installed candidate image uses another Prisma release.
+
+A06 fixtures derive from pinned upstream source and known prior production clean-status evidence, **not** a newly executed real PostgreSQL/Prisma process. The full repository `api-checks` validation is deferred to GitHub Actions after review and remote authorization. No changes to `SOURCE_FILES` membership, Prisma schema/migrations, dependency lockfile, Ops privileges, backup, Compose, Docker, MCP, production data, Runtime installation or application rollout. A06 does not close Batch A / C5-G2 production readiness, and previously installed Runtime remains frozen.
 
 ## Review and validation gates
 

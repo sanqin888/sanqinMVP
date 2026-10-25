@@ -43,6 +43,7 @@ export type PosManagedCardRefundView = {
   mode: 'MANAGED' | 'LEGACY_MANUAL_REQUIRED';
   status: PaymentStatus | null;
   operation: Extract<PaymentOperation, 'REFUND' | 'VOID'> | null;
+  reversalOutcome?: 'VOIDED' | 'REFUNDED' | null;
   order: PosOrderDto;
   refundedCardBaseCents: number | null;
   refundedTipCents: number | null;
@@ -283,6 +284,7 @@ export class PosCardRefundOrchestrationService {
       mode: 'MANAGED',
       status: 'SUCCEEDED',
       operation,
+      reversalOutcome: reversal.reversalOutcome,
       order: finalized,
       refundedCardBaseCents: reversalSnapshot.refundedAmountCents,
       refundedTipCents: expectedTipRefundCents,
@@ -411,11 +413,8 @@ export class PosCardRefundOrchestrationService {
   private chooseOperation(
     completedAt: Date | null,
   ): Extract<PaymentOperation, 'REFUND' | 'VOID'> {
-    if (
-      completedAt &&
-      Date.now() - completedAt.getTime() >= 0 &&
-      Date.now() - completedAt.getTime() <= CLOVER_VOID_WINDOW_MS
-    ) {
+    const ageMs = completedAt ? Date.now() - completedAt.getTime() : null;
+    if (ageMs !== null && ageMs >= 0 && ageMs <= CLOVER_VOID_WINDOW_MS) {
       return 'VOID';
     }
     return 'REFUND';

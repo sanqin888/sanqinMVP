@@ -226,6 +226,38 @@ describe('RefundPaymentService', () => {
     expect(provider.getPaymentStatus.mock.calls).toHaveLength(2);
   });
 
+  it('recovers an acknowledged UNKNOWN refund through the original canonical read without another refund POST', async () => {
+    const { sale, provider, service, input } = await createHarness();
+    const refundInput: StartOrRecoverRefundInput = {
+      ...input,
+      operation: 'REFUND',
+    };
+    provider.getPaymentStatus
+      .mockResolvedValueOnce(saleCanonical(sale))
+      .mockImplementation((request) =>
+        Promise.resolve(reversalCanonical(refundInput, request.paymentId)),
+      );
+    provider.refundPayment.mockResolvedValue({
+      status: 'UNKNOWN',
+      providerPaymentId: 'CLOVERPAY001',
+      providerRefundId: 'CLOVERREF001',
+      resultCode: 'CLOVER_REFUND_ACKNOWLEDGED',
+      failureCode: 'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    });
+
+    const uncertain = await service.startOrRecover(refundInput);
+    expect(uncertain.status).toBe('UNKNOWN');
+    expect(uncertain.toSnapshot().providerRefundId).toBe('CLOVERREF001');
+    const recovered = await service.startOrRecover(refundInput);
+
+    expect(recovered.id).toBe(uncertain.id);
+    expect(recovered.status).toBe('SUCCEEDED');
+    expect(recovered.toSnapshot().providerRefundId).toBe('CLOVERREF001');
+    expect(provider.refundPayment.mock.calls).toHaveLength(1);
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(2);
+  });
+
   it('blocks a new managed reversal when Clover already reports refund activity', async () => {
     const { sale, provider, service, input } = await createHarness();
     provider.getPaymentStatus.mockResolvedValue(
@@ -293,6 +325,81 @@ describe('RefundPaymentService', () => {
     expect(reversal.toSnapshot().failureCode).toBe(
       'PAYMENT_REVERSAL_PROVIDER_CORRELATION_MISMATCH',
     );
+  });
+
+  it('does not let a delayed zero-refund preflight overwrite a completed reversal', async () => {
+    const { transactions, sale, provider, service, input } =
+      await createHarness();
+    let finishPreflight: (outcome: PaymentProviderOutcome) => void = () =>
+      undefined;
+    let preflightStarted: () => void = () => undefined;
+    const pending = new Promise<PaymentProviderOutcome>((resolve) => {
+      finishPreflight = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      preflightStarted = resolve;
+    });
+    provider.getPaymentStatus.mockImplementationOnce(() => {
+      preflightStarted();
+      return pending;
+    });
+    const delayed = service.startOrRecover(input);
+    await started;
+    // Another request has already persisted the same logical reversal.
+    const completed = PaymentTransaction.create({
+      id: '22222222-2222-4222-8222-222222222222',
+      attemptId: input.attemptId,
+      idempotencyKey: input.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'VOID',
+      amountCents: input.amountCents,
+      currency: 'CAD',
+    })
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome(
+        reversalCanonical(input, '22222222-2222-4222-8222-222222222222'),
+      );
+    await transactions.create(completed);
+    await transactions.save(
+      sale.recordProviderObservation({
+        status: 'SUCCEEDED',
+        providerRefundId: 'CLOVERREF001',
+        refundedAmountCents: 2000,
+      }),
+    );
+    const saveOriginal = jest.spyOn(transactions, 'saveIfCurrentStatus');
+    finishPreflight(saleCanonical(sale));
+    await expect(delayed).resolves.toMatchObject({ id: completed.id });
+    const originalWrites = saveOriginal.mock.calls
+      .filter(([payment]) => payment.id === sale.id)
+      .map(([payment]) => payment.toSnapshot().refundedAmountCents);
+    expect(originalWrites).not.toContain(0);
+    expect((await transactions.findById(sale.id))?.toSnapshot()).toMatchObject({
+      status: 'SUCCEEDED',
+      refundedAmountCents: 2000,
+      providerRefundId: 'CLOVERREF001',
+    });
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
+  });
+
+  it('blocks new reversal execution when local cumulative reversal facts already exist', async () => {
+    const { transactions, sale, provider, service, input } =
+      await createHarness();
+    await transactions.save(
+      sale.recordProviderObservation({
+        status: 'SUCCEEDED',
+        refundedAmountCents: 2000,
+      }),
+    );
+    await expect(service.startOrRecover(input)).rejects.toMatchObject({
+      failureCode: 'PAYMENT_ORIGINAL_ALREADY_REFUNDED',
+    });
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(0);
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
   });
 
   it('returns the saved final reversal on duplicate requests without executing again', async () => {

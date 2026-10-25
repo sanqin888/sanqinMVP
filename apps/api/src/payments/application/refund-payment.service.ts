@@ -381,6 +381,12 @@ export class RefundPaymentService {
   ): Promise<void> {
     const original = await this.requireOriginalSale(input);
     const snapshot = original.toSnapshot();
+    if (snapshot.refundedAmountCents !== 0 || snapshot.providerRefundId) {
+      throw new PaymentReversalPreflightError(
+        'PAYMENT_ORIGINAL_ALREADY_REFUNDED',
+        'The original payment already records reversal activity; no new reversal was started',
+      );
+    }
     let outcome: PaymentProviderOutcome;
     try {
       outcome = await this.provider.getPaymentStatus({
@@ -448,8 +454,8 @@ export class RefundPaymentService {
       );
     }
 
-    const observed = original.recordProviderObservation(outcome);
-    await this.transactions.saveIfCurrentStatus(observed, 'SUCCEEDED');
+    // Preflight is validation only. A delayed zero-refund read must never
+    // overwrite a successful concurrent reversal's persisted cumulative facts.
   }
 
   private async recordOriginalSaleReversal(

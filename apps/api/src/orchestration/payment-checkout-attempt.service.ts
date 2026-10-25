@@ -42,6 +42,28 @@ export type PreparePaymentCheckoutInput = {
   order: CreateOrderInput;
 };
 
+/** Read-only operator diagnostics, not proof of live Benefits ledger state. */
+export type PosCardPaymentReviewItem = {
+  attemptId: string;
+  checkoutStatus: PaymentCheckoutAttemptStatus;
+  reviewReason: 'LONG_WAIT' | 'RELEASE_PENDING';
+  preparedExpiresAt: string;
+  updatedAt: string;
+  pointsCents: number | null;
+  balanceCents: number | null;
+  couponDiscountCents: number | null;
+};
+
+/** Persisted Store-scoped live queue; financial finality remains Payments-owned. */
+export type PosCardPaymentActiveReviewItem = {
+  attemptId: string;
+  checkoutStatus: PaymentCheckoutAttemptStatus;
+  externalAmountCents: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PreparedPaymentCheckout = {
   id: string;
   attemptId: string;
@@ -52,9 +74,11 @@ export type PreparedPaymentCheckout = {
   storeId: string;
   status: PaymentCheckoutAttemptStatus;
   externalAmountCents: number;
+  currency?: string;
   paymentTransactionId: string | null;
   orderStableId: string;
   expiresAt: Date;
+  benefitsReleasedAt?: Date | null;
   snapshot: PreparedPaymentOrderSnapshot;
 };
 
@@ -228,16 +252,42 @@ export class PaymentCheckoutAttemptService {
     if (checkout.status === 'FINALIZING' && payment.status === 'SUCCEEDED') {
       return checkout;
     }
+    if (
+      ['DECLINED', 'CANCELLED', 'FAILED'].includes(checkout.status) &&
+      checkout.status !== payment.status
+    ) {
+      throw new ConflictException({
+        code: 'PAYMENT_CHECKOUT_FINAL_STATUS_CONFLICT',
+        message:
+          'A definitive checkout result conflicts with the payment result.',
+      });
+    }
+    if (
+      ['SUCCEEDED', 'FINALIZING'].includes(checkout.status) &&
+      payment.status !== 'SUCCEEDED'
+    ) {
+      return checkout;
+    }
 
     const status = this.checkoutStatusForPayment(payment.status);
-    const updated = await this.prisma.paymentCheckoutAttempt.update({
-      where: { attemptId },
-      data: {
-        status,
-        paymentTransactionId: payment.id,
-      },
+    const updated = await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: { attemptId, status: checkout.status },
+      data: { status, paymentTransactionId: payment.id },
     });
-    return this.mapRecord(updated);
+    const latest = await this.findByAttemptId(attemptId);
+    if (
+      updated.count === 0 &&
+      payment.status === 'SUCCEEDED' &&
+      ['DECLINED', 'CANCELLED', 'FAILED'].includes(latest.status)
+    ) {
+      // A concurrent reversal won the checkout CAS. Do not finalize an order
+      // against that terminal state; the payment conflict needs review.
+      throw new ConflictException({
+        code: 'PAYMENT_CHECKOUT_FINAL_STATUS_CONFLICT',
+        message: 'The checkout was closed while payment success was reported.',
+      });
+    }
+    return latest;
   }
 
   async cancelBeforeProvider(attemptId: string): Promise<{
@@ -257,6 +307,29 @@ export class PaymentCheckoutAttemptService {
     };
   }
 
+  /**
+   * Only called after the Payments terminal-operation fence proved the original
+   * provider Sale was never dispatched. The checkout CAS prevents closing a
+   * completed or already-finalizing payment.
+   */
+  async cancelAfterConfirmedNoDispatch(
+    attemptId: string,
+  ): Promise<PreparedPaymentCheckout> {
+    await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: {
+        attemptId,
+        status: 'PROCESSING',
+        paymentTransactionId: null,
+      },
+      data: { status: 'CANCELLED' },
+    });
+    const current = await this.findByAttemptId(attemptId);
+    if (current.status === 'CANCELLED') {
+      await this.releaseReservations(attemptId);
+    }
+    return this.findByAttemptId(attemptId);
+  }
+
   async markExternallyReversedAndRelease(
     attemptId: string,
   ): Promise<PreparedPaymentCheckout> {
@@ -267,7 +340,8 @@ export class PaymentCheckoutAttemptService {
       },
       data: { status: 'CANCELLED' },
     });
-    if (reversed.count === 1) {
+    const checkout = await this.findByAttemptId(attemptId);
+    if (reversed.count === 1 || checkout.status === 'CANCELLED') {
       await this.releaseReservations(attemptId);
     }
     return this.findByAttemptId(attemptId);
@@ -322,17 +396,161 @@ export class PaymentCheckoutAttemptService {
       },
       data: { status },
     });
-    if (failed.count === 1) {
+    const checkout = await this.findByAttemptId(attemptId);
+    if (failed.count === 1 || checkout.status === status) {
       await this.releaseReservations(attemptId);
     }
     return this.findByAttemptId(attemptId);
   }
 
+  /**
+   * Immediately reviewable on every POS for this Store, independent of browser
+   * cache and expiry. Status is a Checkout observation, not provider finality.
+   * Do not read Clover or change financial/Benefits/Terminal state here.
+   */
+  async findPosCardPaymentActiveReviewItems(
+    storeStableId: string,
+  ): Promise<PosCardPaymentActiveReviewItem[]> {
+    const statuses: PaymentCheckoutAttemptStatus[] = [
+      'PROCESSING',
+      'UNKNOWN',
+      'RECONCILING',
+      'SUCCEEDED',
+      'FINALIZING',
+    ];
+    const rows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        status: { in: statuses },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { attemptId: 'asc' }],
+      take: 10,
+      select: {
+        attemptId: true,
+        status: true,
+        externalAmountCents: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    return rows.map((row) => ({
+      attemptId: row.attemptId,
+      checkoutStatus: row.status,
+      externalAmountCents: row.externalAmountCents,
+      currency: row.currency,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Store-scoped and bounded historic queue: a long wait is an observation,
+   * never evidence that Clover failed or that owner Benefits HOLDs expired.
+   * The frozen checkout tender is an allocation snapshot, not a live ledger read.
+   */
+  async findPosCardPaymentReviewItems(
+    storeStableId: string,
+    now: Date = new Date(),
+  ): Promise<PosCardPaymentReviewItem[]> {
+    const longWaitStatuses: PaymentCheckoutAttemptStatus[] = [
+      'PROCESSING',
+      'UNKNOWN',
+      'RECONCILING',
+      'SUCCEEDED',
+      'FINALIZING',
+    ];
+    const releaseStatuses: PaymentCheckoutAttemptStatus[] = [
+      'DECLINED',
+      'CANCELLED',
+      'FAILED',
+    ];
+    const rows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        source: 'POS_TERMINAL',
+        storeId: storeStableId,
+        OR: [
+          {
+            status: { in: longWaitStatuses },
+            expiresAt: { lte: now },
+          },
+          {
+            status: { in: releaseStatuses },
+            benefitsReleasedAt: null,
+          },
+        ],
+      },
+      orderBy: [{ expiresAt: 'asc' }, { attemptId: 'asc' }],
+      take: 25,
+      select: {
+        attemptId: true,
+        status: true,
+        expiresAt: true,
+        updatedAt: true,
+        tenderAllocationJson: true,
+      },
+    });
+    const cents = (value: unknown): number | null => {
+      if (typeof value !== 'number') return null;
+      if (!Number.isSafeInteger(value)) return null;
+      if (value < 0) return null;
+      return value;
+    };
+    return rows.map((row) => {
+      const allocation = row.tenderAllocationJson;
+      const tender: Record<string, unknown> | null =
+        allocation !== null &&
+        typeof allocation === 'object' &&
+        !Array.isArray(allocation)
+          ? (allocation as Record<string, unknown>)
+          : null;
+      return {
+        attemptId: row.attemptId,
+        checkoutStatus: row.status,
+        reviewReason: releaseStatuses.includes(row.status)
+          ? 'RELEASE_PENDING'
+          : 'LONG_WAIT',
+        preparedExpiresAt: row.expiresAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        pointsCents: cents(tender?.pointsCents),
+        balanceCents: cents(tender?.balanceCents),
+        couponDiscountCents: cents(tender?.couponDiscountCents),
+      };
+    });
+  }
+
+  async findPendingBenefitsReleases(
+    afterId: string | null,
+  ): Promise<Array<{ id: string; attemptId: string }>> {
+    return this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        source: 'POS_TERMINAL',
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+        ...(afterId ? { id: { gt: afterId } } : {}),
+      },
+      orderBy: { id: 'asc' },
+      take: 25,
+      select: { id: true, attemptId: true },
+    });
+  }
+
   async releaseReservations(attemptId: string): Promise<void> {
+    // Both owner operations are idempotent. A partial failure leaves the
+    // terminal checkout as durable pending work for the release recovery poller.
     await Promise.all([
       this.paymentTenderReservations.releasePaymentTender(attemptId),
       this.paymentCouponReservations.releasePaymentCoupons(attemptId),
     ]);
+    await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: {
+        attemptId,
+        status: { in: ['DECLINED', 'CANCELLED', 'FAILED'] },
+        benefitsReleasedAt: null,
+      },
+      data: { benefitsReleasedAt: new Date() },
+    });
   }
 
   private async releaseExpiredPreProviderAttempts(
@@ -469,9 +687,11 @@ export class PaymentCheckoutAttemptService {
       storeId: record.storeId,
       status: record.status,
       externalAmountCents: record.externalAmountCents,
+      currency: record.currency,
       paymentTransactionId: record.paymentTransactionId,
       orderStableId: record.orderStableId,
       expiresAt: record.expiresAt,
+      benefitsReleasedAt: record.benefitsReleasedAt,
       snapshot,
     };
   }

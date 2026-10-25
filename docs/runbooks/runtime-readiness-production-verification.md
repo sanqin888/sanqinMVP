@@ -1,5 +1,9 @@
 # Runtime readiness production verification
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
+> 本文 Post-A5 readiness 与 C4 历史批次不等于 Runtime R0–R5；旧命令和有限关闭保留各自范围。新更新/快照恢复必须验证 no/跨重启维护与最终原策略恢复；本文 readiness 本身不授予生产操作权。
+
 ## Scope and gate
 
 This runbook closes Post-A5 Runtime Readiness R5 after R1-R4 are promoted to
@@ -186,29 +190,22 @@ VM can verify pulled Docker RepoDigests without authenticated artifact access.
 A status without both digests is deliberately not eligible for deployment.
 Discovery does not write `.env`, pull images or recreate services. A newly
 published candidate must still pass the separately authorized Prisma / backup /
-Compose / readiness gates. See
-`docs/architecture/postmod-ghcr-batch-a-release-discovery.md`.
+Compose / readiness gates. The paired-publication contract is retained at
+[Runtime publication constraints](../architecture/Runtime交付与安装约束.md#publication);
+its historical origin is indexed in
+[Runtime decisions and evidence](../architecture/Runtime历史决策与证据索引.md).
 Existing pre-Batch-A releases are not retroactively sealed.
 
-### Batch B manually gated deployment (not yet production installed)
+### Historical Batch B deployment proposal
 
-After operator review and a separate explicit production rollout authorization,
-the proposed controller can be used from the original production repo:
+The pre-C4 Batch B proposal used the original production checkout. Its old
+command/context guide has been retired; the R5 and 2026-10-04 records below
+remain historical evidence and are not rewritten as later controller tests.
 
-```bash
-python3 ops/release/deploy_release.py plan
-python3 ops/release/deploy_release.py deploy --execute
-```
-
-It keeps the existing Compose and encrypted backup .env path as the only active
-SHA authority, atomically edits that single key after all checks and writes a
-gitignored previous/current release journal. It verifies paired image digests,
-a 26-hour local backup, current readiness and read-only target Prisma migration
-status **before** recreating only api/ubereats-worker/web. Database migration
-and data volumes are never changed by this script. Failures after the switch
-remain pending for manual investigation; rollback requires an explicit command
-and compatible prior local images. See
-`docs/architecture/postmod-ghcr-batch-b-manual-deploy.md`.
+For the existing paired-image proof, migration/backup/readiness checks,
+PENDING/manual rollback semantics, installed Runtime version distinction and
+remaining gates, see [GHCR 发布与 Runtime 状态](./GHCR发布与Runtime状态.md).
+Its source references do not prove that the latest controller is installed.
 
 > **C4-B source/production separation (2026-10-08):** the helper's *new
 > source* is fixed to /opt/sanq/runtime and project sanq-app. The command

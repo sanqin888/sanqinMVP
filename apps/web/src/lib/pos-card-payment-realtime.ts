@@ -1,0 +1,241 @@
+import type {
+  PaymentExceptionCase,
+  PosCardPaymentResult,
+  PosCardPaymentReviewDetail,
+} from "./api/pos";
+
+export type PosCardPaymentRealtimeEvent = {
+  attemptId: string;
+  paymentId: string | null;
+  status: PosCardPaymentResult["status"];
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  customerPromptPending?: boolean;
+  customerRetryRequested?: boolean;
+  canResumeOriginalSale?: boolean;
+  terminalInteractionTimedOut?: boolean;
+  benefitsReleaseComplete?: boolean;
+  terminalReadyForNextSale?: boolean;
+  cancellationPending?: boolean;
+  messageKind?: "SNAPSHOT" | "NOTICE";
+  externalAmountCents?: number;
+  surchargeCents?: number | null;
+  chargedTotalCents?: number | null;
+  pointsCents?: number;
+  balanceCents?: number;
+  couponDiscountCents?: number;
+  orderStableId?: string | null;
+  orderNumber?: string | null;
+  pickupCode?: string | null;
+};
+
+/**
+ * Poll only the persisted original Attempt while realtime may be missed.
+ * A terminal success still needs a confirmed existing Order to leave checkout.
+ * Do not auto-trigger payment reconciliation or another provider Sale.
+ */
+export function needsPosCardPaymentReadback(
+  result: PosCardPaymentResult | null,
+): boolean {
+  if (!result) return true;
+  if (
+    ["CREATED", "PROCESSING", "UNKNOWN", "RECONCILING"].includes(result.status)
+  ) {
+    return true;
+  }
+  if (result.status === "SUCCEEDED") return !result.orderStableId;
+  if (result.status === "CANCELLED") {
+    return result.benefitsReleaseComplete !== true;
+  }
+  // A Sandbox operator-attested FAILED is not a provider cancellation.
+  // Continue read-only review until all PEM and owner checkpoints are proven.
+  if (result.status === "FAILED") {
+    return [
+      "SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT",
+      "POS_SANDBOX_OPERATOR_UNPAID_CLOSED",
+      "POS_SANDBOX_OPERATOR_UNPAID_REVIEW_PENDING",
+    ].includes(result.failureCode ?? "");
+  }
+  return false;
+}
+
+/** Dismissing an unresolved overlay only changes presentation, never payment facts. */
+export function canDismissPosCardPaymentReview(
+  status: PosCardPaymentResult["status"] | "IDLE" | "WAITING",
+  hasOriginalAttempt: boolean,
+): boolean {
+  return hasOriginalAttempt && (status === "UNKNOWN" || status === "RECONCILING");
+}
+
+/**
+ * Persisted UI dismissal is scoped to the original Attempt, never to a
+ * payment method or global Store. Recovery and readback must still run.
+ */
+export function shouldOpenRestoredPosCardDialog(
+  attemptId: string,
+  dismissedAttemptId: string | null,
+  keepCheckoutVisible: boolean,
+): boolean {
+  return !keepCheckoutVisible && dismissedAttemptId !== attemptId;
+}
+
+/** A browser pending marker is never cancellation authority. */
+export function canUnlockCancelledPosCheckout(result: PosCardPaymentResult): boolean {
+  return (
+    result.status === "CANCELLED" &&
+    result.benefitsReleaseComplete === true
+  );
+}
+
+/**
+ * Only an existing, completed Sandbox PEM case plus a fresh owner read can
+ * release the browser's original unpaid marker. No client-supplied FAILED,
+ * generic provider failure or partial Benefits/Fence checkpoint may unlock it.
+ */
+export function canUnlockCompletedSandboxUnpaidPosCheckout(
+  review: PosCardPaymentReviewDetail,
+  exception: PaymentExceptionCase | null,
+  storeStableId: string,
+): boolean {
+  return Boolean(
+    storeStableId &&
+    exception?.mode === "SANDBOX" &&
+    exception.status === "COMPLETED" &&
+    exception.action === "SANDBOX_CONFIRM_UNPAID" &&
+    exception.storeStableId === storeStableId &&
+    exception.attemptId === review.attemptId &&
+    exception.externalPaymentId === review.externalPaymentId &&
+    exception.amountCents === review.externalAmountCents &&
+    exception.currency === review.currency &&
+    exception.cloverOrderId &&
+    review.status === "FAILED" &&
+    review.paymentStatus === "FAILED" &&
+    review.resultCode === "POS_TERMINAL_SANDBOX_OPERATOR_UNPAID" &&
+    review.failureCode === "SANDBOX_OPERATOR_ATTESTED_NO_PAYMENT" &&
+    review.benefitsReleaseComplete === true &&
+    review.terminalOperationState === "FINALIZED" &&
+    review.sandboxOperatorUnpaidAccepted === true &&
+    review.sandboxRecoveryTerminalFinalized === true &&
+    review.sandboxLateCanonicalPayment === false &&
+    review.providerPaymentId === null &&
+    review.orderStableId === null
+  );
+}
+
+const isCents = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+// Historical/rolling-deploy realtime events can be state-only. Never coerce
+// missing canonical amounts to zero or accept notices as payment finality.
+export function parsePosCardPaymentSnapshot(
+  event: PosCardPaymentRealtimeEvent,
+): PosCardPaymentResult | null {
+  if (event.messageKind === "NOTICE") return null;
+  const {
+    externalAmountCents,
+    surchargeCents,
+    chargedTotalCents,
+    pointsCents,
+    balanceCents,
+    couponDiscountCents,
+  } = event;
+  if (
+    !isCents(externalAmountCents) ||
+    !isCents(pointsCents) ||
+    !isCents(balanceCents) ||
+    !isCents(couponDiscountCents) ||
+    (surchargeCents !== null && !isCents(surchargeCents)) ||
+    (chargedTotalCents !== null && !isCents(chargedTotalCents))
+  ) {
+    return null;
+  }
+  return {
+    attemptId: event.attemptId,
+    paymentId: event.paymentId,
+    status: event.status,
+    failureCode: event.failureCode ?? null,
+    failureMessage: event.failureMessage ?? null,
+    ...(event.customerPromptPending !== undefined && {
+      customerPromptPending: event.customerPromptPending,
+    }),
+    ...(event.customerRetryRequested !== undefined && {
+      customerRetryRequested: event.customerRetryRequested,
+    }),
+    ...(event.canResumeOriginalSale !== undefined && {
+      canResumeOriginalSale: event.canResumeOriginalSale,
+    }),
+    ...(event.terminalInteractionTimedOut !== undefined && {
+      terminalInteractionTimedOut: event.terminalInteractionTimedOut,
+    }),
+    ...(event.benefitsReleaseComplete !== undefined && {
+      benefitsReleaseComplete: event.benefitsReleaseComplete,
+    }),
+    ...(event.terminalReadyForNextSale !== undefined && {
+      terminalReadyForNextSale: event.terminalReadyForNextSale,
+    }),
+    ...(event.cancellationPending !== undefined && {
+      cancellationPending: event.cancellationPending,
+    }),
+    externalAmountCents,
+    surchargeCents,
+    chargedTotalCents,
+    pointsCents,
+    balanceCents,
+    couponDiscountCents,
+    orderStableId: event.orderStableId ?? null,
+    orderNumber: event.orderNumber ?? null,
+    pickupCode: event.pickupCode ?? null,
+  };
+}
+
+const stateRank: Record<PosCardPaymentResult["status"], number> = {
+  CREATED: 0,
+  PROCESSING: 1,
+  UNKNOWN: 2,
+  RECONCILING: 3,
+  SUCCEEDED: 4,
+  DECLINED: 4,
+  CANCELLED: 4,
+  FAILED: 4,
+};
+
+const isFinalStatus = (status: PosCardPaymentResult["status"]) =>
+  stateRank[status] === 4;
+
+// HTTP responses and socket events can arrive in either order. Keep terminal
+// states terminal, reject stale progress and preserve known canonical amounts.
+export function mergePosCardPaymentSnapshot(
+  previous: PosCardPaymentResult | null,
+  incoming: PosCardPaymentResult,
+): PosCardPaymentResult | null {
+  if (!previous) return incoming;
+  if (incoming.attemptId !== previous.attemptId) return previous;
+  if (isFinalStatus(previous.status) && incoming.status !== previous.status) {
+    return previous;
+  }
+  if (stateRank[incoming.status] < stateRank[previous.status]) return previous;
+  if (previous.orderStableId && !incoming.orderStableId) return previous;
+  if (previous.paymentId && incoming.paymentId && previous.paymentId !== incoming.paymentId) {
+    return previous;
+  }
+  return {
+    ...incoming,
+    paymentId: incoming.paymentId ?? previous.paymentId,
+    customerPromptPending: incoming.customerPromptPending ?? previous.customerPromptPending,
+    customerRetryRequested: incoming.customerRetryRequested ?? previous.customerRetryRequested,
+    canResumeOriginalSale:
+      incoming.canResumeOriginalSale ??
+      (incoming.status === previous.status ? previous.canResumeOriginalSale : false),
+    terminalInteractionTimedOut:
+      incoming.terminalInteractionTimedOut ??
+      (incoming.status === previous.status ? previous.terminalInteractionTimedOut : false),
+    benefitsReleaseComplete: incoming.benefitsReleaseComplete ?? previous.benefitsReleaseComplete,
+    terminalReadyForNextSale: incoming.terminalReadyForNextSale ?? previous.terminalReadyForNextSale,
+    cancellationPending: incoming.cancellationPending ?? previous.cancellationPending,
+    surchargeCents: incoming.surchargeCents ?? previous.surchargeCents,
+    chargedTotalCents: incoming.chargedTotalCents ?? previous.chargedTotalCents,
+    orderStableId: incoming.orderStableId ?? previous.orderStableId,
+    orderNumber: incoming.orderNumber ?? previous.orderNumber,
+    pickupCode: incoming.pickupCode ?? previous.pickupCode,
+  };
+}

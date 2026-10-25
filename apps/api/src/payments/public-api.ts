@@ -20,3 +20,9 @@ export {
   type PaymentReversalFinancialSourceV1,
 } from './application/payment-reversal-financial-facts-reader.contract';
 export { PaymentFinancialFactsModule } from './payment-financial-facts.module';
+export { PaymentExceptionCaseService } from './application/payment-exception-case.service';
+export { PaymentExceptionPaymentGuardService } from './application/payment-exception-payment-guard.service';
+export type {
+  PaymentExceptionCase,
+  PaymentExceptionAction,
+} from './application/payment-exception-case.repository';

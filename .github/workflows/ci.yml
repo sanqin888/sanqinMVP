@@ -15,47 +15,104 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build-test:
-    # Preserve the Web check name; the API check is aggregated below.
-    name: ${{ matrix.app == 'api' && 'api-checks' || 'build-test (web)' }}
+  ci_scope:
+    name: ci-change-scope
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      ops_mcp: ${{ steps.scope.outputs.ops_mcp }}
+      ops_backup: ${{ steps.scope.outputs.ops_backup }}
+      ops_release: ${{ steps.scope.outputs.ops_release }}
+      ops_runtime: ${{ steps.scope.outputs.ops_runtime }}
+      api_static: ${{ steps.scope.outputs.api_static }}
+      api_tests: ${{ steps.scope.outputs.api_tests }}
+      web: ${{ steps.scope.outputs.web }}
+      browser_e2e: ${{ steps.scope.outputs.browser_e2e }}
+      printer: ${{ steps.scope.outputs.printer }}
+      windows: ${{ steps.scope.outputs.windows }}
+      image_api: ${{ steps.scope.outputs.image_api }}
+      image_web: ${{ steps.scope.outputs.image_web }}
+      ops_checks: ${{ steps.scope.outputs.ops_checks }}
+      api_checks: ${{ steps.scope.outputs.api_checks }}
+      api_validation: ${{ steps.scope.outputs.api_validation }}
+    steps:
+      - name: Checkout complete change history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-    strategy:
-      fail-fast: false
-      matrix:
-        app: [web, api]
+      - name: Test CI selection and aggregate boundaries
+        run: python3 -m unittest discover -s tools/ci/tests -p 'test_*.py'
+
+      - name: Select affected CI lanes
+        id: scope
+        run: python3 tools/ci/change_scope.py
+
+  ops_checks:
+    name: ops-checks
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.ops_checks != 'false') }}
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Compile SanQ MCP server
-        if: matrix.app == 'api'
+        if: ${{ needs.ci_scope.outputs.ops_mcp != 'false' }}
         run: python3 -m py_compile ops/sanq-mcp/server.py
 
       - name: Test SanQ MCP safety behavior
-        if: matrix.app == 'api'
+        if: ${{ needs.ci_scope.outputs.ops_mcp != 'false' }}
         run: python3 -m unittest discover -s ops/sanq-mcp/tests -p 'test_*.py'
 
       - name: Test backup operations safety behavior
-        if: matrix.app == 'api'
+        if: ${{ needs.ci_scope.outputs.ops_backup != 'false' }}
         run: |
           bash -n ops/backup/backup-db.sh
           bash -n ops/backup/sanq-backup-protected-nginx
           python3 -m unittest discover -s ops/backup/tests -p 'test_*.py'
 
       - name: Test paired-image release contract (offline)
-        if: matrix.app == 'api'
+        if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
         run: python3 -m unittest discover -s ops/release/tests -p 'test_*.py'
 
       - name: Test Runtime layout preflight (offline)
-        if: matrix.app == 'api'
+        if: ${{ needs.ci_scope.outputs.ops_runtime != 'false' }}
         run: |
           bash -n ops/verify-runtime-readiness.sh
           python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'
 
+      - name: Set up CPython 3.12.15 for C1 regression
+        if: ${{ needs.ci_scope.outputs.ops_runtime != 'false' }}
+        id: c1_python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.15'
+          architecture: x64
+          update-environment: false
+
+      - name: Test C1 candidate on exact CPython 3.12.15 (offline)
+        if: ${{ needs.ci_scope.outputs.ops_runtime != 'false' }}
+        env:
+          C1_TEST_PYTHON: ${{ steps.c1_python.outputs.python-path }}
+        run: |
+          "$C1_TEST_PYTHON" -c 'import sys; print(sys.version); sys.exit(0 if sys.implementation.name == "cpython" and sys.version_info == (3, 12, 15, "final", 0) else "unexpected C1 test interpreter")'
+          "$C1_TEST_PYTHON" -m unittest discover -s ops/runtime/tests -p 'test_normal_runtime_*.py'
+
       # 先安装 pnpm。固定到仓库当前使用的 pnpm 9.0.0，避免 action-setup v6
       # 在 GitHub-hosted runner 上先 bootstrap 新版 pnpm 再降级所产生的分钟级波动。
+
+  api_static:
+    name: api-static
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.api_static != 'false') }}
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:
@@ -89,25 +146,17 @@ jobs:
           exit "$status"
 
       - name: Generate Prisma Client (api only)
-        if: matrix.app == 'api'
         run: pnpm --filter api prisma:generate
 
       - name: Architecture baseline gate
-        if: matrix.app == 'api'
         run: node tools/architecture/scan-architecture.mjs --check
 
       - name: Lint (api)
-        if: matrix.app == 'api'
         env:
           TIMING: "1"
         run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
-      - name: Lint (web)
-        if: matrix.app == 'web'
-        run: pnpm --filter web lint
-
       - name: Build and strict declaration check (api)
-        if: matrix.app == 'api'
         run: |
           # The Nest build and strict declaration program read the same prepared
           # source tree but produce independent outputs, so run them concurrently.
@@ -134,18 +183,7 @@ jobs:
           echo "::endgroup::"
           exit "$status"
 
-      - name: Build (web)
-        if: matrix.app == 'web'
-        env:
-          SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
-        run: pnpm --filter web exec next build --turbopack
-
-      - name: Strict declaration check (web)
-        if: matrix.app == 'web'
-        run: pnpm --filter web exec tsc -p tsconfig.strict.json --pretty false
-
       - name: Strict declaration check (shared libraries)
-        if: matrix.app == 'api'
         run: |
           pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false &
           foundation_pid=$!
@@ -160,11 +198,65 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
+  web_checks:
+    name: build-test (web)
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.web != 'false') }}
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9.0.0
+          run_install: false
+
+      # 再安装 Node，并启用 pnpm cache。
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
+      - name: Lint (web)
+        run: pnpm --filter web lint
+
+      - name: Build (web)
+        env:
+          SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
+        run: pnpm --filter web exec next build --turbopack
+
+      - name: Strict declaration check (web)
+        run: pnpm --filter web exec tsc -p tsconfig.strict.json --pretty false
+
       - name: Test (web)
-        if: matrix.app == 'web'
         run: pnpm --filter web test
 
   api-tests:
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.api_tests != 'false') }}
     runs-on: ubuntu-26.04
 
     steps:
@@ -256,34 +348,54 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  api-validation:
-    # Keep the existing required API check tied to both parallel lanes.
-    name: build-test (api)
-    needs: [build-test, api-tests]
-    if: ${{ always() }}
+  api_checks:
+    name: api-checks
+    needs: [ci_scope, ops_checks, api_static]
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.api_checks != 'false') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 3
 
     steps:
-      - name: Require static checks and full API tests to succeed
+      - name: Checkout aggregate contract
+        uses: actions/checkout@v6
+
+      - name: Require selected prerequisites to succeed
         env:
-          STATIC_CHECKS_RESULT: ${{ needs['build-test'].result }}
-          API_TESTS_RESULT: ${{ needs['api-tests'].result }}
-        run: |
-          if [[ "$STATIC_CHECKS_RESULT" != "success" || "$API_TESTS_RESULT" != "success" ]]; then
-            echo "Static checks: $STATIC_CHECKS_RESULT; API tests: $API_TESTS_RESULT"
-            exit 1
-          fi
+          CI_SCOPE_RESULT: ${{ needs.ci_scope.result }}
+          CI_EXPECTED: ${{ toJSON(needs.ci_scope.outputs) }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 tools/ci/change_scope.py verify ops_checks=ops_checks api_static=api_static
+
+  api-validation:
+    name: build-test (api)
+    needs: [ci_scope, api_checks, web_checks, api-tests]
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.api_validation != 'false') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout aggregate contract
+        uses: actions/checkout@v6
+
+      - name: Require selected prerequisites to succeed
+        env:
+          CI_SCOPE_RESULT: ${{ needs.ci_scope.result }}
+          CI_EXPECTED: ${{ toJSON(needs.ci_scope.outputs) }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 tools/ci/change_scope.py verify api_checks=api_checks web=web_checks api_tests=api-tests
 
   browser-e2e:
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.browser_e2e != 'false') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
 
     services:
       postgres:
-        # Docker Official PostgreSQL image via ECR Public to avoid Docker Hub 429 on hosted runners.
+        # Keep the Docker Official PostgreSQL 15 Alpine test image.
+        # ECR Public blocked pulls with Data limit exceeded in CI #7562.
         # Keep the same major-version/Alpine variant and existing health check.
-        image: public.ecr.aws/docker/library/postgres:15-alpine
+        image: docker.io/library/postgres:15-alpine
         env:
           POSTGRES_USER: sanq_e2e
           POSTGRES_PASSWORD: sanq_e2e
@@ -459,6 +571,8 @@ jobs:
             ${{ runner.temp }}/sanq-e2e-web-prepare.log
 
   printer-agent:
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.printer != 'false') }}
     runs-on: ubuntu-26.04
 
     steps:
@@ -479,6 +593,8 @@ jobs:
         run: npm test --prefix tools/printer-server
 
   windows-workstation:
+    needs: ci_scope
+    if: ${{ !cancelled() && (needs.ci_scope.result != 'success' || needs.ci_scope.outputs.windows != 'false') }}
     runs-on: windows-latest
 
     steps:

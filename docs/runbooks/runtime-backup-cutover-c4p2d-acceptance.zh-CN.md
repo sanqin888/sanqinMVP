@@ -1,5 +1,9 @@
 # C4-P2-D — 新 Runtime 切换后独立恢复、业务实测与最终关闭门禁
 
+> **2026-10-18 已批准更新方案：**[AWS 整机快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md) 更新 R0 D2–D5：代码创建本次 Lightsail 手动实例快照；拍快照前记录原策略，将准确业务容器设为 `restart=no`、正常停止并禁止启动入口，快照及恢复首启均保持维护态。等快照 `available`、来源/覆盖盘与离机清单核对完成才可安装；成功后按记录恢复策略，故障保持冻结并人工确认快照→新实例。旧 mandatory crypt/Drive preinstall Kit、双 Archive 恢复自举不再重复强制。现役每日备份/escrow、目标包来源校验和真实 AWS 恢复验收保留。**仅设计批准 / 未实现未部署 / C5-G2 NO-GO / S2 扩充后置**；不授权本次生产/AWS 操作。本文带日期的设计/实现与有限实验记录保留当时范围；引用旧 Kit/clean reinstall 的段落不再作为本次更新前置。
+
+> 本篇 C4 首次安装/切换与独立 DR 是各日期的历史合同/有限证据，不等于当前 Runtime R0–R5。旧服务停启/回退命令不得用于绕过新快照维护合同，不重新执行已完成的生产切换。
+
 **状态（2026-10-09）：D4 有限范围关闭已获操作员授权，且 PostgreSQL roles 已由操作员只读导出到 Mac 上的 AES-256 加密 DMG，SHA256 已记录、DMG 已成功推出；有限范围证据已齐，`LIMITED-SCOPE ACCEPTANCE COMPLETE / PENDING DOCUMENT PR+CI`，正式 `C4 LIMITED-SCOPE PRODUCTION VERIFIED / CLOSED` 待本地审阅及 dev PR/CI 交付后登记。** D0 生产 Runtime/挂载/健康及有限日志 SCOPE PASS；D1 异机数据库、Uploads、加密配置及财务控制 DATA RECOVERY PASS，隔离角色回放及 API/Web/Nginx 启动未做（FULL RUNTIME PARTIAL）；D2 五端页面与 Accounting 附件、顾客图片预览 SCOPE PASS；D3 首次自动备份 `20261009_073020` 远端归档及 Uploads 87/87 PRODUCTION VERIFIED。
 
 基线：C4-P2-C 已由操作员于 **2026-10-09 UTC（2026-10-08 Toronto 夜间）**完成实际生产切换。业务应用、备份脚本和 Timer 已切到新布局，4/4 Compose 容器 Healthy；C4 **尚未 CLOSED**。本文件定义后续独立的 P2-D 验收，不授予新的生产写入、支付、销毁、清理、数据库 restore 或对外 provider 调用权限。

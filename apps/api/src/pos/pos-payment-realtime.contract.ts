@@ -6,6 +6,20 @@ export type PosCardPaymentStatusRealtimeMessage = {
   status: string;
   failureCode?: string | null;
   failureMessage?: string | null;
+  customerPromptPending?: boolean;
+  customerRetryRequested?: boolean;
+  canResumeOriginalSale?: boolean;
+  terminalInteractionTimedOut?: boolean;
+  benefitsReleaseComplete?: boolean;
+  terminalReadyForNextSale?: boolean;
+  cancellationPending?: boolean;
+  // A notice (e.g. reverse sync) has no amount facts. Do not invent zeros.
+  externalAmountCents?: number;
+  surchargeCents?: number | null;
+  chargedTotalCents?: number | null;
+  pointsCents?: number;
+  balanceCents?: number;
+  couponDiscountCents?: number;
   orderStableId?: string | null;
   orderNumber?: string | null;
   pickupCode?: string | null;

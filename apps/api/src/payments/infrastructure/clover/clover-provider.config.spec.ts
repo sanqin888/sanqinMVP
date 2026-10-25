@@ -1,6 +1,8 @@
 import { CloverProviderConfig } from './clover-provider.config';
 
 const CLOVER_CONFIG_KEYS = [
+  'NODE_ENV',
+  'DATABASE_URL',
   'CLOVER_BASE',
   'CLOVER_MERCHANT_ID',
   'CLOVER_ACCESS_TOKEN',
@@ -30,6 +32,7 @@ const CLOVER_CONFIG_KEYS = [
   'CLOVER_TERMINAL_DEVICE_ID',
   'CLOVER_TERMINAL_REMOTE_APP_ID',
   'CLOVER_TERMINAL_TIMEOUT_SECONDS',
+  'CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED',
 ] as const;
 
 type CloverConfigKey = (typeof CLOVER_CONFIG_KEYS)[number];
@@ -176,4 +179,114 @@ describe('CloverProviderConfig', () => {
       );
     },
   );
+
+  const isolatedSandbox = {
+    NODE_ENV: 'development',
+    DATABASE_URL: 'postgresql://test:test@127.0.0.1:5432/restaurant',
+    CLOVER_UNIFIED_PLATFORM_API_BASE: 'https://apisandbox.dev.clover.com',
+    CLOVER_TERMINAL_API_BASE: 'https://apisandbox.dev.clover.com',
+    CLOVER_UNIFIED_MERCHANT_ID: 'sandbox-merchant',
+    CLOVER_MERCHANT_ID: 'web-production-merchant',
+    CLOVER_TERMINAL_DEVICE_ID: 'sandbox-compact',
+    CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED: 'true',
+  };
+
+  it('requires an explicit flag before allowing manual entry in the isolated Sandbox', () => {
+    withEnvironment(
+      {
+        ...isolatedSandbox,
+        CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED: undefined,
+      },
+      () => {
+        expect(
+          new CloverProviderConfig().terminalSandboxManualEntryEnabled,
+        ).toBe(false);
+      },
+    );
+    withEnvironment(isolatedSandbox, () => {
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        true,
+      );
+    });
+  });
+
+  it('does not require any Web Ecommerce merchant in an isolated Sandbox', () => {
+    const isolatedLan = {
+      ...isolatedSandbox,
+      CLOVER_TERMINAL_API_BASE: 'https://192.168.2.219:12346',
+      CLOVER_MERCHANT_ID: undefined,
+    };
+    withEnvironment(isolatedLan, () => {
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        true,
+      );
+    });
+  });
+
+  it.each([
+    'https://192.168.2.219:12346',
+    'https://10.0.0.5:12346',
+    'https://172.16.2.5:12346',
+    'https://172.31.255.254:12346',
+  ])(
+    'allows a private IPv4 Compact LAN endpoint %s only in isolated Sandbox',
+    (base) => {
+      const lanSandbox = { ...isolatedSandbox, CLOVER_TERMINAL_API_BASE: base };
+      withEnvironment(lanSandbox, () => {
+        expect(
+          new CloverProviderConfig().terminalSandboxManualEntryEnabled,
+        ).toBe(true);
+      });
+    },
+  );
+
+  it.each([
+    'http://192.168.2.219:12346',
+    'https://192.168.2.219:12345',
+    'https://192.168.2.219',
+    'https://192.168.2.219:12346/connect',
+    'https://192.168.2.219:12346/?debug=1',
+    'https://user@192.168.2.219:12346',
+    'https://127.0.0.1:12346',
+    'https://169.254.2.219:12346',
+    'https://172.32.0.1:12346',
+    'https://8.8.8.8:12346',
+    'https://compact.local:12346',
+    'https://api.clover.com',
+  ])('rejects unsafe Terminal manual-entry URL %s', (base) => {
+    const unsafeSandbox = {
+      ...isolatedSandbox,
+      CLOVER_TERMINAL_API_BASE: base,
+    };
+    withEnvironment(unsafeSandbox, () => {
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        false,
+      );
+    });
+  });
+
+  it.each([
+    ['production runtime', { NODE_ENV: 'production' }],
+    [
+      'remote database',
+      { DATABASE_URL: 'postgresql://test:test@db.internal:5432/restaurant' },
+    ],
+    [
+      'production Platform',
+      { CLOVER_UNIFIED_PLATFORM_API_BASE: 'https://api.clover.com' },
+    ],
+    [
+      'production Terminal',
+      { CLOVER_TERMINAL_API_BASE: 'https://api.clover.com' },
+    ],
+    ['same Web merchant', { CLOVER_MERCHANT_ID: 'sandbox-merchant' }],
+    ['missing terminal', { CLOVER_TERMINAL_DEVICE_ID: undefined }],
+    ['non-exact flag', { CLOVER_TERMINAL_SANDBOX_MANUAL_ENTRY_ENABLED: 'yes' }],
+  ] as const)('fails closed for manual entry with %s', (_reason, change) => {
+    withEnvironment({ ...isolatedSandbox, ...change }, () => {
+      expect(new CloverProviderConfig().terminalSandboxManualEntryEnabled).toBe(
+        false,
+      );
+    });
+  });
 });
