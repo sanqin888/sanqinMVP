@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 候选入口装配与关键来源绑定方案
 
+> **最新进度（2026-10-24 / C1-PREP-09 LOCAL）：**用户已确定正常 AWS 执行器采用 Python **3.12.3**，沿用 v1 的解释器/flags/身份/argv/env/cwd；[只读 Bootstrap 候选](Runtime更新-C1-PREP-09正式Python基线与只读Bootstrap候选.md) 现已写入源码及32项测试，将固定受保护控制文件、双 pins、八个支持模块固定字节加载与 PREP-07/08 装配入口接通。**测试未运行、未CI、未部署**；正式 Flow/效果接线及启动前信任、实际来源/权限验收仍 OPEN。下文 PREP-02 的“未新增 bootstrap/loader、平台尚未选定”保留其历史范围；Python 版本选择不认证实际 Ubuntu/包 revision/关键依赖，也不把只读装配升级为正常更新执行成功。
+
 **2026-10-24（America/Toronto）｜C1-PREP-02 / SOURCE COMMENTS ALIGNED_LOCAL / ASSEMBLY DESIGN COMPLETE_LOCAL / REAL BOOTSTRAP NOT IMPLEMENTED / C1 OPEN。**
 
 [最小基线工作包](Runtime更新-C1最小可信执行基线对齐与候选准备.md) 已由 [PR #2930](https://github.com/sanqin888/sanqinMVP/pull/2930) 合并 dev；最终文档 head `5dc25a8d14cb0ccc6af0fbeda198f631781a6c00` 的 [CI #7511](https://github.com/sanqin888/sanqinMVP/actions/runs/40136110790) SUCCESS，merge `67a88aae648b23266403b306b642d3d3a6526d2f`。其 docs-only CI 没有运行 Runtime/Release 测试。
