@@ -1,3 +1,10 @@
+# C1-PREP-10 候选源码清单
+
+本页是源码审阅包内 `source-inventory.json` 原字节的 Markdown 视图，仅供人工审阅，没有入口或运行代码消费者。
+
+原 JSON：3,819 bytes，SHA256 `90567502fd560cec7c3efc3560200e615ed36971aad6315866fd59423c0a4f65`。归档及九文件来源见 [工作包](../Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md)。下方代码块中的 JSON（含末尾换行）与包内原件一致，页面包装不属于该 JSON 摘要。
+
+```json
 {
   "authorizedToMutateProduction": false,
   "c1Status": "OPEN",
@@ -94,3 +101,4 @@
   "sourceUrl": "https://github.com/sanqin888/sanqinMVP/tree/b7b7f27682700447d37bcdabd456f22087a54892/ops/runtime",
   "startupApprovalStatus": "NOT_CREATED"
 }
+```

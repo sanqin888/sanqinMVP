@@ -1,6 +1,6 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
-**最新进度（C1-PREP-10，本地待审）：**PREP-09已由 [PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) / 最终 [CI #7553](https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415) SUCCESS（Runtime846 / Release45）合并 `b7b7f276`。本批 [候选源码固定与只读验收准备](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 固定9源码/78,274 bytes、逐文件Git blob/SHA256及源码包，9/9与已测head相同；[清单](evidence/c1-prep10-source-inventory-2026-10-24.json)为来源材料记录，未交付/运行任何真实入口。Python3.12.3已选定，实际平台/包revision/关键来源、root受控交付、真实批准输入与同平台必要验证仍OPEN，完整效果候选未冻结。本批未推送；以下各批LOCAL/NOT_RUN及CI待定语句按其历史时点保留。
+**最新进度（C1-PREP-10，本地待审）：**PREP-09已由 [PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) / 最终 [CI #7553](https://github.com/sanqin888/sanqinMVP/actions/runs/40149478415) SUCCESS（Runtime846 / Release45）合并 `b7b7f276`。本批 [候选源码固定与只读验收准备](Runtime更新-C1-PREP-10候选源码固定与只读验收准备.md) 固定9源码/78,274 bytes、逐文件Git blob/SHA256及源码包，9/9与已测head相同；[清单](evidence/c1-prep10-source-inventory-2026-10-24.md)为来源材料记录，未交付/运行任何真实入口。Python3.12.3已选定，实际平台/包revision/关键来源、root受控交付、真实批准输入与同平台必要验证仍OPEN，完整效果候选未冻结。本批未推送；以下各批LOCAL/NOT_RUN及CI待定语句按其历史时点保留。
 
 **C1-PREP-09 交付续记：**[PR #2943](https://github.com/sanqin888/sanqinMVP/pull/2943) 源码 head `97ac6fd3` 的 [CI #7552](https://github.com/sanqin888/sanqinMVP/actions/runs/40149348914) SUCCESS，Runtime 846（含新增32）/ Release 45，无需修复。用户已授权最终 head CI 全绿后合并 dev 并继续；本批先前 LOCAL/NOT_RUN/未推送为历史时点，最终 Checks/merge 以 PR 事件为准；真实来源/执行验收及 C1 仍 OPEN。
 

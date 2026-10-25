@@ -12,7 +12,7 @@
 
 ## 2. 九文件源码身份
 
-从 GitHub 插件按准确合并 SHA 取回源码；九个 Git blob 均与最终 CI head 的树一致。再按 Git blob 格式独立重算 SHA1，并对原始 bytes 计算 SHA256/大小。清单原件见 [候选源码清单](evidence/c1-prep10-source-inventory-2026-10-24.json)，总计 **9 文件 / 78,274 bytes**。
+从 GitHub 插件按准确合并 SHA 取回源码；九个 Git blob 均与最终 CI head 的树一致。再按 Git blob 格式独立重算 SHA1，并对原始 bytes 计算 SHA256/大小。原JSON的Markdown视图见 [候选源码清单](evidence/c1-prep10-source-inventory-2026-10-24.md)，总计 **9 文件 / 78,274 bytes**。
 
 | 源文件（均位于 `ops/runtime/`） | bytes | SHA256 |
 | --- | ---: | --- |
@@ -81,3 +81,5 @@
 **最高状态：SOURCE PACKAGE PREPARED_LOCAL / PLATFORM AND DELIVERY NOT_RUN / FIRST-REVIEW PENDING / C1 OPEN。** 本批没有新增运行逻辑、schema/持久化/公共合同、依赖/锁、CI或迁移，未运行仓库测试、bootstrap、目标Python、root/Guest/Host/AWS/生产操作。本地只进行了 Git blob/SHA256/大小比对、源码集合静态核对、归档重建/成员原字节回读及文档/JSON/差异/空白检查；这些是材料检查，不能称为新增Runtime测试通过。
 
 同批同步 R0、C1 总包、入口装配方案、依赖图、原 PREP-09 最终交付事实和工作日志。本批尚未提交远端；按首次交付流程停在本地供用户审阅，之后才进入 PR→dev 与实际 CI 门禁。现场 root 交付/运行及生产操作仍按原有准确对象门禁处理。
+
+**同批 CI 修复（#7556）：**完整8文件 head `69082af5` 的 Browser E2E 在 Initialize containers 阶段拉取 `public.ecr.aws/docker/library/postgres:15-alpine` 失败，注册表返回 `Data limit exceeded`，未进入测试。原独立 JSON 记录按现有 `change_scope.py` 的未知路径规则触发全量 lane；该记录无程序消费者，现将仓库展示改为 Markdown，保留包内原 JSON、原 SHA256 和来源材料。未改 CI/selector/测试或执行逻辑。完整文件已补齐到同一 [PR #2944](https://github.com/sanqin888/sanqinMVP/pull/2944)，最终 head 仍须全部必需检查全绿；本地未运行项目测试，C1 仍 OPEN。
