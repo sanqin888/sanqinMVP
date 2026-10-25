@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-25 — C1 P10-F4-B4多事务历史与崩溃协议设计
+
+**2026-10-25 F4-B4：DESIGN_COMPLETE_LOCAL / HISTORY_IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F4-B3 [PR #2964](https://github.com/sanqin888/sanqinMVP/pull/2964)经[CI #7606](https://github.com/sanqin888/sanqinMVP/actions/runs/40233916932)成功合并9434ab69：Runtime973/Release45/准确3.12.15回归305，含23新增测试；仅修正重排Manifest测试夹具，生产实现未改。本批完成[多事务历史/崩溃协议设计](Runtime更新-C1-P10-F4B4多事务历史与崩溃协议设计.md)：提出固定v2只追加有界历史、永久消费、双布局共同门禁、未知写入/处置声明不放行；下一源码限定真实FD/锁下的只读历史解释器，无writer/finalizer/入口切换。本批7份文档，无新schema/源码/依赖/迁移、R2/root/VM/云/生产动作，无owner/依赖图/债务/scanner基线变化，未运行新测试/CI、未推送。
+
 ## 2026-10-25 — C1 P10-F4-B3安装后目标独立只读复验
 
-**2026-10-25 F4-B3：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。** F4-B2 PR #2963经CI #7603（docs-only，1成功/9跳过）合并2240f5e0，无修复。本批新增[安装后目标独立只读复验](Runtime更新-C1-P10-F4B3安装后目标只读复验.md)及23项测试，保留原双pin request、F3固定路径/F2有限FD树，核对原批准Archive/原Manifest/17成员与原pin三动态文件。仅提取F2共用私有检查，原安装前语义不变；旧观察不升级冻结基线，实际挂载/维护/R2/策略恢复/业务放行/终结权限均false/BLOCKED。Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1/17 Bundle/依赖/迁移变化。已静态AST/差异审阅，未运行项目测试/新CI，分支feat/c1-p10f4b3-postinstall-review-20261025未推送；无root/VM/云/生产操作。
+**2026-10-25 F4-B3：MERGED_DEV / CI_VERIFIED_OFFLINE / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。** 最终head39e98077583610a78416ec303c4589022d09a3c2由PR #2964经CI #7606（run40233916932）成功合并dev9434ab6956c9f3d0b8276b9beb26ac8707381bce：4作业成功/6按范围跳过，Release45/Runtime973/准确CPython3.12.15回归305全部通过，包含23新增测试。CI #7605的唯一失败是重排Manifest测试实际生成原样bytes；39e98077改用compact JSON并显式核对语义相同/字节不同，未改生产实现或削弱断言。 固定路径目标/原Manifest/17成员及原pin三动态文件只读核对，F2仅提取共用私有检查、原语义不变；历史观察不升级冻结基线，所有维护/终结/生产权限false。6文档同步，无owner/依赖图/基线/依赖/数据库或生产变化；见[安装后复验记录](Runtime更新-C1-P10-F4B3安装后目标只读复验.md)。
 
 ## 2026-10-25 — C1 P10-F4-B2终结与事故处置合同审阅
 

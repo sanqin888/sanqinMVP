@@ -1,8 +1,10 @@
 # Runtime 更新 — C1 P10-F4-B3 安装后目标独立只读复验
 
-**2026-10-25｜IMPLEMENTED_LOCAL / TESTS_NOT_RUN / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。**
+**2026-10-25 F4-B4：DESIGN_COMPLETE_LOCAL / HISTORY_IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F4-B3 [PR #2964](https://github.com/sanqin888/sanqinMVP/pull/2964)经[CI #7606](https://github.com/sanqin888/sanqinMVP/actions/runs/40233916932)成功合并9434ab69：Runtime973/Release45/准确3.12.15回归305，含23新增测试；仅修正重排Manifest测试夹具，生产实现未改。本批完成[多事务历史/崩溃协议设计](Runtime更新-C1-P10-F4B4多事务历史与崩溃协议设计.md)：提出固定v2只追加有界历史、永久消费、双布局共同门禁、未知写入/处置声明不放行；下一源码限定真实FD/锁下的只读历史解释器，无writer/finalizer/入口切换。本批7份文档，无新schema/源码/依赖/迁移、R2/root/VM/云/生产动作，无owner/依赖图/债务/scanner基线变化，未运行新测试/CI、未推送。
 
-基于dev `2240f5e0e0ec19faaf69f28deb2480b9edc116e6`。F4-B2 [PR #2963](https://github.com/sanqin888/sanqinMVP/pull/2963)最终head `28a6478b10cf2ed6c29d8b3db0af97a7435fdf0a`经[CI #7603](https://github.com/sanqin888/sanqinMVP/actions/runs/40232899946)成功，docs-only范围作业成功、9作业跳过，无CI修复；该CI未运行Runtime测试。本批在feat/c1-p10f4b3-postinstall-review-20261025本地实现，尚未推送或运行新CI。
+**2026-10-25｜MERGED_DEV / CI_VERIFIED_OFFLINE / READ_ONLY_POSTINSTALL_SCOPE / C1_OPEN。**
+
+基于dev `2240f5e0e0ec19faaf69f28deb2480b9edc116e6`。F4-B2 [PR #2963](https://github.com/sanqin888/sanqinMVP/pull/2963)最终head `28a6478b10cf2ed6c29d8b3db0af97a7435fdf0a`经[CI #7603](https://github.com/sanqin888/sanqinMVP/actions/runs/40232899946)成功，docs-only范围作业成功、9作业跳过，无CI修复；该CI未运行Runtime测试。本批在feat/c1-p10f4b3-postinstall-review-20261025实现。最终head39e98077583610a78416ec303c4589022d09a3c2由PR #2964经CI #7606（run40233916932）成功合并dev9434ab6956c9f3d0b8276b9beb26ac8707381bce：4作业成功/6按范围跳过，Release45/Runtime973/准确CPython3.12.15回归305全部通过，包含23新增测试。CI #7605的唯一失败是重排Manifest测试实际生成原样bytes；39e98077改用compact JSON并显式核对语义相同/字节不同，未改生产实现或削弱断言。
 
 ## 1. 实际能力与归属
 
@@ -54,6 +56,6 @@ targetInstalledBytesMatch、preservedBytesMatchPinnedObservation、applicationId
 - 保留pin/原bytes漂移、pending/previous/schema布尔、重复env/错marker、观察scope/身份/伪维护声明及坏旧Manifest pin。
 - 文件link/FIFO/多余成员/危险权限、网络期间同字节替换/祖先替换、坏祖先、成功和失败FD关闭、无公开路径/owner覆盖。
 
-已完成3份Python源码/测试AST静态解析、F2提取差异与失败路径审阅；**23项测试及项目lint/build/test尚未执行**。按AGENTS以授权后的GitHub Actions为实际验证门禁；现有Runtime总回归与准确CPython3.12.15回归自动发现新test_normal_runtime_*.py，无工作流或skip变更。
+已完成3份Python源码/测试AST静态解析、F2提取差异与失败路径审阅；MCP-workspace未运行项目测试。授权后的GitHub Actions最终head已实际通过Runtime973/Release45/准确CPython3.12.15回归305，含23项新增测试；无工作流或skip变更，不代表真实生产安装/冻结验收。
 
 下一步先远端交付并核对最终head的F2/F3及新增测试。之后推进多事务历史布局/崩溃协议和可信组合；冻结基线的独立采集、实际维护/策略恢复/业务放行/R2终态与终结器仍未完成。本批未运行新解释器、未观察/变更实际AWS或生产Runtime，未创建root锁/ledger，不重用旧现场观察作fresh证据。九源/v1/固定17 Bundle、依赖与数据库不变，P10-F/C1仍OPEN。
