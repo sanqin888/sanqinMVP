@@ -101,13 +101,18 @@ class ProtectedWriterScopeTests(unittest.TestCase):
         path = self.approval / "pins.json"
         doc = json.loads(path.read_bytes())
         doc["requestSha256"] = "9" * 64
+        path.chmod(0o600)
         path.write_bytes(launch.canonical(doc))
+        path.chmod(0o400)
         with self.assertRaises(ValueError):
             with self.call():
                 self.fail("unapproved installed pin")
 
     def test_changed_input_rejected_before_source_loading(self):
-        (self.approval / "request.json").write_bytes(self.request_raw + b" ")
+        path = self.approval / "request.json"
+        path.chmod(0o600)
+        path.write_bytes(self.request_raw + b" ")
+        path.chmod(0o400)
         with patch.object(scope, "load_pinned_writer_candidate",
                           side_effect=AssertionError("must not load")):
             with self.assertRaises(ValueError):
@@ -175,7 +180,10 @@ class ProtectedWriterScopeTests(unittest.TestCase):
 
 
     def test_preexisting_source_drift_rejected_before_loader(self):
-        (self.source / "normal_runtime_history_writer.py").write_bytes(b"changed source")
+        path = self.source / "normal_runtime_history_writer.py"
+        path.chmod(0o600)
+        path.write_bytes(b"changed source")
+        path.chmod(0o400)
         with patch.object(scope, "load_pinned_writer_candidate",
                           side_effect=AssertionError("must not load")):
             with self.assertRaises(ValueError):
