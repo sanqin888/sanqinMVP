@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — 最小更新执行器第一步：只读候选与计划合同
+
+**SOURCE_CONTRACT_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / PRODUCTION_NOT_AUTHORIZED。**按用户“合并后开始本项目第一步”，基于方案 PR #2979 最终 head ef63d474 / CI #7636 SUCCESS 合并的准确 dev `bd9f254e8a8dc503a26b0835119da02c09f4281e` 开始源码。现有 release_contract 新增 exact main SHA/配对 seal/发布 run/最新 main push CI/祖先关系只读核验，新增 deployment_plan 纯合同与24项负例/正例测试，固定运行对象原bytes、SQL inventory/源树绑定、迁移历史/pending、备份26h/环境键、canonical原件和独立plan-id；始终canExecute=false，变更观察必须重做计划。详情见[实现方案当前状态](Runtime最小更新执行器实现方案.md)。旧deploy/rollback/CLI、250/300guard、17 Bundle/Manifest、current/previous权威不变；未接真实采集、计划持久化、Docker/SQL/Host执行或重启门禁，第一批不关闭。Runtime/Ops内新增计划→发布合同单向边，无跨上下文owner/SCC/债务/scanner基线、依赖/锁文件/CI/Prisma/迁移/生产变化；三组研究暂停保留。本地仅Python3.10 grammar AST、差异/导入/链接静态审阅，24项项目测试未执行、无本批源码CI，不把语法检查当3.10运行兼容。分支 `feat/runtime-minimal-executor-plan-contract-20261026`，未提交/推送本批。下一步先用户审阅/授权远端，以实际Release/Runtime CI核验；随后在原第一批内补真实只读采集/计划展示保存与所选系统Python回归，不恢复暂停研究或直接发布生产。
+
 ## 2026-10-26 — 最小更新执行器实现方案
 
-**PLAN_DOCUMENTED_LOCAL / EXECUTOR_NOT_IMPLEMENTED / PRODUCTION_NOT_AUTHORIZED。**按用户“提交远端，合并后制作实现方案”的授权，在 PR #2978 成功合并 dev `343fefc7dce5849ca3401981ee6174f4f9d2ec59` 后，重新审阅现有 release/Compose/readiness/CI，新增[最小执行器实现方案](Runtime最小更新执行器实现方案.md)：固定范围与准确计划/迁移 SQL/运行合同、单一发布控制器、机内 transient job/本地重启门禁、薄 SSH 入口与一次性受审阅 installer，分四批明确退出条件和最终现场完结矩阵；明确候选启动可能已写入，失败不盲目恢复整盘。同步优先级 owner、发布手册、依赖图及本日志；C1/CPython/R2 三组暂停、不取消。只有文档，Runtime/Ops owner/依赖图/债务/scanner基线、兼容读写、17 Bundle/Manifest、源码/CI/依赖/权限/schema/migration、Host/AWS/生产均未变。仅文档差异/新增链接/范围静态审阅，MCP-workspace 未运行 lint/build/test，无本批新CI或现场验收；分支 `docs/runtime-minimal-executor-implementation-plan-20261026`，本批未提交/推送。下一步用户审阅方案后，再明确第一批源码范围和外置件/权限合同；不自动开始代码或恢复暂停研究。
+**MERGED_DEV / CI_VERIFIED_DOCS / EXECUTOR_NOT_IMPLEMENTED_AT_PLAN_DELIVERY / PRODUCTION_NOT_AUTHORIZED。**方案 [PR #2979](https://github.com/sanqin888/sanqinMVP/pull/2979) 最终 head `ef63d474689e4b3709871764cd6396dfc3d24162` 经 [CI #7636](https://github.com/sanqin888/sanqinMVP/actions/runs/40364596712) SUCCESS（1 成功/9 按文档范围跳过），完整5份文档合并 dev `bd9f254e8a8dc503a26b0835119da02c09f4281e`；下文“本批未提交/推送”按方案制作时点保留。按用户“提交远端，合并后制作实现方案”的授权，在 PR #2978 成功合并 dev `343fefc7dce5849ca3401981ee6174f4f9d2ec59` 后，重新审阅现有 release/Compose/readiness/CI，新增[最小执行器实现方案](Runtime最小更新执行器实现方案.md)：固定范围与准确计划/迁移 SQL/运行合同、单一发布控制器、机内 transient job/本地重启门禁、薄 SSH 入口与一次性受审阅 installer，分四批明确退出条件和最终现场完结矩阵；明确候选启动可能已写入，失败不盲目恢复整盘。同步优先级 owner、发布手册、依赖图及本日志；C1/CPython/R2 三组暂停、不取消。只有文档，Runtime/Ops owner/依赖图/债务/scanner基线、兼容读写、17 Bundle/Manifest、源码/CI/依赖/权限/schema/migration、Host/AWS/生产均未变。仅文档差异/新增链接/范围静态审阅，MCP-workspace 未运行 lint/build/test，无本批新CI或现场验收；分支 `docs/runtime-minimal-executor-implementation-plan-20261026`，本批未提交/推送。下一步用户审阅方案后，再明确第一批源码范围和外置件/权限合同；不自动开始代码或恢复暂停研究。
 
 ## 2026-10-26 — Runtime 最小更新执行器优先与三组研究暂停保留
 

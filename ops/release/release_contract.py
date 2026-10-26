@@ -229,6 +229,72 @@ def sealed_release_for_sha(source_sha: str, fetch=github_json) -> dict[str, Any]
     }
 
 
+def verify_exact_candidate(current_sha: str, target_sha: str, fetch=github_json) -> dict[str, Any]:
+    """Read-only exact candidate checks; never discover or substitute latest.
+
+    The paired seal is the existing trusted-workflow boundary. Run metadata and
+    main ancestry are additional checks, not an independent artifact signature.
+    No compare files/commit-count budget is used to infer runtime compatibility.
+    """
+    current_sha, target_sha = require_sha(current_sha), require_sha(target_sha)
+    candidate = sealed_release_for_sha(target_sha, fetch)
+
+    def forward(base: str, head: str) -> None:
+        comparison = fetch(f"/repos/{REPOSITORY}/compare/{base}...{head}")
+        if (not isinstance(comparison, dict)
+            or comparison.get("status") not in ("ahead", "identical")
+            or type(comparison.get("behind_by")) is not int
+            or comparison["behind_by"] != 0
+            or not isinstance(comparison.get("base_commit"), dict)
+            or comparison["base_commit"].get("sha") != base
+            or not isinstance(comparison.get("merge_base_commit"), dict)
+            or comparison["merge_base_commit"].get("sha") != base):
+            raise ReleaseContractError("exact candidate is not on the required main lineage")
+        if head != "main" and comparison["status"] != (
+            "identical" if base == head else "ahead"
+        ):
+            raise ReleaseContractError("candidate is not a forward release")
+
+    forward(target_sha, "main")
+    forward(current_sha, target_sha)
+    publish_id = int(candidate["publicationUrl"].rsplit("/", 1)[1])
+    publication = fetch(f"/repos/{REPOSITORY}/actions/runs/{publish_id}")
+    if (not isinstance(publication, dict)
+        or type(publication.get("id")) is not int or publication["id"] != publish_id
+        or publication.get("path") != ".github/workflows/publish-images.yml"
+        or publication.get("event") != "workflow_run"
+        or publication.get("head_branch") != "main"
+        or publication.get("status") != "completed"
+        or publication.get("conclusion") != "success"
+        or not isinstance(publication.get("repository"), dict)
+        or publication["repository"].get("full_name") != REPOSITORY):
+        raise ReleaseContractError("exact publication run is not successful and trusted")
+    data = fetch(
+        f"/repos/{REPOSITORY}/actions/workflows/ci.yml/runs"
+        f"?event=push&head_sha={target_sha}&per_page=100"
+    )
+    if not isinstance(data, dict) or not isinstance(data.get("workflow_runs"), list):
+        raise ReleaseContractError("exact main CI evidence missing")
+    runs = [
+        run for run in data["workflow_runs"]
+        if isinstance(run, dict) and run.get("head_sha") == target_sha
+        and run.get("head_branch") == "main" and run.get("event") == "push"
+        and run.get("path") == ".github/workflows/ci.yml"
+    ]
+    if not runs:
+        raise ReleaseContractError("exact main CI run missing")
+    for run in runs:
+        require_positive_int(run.get("id"), "CI run ID")
+    if len({run["id"] for run in runs}) != len(runs):
+        raise ReleaseContractError("duplicate exact main CI run identity")
+    latest = max(runs, key=lambda run: run["id"])
+    if (latest.get("status") != "completed" or latest.get("conclusion") != "success"
+        or not isinstance(latest.get("repository"), dict)
+        or latest["repository"].get("full_name") != REPOSITORY):
+        raise ReleaseContractError("latest exact main CI is not successful")
+    return {**candidate, "ciRunId": latest["id"]}
+
+
 def discover_release(fetch=github_json, *, max_commits: int = 20) -> dict[str, Any]:
     """Find the newest sealed main commit; unsealed CI results are not releases."""
     if not 1 <= max_commits <= 100:
