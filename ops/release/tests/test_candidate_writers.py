@@ -158,10 +158,11 @@ class CandidateWriterTests(unittest.TestCase):
         self.assertEqual(self.mutations(), [])
 
     def test_bad_digest_revision_or_different_worker_image_rejects(self):
-        self.bad_image = True
-        with self.assertRaises(ReleaseContractError):
-            self.register()
-        self.bad_image = False
+        for error in ("digest", "revision"):
+            self.bad_image = error
+            with self.subTest(error=error), self.assertRaises(ReleaseContractError):
+                self.register()
+        self.bad_image = None
         self.info[self.ids["ubereats-worker"]]["Image"] = "sha256:" + "a" * 64
         with self.assertRaises(ReleaseContractError):
             self.register()
