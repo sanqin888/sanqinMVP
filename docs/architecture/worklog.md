@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — C1 P10-F4-B12 检查至消费持有期与锁合同
+
+**2026-10-26 F4-B12：CONTRACT_AUDIT_COMPLETE_LOCAL / HELD_REVIEW_NOT_IMPLEMENTED / REAL_ADMISSION_NOT_IMPLEMENTED / C1_OPEN。** 基于最新deve01c921c（保留R2 PR #2975），完成[检查至消费持有期与锁合同](Runtime更新-C1-P10-F4B12检查至消费持有期与锁合同.md)：核实F2/F3返回前关闭FD、消费入口单独取锁，不能缓存report后消费或重开同锁；旧安装实验.handoff.lock不等于normal-update.lock。审阅增入F2/F3所需8个项目依赖及3个模块sys.path导入副作用，不扩大八模块loader或修改17 Bundle。明确安装前scope不能静默跨冻结/HANDOFF重置身份，R2真实禁入仍独立。下一源码B13仅提取保持FD的固定安装只读context与聚焦测试，暂不消费/Flow。5份文档同步并就地归档B11实际CI；无源码/依赖/迁移、owner/依赖图/债务/scanner基线或root/VM/云/生产变化，未运行新测试/CI、未推送。
+
 ## 2026-10-26 — Runtime R2 阶段基线复审与 B1 双层撤销实施前置审计
 
 **状态：DOCUMENTS_LOCAL / READ_ONLY_B1_AUDIT_COMPLETE / IMPLEMENTATION_NOT_AUTHORIZED / C1_OPEN / R2-C4_OPEN / P1_DENY / PRODUCTION_NO-GO。** 基于已合并的准确 `origin/dev@003daa21dc0795ec092cac20502e0d9c2918f7aa`（C1 F4-B11 PR #2974、dev CI #7626 SUCCESS 的离线验证）更新 [R2阶段审计与B1—B6路线](Runtime更新-R2阶段审计与B1实施路线-20261026.md)，并形成 [R2-B1 可信身份与双层撤销实施前置审计](Runtime更新-R2-B1可信身份与双层撤销实施前置审计-20261026.md)：按 B9-DECISION D01—D08/T01—T08 核对现有 `maintenance_*` 源码的正式 Anchor、CA/完整 CRL 发行总账、Enrollment 角色/证书 pin、可信时间/单调 generation、F 前后的 in-flight COMMIT、UNKNOWN 恢复。静态发现仓库服务没有完整 CRL 加载/检查，CAS v1 没有撤销 generation/持久联动，Boot Guard 仍拒绝放行；保留 B10 TLS_ONLY 限域证据，未把它升级为 CAS 通过。此批仅新建两份文档、更新 R0 索引并追加该工作日志，原 Runtime/Ops owner、依赖图、17 Bundle、P1/Wire/CAS schema、CI、Prisma/锁文件、任何 Host/证书/VM/AWS/生产状态均不变；本地未执行测试、未提交/推远端。下一步先审 B1-0/B1-1 的授权边界和身份发行/审批/版本权威，禁止越级实施。
@@ -10,7 +14,7 @@
 
 ## 2026-10-26 — C1 P10-F4-B11受保护writer候选作用域
 
-**2026-10-26 F4-B11：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_WRITER_ASSEMBLY_ONLY / C1_OPEN。** F4-B10 PR #2971经CI #7620成功合并dc195aba，Runtime1042/Release45/准确3.12.15回归374通过，含16新增测试，无修复。本批新增[受保护writer候选作用域](Runtime更新-C1-P10-F4B11受保护writer候选作用域.md)及16项测试：固定三批准文件与独立双pin、原进程匹配、源码祖先/文件FD与私有模块scope保持至consumer退出，源/输入退出复核异常传播。仅装配，无消费/Flow/效果许可；旧九源CLI不变。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+**2026-10-26 F4-B11：MERGED_DEV / CI_VERIFIED_OFFLINE / HELD_WRITER_ASSEMBLY_ONLY / C1_OPEN。** [PR #2974](https://github.com/sanqin888/sanqinMVP/pull/2974) 最终 head4485d9fdcec7663faca4f8fd30824378933d233f 基于 dev4f16dd27，经 [CI #7625](https://github.com/sanqin888/sanqinMVP/actions/runs/40329893226) 成功合并003daa21dc0795ec092cac20502e0d9c2918f7aa；ops job121596298756 实际 Release45、Runtime1058、准确CPython3.12.15回归390通过，含16新增测试。首次CI #7624的3项错误为0400测试材料直接覆盖在普通用户下失败，仅修正准备流程后恢复0400，生产实现不变。旧PR #2973关闭未合并，完整保留R2 #2972文档。本批[受保护writer候选作用域](Runtime更新-C1-P10-F4B11受保护writer候选作用域.md)固定三批准文件/独立双pin、原进程匹配、源码祖先/文件FD与私有模块scope至consumer退出；仅装配，无消费/Flow/实际效果许可。5文档同步，无owner/依赖图/债务/scanner基线、依赖/迁移或生产变化。
 
 ## 2026-10-26 — C1 P10-F4-B10 writer有限来源加载
 
