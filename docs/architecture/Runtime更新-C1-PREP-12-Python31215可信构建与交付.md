@@ -1,5 +1,7 @@
 # Runtime 更新 — C1-PREP-12 Python3.12.15可信构建与交付
 
+> **2026-10-26 当前安排：PAUSED_NOT_CANCELLED。**自建 CPython 3.12.15 及完整依赖证明的后续工作先暂停，现有 prefix、源包/构建/交付产物、已取得的限域验收与源码测试全部保留，不卸载、不清理、不取消、不扩写 PASS。先完成[最小更新执行器](Runtime最小更新执行器与暂停恢复计划.md)、恢复正常代码更新，再核对当时最新平台/版本/来源材料继续本项；暂停期间不要求为普通应用发布重做该证明链，不据此修改原候选 pin 或禁用 CI。
+
 **2026-10-25 现场验收续记：PYTHON_INSTALLED_VERIFIED_SCOPED / READ_ONLY_BOOTSTRAP_PASS_SCOPED / C1_OPEN。** CPython3.12.15已在sanq-web准确prefix完成smoke及8368成员字节/权限验收；准确源码711197d2的九文件与三批准输入已root交付，事务c1-assembly-20261025-001得到CANDIDATE_ASSEMBLED / ASSEMBLY_ONLY / flowInvoked=false / 全部权限false / BLOCKED / RC0。GitHub构建run40192632845工具18/产物回归203通过；现场证据为操作者粘贴回执，非签名采集或助手独立执行。无目标Runtime安装、Flow、停服/AWS/数据库效果。详见 [安装与只读验收记录](evidence/c1-prep12-install-bootstrap-acceptance-2026-10-25.md)。下方LOCAL/NOT_RUN属于原实施时点，当前最高状态以本续记为准；仍缺同候选完整负例、R2/R3/R4效果组合及C1最终裁定。
 
 **2026-10-25（America/Toronto）｜PREP-12工具已合并 / MANUAL_MAIN_ENTRY_ALIGNMENT_LOCAL / SOURCE_VERIFICATION_NOT_RUN / BUILD_NOT_RUN / C1_OPEN。**

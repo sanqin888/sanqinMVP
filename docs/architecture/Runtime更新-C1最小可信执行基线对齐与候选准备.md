@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 最小可信执行基线对齐与候选准备
 
+> **2026-10-26 当前安排：PAUSED_NOT_CANCELLED / C1_OPEN。**C1 来源、输入固定、受保护加载研究及自建 CPython 3.12.15/完整依赖证明先暂停，全部源码、输入、交付与限域证据保留，不取消、不删除、不改为 CLOSED/PASS。按[最小更新执行器与暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)，先使 MacBook/SSH 可以正常更新生产代码，之后重核最新源码/平台和已有证据再继续 C1；现有解释器不卸载，既有 CI 不禁用。本文后续历史“下一步”和正式候选闭包不作为当前最小执行器前置，原 guard/授权边界仍有效。
+
 **2026-10-25 F4-A本地实施：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / INERT_PREPARATION_ONLY / C1_OPEN。** F4文档PR #2959经CI #7595（docs-only）合并daaf98cf；按用户授权新增固定root私有父目录、dir_fd/O_EXCL静态目标create-only准备库及20项聚焦测试，保存17+原Manifest/原Archive、文件与全部目录fsync/FD读回及失败残片。只生成被动内容证据，不能resume/消费事务或安装，动态配置不复制；namespace/当前安装/维护/Flow与执行权限false。见[F4-A实现](Runtime更新-C1-P10-F4A-FD安全非活跃准备.md)。本批未调用源码或创建真实目录，R2/九源/v1/17 Bundle不变，无依赖图/owner/基线/迁移变化；仅静态审阅，20项测试未运行，未推送。
 
 
