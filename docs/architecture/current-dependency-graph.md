@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**2026-10-26 Runtime 实施顺序调整（DOCUMENTED_LOCAL）：**按用户决定，先完成[最小更新执行器与暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)并恢复单人 MacBook/SSH 的正常镜像发布；C1 来源/输入固定/受保护加载、自建 CPython 3.12.15/完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均暂停、不取消，恢复正常更新后重核最新基线再继续。保留已合并 F4-B13（PR #2977 / dev29004f5b）及全部证据；不补造 CI/现场结果，不取消原 OPEN/DENY。仅调整 Runtime/Ops owner 内的计划/前置依赖说明，未改源码、跨上下文导入、12 上下文所有权、SCC、债务计数、scanner baseline、兼容读写或 17 Bundle；依赖图与基线无变化，未重跑 scanner/测试。
+
 **2026-10-26 F4-B13：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_READONLY_REVIEW_ONLY / C1_OPEN。** 基于dev61bb0e48（F4-B12 PR #2976经CI #7629 docs-only成功，无修复），新增[保持安装只读检查作用域](Runtime更新-C1-P10-F4B13保持安装只读检查作用域.md)：F2/F3有限成员和固定祖先FD保持至consumer退出，显式重检原bytes/元数据/路径边；深副本非授权报告、scope失效/原进程线程约束。旧公开报告接口复用单一实现，B3两处私有三元组解包原子更新；异常/中断保留原因，正常关闭或退出复核失败传播。新增22项测试，5份Python仅静态AST/生命周期/差异审阅，未执行项目测试/新CI。5文档同步及B12结果就地归档，无全局锁/消费/Flow或loader扩展，无owner/依赖图/债务/scanner基线、包依赖/迁移、R2/root/VM/云/生产变化；未推送。
 
 **2026-10-26 F4-B12：MERGED_DEV / CI_VERIFIED_DOCS / CONTRACT_AUDIT_COMPLETE / REAL_ADMISSION_NOT_IMPLEMENTED / C1_OPEN。** [PR #2976](https://github.com/sanqin888/sanqinMVP/pull/2976) 最终head08bcca56c18564b6af85f806869a9cff387f5d96经 [CI #7629](https://github.com/sanqin888/sanqinMVP/actions/runs/40340308379) 成功，docs-only 1成功/9按范围跳过，无修复；合并dev61bb0e484f0748646ac5740bb2d69d31c85b07e4。五份文档明确[检查至消费持有期与锁合同](Runtime更新-C1-P10-F4B12检查至消费持有期与锁合同.md)：F2/F3返回前关闭FD、消费独立取锁；一次锁/动作前重检及HANDOFF交接，旧.handoff.lock与normal-update.lock不同，发布检查8个新增项目依赖及sys.path副作用仍阻止直接扩loader。完整保留R2 #2975，归档B11实际CI；无源码/依赖/迁移、owner/依赖图/债务/scanner基线或生产变化，未运行新Runtime测试。

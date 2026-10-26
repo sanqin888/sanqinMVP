@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — Runtime 最小更新执行器优先与三组研究暂停保留
+
+**DOCUMENTED_LOCAL / PAUSED_NOT_CANCELLED / MINIMAL_EXECUTOR_IMPLEMENTATION_NOT_STARTED / PRODUCTION_NOT_AUTHORIZED。**基于准确 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已合并 C1 F4-B13 / PR #2977），按用户对 Runtime 重新评估报告的决定，新增[最小更新执行器与暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)，同步 AGENTS、R0/G2、安装约束、AWS/发布手册、C1/P10-F/CPython PREP-12、R2 阶段与 B1 审计、依赖图说明。明确 C1 来源/输入固定/受保护加载、自建 CPython3.12.15/完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆工作先暂停、不取消；原代码/测试/安装与证据保留，正常代码更新恢复后复审继续。当前先交付 MacBook/SSH 预检/确认两步、应用与平台维护分离的最小执行器；原安全路线 OPEN/NO-GO 不改为 PASS，现役 guard 与数据保护不解除。Runtime/Ops owner、依赖边/SCC/债务/scanner基线、兼容读写、17 Bundle/Manifest、代码/CI/依赖/锁文件/Prisma/迁移及所有 Host/云/生产状态均无变化。本批仅文档差异/链接/状态静态审阅，MCP-workspace 未运行 lint/build/test，无本批 CI、真实发布或恢复验收；分支 `docs/runtime-minimal-executor-priority-20261026`，未推送/PR。下一步先完成本批用户审阅与远端交付，再另行开展最小执行器源码工作；不自动恢复暂停研究或进行生产动作。
+
 ## 2026-10-26 — C1 P10-F4-B13 保持安装只读检查作用域
 
 **2026-10-26 F4-B13：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_READONLY_REVIEW_ONLY / C1_OPEN。** 基于dev61bb0e48（F4-B12 PR #2976经CI #7629 docs-only成功，无修复），新增[保持安装只读检查作用域](Runtime更新-C1-P10-F4B13保持安装只读检查作用域.md)：F2/F3有限成员和固定祖先FD保持至consumer退出，显式重检原bytes/元数据/路径边；深副本非授权报告、scope失效/原进程线程约束。旧公开报告接口复用单一实现，B3两处私有三元组解包原子更新；异常/中断保留原因，正常关闭或退出复核失败传播。新增22项测试，5份Python仅静态AST/生命周期/差异审阅，未执行项目测试/新CI。5文档同步及B12结果就地归档，无全局锁/消费/Flow或loader扩展，无owner/依赖图/债务/scanner基线、包依赖/迁移、R2/root/VM/云/生产变化；未推送。

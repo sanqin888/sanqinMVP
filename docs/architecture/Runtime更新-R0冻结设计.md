@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+> **2026-10-26 当前实施顺序调整（用户已批准文档更新）：**先完成[最小更新执行器与暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)，恢复单人 MacBook/SSH 的正常镜像发布；C1 来源/输入固定/受保护加载、自建 CPython 3.12.15 与完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均为 **PAUSED_NOT_CANCELLED**。成果、目标、原始证据及 OPEN 状态保留，待最小执行器完成且实际可正常更新后复审继续；不删除、不取消、不假报通过。本文后续 R1–R5/C1–C8 与旧“下一步”按原高保证路线保留，不能重新作为当前最小执行器的整套前置条件。最小执行器另有发布/数据保护验收；现有代码 guard、生产安装/迁移/AWS 授权没有解除，本批只改文档、未实施执行器。
+
 **2026-10-26 R2 审计索引（本地文档、非安全准入）：** 以准确 `origin/dev@003daa21dc0795ec092cac20502e0d9c2918f7aa` 复核已合并 C1 F4-B11（PR #2974；精确 dev CI #7626 SUCCESS、仅已运行离线检查），新建 [R2阶段审计与 B1—B6 路线](Runtime更新-R2阶段审计与B1实施路线-20261026.md)及 [R2-B1 可信身份与双层撤销实施前置审计](Runtime更新-R2-B1可信身份与双层撤销实施前置审计-20261026.md)。Option B/B1 文档合同保持不变；正式 InstallationAnchor、完整 CRL 发行/撤销、独立版本与时间权威、可执行 F 屏障、仓库正式联网 CAS 及 P0-01 均未完成。**`B1_READ_ONLY_AUDIT_COMPLETE_LOCAL / B1_IMPLEMENTATION_NOT_AUTHORIZED / C1_OPEN / R2-C4_OPEN / P1_DENY / PRODUCTION_NO-GO`**。本批只更新审计文档及索引，不涉及任何生产动作；下文历史验收记录保持原时点语义。
 
 **2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
@@ -188,7 +190,9 @@
 
 **独立核对是技术性质，不是第三方身份要求：**可由 SanQ 内部从 GitHub 发布/CI、官方签名、AWS API、受控 VM/SSH 配置和实际原始状态对照被审核程序的自报。只凭 `authorized=true` 或同一程序自报成功不能授权生产。过去缺少第三方见证所导致的 LIMITED 记录不倒改，但不得据此要求未来重复第三方签署；已存在的 fail-closed `BLOCKED` 代码需要另行审阅和批准才能修改。
 
-## 5. R0–R5 执行队列与依赖
+## 5. 原高保证路线 R0–R5 执行队列与依赖
+
+**2026-10-26 范围说明：**下表保留原路线进度；C1/自建 CPython/R2 离机安全事项按本文顶部决定暂停、不取消。当前先执行[最小执行器计划](Runtime最小更新执行器与暂停恢复计划.md)，完成正常代码更新后再复审本队列，不按下表历史 IN PROGRESS 自动继续研究。
 
 | 批次 | 固定工作包 | 当前进度与依赖 |
 | --- | --- | --- |
@@ -231,7 +235,7 @@ S2 新 daily 扩充/接线/sudoers 后置不变；现役日常备份和独立 DR
 
 ## 7. 首版固定验收矩阵
 
-下面 18 组是关闭要求，**均不是本批执行结果**。D5 已批准，旧三检查点冷取证退出首版默认范围；不删除原实验或将 NOT EXECUTED 改为 PASS。
+下面 18 组是**原高保证路线**的关闭要求，**均不是本批执行结果**；不直接充当当前最小执行器的整套前置矩阵，最小路线按[独立验收范围](Runtime最小更新执行器与暂停恢复计划.md)执行。D5 已批准，旧三检查点冷取证退出首版默认范围；不删除原实验或将 NOT EXECUTED 改为 PASS。
 
 | ID | 场景 | 必须观察的结果 / 主要门禁 |
 | --- | --- | --- |
