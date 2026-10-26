@@ -1,10 +1,10 @@
 # Runtime 最小更新执行器与暂停恢复计划
 
-> **2026-10-26（America/Toronto）｜优先级文档已由 PR #2978 / CI #7633 合并；MERGED_DEV / MINIMAL_EXECUTOR_CANDIDATE_WRITERS_LOCAL / PRODUCTION_NOT_AUTHORIZED。** 基线 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已包含 C1 F4-B13 / PR #2977）。本文件是当前实施顺序、暂停范围与恢复条件的权威入口；不把文档批准等同源码实施、生产安装、数据库或 AWS 操作授权。
+> **2026-10-26（America/Toronto）｜优先级文档已由 PR #2978 / CI #7633 合并；MERGED_DEV / MINIMAL_EXECUTOR_CREATION_INTENT_LOCAL / PRODUCTION_NOT_AUTHORIZED。** 基线 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已包含 C1 F4-B13 / PR #2977）。本文件是当前实施顺序、暂停范围与恢复条件的权威入口；不把文档批准等同源码实施、生产安装、数据库或 AWS 操作授权。
 
 ## 1. 当前目标与适用范围
 
-**2026-10-26 当前实现：CANDIDATE_WRITERS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批独立任务由[PR #2984](https://github.com/sanqin888/sanqinMVP/pull/2984) 最终head `cb7242bb0af4c8d06c093642a81e2df6844447ad` 经 [CI #7648](https://github.com/sanqin888/sanqinMVP/actions/runs/40395107992) SUCCESS（4成功/6范围跳过，默认Python和CPython3.10.22下Release各175、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `fabaa9a0f532528f02381896860aeaf8906b03bf`。本批补同一FROZEN计划/attempt的三候选created/no-restart准确登记，单份marker升级v2后才允许未来启动；失败收尾优先停候选、再停原对象，未知替换或结果仍保留FENCE_UNCONFIRMED，不恢复/清维护。新增16项离线方法未运行，task收尾预算适配六ID改900s；没有接create/apply/SQL/ACTIVE，完整创建意图及锁内交接仍OPEN。详见[当前实现方案](Runtime最小更新执行器实现方案.md)。本批本地待审、未推送，无生产操作，三组研究继续暂停保留。
+**2026-10-26 当前实现：CREATION_INTENT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批候选登记由[PR #2985](https://github.com/sanqin888/sanqinMVP/pull/2985) 最终head `2e95f410d003cde732369104e57a3605e0653751` 经 [CI #7651](https://github.com/sanqin888/sanqinMVP/actions/runs/40398932645) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各191、Runtime1080、准确CPython3.12.15回归412），合并dev `830c41a36e06d2dd8a9756ae60f5cf3d6f2cf7d9`；首次CI #7650测试夹具错误仅修测试后通过。本批补同一FROZEN计划/attempt的创建前持久意图，v2/CREATING_CANDIDATES先固定候选且ID表为空，之后才接受原候选登记；创建中断/空ID只保守收尾原ID并保留FENCE_UNCONFIRMED，不推断未创建/自动重放。新增12项测试及原fixture接线，未运行项目测试；尚未接真实create/apply/SQL/ACTIVE或贯穿执行的锁。见[当前实现与缺口](Runtime最小更新执行器实现方案.md)。本地待审、未推送，无生产操作，三组研究继续暂停保留。
 
 **交付与当前下一步：**[PR #2978](https://github.com/sanqin888/sanqinMVP/pull/2978) 最终 head `d2a739ecf36610fddf80564a26d52d25c053579c` 经 [CI #7633](https://github.com/sanqin888/sanqinMVP/actions/runs/40360253396) SUCCESS（1 成功/9 按文档范围跳过，无修复），合并 dev `343fefc7dce5849ca3401981ee6174f4f9d2ec59`。用户已授权合并后制作方案，现已形成本地[最小更新执行器实现方案](Runtime最小更新执行器实现方案.md)，列出范围、单一控制器/薄 SSH 入口、固定计划流程、四批实现与完结矩阵；待本地审阅，不代表代码已实现或生产已可更新。以下原批“本地/未推送”保留历史时点。
 

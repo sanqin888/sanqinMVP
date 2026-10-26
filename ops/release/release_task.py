@@ -38,6 +38,7 @@ def _installed() -> None:
     _need(Path(__file__) == TASK_SCRIPT, "task helper is not installed at its fixed path")
     collector._private_bytes(TASK_SCRIPT, storage.OWNER_UID, private=False)
     _need(callable(getattr(guard, "cleanup_after_task", None))
+          and callable(getattr(guard, "begin_candidate_creation", None))
           and callable(getattr(guard, "register_created_candidates", None))
           and callable(getattr(storage, "check_maintenance_clear", None))
           and "wait_seconds" in inspect.signature(job._locked_directory).parameters,

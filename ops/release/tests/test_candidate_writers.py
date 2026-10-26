@@ -32,7 +32,13 @@ class CandidateWriterTests(unittest.TestCase):
                     (("api", "4"), ("ubereats-worker", "5"), ("web", "6"))}
         self.originals = copy.deepcopy(self.fixture.info)
         self.info = self.fixture.info
-        self.inventories = {}
+        self.calls = []
+        self.fail_stop = None
+        self.bad_image = None
+        self.marker = self.fixture.marker
+        self.inventories = {service: [identifier] for service, identifier in self.fixture.ids.items()}
+        self.intent = guard.begin_candidate_creation(self.identity, self.frozen["attemptId"],
+            controller=self.fixture.controller, run=self.observe_command, now=lambda: self.fixture.time)
         for service, identifier in self.ids.items():
             name = "sanq-web" if service == "web" else "sanq-api"
             self.info[identifier] = {
@@ -45,9 +51,6 @@ class CandidateWriterTests(unittest.TestCase):
                 "State": {"Status": "created", "Running": False, "Restarting": False, "Paused": False}}
             self.inventories[service] = [self.fixture.ids[service], identifier]
         self.calls = []
-        self.fail_stop = None
-        self.bad_image = None
-        self.marker = self.fixture.marker
 
     def observe_command(self, args, **kwargs):
         self.calls.append(args[:])
@@ -64,7 +67,7 @@ class CandidateWriterTests(unittest.TestCase):
         if args[:2] in (["docker", "update"], ["docker", "stop"]):
             recorded = guard.status()
             self.assertEqual(recorded["schemaVersion"], 2)
-            self.assertIn(recorded["phase"], ("CANDIDATES_REGISTERED", "INCIDENT"))
+            self.assertIn(recorded["phase"], ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT"))
             self.assertIn(args[-1], set(self.ids.values()) | set(self.fixture.ids.values()))
             identifier = args[-1]
             if identifier not in self.info:
@@ -136,7 +139,7 @@ class CandidateWriterTests(unittest.TestCase):
             with self.subTest(identifiers=identifiers), self.assertRaises(ReleaseContractError):
                 guard.register_created_candidates(self.identity, self.frozen["attemptId"], identifiers,
                     run=self.observe_command, now=lambda: self.fixture.time)
-        self.assertEqual(guard.status()["phase"], "FROZEN")
+        self.assertEqual(guard.status()["phase"], "CREATING_CANDIDATES")
         self.assertEqual(self.mutations(), [])
 
     def test_running_exited_restart_tag_role_and_image_errors_reject_before_write(self):
@@ -154,7 +157,7 @@ class CandidateWriterTests(unittest.TestCase):
             change(self.info[self.ids["api"]])
             with self.assertRaises(ReleaseContractError):
                 self.register()
-            self.assertEqual(guard.status()["phase"], "FROZEN")
+            self.assertEqual(guard.status()["phase"], "CREATING_CANDIDATES")
         self.assertEqual(self.mutations(), [])
 
     def test_bad_digest_revision_or_different_worker_image_rejects(self):
@@ -166,7 +169,7 @@ class CandidateWriterTests(unittest.TestCase):
         self.info[self.ids["ubereats-worker"]]["Image"] = "sha256:" + "a" * 64
         with self.assertRaises(ReleaseContractError):
             self.register()
-        self.assertEqual(guard.status()["phase"], "FROZEN")
+        self.assertEqual(guard.status()["phase"], "CREATING_CANDIDATES")
 
     def test_inventory_missing_candidate_extra_unknown_and_running_original_reject(self):
         baseline = copy.deepcopy(self.inventories)
@@ -199,7 +202,7 @@ class CandidateWriterTests(unittest.TestCase):
         self.fixture.time = "2026-10-26T16:00:00Z"
         with self.assertRaises(ReleaseContractError):
             self.register()
-        self.assertEqual(guard.status()["phase"], "FROZEN")
+        self.assertEqual(guard.status()["phase"], "CREATING_CANDIDATES")
         self.assertEqual(self.mutations(), [])
 
     def test_duplicate_registration_and_record_substitution_never_overwrite(self):
@@ -222,7 +225,7 @@ class CandidateWriterTests(unittest.TestCase):
         with patch.object(guard.os, "fsync", side_effect=OSError("unknown sync")):
             with self.assertRaises(OSError):
                 self.register()
-        self.assertEqual(guard.status()["phase"], "FROZEN")
+        self.assertEqual(guard.status()["phase"], "CREATING_CANDIDATES")
         self.assertTrue(any(path.name.endswith(".tmp") for path in self.fixture.maintenance.iterdir()))
         with self.assertRaises(ReleaseContractError):
             guard.check_startup()

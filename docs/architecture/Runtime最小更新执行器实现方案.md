@@ -1,8 +1,25 @@
 # Runtime 最小更新执行器实现方案
 
-**2026-10-26 当前进度：CANDIDATE_WRITERS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批独立维护任务已由[PR #2984](https://github.com/sanqin888/sanqinMVP/pull/2984) 最终head `cb7242bb0af4c8d06c093642a81e2df6844447ad` 经 [CI #7648](https://github.com/sanqin888/sanqinMVP/actions/runs/40395107992) SUCCESS（4成功/6范围跳过，默认Python和CPython3.10.22下Release各175、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `fabaa9a0f532528f02381896860aeaf8906b03bf`。本批从该准确dev基线补候选容器登记及异常停写源码；没有创建/启动真实容器、执行apply、SQL或安装生产工具，三组研究继续暂停、不取消。
+**2026-10-26 当前进度：CREATION_INTENT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批候选登记已由[PR #2985](https://github.com/sanqin888/sanqinMVP/pull/2985) 最终head `2e95f410d003cde732369104e57a3605e0653751` 经 [CI #7651](https://github.com/sanqin888/sanqinMVP/actions/runs/40398932645) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各191、Runtime1080、准确CPython3.12.15回归412），合并dev `830c41a36e06d2dd8a9756ae60f5cf3d6f2cf7d9`。首次CI #7650发现坏镜像测试夹具仍传布尔值，生产观察替身已按字符串分类；同分支仅将测试改为明确digest/revision两种负例后通过，未改生产逻辑或CI门禁。本批补创建前意图与登记接线，尚未运行创建/发布或生产操作。
 
-## 第二批续作：候选身份登记与异常停写（本地待审）
+## 第二批续作：创建前意图与登记接线（本地待审）
+
+复用同一个maintenance_guard、active.json、全局任务锁和计划原件，不新增helper、unit、数据库或发布状态权威。内部新增 `begin_candidate_creation(plan-id, attempt-id)`；CLI和systemd任务仍不提供create/apply入口。普通兼容扩展，无已安装消费者，不改变原17+Manifest/旧deploy或三组暂停研究。
+
+1. **先持久意图，再允许未来create。**要求同一v1/FROZEN计划/attempt、维护目录只有原marker、有效启动门禁、原三对象准确已停/no-restart、完整角色列表仅含原ID及备份状态原样。从原计划取准确候选证明，不接受调用者改目标；文件/目录fsync并读回 `v2/CREATING_CANDIDATES`，candidate.containers暂为空。
+2. **登记必须接同一意图。**原register入口现在只接受CREATING_CANDIDATES，重新读取计划并比对候选证明完全一致，才可在前批created/no-restart、image/digest/角色等检查后持久CANDIDATES_REGISTERED。不能从v1/FROZEN直接登记，不能跳过意图、部分填ID、换证明/尝试、重放或降级；旧v1及前批已完整登记的v2仍可读取/事故收尾。
+3. **创建未完成不推断安全。**CREATING_CANDIDATES或其INCIDENT空ID记录下，ExecStopPost即便收到success也只尝试停止原已保存ID，并固定保留INCIDENT/FENCE_UNCONFIRMED；不扫描猜取/停止未登记新ID，不把“未登记”解释为“未创建”。部分创建、旧对象已删、提交/同步未知均需审证据，不自动create、补登记、重开、清标记或续跑。
+4. task补意图API的一致版本检查，六helper仍需第三批统一验真/安装；不声称API存在就是C1来源证明。记录v2只扩展阶段/空表的严格语义，没有第二份current/previous、兼容双写或新控制服务器；原900s收尾预算不变。
+
+### 验证与本批结束位置
+
+新增12项离线unittest方法，覆盖意图耐久/准确目标、同一root/plan/attempt/FROZEN、原writer/备份/外来对象拒绝、锁冲突、缺计划/残件、时钟倒退、初始/最终同步未知、未完成创建的保守收尾、禁止直接登记及记录变造；同步原16项候选测试fixture，让模拟创建发生在意图之后，更新task接口断言。仅临时私有目录与Docker/PID1替身，不实际运行create/start/SQL。项目测试未执行；仅Python3.10 grammar AST、测试保留方法名、差异/导入/引用静态审阅；前批CI不替代本批验证。
+
+分支 `feat/runtime-minimal-creation-intent-20261026`，本地待审、未提交/推送。**本批不宣称创建协议或第二批执行已完成：**实际只create不启动的准确Compose/digest/no-restart配置、创建到登记/启动/验证的同一锁贯穿、SQL集合批准与执行、PENDING/ACTIVE和原策略/维护标记交接仍未接；begin/register各自锁仅保护自己的记录操作，返回不表示已持锁进入下一动作。完整create命令结果未知、部分创建及真实Docker行为必须在后续单一控制器接线/隔离环境处理。没有生产目录/unit安装、容器、数据库或AWS执行；真实断线/SIGKILL/socket/daemon/VM故障、第一批平台及完整交付合同、第三批过渡和最终发布均OPEN，三组研究继续暂停、不取消。
+
+**前批候选登记源码交付：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**前批独立维护任务已由[PR #2984](https://github.com/sanqin888/sanqinMVP/pull/2984) 最终head `cb7242bb0af4c8d06c093642a81e2df6844447ad` 经 [CI #7648](https://github.com/sanqin888/sanqinMVP/actions/runs/40395107992) SUCCESS（4成功/6范围跳过，默认Python和CPython3.10.22下Release各175、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `fabaa9a0f532528f02381896860aeaf8906b03bf`。本批从该准确dev基线补候选容器登记及异常停写源码；没有创建/启动真实容器、执行apply、SQL或安装生产工具，三组研究继续暂停、不取消。
+
+## 第二批续作：候选身份登记与异常停写（源码已合并）
 
 本批只扩展现有 `maintenance_guard.py`，不新增发布控制器、helper交付件、任务数据库或current/previous权威。内部 `register_created_candidates(plan-id, attempt-id, identifiers)` 没有CLI入口，尚未接入任务/旧deploy。调用持原全局任务锁，要求同一FROZEN计划/尝试、目录无残件、有效门禁及原计划原件；候选来源固定为该计划，不能由调用者传新SHA/digest或换latest。
 
@@ -17,7 +34,7 @@
 
 新增16项离线unittest方法，使用原维护fixture、临时私有目录与Docker/systemctl替身，覆盖准确登记/拒绝、已删原对象、候选优先收尾、成功任务不放行、部分失败/外来替换、记录不可变、初始/最终同步未知与坏v2。同步原task参数断言。仅Python3.10 grammar AST、保留测试方法名、差异/导入/相对链接静态审阅；项目测试未执行，本批尚无CI。前批CI不代表本批通过，mock不是真实Docker/PID1故障验收。
 
-分支 `feat/runtime-minimal-candidate-writers-20261026` 本地待审、未推送。**未来控制器仍须实现create前持久意图、只create不启动的准确配置、部分创建/未知结果处理、同一锁贯穿apply、准确SQL授权、登记后启动/验证/ACTIVE交接、原策略恢复与受控清标记。**本批没有解决创建到登记之间的完整恢复协议；未登记对象必须始终保持未启动/no-restart，不能将该内部函数直接拼入旧up命令。真实创建/重建行为、断线/SIGKILL/daemon/socket/VM故障与安装/恢复仍OPEN，第一批实际平台/完整交付合同仍OPEN。17+Manifest、旧deploy/rollback、250/300guard、业务schema和依赖不变，无生产权限/目录/SQL/AWS操作。
+分支 `feat/runtime-minimal-candidate-writers-20261026` 随后由[PR #2985](https://github.com/sanqin888/sanqinMVP/pull/2985) 最终head `2e95f410d003cde732369104e57a3605e0653751` 经 [CI #7651](https://github.com/sanqin888/sanqinMVP/actions/runs/40398932645) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各191、Runtime1080、准确CPython3.12.15回归412），合并dev `830c41a36e06d2dd8a9756ae60f5cf3d6f2cf7d9`；CI #7650测试夹具布尔/字符串不一致仅作上述测试修复。上文未运行/未推送为原审阅时点，本地仍未执行项目测试。**未来控制器仍须实现create前持久意图、只create不启动的准确配置、部分创建/未知结果处理、同一锁贯穿apply、准确SQL授权、登记后启动/验证/ACTIVE交接、原策略恢复与受控清标记。**本批没有解决创建到登记之间的完整恢复协议；未登记对象必须始终保持未启动/no-restart，不能将该内部函数直接拼入旧up命令。真实创建/重建行为、断线/SIGKILL/daemon/socket/VM故障与安装/恢复仍OPEN，第一批实际平台/完整交付合同仍OPEN。17+Manifest、旧deploy/rollback、250/300guard、业务schema和依赖不变，无生产权限/目录/SQL/AWS操作。
 
 **前批独立任务源码交付：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**维护准备 [PR #2983](https://github.com/sanqin888/sanqinMVP/pull/2983) 最终head `b94f1f9d4f65885a01397c099ff2bdde67804bba` 经 [CI #7646](https://github.com/sanqin888/sanqinMVP/actions/runs/40387127782) SUCCESS（4成功/6范围跳过），默认Python及CPython3.10.22下Release各154、Runtime1080、准确CPython3.12.15回归412通过，合并dev `0d16673aa8a56f024cc79bcba235333c867aa8d1`。初次CI #7645发现测试helper误覆盖unittest.run；同分支仅将两处helper及引用改名observe_command后通过，不改维护逻辑或门禁。本批基于准确合并状态补系统级独立任务、ExecStopPost及查询源码，尚未安装/运行或接apply；现场与完整故障验收仍OPEN。
 
