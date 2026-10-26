@@ -16,6 +16,7 @@ import os
 import pwd
 import re
 import stat
+import threading
 
 from build_bundle import MANIFEST, SOURCE_FILES, MAX_ARCHIVE_BYTES, MAX_FILE_BYTES
 from normal_runtime_inputs import parse_pinned_update_inputs
@@ -37,6 +38,47 @@ class ReadonlyReviewBlocked(ValueError):
 def _require(ok, reason):
     if not ok:
         raise ReadonlyReviewBlocked(reason)
+
+
+class _HeldReadonlyReview:
+    """Live read-only recheck, never an authorization or transferable handle."""
+    def __init__(self, report, recheck):
+        self._raw = canonical(report)
+        self._recheck = recheck
+        self._owner = (os.getpid(), threading.get_ident())
+        self._live = True
+
+    def _active(self):
+        _require(self._live and self._owner == (os.getpid(), threading.get_ident()),
+                 "read-only review closed or owned by another process/thread")
+
+    @property
+    def report(self):
+        self._active()
+        return json.loads(self._raw)
+
+    def recheck(self):
+        self._active()
+        self._recheck()
+
+    def __reduce_ex__(self, protocol):
+        raise TypeError("held read-only review cannot be serialized")
+
+
+@contextmanager
+def _owned_fds():
+    """Close every owned FD; an original failure takes priority over cleanup."""
+    stack = ExitStack()
+    try:
+        yield stack
+    except BaseException:
+        try:
+            stack.close()
+        except BaseException:
+            pass  # ExitStack has attempted all callbacks; preserve original.
+        raise
+    else:
+        stack.close()
 
 
 def _object(pairs):
@@ -88,7 +130,7 @@ def _installed(root_fd):
     folders |= {p for name in names for p in
                 ("/".join(name.split("/")[:i]) for i in range(1, len(name.split("/"))))}
     folders.discard("")
-    with ExitStack() as stack:
+    with _owned_fds() as stack:
         root = os.dup(root_fd)
         stack.callback(os.close, root)
         device = os.fstat(root).st_dev
@@ -136,12 +178,10 @@ def _installed(root_fd):
             data[name] = bytes(raw)
             metadata[name] = {"bytes": len(raw), "sha256": digest(bytes(raw)),
                               "uid": info.st_uid, "gid": info.st_gid, "mode": oct(mode)}
-            held.append((directories[parent], leaf, fd, key))
-        _require(len({(key[0], key[1]) for _, _, _, key in held}) == len(held),
+            held.append((directories[parent], leaf, fd, key, bytes(raw)))
+        _require(len({(key[0], key[1]) for _, _, _, key, _ in held}) == len(held),
                  "installed inode alias")
-        try:
-            yield data, metadata
-        finally:
+        def recheck():
             for folder, fd in directories.items():
                 _require(_directory(fd, root_owner, device) == directory_keys[folder]
                          and set(os.listdir(fd)) == children[folder],
@@ -149,10 +189,17 @@ def _installed(root_fd):
             for parent, name, fd in edges:
                 _require(_key(os.stat(name, dir_fd=parent, follow_symlinks=False))
                          == _key(os.fstat(fd)), "installed directory entry replaced")
-            for parent, name, fd, key in held:
+            for parent, name, fd, key, raw in held:
                 _require(_key(os.fstat(fd)) == key
                          and _key(os.stat(name, dir_fd=parent, follow_symlinks=False)) == key,
                          "installed member replaced or changed")
+                _require(os.pread(fd, len(raw) + 1, 0) == raw
+                         and _key(os.fstat(fd)) == key,
+                         "held installed bytes changed")
+
+        recheck()
+        yield data, metadata, recheck
+        recheck()
 
 
 def _run(fetch, run_id, sha, name, event):
@@ -236,10 +283,11 @@ def _preserved_state(files, metadata, request, observation):
              "application env or marker differs")
 
 
-def review_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha256,
+@contextmanager
+def hold_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha256,
                            expected_request_sha256, target_archive,
                            installed_root_fd, preserved_observation, fetch=github_json):
-    """Review fixed input/target and actual borrowed installed FD; never admit/run.
+    """Hold finite installed FDs through consumer exit; never admit/run.
 
     Target policy is the UNCHANGED newest-release verifier. A pinned old target
     that is no longer newest fails; no historical fallback or target selection.
@@ -259,7 +307,7 @@ def review_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha25
     _, target_files = validated_archive_files(target_archive, request["targetRuntimeSha"])
     validate_layout(target_files)
     observation = _pinned_observation(preserved_observation, request)
-    with _installed(installed_root_fd) as (files, metadata):
+    with _installed(installed_root_fd) as (files, metadata, recheck):
         manifest = _json(files[MANIFEST])
         _current_publication(manifest, files, request["currentRuntimeSha"],
                              request["currentArchiveDigest"], fetch)
@@ -279,4 +327,22 @@ def review_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha25
                   "containerObservationAuthenticated": False, "continuousMaintenanceVerified": False,
                   "transactionAdmitted": False, "flowInvoked": False, "readyToInstall": False,
                   "authorizedToMutateProduction": False, "decision": "BLOCKED"}
+        recheck()
+        held = _HeldReadonlyReview(report, recheck)
+        try:
+            yield held
+        finally:
+            held._live = False
+
+
+def review_readonly_update(launch_bytes, request_bytes, *, expected_launch_sha256,
+                           expected_request_sha256, target_archive,
+                           installed_root_fd, preserved_observation, fetch=github_json):
+    """Return a point-in-time report only after all owned FD exit checks."""
+    with hold_readonly_update(launch_bytes, request_bytes,
+            expected_launch_sha256=expected_launch_sha256,
+            expected_request_sha256=expected_request_sha256,
+            target_archive=target_archive, installed_root_fd=installed_root_fd,
+            preserved_observation=preserved_observation, fetch=fetch) as held:
+        report = held.report
     return report
