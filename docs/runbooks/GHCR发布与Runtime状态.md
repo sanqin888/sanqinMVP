@@ -1,6 +1,6 @@
 # GHCR 发布与 Runtime 状态
 
-> **2026-10-26 当前源码进度：JOB_PRECHECK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**采集/计划保存 [PR #2981](https://github.com/sanqin888/sanqinMVP/pull/2981) 最终head e584be77 / [CI #7641](https://github.com/sanqin888/sanqinMVP/actions/runs/40377187532) 10/10成功，已合并dev2b8677c6：默认及3.10.22下Release各111、Runtime1080、准确3.12.15回归412通过。本批本地补只读任务锁、持久意图/结果、同一计划缓存只验重核及状态查询，新增23项测试尚未运行。只有precheck/status/abandon源码，READY始终canExecute=false，不是ACTIVE/生产许可；未安装、没有apply/Mac/systemd门禁。见[源码边界与事故记录语义](../architecture/Runtime最小更新执行器实现方案.md)。旧发布入口、17+Manifest和250/300 guard仍有效，第一批现场缺口/第二批受控执行未验收，不能据此解除生产阻塞。
+> **2026-10-26 当前源码进度：MAINTENANCE_GUARD_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**只读任务 [PR #2982](https://github.com/sanqin888/sanqinMVP/pull/2982) 最终head00bfc519 / [CI #7643](https://github.com/sanqin888/sanqinMVP/actions/runs/40381159117) SUCCESS，已合并dev1fa7bb21；默认及3.10.22 Release各134、Runtime1080、准确3.12.15回归412通过。本批本地补原策略持久保存/有限停写内部adapter、维护标记及Docker/备份启动drop-in模板，新增20项离线测试未运行。CLI仅check-startup/status；没有安装、freeze/apply公开入口、策略恢复或清标记，不可在生产执行。详情见[维护准备、权限和故障缺口](../architecture/Runtime最小更新执行器实现方案.md)。ARMED/INCIDENT不等于已停写；SIGKILL中途可能仍有writer，FROZEN也不是ACTIVE或生产许可。旧发布入口/17+Manifest/250/300 guard保持，执行与隔离验收尚未完成。
 
 > **2026-10-26 当前主线：**依用户决定先完成[最小更新执行器与暂停恢复计划](../architecture/Runtime最小更新执行器与暂停恢复计划.md)，以 MacBook/SSH 上“预检一次、确认执行一次”恢复正常代码更新。C1 来源/输入固定/受保护加载、自建 CPython 3.12.15 及完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均 **PAUSED_NOT_CANCELLED**；待最小执行器完成且真实发布成功后复审继续。下文描述现役发布器与原高保证路线，不能据此把三项暂停工作重新设为最小执行器前置；现役校验未改，新执行器/工具过渡未完成，本批无部署或生产放行。
 
