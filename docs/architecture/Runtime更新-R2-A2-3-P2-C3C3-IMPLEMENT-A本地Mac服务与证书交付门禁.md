@@ -234,3 +234,19 @@ Recovery Guest `/etc/sanq-maintenance` 和 `/etc/sanq-maintenance/installation-a
 **选定的后续优先方案：Option B — Enrollment + X.509 CRL 双层撤销。** 本次用户批准的是**文档上的实施方向**，不代表批准 CRL 权威/维护机制、代码改动、创建正式身份或真实 CAS 执行。下一批需单独冻结：受信 Anchor 来源，完整 CRL 总账的 owner/签发/轮换/原子交付与 fail-closed，enrollment 的 role/pin/撤销语义，已建立连接及 SQLite 提交的撤销线性化，DER 指纹与 PEM 文件哈希边界，然后评审代码影响、替代方案并单独申请实施授权。B8 测试 CRL 只含局部证书撤销，`nextUpdate=2026-10-26T00:04:02Z`，禁止直接用于正式 CAS。
 
 **退出状态：`M01-B9 AUDIT_DOC_CLOSED_LOCAL / M01-B4_TO_B8_TLS_EXPERIMENT_PASS_SCOPED / OPTION_B_PREFERRED_NOT_IMPLEMENTED / FORMAL_CAS_ENROLLMENT_BLOCKED / CAS_NOT_RUN / P1_DENY / P0-01_NOT_RUN / PRODUCTION_NO-GO`。** 本次只同步文档，不授权私钥/CA 操作、网络服务、SQLite、Docker、VM/AWS 或生产变更。
+
+## 7. B10 TLS_ONLY 安全负例证据收口（2026-10-26 最新快照）
+
+> 此节是 M01-B9/B9-DECISION 后的限域 TLS_ONLY 回执索引。参见 [B10 TLS_ONLY 安全负例证据收口](Runtime更新-R2-A2-3-P2-C3C3-B10-TLS_ONLY安全负例证据收口.md)；早先阶段的 NOT_RUN 与 M01-B4～B8 回执保留原时点语义，不改写历史。
+
+| B10 阶段 | 本次操作者实际双端/静态证据 | 收口级别 |
+| --- | --- | --- |
+| 0 预检 | Mac LibreSSL 2.8.3、Guest OpenSSL 3.0.2，原实验 CA/Server/Client DER pin 一致，双方 TLS1.2 可用，原证书链 OK、Host-only 39443 无监听 | `PASS_SCOPED`；双端时钟非同时采样，独立时间权威仍 OPEN |
+| A 缺失 SAN | 仅实验 Server leaf 缺 SAN，Guest `VERIFY_CODE=64`（IP address mismatch），Mac `SSLV3_ALERT_BAD_CERTIFICATE`，测试后端口无监听 | `CLOSED_PASS_SCOPED` |
+| B 尚未生效 | 正确 IP SAN、serverAuth，独立 leaf `notBefore=2026-10-27 12:40:31 UTC`，静态 error9，Guest 真实 `VERIFY_CODE=9`，停止后端口无监听 | `CLOSED_PASS_SCOPED` |
+| C 禁用 TLS1.0/1.1 | 双端各 2 次 TCP 到达；Mac `WRONG_VERSION_NUMBER`，Guest `TLSV1_ALERT_PROTOCOL_VERSION`；清理时无监听 | `CLOSED_PASS_SCOPED` |
+| D 非白名单 Cipher | Guest TLS1.2 单独尝试 `ECDHE-RSA-AES128-SHA` 与 `AES128-SHA`，Mac 仅两个 GCM Cipher，2/2 `NO_SHARED_CIPHER`，Guest 2/2 `SSLV3_ALERT_HANDSHAKE_FAILURE`；最终 39443 无监听 | `CLOSED_PASS_SCOPED` |
+
+**严格边界：** 全部是操作者提供的独立一次性 TLS_ONLY 服务回执，没有运行仓库 `serve_manually()`、Enrollment/SQLite CAS、正式完整 CRL、InstallationAnchor、C3C4、P1 / systemd Guard 或生产，不能据此宣布双层撤销已实施或可信 OFF_HOST。B9-DECISION 的 Option B/B1 仍需单独安全实施与授权。
+
+**当前：** `B10_TLS_ONLY_CLOSED_PASS_SCOPED / REAL_CAS_NOT_RUN / FORMAL_ANCHOR_BLOCKED / P1_DENY / P0-01_NOT_RUN / PRODUCTION_NO-GO`。
