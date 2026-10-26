@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 P10-F 完整候选装配就绪审计
 
+**2026-10-26 F4-B7：CONTRACT_COMPLETE_LOCAL / WRITER_NOT_IMPLEMENTED / C1_OPEN。** F4-B6 PR #2967经CI #7612成功合并564f63d2，Runtime1010/Release45/准确3.12.15回归342通过，含6新增测试，无修复。本批完成[有界追加writer合同](Runtime更新-C1-P10-F4B7有界追加writer合同.md)：首版仅空双布局下一次本机claim及同handle abort，不提供处置/第二笔准入；明确共用scope、create-only/文件与目录fsync、未知阻断与原只读检查保留。5文档同步，无新源码/schema/依赖/迁移、owner/依赖图/债务/scanner基线、R2/root/VM/云/生产变化，未运行新测试/CI、未推送。
+
 **2026-10-26 F4-B6：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** F4-B5 PR #2966经CI #7610成功合并ab49b2c8，Runtime1004/Release45/准确3.12.15回归336通过，含31新增测试，无修复。本批新增[旧入口与双布局门禁](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)：固定v2路径存在任何对象均在原全局锁内禁用v1消费/观察，并在持有期复核；v2缺失才保留原v1行为，权限错误不当缺失。6新增测试（history共37项），统一固定布局常量，无v2 writer/finalizer或生产入口切换。3份Python仅静态AST/差异审阅，未运行新测试/CI、未推送；6文档同步，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或root/VM/云/生产变化。
 
 **2026-10-25 F4-B5：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HISTORY_STRUCTURE_ONLY / C1_OPEN。** F4-B4设计PR #2965经CI #7608（docs-only，1成功/9跳过）合并f7108a58，无修复。本批新增[有界历史只读解释器](Runtime更新-C1-P10-F4B5有界历史只读解释器.md)及31项测试，复用原全局锁与固定v1/v2目录，限256项/单项16KiB/总4MiB，核对事件原bytes、序列/前序、claim/attempt/input及永久消费身份。所有处置声明未认证，UNKNOWN/旧ledger继续阻断，无writer/finalizer/旧入口切换。v1仅抽取私有BASE+lock scope，原消费API不变；Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/数据库迁移变化。3份Python仅静态AST/差异审阅，未运行测试/新CI、未推送；6文档同步，无root/VM/云/生产动作。
