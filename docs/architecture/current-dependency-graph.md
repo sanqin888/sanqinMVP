@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**2026-10-26 F4-B6：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** F4-B5 PR #2966经CI #7610成功合并ab49b2c8，Runtime1004/Release45/准确3.12.15回归336通过，含31新增测试，无修复。本批新增[旧入口与双布局门禁](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)：固定v2路径存在任何对象均在原全局锁内禁用v1消费/观察，并在持有期复核；v2缺失才保留原v1行为，权限错误不当缺失。6新增测试（history共37项），统一固定布局常量，无v2 writer/finalizer或生产入口切换。3份Python仅静态AST/差异审阅，未运行新测试/CI、未推送；6文档同步，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或root/VM/云/生产变化。
+
 **2026-10-25 F4-B5：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HISTORY_STRUCTURE_ONLY / C1_OPEN。** F4-B4设计PR #2965经CI #7608（docs-only，1成功/9跳过）合并f7108a58，无修复。本批新增[有界历史只读解释器](Runtime更新-C1-P10-F4B5有界历史只读解释器.md)及31项测试，复用原全局锁与固定v1/v2目录，限256项/单项16KiB/总4MiB，核对事件原bytes、序列/前序、claim/attempt/input及永久消费身份。所有处置声明未认证，UNKNOWN/旧ledger继续阻断，无writer/finalizer/旧入口切换。v1仅抽取私有BASE+lock scope，原消费API不变；Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/数据库迁移变化。3份Python仅静态AST/差异审阅，未运行测试/新CI、未推送；6文档同步，无root/VM/云/生产动作。
 
 **2026-10-25 F4-B4：DESIGN_COMPLETE_LOCAL / HISTORY_IMPLEMENTATION_NOT_STARTED / C1_OPEN。** F4-B3 [PR #2964](https://github.com/sanqin888/sanqinMVP/pull/2964)经[CI #7606](https://github.com/sanqin888/sanqinMVP/actions/runs/40233916932)成功合并9434ab69：Runtime973/Release45/准确3.12.15回归305，含23新增测试；仅修正重排Manifest测试夹具，生产实现未改。本批完成[多事务历史/崩溃协议设计](Runtime更新-C1-P10-F4B4多事务历史与崩溃协议设计.md)：提出固定v2只追加有界历史、永久消费、双布局共同门禁、未知写入/处置声明不放行；下一源码限定真实FD/锁下的只读历史解释器，无writer/finalizer/入口切换。本批7份文档，无新schema/源码/依赖/迁移、R2/root/VM/云/生产动作，无owner/依赖图/债务/scanner基线变化，未运行新测试/CI、未推送。

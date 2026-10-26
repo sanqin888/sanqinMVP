@@ -15,7 +15,7 @@ import normal_runtime_local_admission as local
 from normal_runtime_inputs import _document
 from normal_runtime_launch import canonical, digest, TXID
 
-_HISTORY = "normal-update-history-v2"
+_HISTORY = local._HISTORY
 _SCHEMA = "sanq.runtime.local-history-event.v2"
 _MAX_EVENTS = 256
 _MAX_BYTES = 16384

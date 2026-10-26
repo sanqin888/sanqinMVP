@@ -488,5 +488,86 @@ class HistoryReviewTests(unittest.TestCase):
                 self.inspect()
 
 
+    def consume_legacy(self):
+        if not hasattr(self, "_legacy_inputs"):
+            import test_normal_runtime_readonly_review as f2
+            fixture = f2.ReadonlyReviewTests()
+            fixture.setUp()
+            self.addCleanup(fixture.doCleanups)
+            self._legacy_inputs = fixture.launch, fixture.request
+        launch, request = self._legacy_inputs
+        return local.consume_local_attempt(launch, request,
+            expected_launch_sha256=digest(launch), expected_request_sha256=digest(request))
+
+    def test_empty_v2_directory_disables_actual_legacy_consumption_without_writes(self):
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "legacy entry disabled"):
+            with self.consume_legacy():
+                self.fail("legacy consumed with v2 present")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(list(self.legacy.iterdir()), [])
+
+    def test_any_v2_object_including_dangling_link_and_fifo_disables_legacy(self):
+        self.tree.rmdir()
+        for kind in ("file", "dangling-link", "fifo"):
+            if kind == "file":
+                self.tree.write_bytes(b"unknown v2 object")
+            elif kind == "dangling-link":
+                self.tree.symlink_to(self.base / "missing-history")
+            else:
+                os.mkfifo(self.tree, 0o600)
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "legacy entry disabled"):
+                with self.consume_legacy():
+                    self.fail("legacy bypassed v2 object")
+            self.assertEqual(list(self.legacy.iterdir()), [])
+            self.tree.unlink()
+
+    def test_v2_appearing_during_live_attempt_blocks_and_preserves_consumed_claim(self):
+        self.tree.rmdir()
+        with self.assertRaisesRegex(ValueError, "legacy entry disabled"):
+            with self.consume_legacy() as handle:
+                self.tree.mkdir(mode=0o700)
+                handle.observation()
+        names = {p.name for p in self.legacy.iterdir()}
+        self.assertIn("active.json", names)
+        self.assertEqual(len(names), 2)
+        self.assertEqual(self.inspect()["status"], "LEGACY_LEDGER_BLOCKING")
+
+    def test_v2_presence_prevents_legacy_inspection_and_abort_without_modifying_records(self):
+        self.tree.rmdir()
+        with self.consume_legacy() as handle:
+            attempt = handle.observation()["attemptId"]
+        self.tree.mkdir(mode=0o700)
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "legacy entry disabled"):
+            local.inspect_local_admission()
+        with self.assertRaises(ValueError):
+            handle.record_abort(b"{}", attempt_id=attempt)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_v2_stat_permission_error_does_not_mean_absent(self):
+        self.tree.rmdir()
+        real = os.stat
+        def deny(path, *args, **kwargs):
+            if path == local._HISTORY:
+                raise PermissionError("synthetic inaccessible v2")
+            return real(path, *args, **kwargs)
+        with patch.object(os, "stat", side_effect=deny) as instrumented:
+            # Preserve platform API identity while observing real dir_fd calls.
+            with patch.object(os, "supports_dir_fd", os.supports_dir_fd | {instrumented}), \
+                 patch.object(os, "supports_follow_symlinks", os.supports_follow_symlinks | {instrumented}):
+                with self.assertRaises(PermissionError):
+                    with local._locked():
+                        self.fail("permission error treated as absent")
+        self.assertEqual(list(self.legacy.iterdir()), [])
+
+    def test_legacy_consumption_still_works_when_v2_absent_and_never_creates_v2(self):
+        self.tree.rmdir()
+        with self.consume_legacy() as handle:
+            self.assertEqual(handle.observation()["status"], "LOCAL_ATTEMPT_HELD_UNRESOLVED")
+        self.assertFalse(self.tree.exists())
+        self.assertEqual(local.inspect_local_admission()["status"], "UNRESOLVED_ATTEMPT")
+
+
 if __name__ == "__main__":
     unittest.main()

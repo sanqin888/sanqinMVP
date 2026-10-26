@@ -25,6 +25,7 @@ _OWNER = (0, 0)
 _PARTS = ("root", "sanq-runtime-operator")
 _LOCK = "normal-update.lock"
 _LEDGER = "normal-update-transactions"
+_HISTORY = "normal-update-history-v2"
 _ACTIVE = "active.json"
 _LIMIT = 32768
 _CLAIM_SCHEMA = "sanq.runtime.local-admission-claim.v1"
@@ -162,6 +163,16 @@ def _locked_base():
                 recheck()
 
 
+def _require_legacy_only(base):
+    # Presence of ANY v2 object retires the legacy path, even an empty directory
+    # or dangling symlink. Only exact ENOENT means this path is absent.
+    try:
+        os.stat(_HISTORY, dir_fd=base, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    raise LocalAdmissionBlocked("v2 layout present; legacy entry disabled")
+
+
 @contextmanager
 def _locked():
     # Preserve v1's exact scope/API; history inspection only reuses BASE+lock.
@@ -174,6 +185,7 @@ def _locked():
 
         def recheck():
             base_recheck()
+            _require_legacy_only(base)
             info = os.stat(_LEDGER, dir_fd=base, follow_symlinks=False)
             _require(_directory_key(ledger, *_OWNER, device) == key
                      and (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid) == key,
