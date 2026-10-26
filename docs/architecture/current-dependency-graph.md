@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**2026-10-26 F4-B8：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B7 PR #2968经CI #7614（docs-only，1成功/9跳过）合并707749fd，无修复。本批新增[受限v2 writer](Runtime更新-C1-P10-F4B8受限v2历史writer.md)及16项测试，仅空双布局首claim与同handle abort；create-only/文件及目录fsync/原bytes复核，未知留原件阻断，无处置/第二笔准入/终结或Flow。共用目录身份scope与只读完整stat快照分开，原读者不放宽。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+
 **2026-10-26 F4-B7：CONTRACT_COMPLETE_LOCAL / WRITER_NOT_IMPLEMENTED / C1_OPEN。** F4-B6 PR #2967经CI #7612成功合并564f63d2，Runtime1010/Release45/准确3.12.15回归342通过，含6新增测试，无修复。本批完成[有界追加writer合同](Runtime更新-C1-P10-F4B7有界追加writer合同.md)：首版仅空双布局下一次本机claim及同handle abort，不提供处置/第二笔准入；明确共用scope、create-only/文件与目录fsync、未知阻断与原只读检查保留。5文档同步，无新源码/schema/依赖/迁移、owner/依赖图/债务/scanner基线、R2/root/VM/云/生产变化，未运行新测试/CI、未推送。
 
 **2026-10-26 F4-B6：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** F4-B5 PR #2966经CI #7610成功合并ab49b2c8，Runtime1004/Release45/准确3.12.15回归336通过，含31新增测试，无修复。本批新增[旧入口与双布局门禁](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)：固定v2路径存在任何对象均在原全局锁内禁用v1消费/观察，并在持有期复核；v2缺失才保留原v1行为，权限错误不当缺失。6新增测试（history共37项），统一固定布局常量，无v2 writer/finalizer或生产入口切换。3份Python仅静态AST/差异审阅，未运行新测试/CI、未推送；6文档同步，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或root/VM/云/生产变化。

@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — C1 P10-F4-B8受限v2历史writer
+
+**2026-10-26 F4-B8：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B7 PR #2968经CI #7614（docs-only，1成功/9跳过）合并707749fd，无修复。本批新增[受限v2 writer](Runtime更新-C1-P10-F4B8受限v2历史writer.md)及16项测试，仅空双布局首claim与同handle abort；create-only/文件及目录fsync/原bytes复核，未知留原件阻断，无处置/第二笔准入/终结或Flow。共用目录身份scope与只读完整stat快照分开，原读者不放宽。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+
 ## 2026-10-26 — C1 P10-F4-B7有界追加writer合同
 
-**2026-10-26 F4-B7：CONTRACT_COMPLETE_LOCAL / WRITER_NOT_IMPLEMENTED / C1_OPEN。** F4-B6 PR #2967经CI #7612成功合并564f63d2，Runtime1010/Release45/准确3.12.15回归342通过，含6新增测试，无修复。本批完成[有界追加writer合同](Runtime更新-C1-P10-F4B7有界追加writer合同.md)：首版仅空双布局下一次本机claim及同handle abort，不提供处置/第二笔准入；明确共用scope、create-only/文件与目录fsync、未知阻断与原只读检查保留。5文档同步，无新源码/schema/依赖/迁移、owner/依赖图/债务/scanner基线、R2/root/VM/云/生产变化，未运行新测试/CI、未推送。
+**2026-10-26 F4-B7：CONTRACT_MERGED_DEV / WRITER_IMPLEMENTATION_SEPARATE / C1_OPEN。** [PR #2968](https://github.com/sanqin888/sanqinMVP/pull/2968)最终head76a756b4fa5b92392f2e0010a5674f47e500d539经[CI #7614](https://github.com/sanqin888/sanqinMVP/actions/runs/40323096587)成功（docs-only：1成功/9跳过）合并707749fd04837ce819f82fdea457dd9c2b074650，无修复。5份文档限定空双布局下首次claim/同handle abort及同步未知阻断；无writer源码/新schema/依赖/迁移/R2或生产操作；见[合同](Runtime更新-C1-P10-F4B7有界追加writer合同.md)。
 
 ## 2026-10-26 — C1 P10-F4-B6旧入口与双布局门禁
 
