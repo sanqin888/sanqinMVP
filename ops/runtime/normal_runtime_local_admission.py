@@ -124,7 +124,7 @@ def _write(parent, name, raw, device, stack):
 
 
 @contextmanager
-def _locked():
+def _locked_base():
     _require_root()
     _platform()
     with ExitStack() as stack:
@@ -146,12 +146,6 @@ def _locked():
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise LocalAdmissionBlocked("installation lock busy") from exc
-        ledger = os.open(_LEDGER, _flags(), dir_fd=base)
-        stack.callback(os.close, ledger)
-        key = _directory_key(ledger, *_OWNER, device)
-        _require(stat.S_IMODE(os.fstat(ledger).st_mode) == 0o700,
-                 "private ledger must already be 0700")
-        held.append((_LEDGER, ledger, key))
         fixed = tuple(held)
 
         def recheck():
@@ -160,10 +154,35 @@ def _locked():
 
         recheck()
         try:
-            yield ledger, device, recheck, stack
+            yield base, device, recheck, stack
         finally:
             # Never mask an original exception with an exit recheck failure.
             # Explicit close, never LOCK_UN: a fork shares the file description.
+            if sys.exc_info()[0] is None:
+                recheck()
+
+
+@contextmanager
+def _locked():
+    # Preserve v1's exact scope/API; history inspection only reuses BASE+lock.
+    with _locked_base() as (base, device, base_recheck, stack):
+        ledger = os.open(_LEDGER, _flags(), dir_fd=base)
+        stack.callback(os.close, ledger)
+        key = _directory_key(ledger, *_OWNER, device)
+        _require(stat.S_IMODE(os.fstat(ledger).st_mode) == 0o700,
+                 "private ledger must already be 0700")
+
+        def recheck():
+            base_recheck()
+            info = os.stat(_LEDGER, dir_fd=base, follow_symlinks=False)
+            _require(_directory_key(ledger, *_OWNER, device) == key
+                     and (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid) == key,
+                     "private ledger edge changed")
+
+        recheck()
+        try:
+            yield ledger, device, recheck, stack
+        finally:
             if sys.exc_info()[0] is None:
                 recheck()
 
