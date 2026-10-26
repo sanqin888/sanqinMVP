@@ -166,7 +166,7 @@ def _validate(value: dict) -> None:
     job._attempt(value["attemptId"])
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
-    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CANDIDATES_REGISTERED"), "invalid maintenance phase")
+    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CREATING_CANDIDATES", "CANDIDATES_REGISTERED"), "invalid maintenance phase")
     _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
           if value["phase"] == "INCIDENT" else value["errorCode"] is None,
           "invalid maintenance error code")
@@ -180,10 +180,12 @@ def _validate(value: dict) -> None:
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
     if version == 1:
-        _need(value["phase"] != "CANDIDATES_REGISTERED", "candidate registration is missing")
+        _need(value["phase"] not in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED"), "candidate registration is missing")
     else:
-        _need(value["phase"] in ("CANDIDATES_REGISTERED", "INCIDENT"), "invalid candidate phase")
-        _candidate_record(value["candidate"], rows)
+        _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT"), "invalid candidate phase")
+        _candidate_record(value["candidate"], rows, incomplete=value["phase"] != "CANDIDATES_REGISTERED")
+        if value["phase"] == "CREATING_CANDIDATES":
+            _need(value["candidate"]["containers"] == {}, "creation intent already has identities")
         _need(value["candidate"]["release"]["sourceSha"] != value["observedApplicationSha"],
               "candidate release is unchanged")
     backups = value["backupUnits"]
@@ -228,15 +230,23 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
         name = MARKER
     else:
         old = _read(root)
-        registering = (old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
-                       and value["schemaVersion"] == 2
-                       and value["phase"] == "CANDIDATES_REGISTERED")
+        beginning = (old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
+                     and value["schemaVersion"] == 2
+                     and value["phase"] == "CREATING_CANDIDATES"
+                     and value["candidate"]["containers"] == {})
+        registering = (old["schemaVersion"] == 2 and old["phase"] == "CREATING_CANDIDATES"
+                       and value["phase"] == "CANDIDATES_REGISTERED"
+                       and old["candidate"]["containers"] == {}
+                       and old["candidate"]["release"] == value["candidate"]["release"])
         allowed = {"ARMED": ("FROZEN", "INCIDENT"), "FROZEN": ("INCIDENT",),
+                   "CREATING_CANDIDATES": ("INCIDENT",),
                    "CANDIDATES_REGISTERED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
         ignored = {"phase", "updatedAt", "errorCode"}
-        if registering:
+        if beginning:
             ignored |= {"schemaVersion", "candidate"}
-        _need((registering or value["phase"] in allowed[old["phase"]])
+        elif registering:
+            ignored |= {"candidate"}
+        _need((beginning or registering or value["phase"] in allowed[old["phase"]])
               and plan._utc(value["updatedAt"]) >= plan._utc(old["updatedAt"])
               and all(old.get(key) == value[key] for key in value if key not in ignored),
               "invalid maintenance transition")
@@ -273,6 +283,8 @@ def status() -> dict:
 
 def _assert_stopped(controller, record: dict, run) -> None:
     if record["schemaVersion"] == 2:
+        _need(bool(record["candidate"]["containers"]),
+              "candidate creation is incomplete; no writer identity may be inferred")
         _assert_registered_stopped(record, run)
         return
     for service, row in record["originalContainers"].items():
@@ -301,12 +313,15 @@ def _stop_best_effort(record: dict, run) -> bool:
     return success
 
 
-def _candidate_record(candidate: dict, originals: dict) -> None:
+def _candidate_record(candidate: dict, originals: dict, *, incomplete: bool = False) -> None:
     _need(type(candidate) is dict and set(candidate) == {"release", "containers"},
           "candidate registration differs")
     plan._candidate(candidate["release"])
     rows = candidate["containers"]
-    _need(type(rows) is dict and set(rows) == set(SERVICES), "candidate roles differ")
+    _need(type(rows) is dict, "candidate roles differ")
+    if incomplete and not rows:
+        return
+    _need(set(rows) == set(SERVICES), "candidate roles differ")
     for row in rows.values():
         _need(type(row) is dict and set(row) == {"containerId", "imageId"},
               "candidate identity fields differ")
@@ -360,6 +375,39 @@ def _assert_registered_stopped(record: dict, run) -> None:
         _stopped_identity(info, row, created=True)
 
 
+def begin_candidate_creation(identity: str, attempt: str, *, controller=None,
+                             run=collector.command, now=collector.now_utc) -> dict:
+    """Persist exact create intention before any candidate container mutation.
+
+    Internal/unwired. A returned record authorizes no start, SQL or release commit.
+    Creation command construction and the lock spanning creation remain unfinished.
+    """
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+        record = _read(root)
+        _need(record["planId"] == identity and record["attemptId"] == attempt
+              and record["schemaVersion"] == 1 and record["phase"] == "FROZEN",
+              "creation requires the same frozen attempt")
+        _installed_gate(run)
+        original_plan = plan.validate_plan(storage.load_plan(identity), identity)
+        _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
+              "plan baseline differs from maintenance")
+        _assert_stopped(controller, record, run)
+        for service in SERVICES:
+            _need(_role_ids(service, run) == {record["originalContainers"][service]["containerId"]},
+                  "unexpected writer exists before creation intent")
+        _need(_backup(run) == record["backupUnits"], "backup state changed")
+        intention = {**record, "schemaVersion": 2, "phase": "CREATING_CANDIDATES",
+                     "updatedAt": job._timestamp(now),
+                     "candidate": {"release": original_plan["candidate"], "containers": {}}}
+        _write(root, intention)  # Neither an unknown write nor leftovers may be retried.
+        return intention
+
+
 def register_created_candidates(identity: str, attempt: str, identifiers: dict, *,
                                 run=collector.command, now=collector.now_utc) -> dict:
     """Unwired internal adapter: register all stopped candidates BEFORE any start.
@@ -378,14 +426,15 @@ def register_created_candidates(identity: str, attempt: str, identifiers: dict, 
         _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
         record = _read(root)
         _need(record["planId"] == identity and record["attemptId"] == attempt
-              and record["schemaVersion"] == 1 and record["phase"] == "FROZEN",
-              "candidate registration requires the same frozen attempt")
+              and record["schemaVersion"] == 2 and record["phase"] == "CREATING_CANDIDATES"
+              and record["candidate"]["containers"] == {},
+              "candidate registration requires the same durable creation intent")
         _installed_gate(run)
         original_plan = plan.validate_plan(storage.load_plan(identity), identity)
         _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
               "plan baseline differs from maintenance")
         candidate = original_plan["candidate"]
-        _need(candidate["sourceSha"] != record["observedApplicationSha"], "no new candidate")
+        _need(candidate == record["candidate"]["release"], "creation intent and plan differ")
         rows = {}
         for service in SERVICES:
             name = "sanq-web" if service == "web" else "sanq-api"
