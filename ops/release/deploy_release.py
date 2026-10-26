@@ -314,17 +314,19 @@ def require_mutation_privilege() -> None:
         raise DeploymentBlocked("release mutation requires an explicitly authorized root operator")
 
 
-def check_running_images(current: str) -> None:
+def check_running_images(current: str, *, observe=None) -> None:
+    run_command = run if observe is None else observe.run
+    compose_command = compose if observe is None else observe.compose
     expected = {
         "api": f"ghcr.io/sanqin888/sanq-api:{current}",
         "ubereats-worker": f"ghcr.io/sanqin888/sanq-api:{current}",
         "web": f"ghcr.io/sanqin888/sanq-web:{current}",
     }
     for service, image in expected.items():
-        container_id = compose(current, "ps", "-q", service, capture=True)
+        container_id = compose_command(current, "ps", "-q", service, capture=True)
         if not container_id or len(container_id.splitlines()) != 1:
             raise DeploymentBlocked(f"exactly one running {service} container is required")
-        actual = run(
+        actual = run_command(
             ["docker", "inspect", "--format", "{{.Config.Image}}", container_id],
             capture=True,
         )
@@ -334,23 +336,25 @@ def check_running_images(current: str) -> None:
             )
 
 
-def check_live_storage(sha: str) -> None:
+def check_live_storage(sha: str, *, observe=None) -> None:
     """Verify actual container mounts, not just Compose source text.
 
     This is read-only. Never create a DB volume or silently accept a new one
     when the Compose working directory changes.
     """
-    run(["docker", "volume", "inspect", EXPECTED_DB_VOLUME], capture=True)
+    run_command = run if observe is None else observe.run
+    compose_command = compose if observe is None else observe.compose
+    run_command(["docker", "volume", "inspect", EXPECTED_DB_VOLUME], capture=True)
     expected = {
         "db": ("volume", "/var/lib/postgresql/data", EXPECTED_DB_VOLUME),
         "api": ("bind", "/app/uploads", str(UPLOADS_DIR)),
         "ubereats-worker": ("bind", "/app/uploads", str(UPLOADS_DIR)),
     }
     for service, (mount_type, destination, identity) in expected.items():
-        container = compose(sha, "ps", "-q", service, capture=True)
+        container = compose_command(sha, "ps", "-q", service, capture=True)
         if not container or len(container.splitlines()) != 1:
             raise DeploymentBlocked(f"cannot prove running {service} mount")
-        mounts = json.loads(run(
+        mounts = json.loads(run_command(
             ["docker", "inspect", "--format", "{{json .Mounts}}", container],
             capture=True,
         ))

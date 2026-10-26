@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — 最小更新执行器第一批续作：真实观察与计划保存
+
+**COLLECTOR_IMPLEMENTED_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED / PRODUCTION_NOT_AUTHORIZED。**按用户“开始下一步”，基于 PR #2980 最终head8da416499add108bee4b4586ce6eb53a1aef980a / [CI #7639](https://github.com/sanqin888/sanqinMVP/actions/runs/40370911563) SUCCESS（Release69/Runtime1080/准确3.12.15回归412，4成功/6范围跳过）合并的 dev `7bb83d20808155c6056d7b1b5eb9bbe52e983e0a`，在原第一批内补 collect_deployment_plan 和 deployment_plan_store：复用当前17+Manifest/挂载校验，观察原配置/状态、真实当前 image ID/成对digest和准确目标，按digest缓存候选，仅隔离运行有资源上限的Node SQL原bytes清单，绑定commit/tree，固定READ ONLY事务读取迁移历史，校验原gzip备份和前后漂移。CLI只有REVIEW_ONLY prepare/show、固定canExecute=false；预装root私有目录内create-only保存、双fsync/读回/残件保留和非阻塞采集锁，不写current/previous。新增42个离线测试方法（采集26/存储16），CI显式设置Node20执行SQL fixture、补3.10 Release回归，原Release/Runtime/准确3.12.15不变；旧控制器两项Docker校验仅增可选observe适配器，新采集统一命令边界，旧入口默认行为不变。本地仅Python3.10 grammar AST、内嵌Node语法、导入/差异/引用静态审阅，未运行项目测试/新CI或生产采集。普通兼容新增、计划v1不变；Runtime/Ops内部单向边，未改跨上下文owner/SCC/债务/scanner基线、依赖/锁文件/Prisma/迁移、17 Bundle/旧guard/发布状态权威；无Docker/systemd/目录安装/数据库/AWS/生产动作，三组研究暂停保留。[实现边界与剩余工作](Runtime最小更新执行器实现方案.md)及owner/手册/依赖图同批同步。分支 `feat/runtime-minimal-plan-collector-20261026` 本地待审，未提交远端。待授权后以最终head CI验证，第一批仍待解释器/交付合同和隔离采集证据，不自动进入生产或恢复研究。
+
 **本批实际 CI 续记（最小执行器第一步，同批记录）：**[PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 源码head c26c643cd7fd309e28a3d6cff9cf70a8b769178a 的 [CI #7638](https://github.com/sanqin888/sanqinMVP/actions/runs/40370375474) SUCCESS，Release69（含新增24）/Runtime1080/准确CPython3.12.15回归412通过，4成功/6按范围跳过，无源码修复。SOURCE_CI_VERIFIED，第一批仍OPEN，最终head检查/合并以PR事件为准；本条为下方“只读候选与计划合同”原批的验证阶段续记，不增加实施批次。本地未运行项目测试，未进行生产操作。
 
 ## 2026-10-26 — 最小更新执行器第一步：只读候选与计划合同

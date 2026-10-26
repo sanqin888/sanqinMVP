@@ -1,7 +1,7 @@
 """Review-only deployment plans. No filesystem, Docker, SQL or execution authority.
 
 Inputs are observations from trusted adapters, not self-authenticating evidence.
-The live collector, private persistence and guarded apply belong to later work.
+The separate collector/store may prepare review records; guarded apply is later work.
 """
 
 from __future__ import annotations
