@@ -1,8 +1,10 @@
 # Runtime 最小更新执行器与暂停恢复计划
 
-> **2026-10-26（America/Toronto）｜用户已明确批准本次文档调整；DOCUMENTED_LOCAL / MINIMAL_EXECUTOR_IMPLEMENTATION_NOT_STARTED / PRODUCTION_NOT_AUTHORIZED。** 基线 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已包含 C1 F4-B13 / PR #2977）。本文件是当前实施顺序、暂停范围与恢复条件的权威入口；不把文档批准等同源码实施、生产安装、数据库或 AWS 操作授权。
+> **2026-10-26（America/Toronto）｜优先级文档已由 PR #2978 / CI #7633 合并；MERGED_DEV / MINIMAL_EXECUTOR_IMPLEMENTATION_NOT_STARTED / PRODUCTION_NOT_AUTHORIZED。** 基线 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已包含 C1 F4-B13 / PR #2977）。本文件是当前实施顺序、暂停范围与恢复条件的权威入口；不把文档批准等同源码实施、生产安装、数据库或 AWS 操作授权。
 
 ## 1. 当前目标与适用范围
+
+**交付与当前下一步：**[PR #2978](https://github.com/sanqin888/sanqinMVP/pull/2978) 最终 head `d2a739ecf36610fddf80564a26d52d25c053579c` 经 [CI #7633](https://github.com/sanqin888/sanqinMVP/actions/runs/40360253396) SUCCESS（1 成功/9 按文档范围跳过，无修复），合并 dev `343fefc7dce5849ca3401981ee6174f4f9d2ec59`。用户已授权合并后制作方案，现已形成本地[最小更新执行器实现方案](Runtime最小更新执行器实现方案.md)，列出范围、单一控制器/薄 SSH 入口、固定计划流程、四批实现与完结矩阵；待本地审阅，不代表代码已实现或生产已可更新。以下原批“本地/未推送”保留历史时点。
 
 先完成一个适合单人运维的最小更新执行器：GitHub Actions 构建镜像，操作者在一台 MacBook 上通过 SSH 管理现有 Lightsail VM，日常发布以“预检计划一次、确认执行一次”为目标。应用镜像发布与低频平台工具维护分离；不为普通业务更新强制完成整套原 C1→R2→R3→R4→R5 高保证路线。
 
