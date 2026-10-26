@@ -58,8 +58,9 @@ class TaskContextTests(unittest.TestCase):
         source.chmod(0o644)
         with patch.object(task, "__file__", str(source)), patch.object(task, "TASK_SCRIPT", source):
             self.real_installed()
-            with patch.object(guard, "cleanup_after_task", None), self.assertRaises(ReleaseContractError):
-                self.real_installed()
+            for api in ("cleanup_after_task", "register_created_candidates"):
+                with patch.object(guard, api, None), self.assertRaises(ReleaseContractError):
+                    self.real_installed()
             source.chmod(0o666)
             with self.assertRaises(ReleaseContractError):
                 self.real_installed()
@@ -72,7 +73,7 @@ class TaskContextTests(unittest.TestCase):
         self.assertEqual(args[0], "systemd-run")
         for option in ("--no-block", "--remain-after-exit", "--service-type=oneshot",
                        "--property=User=root", "--property=Restart=no", "--property=KillMode=control-group",
-                       "--property=TimeoutStartSec=900", "--property=TimeoutStopSec=600",
+                       "--property=TimeoutStartSec=900", "--property=TimeoutStopSec=900",
                        "--property=MemoryMax=256M", "--property=CPUQuota=50%",
                        "--property=WorkingDirectory=" + str(task.RUNTIME_ROOT)):
             self.assertIn(option, args)

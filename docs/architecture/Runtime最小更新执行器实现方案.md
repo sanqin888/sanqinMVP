@@ -1,8 +1,27 @@
 # Runtime 最小更新执行器实现方案
 
-**2026-10-26 当前进度：TRANSIENT_TASK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**维护准备 [PR #2983](https://github.com/sanqin888/sanqinMVP/pull/2983) 最终head `b94f1f9d4f65885a01397c099ff2bdde67804bba` 经 [CI #7646](https://github.com/sanqin888/sanqinMVP/actions/runs/40387127782) SUCCESS（4成功/6范围跳过），默认Python及CPython3.10.22下Release各154、Runtime1080、准确CPython3.12.15回归412通过，合并dev `0d16673aa8a56f024cc79bcba235333c867aa8d1`。初次CI #7645发现测试helper误覆盖unittest.run；同分支仅将两处helper及引用改名observe_command后通过，不改维护逻辑或门禁。本批基于准确合并状态补系统级独立任务、ExecStopPost及查询源码，尚未安装/运行或接apply；现场与完整故障验收仍OPEN。
+**2026-10-26 当前进度：CANDIDATE_WRITERS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批独立维护任务已由[PR #2984](https://github.com/sanqin888/sanqinMVP/pull/2984) 最终head `cb7242bb0af4c8d06c093642a81e2df6844447ad` 经 [CI #7648](https://github.com/sanqin888/sanqinMVP/actions/runs/40395107992) SUCCESS（4成功/6范围跳过，默认Python和CPython3.10.22下Release各175、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `fabaa9a0f532528f02381896860aeaf8906b03bf`。本批从该准确dev基线补候选容器登记及异常停写源码；没有创建/启动真实容器、执行apply、SQL或安装生产工具，三组研究继续暂停、不取消。
 
-## 第二批续作：独立任务与异常收尾（本地待审）
+## 第二批续作：候选身份登记与异常停写（本地待审）
+
+本批只扩展现有 `maintenance_guard.py`，不新增发布控制器、helper交付件、任务数据库或current/previous权威。内部 `register_created_candidates(plan-id, attempt-id, identifiers)` 没有CLI入口，尚未接入任务/旧deploy。调用持原全局任务锁，要求同一FROZEN计划/尝试、目录无残件、有效门禁及原计划原件；候选来源固定为该计划，不能由调用者传新SHA/digest或换latest。
+
+- 必须先由未来单一控制器创建三只**尚未启动（created）、restart=no**的候选，再调用登记；本批不执行create。逐角色验证完整64位ID、项目/角色、固定digest引用、实际image-id、linux/amd64、revision和计划digest，API/worker实际image-id相同，新旧共六ID不重叠。
+- 对每个准确角色读取有界、完整ID列表；只允许原对象和指定候选，候选必须存在。原容器可已被替换删除，但必须由完整角色列表确认不存在；仍存在的原对象必须同一旧SHA/image-id、已停且restart=no。未知/多余/替换对象拒绝，不猜ID。
+- 同一active.json一次 `v1/FROZEN → v2/CANDIDATES_REGISTERED`，追加原计划候选证明及三ID/image-id；原策略/身份/备份不变。文件与目录fsync并读回，随后再核容器/门禁；任何异常或耐久结果未知均不能启动。登记重复、替换、降级拒绝，canExecute仍false，登记不是应用ACTIVE/SQL授权。
+- v2后ExecStopPost即便收到SERVICE_RESULT=success也不走旧FROZEN无动作分支。优先对三候选、再对三原ID逐项no-restart/stop，单项失败仍尝试其余；对仍存在的原对象、准确候选及完整角色列表读回，才可记INCIDENT/TASK_FAILED_WRITERS_STOPPED。已删原对象的stop报错不能单独决定结果，必须有完整列表与候选停止证据；丢失候选/未知对象/错镜像/部分停止或门禁失败均FENCE_UNCONFIRMED，绝不停止猜出的外来ID。
+- v1原记录仍可读、原维护流程不改；v2仅新守卫理解，无已安装消费者。属于未安装内部工具的兼容新增/一次单向记录升级，不双写、不降级恢复。第三批必须把六helper及三启动drop-in作为一致版本验真安装，旧守卫不能处理v2。task的接口检查补登记API，仍不是C1来源认证。
+- 因收尾最多覆盖六ID，固定TimeoutStopSec从前批600调整为900；Docker动作单项45s、收尾观察15s、锁等待10s不变。总超时/管理器失效仍可能导致UNKNOWN；900不是停写保证，不增加自动重启/重试/清维护。
+
+### 本次验证与剩余接线
+
+新增16项离线unittest方法，使用原维护fixture、临时私有目录与Docker/systemctl替身，覆盖准确登记/拒绝、已删原对象、候选优先收尾、成功任务不放行、部分失败/外来替换、记录不可变、初始/最终同步未知与坏v2。同步原task参数断言。仅Python3.10 grammar AST、保留测试方法名、差异/导入/相对链接静态审阅；项目测试未执行，本批尚无CI。前批CI不代表本批通过，mock不是真实Docker/PID1故障验收。
+
+分支 `feat/runtime-minimal-candidate-writers-20261026` 本地待审、未推送。**未来控制器仍须实现create前持久意图、只create不启动的准确配置、部分创建/未知结果处理、同一锁贯穿apply、准确SQL授权、登记后启动/验证/ACTIVE交接、原策略恢复与受控清标记。**本批没有解决创建到登记之间的完整恢复协议；未登记对象必须始终保持未启动/no-restart，不能将该内部函数直接拼入旧up命令。真实创建/重建行为、断线/SIGKILL/daemon/socket/VM故障与安装/恢复仍OPEN，第一批实际平台/完整交付合同仍OPEN。17+Manifest、旧deploy/rollback、250/300guard、业务schema和依赖不变，无生产权限/目录/SQL/AWS操作。
+
+**前批独立任务源码交付：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**维护准备 [PR #2983](https://github.com/sanqin888/sanqinMVP/pull/2983) 最终head `b94f1f9d4f65885a01397c099ff2bdde67804bba` 经 [CI #7646](https://github.com/sanqin888/sanqinMVP/actions/runs/40387127782) SUCCESS（4成功/6范围跳过），默认Python及CPython3.10.22下Release各154、Runtime1080、准确CPython3.12.15回归412通过，合并dev `0d16673aa8a56f024cc79bcba235333c867aa8d1`。初次CI #7645发现测试helper误覆盖unittest.run；同分支仅将两处helper及引用改名observe_command后通过，不改维护逻辑或门禁。本批基于准确合并状态补系统级独立任务、ExecStopPost及查询源码，尚未安装/运行或接apply；现场与完整故障验收仍OPEN。
+
+## 第二批续作：独立任务与异常收尾（源码已合并）
 
 新增 `ops/release/release_task.py`，只承载**维护准备**及查询/收尾，不是第二个应用发布器。辅助helper当前共六件，加原三份启动drop-in；第三批须完整验真/一致版本安装和权限读回。本批依然不改17 Bundle、唯一current/previous权威、旧deploy/rollback、业务schema或依赖包。
 
@@ -28,7 +47,7 @@
 
 本批新增 **21个离线unittest方法**（task19、job2），只使用临时私有目录和PID1/Docker观察替身，覆盖异步固定调度/未知结果不重试、unit/PID/cgroup/cwd/命令绑定、限权CLI、查询、模拟ARMED/FROZEN/INCIDENT异常收尾、外来/坏记录、部分停止/门禁失败、同步未知与新预检拒绝。借用原维护fixture，不重复运行原20项测试；没有运行项目测试，仅Python3.10 grammar AST、测试框架保留方法名、差异/导入/引用静态审阅。原CI入口及暂停研究测试保留。
 
-分支 `feat/runtime-minimal-transient-task-20261026` 基于dev0d16673a，本地待审、未推送，无生产/systemd/Docker/SQL/AWS执行。**apply、准确SQL授权、新候选身份/停止登记、最终ACTIVE交接、原策略恢复和受控清标记仍未接通**；真实断线/SIGKILL/daemon/socket/VM重启验收、第一批实际平台及完整安装/恢复合同仍OPEN。三组研究继续暂停、不取消。参考：[systemd-run](https://www.freedesktop.org/software/systemd/man/systemd-run.html)、[ExecStopPost/oneshot](https://www.freedesktop.org/software/systemd/man/systemd.service.html)；官方机制不是本机验收证据。
+分支 `feat/runtime-minimal-transient-task-20261026` 基于dev0d16673a，随后由[PR #2984](https://github.com/sanqin888/sanqinMVP/pull/2984) 最终head `cb7242bb0af4c8d06c093642a81e2df6844447ad` 经 [CI #7648](https://github.com/sanqin888/sanqinMVP/actions/runs/40395107992) SUCCESS（4成功/6范围跳过，默认Python和CPython3.10.22下Release各175、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `fabaa9a0f532528f02381896860aeaf8906b03bf`。上文未运行/本地只限原审阅时点；本地仍未执行项目测试，无生产/systemd/Docker/SQL/AWS执行。**apply、准确SQL授权、新候选身份/停止登记、最终ACTIVE交接、原策略恢复和受控清标记仍未接通**；真实断线/SIGKILL/daemon/socket/VM重启验收、第一批实际平台及完整安装/恢复合同仍OPEN。三组研究继续暂停、不取消。参考：[systemd-run](https://www.freedesktop.org/software/systemd/man/systemd-run.html)、[ExecStopPost/oneshot](https://www.freedesktop.org/software/systemd/man/systemd.service.html)；官方机制不是本机验收证据。
 
 ## 第二批续作：维护准备与冷启动门禁（源码已合并）
 
