@@ -72,7 +72,7 @@ class MaintenanceFlowTests(unittest.TestCase):
         self.replace_writer = False
         self.marker = self.maintenance / guard.MARKER
 
-    def run(self, args, **kwargs):
+    def observe_command(self, args, **kwargs):
         self.calls.append(args[:])
         if args[:2] == ["systemctl", "show"]:
             is_timer = args[2].endswith(".timer")
@@ -112,7 +112,7 @@ class MaintenanceFlowTests(unittest.TestCase):
 
     def freeze(self):
         return guard.freeze_for_plan(self.identity, controller=self.controller,
-                                     run=self.run, observe=self.observer,
+                                     run=self.observe_command, observe=self.observer,
                                      fetch=Mock(), now=lambda: self.time)
 
     def mutations(self):
@@ -231,7 +231,7 @@ class MaintenanceFlowTests(unittest.TestCase):
     def test_clock_step_back_after_arming_cannot_commit_frozen(self):
         stamps = iter((self.time, "2026-10-26T16:11:00Z", "2026-10-26T16:10:30Z"))
         with self.assertRaises(ReleaseContractError):
-            guard.freeze_for_plan(self.identity, controller=self.controller, run=self.run,
+            guard.freeze_for_plan(self.identity, controller=self.controller, run=self.observe_command,
                                   observe=self.observer, fetch=Mock(), now=lambda: next(stamps))
         self.assertEqual(guard.status()["phase"], "ARMED")
         with self.assertRaises(ReleaseContractError):
@@ -312,14 +312,14 @@ class InstalledGateTests(unittest.TestCase):
                 "ExecStartPre": "{ argv[]=" + self.command + " ; ignore_errors=no ; pid=0 ; }"}
         self.engine = {"LiveRestoreEnabled": False, "Swarm": {"LocalNodeState": "inactive"}}
 
-    def run(self, args, **kwargs):
+    def observe_command(self, args, **kwargs):
         if args[0] == "systemctl":
             keys = args[-1].partition("=")[2].split(",")
             return "\n".join(f"{key}={self.values[args[2]][key]}" for key in keys)
         return json.dumps(self.engine)
 
     def test_exact_installed_gate_and_inactive_swarm_are_accepted(self):
-        guard._installed_gate(self.run)
+        guard._installed_gate(self.observe_command)
 
     def test_reload_ignored_error_extra_override_and_socket_bypass_are_rejected(self):
         cases = [("docker.service", "NeedDaemonReload", "yes"),
@@ -330,7 +330,7 @@ class InstalledGateTests(unittest.TestCase):
             original = self.values[unit][key]
             self.values[unit][key] = value
             with self.subTest(key=key), self.assertRaises(ReleaseContractError):
-                guard._installed_gate(self.run)
+                guard._installed_gate(self.observe_command)
             self.values[unit][key] = original
 
     def test_changed_or_writable_dropin_is_rejected(self):
@@ -338,18 +338,18 @@ class InstalledGateTests(unittest.TestCase):
         original = path.read_bytes()
         path.write_bytes(original + b"# changed\n")
         with self.assertRaises(ReleaseContractError):
-            guard._installed_gate(self.run)
+            guard._installed_gate(self.observe_command)
         path.write_bytes(original)
         path.chmod(0o666)
         with self.assertRaises(ReleaseContractError):
-            guard._installed_gate(self.run)
+            guard._installed_gate(self.observe_command)
 
     def test_live_restore_or_swarm_is_rejected_without_reconfiguration(self):
         for engine in ({"LiveRestoreEnabled": True, "Swarm": {"LocalNodeState": "inactive"}},
                        {"LiveRestoreEnabled": False, "Swarm": {"LocalNodeState": "active"}}):
             self.engine = engine
             with self.subTest(engine=engine), self.assertRaises(ReleaseContractError):
-                guard._installed_gate(self.run)
+                guard._installed_gate(self.observe_command)
 
     def test_repository_dropin_templates_match_the_fixed_contract(self):
         root = Path(__file__).resolve().parents[1] / "systemd"
