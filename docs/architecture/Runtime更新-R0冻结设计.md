@@ -1,5 +1,7 @@
 # Runtime 更新 R0 冻结设计
 
+**2026-10-26 R2 审计索引（本地文档、非安全准入）：** 以准确 `origin/dev@003daa21dc0795ec092cac20502e0d9c2918f7aa` 复核已合并 C1 F4-B11（PR #2974；精确 dev CI #7626 SUCCESS、仅已运行离线检查），新建 [R2阶段审计与 B1—B6 路线](Runtime更新-R2阶段审计与B1实施路线-20261026.md)及 [R2-B1 可信身份与双层撤销实施前置审计](Runtime更新-R2-B1可信身份与双层撤销实施前置审计-20261026.md)。Option B/B1 文档合同保持不变；正式 InstallationAnchor、完整 CRL 发行/撤销、独立版本与时间权威、可执行 F 屏障、仓库正式联网 CAS 及 P0-01 均未完成。**`B1_READ_ONLY_AUDIT_COMPLETE_LOCAL / B1_IMPLEMENTATION_NOT_AUTHORIZED / C1_OPEN / R2-C4_OPEN / P1_DENY / PRODUCTION_NO-GO`**。本批只更新审计文档及索引，不涉及任何生产动作；下文历史验收记录保持原时点语义。
+
 **2026-10-25 最新验收归档：READ_ONLY_BOOTSTRAP_PASS_SCOPED / ISOLATED_NEGATIVE_PASS_SCOPED / C1_OPEN。** 修复PR #2954经CI #7585成功合并dev `ecf8fc31`；[手动run40210744043](https://github.com/sanqin888/sanqinMVP/actions/runs/40210744043)在该准确head成功完成23项：2基线、2外层未启动拒绝、19 CLI RC2拒绝。原ZIP摘要及69成员/23结果/raw输出已离机核对并归档，`complete=true / flowInvoked=false / productionAuthorized=false`。见[验收记录](evidence/c1-jammy-negative-acceptance-2026-10-25.md)及其原始文本JSON。源码711197d2、三输入及CPython3.12.15对象未变；旧LOCAL/NOT_RUN/失败条目保留历史时点，以本续记为准。P10-E九文件只读切片完成限定验收；P10-F/R2/R3/R4真实效果组合与最终C1裁定仍OPEN，无新增生产操作。本批仅文档归档，未提交远端。
 
 

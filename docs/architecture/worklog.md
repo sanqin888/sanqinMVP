@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — Runtime R2 阶段基线复审与 B1 双层撤销实施前置审计
+
+**状态：DOCUMENTS_LOCAL / READ_ONLY_B1_AUDIT_COMPLETE / IMPLEMENTATION_NOT_AUTHORIZED / C1_OPEN / R2-C4_OPEN / P1_DENY / PRODUCTION_NO-GO。** 基于已合并的准确 `origin/dev@003daa21dc0795ec092cac20502e0d9c2918f7aa`（C1 F4-B11 PR #2974、dev CI #7626 SUCCESS 的离线验证）更新 [R2阶段审计与B1—B6路线](Runtime更新-R2阶段审计与B1实施路线-20261026.md)，并形成 [R2-B1 可信身份与双层撤销实施前置审计](Runtime更新-R2-B1可信身份与双层撤销实施前置审计-20261026.md)：按 B9-DECISION D01—D08/T01—T08 核对现有 `maintenance_*` 源码的正式 Anchor、CA/完整 CRL 发行总账、Enrollment 角色/证书 pin、可信时间/单调 generation、F 前后的 in-flight COMMIT、UNKNOWN 恢复。静态发现仓库服务没有完整 CRL 加载/检查，CAS v1 没有撤销 generation/持久联动，Boot Guard 仍拒绝放行；保留 B10 TLS_ONLY 限域证据，未把它升级为 CAS 通过。此批仅新建两份文档、更新 R0 索引并追加该工作日志，原 Runtime/Ops owner、依赖图、17 Bundle、P1/Wire/CAS schema、CI、Prisma/锁文件、任何 Host/证书/VM/AWS/生产状态均不变；本地未执行测试、未提交/推远端。下一步先审 B1-0/B1-1 的授权边界和身份发行/审批/版本权威，禁止越级实施。
+
 ## 2026-10-26 — R2-A2-3 P2-C3C3 B10 TLS_ONLY 负例矩阵限域收口
 
 **B10 TLS_ONLY：FIELD_RECEIPT_CLOSED_PASS_SCOPED / FORMAL_CAS_NOT_RUN / P1_DENY / PRODUCTION_NO-GO。** [B10 TLS_ONLY 安全负例证据收口](Runtime更新-R2-A2-3-P2-C3C3-B10-TLS_ONLY安全负例证据收口.md)按操作者 Mac/Ubuntu 双端回执收口：B10-0 原实验 CA/leaf pin、TLS1.2、两端证书有效与端口预检；B10-A 无 SAN `VERIFY_CODE=64`；B10-B 尚未生效 `VERIFY_CODE=9`；B10-C TLS1.0/1.1 两次协议拒绝；B10-D 两种非白名单 CBC Cipher 因 `NO_SHARED_CIPHER` 2/2 拒绝，全部停止后 Mac 39443 无监听。本批仅新增证据文档并链接 IMPLEMENT-A，不修改 Runtime 源码、17 Bundle、CI、CRL/Enrollment/SQLite、私钥/证书、Guard、VM/AWS/生产，也未重新运行网络测试；正式 Anchor、B1 fence、CRL、CAS 与 P1 仍独立 BLOCKED/NO-GO。
