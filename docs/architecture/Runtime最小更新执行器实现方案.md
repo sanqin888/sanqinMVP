@@ -1,8 +1,36 @@
 # Runtime 最小更新执行器实现方案
 
-**2026-10-26 当前进度：MAINTENANCE_GUARD_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批只读任务 [PR #2982](https://github.com/sanqin888/sanqinMVP/pull/2982) 最终head `00bfc51961382c14148b6d35ae5fabe837050670` 经 [CI #7643](https://github.com/sanqin888/sanqinMVP/actions/runs/40381159117) SUCCESS（4成功/6按范围跳过）：默认Python及CPython3.10.22下Release各134、Runtime1080、准确CPython3.12.15回归412通过，无修复，已合并dev `1fa7bb2153dd3fdd7443612949ae542998e317cd`。本批从准确合并状态继续第二批的维护准备与冷启动门禁源码；尚未接apply/任务收尾或安装。第一批平台/交付/隔离实采及第二批真实故障验收仍OPEN，不能据源码或模拟宣布生产就绪。
+**2026-10-26 当前进度：TRANSIENT_TASK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**维护准备 [PR #2983](https://github.com/sanqin888/sanqinMVP/pull/2983) 最终head `b94f1f9d4f65885a01397c099ff2bdde67804bba` 经 [CI #7646](https://github.com/sanqin888/sanqinMVP/actions/runs/40387127782) SUCCESS（4成功/6范围跳过），默认Python及CPython3.10.22下Release各154、Runtime1080、准确CPython3.12.15回归412通过，合并dev `0d16673aa8a56f024cc79bcba235333c867aa8d1`。初次CI #7645发现测试helper误覆盖unittest.run；同分支仅将两处helper及引用改名observe_command后通过，不改维护逻辑或门禁。本批基于准确合并状态补系统级独立任务、ExecStopPost及查询源码，尚未安装/运行或接apply；现场与完整故障验收仍OPEN。
 
-## 第二批续作：维护准备与冷启动门禁（本地待审）
+## 第二批续作：独立任务与异常收尾（本地待审）
+
+新增 `ops/release/release_task.py`，只承载**维护准备**及查询/收尾，不是第二个应用发布器。辅助helper当前共六件，加原三份启动drop-in；第三批须完整验真/一致版本安装和权限读回。本批依然不改17 Bundle、唯一current/previous权威、旧deploy/rollback、业务schema或依赖包。
+
+### 任务流程与操作边界
+
+- 源码CLI为 `submit <plan-id> --confirm-maintenance`、`status/logs <plan-id>` 及仅供管理器调用的 `run/cleanup`。**不是当前可在生产运行的命令。**提交需要root、固定路径/不可组或全局写的task helper、必要helper API可用、已安装的三份有效维护门禁、无维护/未完结记录，以及同一原计划的时效检查；不传任意路径、脚本、shell、unit或URL。
+- 只构造系统级transient service `sanq-release-prepare-<64位plan-id>.service`：User=root、oneshot、RemainAfterExit=yes、Restart=no、KillMode=control-group、固定WorkingDirectory=/opt/sanq/runtime、TimeoutStartSec=900/TimeoutStopSec=600、MemoryMax=256M、CPUQuota=50%。`--no-block` 提交，不用scope/wait/pty/pipe/replace/collect，不绑定SSH生命周期，不自动重试未知结果。回传SUBMITTED只表示排队请求被接受。
+- submit在排队前释放检查锁，避免等待子任务取得同一锁而死锁；子任务自己持原任务/计划锁调用既有freeze adapter，不复制维护流程。run/cleanup均验证当前systemd transient unit的准确命令、Type/Restart/KillMode、fragment/drop-in/cwd、当前PID与统一cgroup成员身份；run需处在start阶段，cleanup需为stop-post的ControlPID。直接从普通SSH运行run/cleanup会拒绝；环境SERVICE_RESULT只有经过该上下文检查后才消费，不作为独立授权。
+- oneshot成功后可能显示active(exited)，这里只表示维护准备任务已退出并保留查询对象，**不是业务ACTIVE或部署成功**。正常结果保留FROZEN，不开业务、不清标记。transient unit不跨VM重启自动重放；持久维护目录继续负责冷启动拒绝。status综合当前unit观察与维护记录，not-found按UNKNOWN处理；logs固定查询同一unit的最近80行，不跟随或自动重跑。
+- 服务不继承SSH的临时环境/令牌，不把secret放进unit参数；当前仍使用现有普通系统/Root Docker凭据及公开GitHub读取路径。若需要私有源/额外凭据或遇限流，失败拒绝，凭据交付须在第三批另按准确来源审阅，不新增控制服务器或暗传业务.env。
+
+### 异常、并发与保留证据
+
+管理器在主进程失败/超时/被杀后的ExecStopPost调用固定cleanup，不依赖原Python finally。cleanup不要求旧应用健康或原计划仍新鲜：先读同一plan-id的私有维护记录，外来/坏/不完整记录拒绝、绝不猜ID；无记录只报告NO_RECORDED_MAINTENANCE，不报告成功或假定可以重试。它从来不改选latest、执行SQL、恢复策略、清维护或启动服务。
+
+同一记录下，收尾以最多10s有界等待取得原任务锁，仅对保存的三容器ID关闭重启/停服（每项45s），元数据检查15s；读回准确身份/已停/restart=no及有效门禁后，保留 `INCIDENT/TASK_FAILED_WRITERS_STOPPED`。任一确认失败保留 `INCIDENT/FENCE_UNCONFIRMED` 并报错。允许ARMED/FROZEN/INCIDENT进入或保持INCIDENT，不能据此转回营业；原策略、plan/attempt和观察身份不变。写入未知保留原件/残件，不伪报收尾持久成功。
+
+新只读预检持任务锁后先检查同一私有维护目录，任何证据或目录不可用都立即拒绝，避免主任务被杀后新重型预检抢占收尾。目录FD/是否清空复用store同一实现，不反向导入guard造成循环。原默认锁仍非阻塞，仅收尾选有界等待；冷启动检查继续不争用任务锁或调用Docker。
+
+系统管理器不可用、进程/cgroup/磁盘或Docker失效、cleanup自身被杀、marker损坏时仍可能无法证实停写，必须保持UNKNOWN/FENCE_UNCONFIRMED；不能从配置了ExecStopPost就宣称真实SIGKILL保护已经通过。SSH断线/oneshot失败与目标Ubuntu/systemd输出、cgroup-v2布局、资源限制、日志跨重启保留，均须在隔离环境和第三批安装前核实。当前journal持久配置未更改。
+
+### 验证和后续
+
+本批新增 **21个离线unittest方法**（task19、job2），只使用临时私有目录和PID1/Docker观察替身，覆盖异步固定调度/未知结果不重试、unit/PID/cgroup/cwd/命令绑定、限权CLI、查询、模拟ARMED/FROZEN/INCIDENT异常收尾、外来/坏记录、部分停止/门禁失败、同步未知与新预检拒绝。借用原维护fixture，不重复运行原20项测试；没有运行项目测试，仅Python3.10 grammar AST、测试框架保留方法名、差异/导入/引用静态审阅。原CI入口及暂停研究测试保留。
+
+分支 `feat/runtime-minimal-transient-task-20261026` 基于dev0d16673a，本地待审、未推送，无生产/systemd/Docker/SQL/AWS执行。**apply、准确SQL授权、新候选身份/停止登记、最终ACTIVE交接、原策略恢复和受控清标记仍未接通**；真实断线/SIGKILL/daemon/socket/VM重启验收、第一批实际平台及完整安装/恢复合同仍OPEN。三组研究继续暂停、不取消。参考：[systemd-run](https://www.freedesktop.org/software/systemd/man/systemd-run.html)、[ExecStopPost/oneshot](https://www.freedesktop.org/software/systemd/man/systemd.service.html)；官方机制不是本机验收证据。
+
+## 第二批续作：维护准备与冷启动门禁（源码已合并）
 
 新增 `ops/release/maintenance_guard.py` 和三份 `systemd/**/80-sanq-maintenance.conf` 模板。Runtime/Ops内部普通兼容新增，无既有安装消费者，不改17 Bundle/Manifest、旧发布CLI或current/previous权威；`observedApplicationSha` 只记录维护前观察。辅助源码现为前四件加maintenance_guard及三份drop-in，第三批须统一验真/安装/撤回和权限读回；本批不增加生产权限、不安装unit或目录。
 
@@ -24,11 +52,11 @@
 
 ### 验证与未完成项
 
-本批新增 **20个离线unittest方法**，用真实临时私有目录和Docker/systemctl观察替身覆盖原策略先持久、同一计划、备份竞态、更新/停服失败、替换容器、初始/最终同步未知、坏目录/链接、锁冲突、无写CLI、模板与有效门禁/忽略失败/未reload/额外覆盖/live-restore/Swarm拒绝。没有运行项目测试；仅Python3.10 grammar AST、模板字面合同、导入/差异/引用静态审阅。沿用既有Release/3.10/Runtime/准确3.12.15 CI入口，不改工作流。
+本批新增 **20个离线unittest方法**，用真实临时私有目录和Docker/systemctl观察替身覆盖原策略先持久、同一计划、备份竞态、更新/停服失败、替换容器、初始/最终同步未知、坏目录/链接、锁冲突、无写CLI、模板与有效门禁/忽略失败/未reload/额外覆盖/live-restore/Swarm拒绝。本地未运行项目测试；后经上述PR #2983最终head/CI #7646验证通过。原本地仅Python3.10 grammar AST、模板字面合同、导入/差异/引用静态审阅。沿用既有Release/3.10/Runtime/准确3.12.15 CI入口，不改工作流。
 
-**第二批仍未完成：**尚缺独立systemd任务/ExecStopPost、中途SIGKILL的立即收尾、新候选容器身份登记与停写、锁内apply/准确SQL授权/最终ACTIVE交接、原策略恢复及受控清标记；本批也没有恢复/清除维护态的API。当前SIGKILL可能留下ARMED且部分原应用仍在运行，不能自报FROZEN；持久标记仅阻断后续冷启动，不证明当下所有writer都已停。三份unit及目标Ubuntu版本的有效输出、socket/daemon/VM重启和真实停止行为必须隔离实测，不能以mock/最新官方文档冒充现场认证。完整故障保护与安装过渡完成前，不接生产发布。
+**该阶段仍未完成现场验收：**以下为门禁源码合并时的缺口；本批已补独立任务/ExecStopPost源码，SIGKILL真实路径仍待隔离验证。仍缺新候选容器身份登记与停写、锁内apply/准确SQL授权/最终ACTIVE交接、原策略恢复及受控清标记；本批也没有恢复/清除维护态的API。当前SIGKILL可能留下ARMED且部分原应用仍在运行，不能自报FROZEN；持久标记仅阻断后续冷启动，不证明当下所有writer都已停。三份unit及目标Ubuntu版本的有效输出、socket/daemon/VM重启和真实停止行为必须隔离实测，不能以mock/最新官方文档冒充现场认证。完整故障保护与安装过渡完成前，不接生产发布。
 
-分支 `feat/runtime-minimal-maintenance-guard-20261026` 基于dev1fa7bb21，本地待审、未提交远端。没有运行freeze/安装systemd/停写/SQL/AWS或任何生产动作，第一批现场缺口继续OPEN。参考：[systemd条件](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)、[ExecStartPre与权限前缀](https://www.freedesktop.org/software/systemd/man/systemd.service.html)、[Docker重启策略](https://docs.docker.com/engine/containers/start-containers-automatically/)、[更新restart策略](https://docs.docker.com/reference/cli/docker/container/update/)；目标主机行为仍须实测。
+分支 `feat/runtime-minimal-maintenance-guard-20261026` 已按上述最终head/CI合并；此处原未提交状态已更新。没有运行freeze/安装systemd/停写/SQL/AWS或任何生产动作，第一批现场缺口继续OPEN。参考：[systemd条件](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)、[ExecStartPre与权限前缀](https://www.freedesktop.org/software/systemd/man/systemd.service.html)、[Docker重启策略](https://docs.docker.com/engine/containers/start-containers-automatically/)、[更新restart策略](https://docs.docker.com/reference/cli/docker/container/update/)；目标主机行为仍须实测。
 
 ## 第二批起步：锁内重核和持久只读任务（源码已合并）
 

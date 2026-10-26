@@ -12,6 +12,7 @@ import fcntl
 import json
 import os
 import re
+import time
 import uuid
 from pathlib import Path
 
@@ -87,17 +88,24 @@ def _read(root: int, identity: str) -> dict:
 
 
 @contextlib.contextmanager
-def _locked_directory():
+def _locked_directory(*, wait_seconds: float = 0):
     # The installer provisions the private directories. No mkdir/chown/chmod.
     with storage._directory_fd(JOB_DIR) as root:
         fd = os.open(".release.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW
                      | os.O_NONBLOCK, 0o600, dir_fd=root)
         try:
             storage._check(os.fstat(fd))
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise ReleaseContractError("another job holds the release lock") from exc
+            _need(0 <= wait_seconds <= 10, "invalid bounded lock wait")
+            deadline = time.monotonic() + wait_seconds
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError as exc:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise ReleaseContractError("another job holds the release lock") from exc
+                    time.sleep(min(0.1, remaining))
             yield root
         finally:
             os.close(fd)
@@ -175,6 +183,7 @@ def precheck(identity: str, *, observe=None, now=collector.now_utc) -> dict:
     identity = storage._plan_id(identity)
     observe = collector.collect if observe is None else observe
     with _locked_directory() as root:
+        storage.check_maintenance_clear()
         _no_pending(root)
         raw = storage.load_plan(identity)
         original = plan.validate_plan(raw, identity)
