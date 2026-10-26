@@ -1,5 +1,7 @@
 # Runtime 最小更新执行器实现方案
 
+**2026-10-26 源码 CI 记录：SOURCE_CI_VERIFIED / BATCH1_OPEN / NOT_INSTALLED。**[PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 源码 head `c26c643cd7fd309e28a3d6cff9cf70a8b769178a` 经 [CI #7638](https://github.com/sanqin888/sanqinMVP/actions/runs/40370375474) SUCCESS：ops job121739276109 实际 Release69（含本批24）/Runtime1080/准确CPython3.12.15回归412全部通过，4作业成功、6按范围跳过，无源码修复。本续记仅补证据；最终head检查/合并以PR事件为准，不从CI推出3.10运行兼容或生产就绪。下文 TESTS_NOT_RUN/未推送是原本地审阅时点，真实采集/CLI保存仍未完成，三组研究继续暂停保留。
+
 ## 2026-10-26 第一阶段起步：只读计划合同（本地）
 
 **SOURCE_CONTRACT_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED / PRODUCTION_NOT_AUTHORIZED。**基于 dev `bd9f254e8a8dc503a26b0835119da02c09f4281e`。方案 PR [#2979](https://github.com/sanqin888/sanqinMVP/pull/2979) 最终 head `ef63d474689e4b3709871764cd6396dfc3d24162` 经 [CI #7636](https://github.com/sanqin888/sanqinMVP/actions/runs/40364596712) SUCCESS（1 成功/9 按文档范围跳过）合并；这是方案文档验证，不是本批源码 CI。

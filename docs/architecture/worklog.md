@@ -1,5 +1,7 @@
 # SanQ 项目持续工作日志
 
+**本批实际 CI 续记（最小执行器第一步，同批记录）：**[PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 源码head c26c643cd7fd309e28a3d6cff9cf70a8b769178a 的 [CI #7638](https://github.com/sanqin888/sanqinMVP/actions/runs/40370375474) SUCCESS，Release69（含新增24）/Runtime1080/准确CPython3.12.15回归412通过，4成功/6按范围跳过，无源码修复。SOURCE_CI_VERIFIED，第一批仍OPEN，最终head检查/合并以PR事件为准；本条为下方“只读候选与计划合同”原批的验证阶段续记，不增加实施批次。本地未运行项目测试，未进行生产操作。
+
 ## 2026-10-26 — 最小更新执行器第一步：只读候选与计划合同
 
 **SOURCE_CONTRACT_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / PRODUCTION_NOT_AUTHORIZED。**按用户“合并后开始本项目第一步”，基于方案 PR #2979 最终 head ef63d474 / CI #7636 SUCCESS 合并的准确 dev `bd9f254e8a8dc503a26b0835119da02c09f4281e` 开始源码。现有 release_contract 新增 exact main SHA/配对 seal/发布 run/最新 main push CI/祖先关系只读核验，新增 deployment_plan 纯合同与24项负例/正例测试，固定运行对象原bytes、SQL inventory/源树绑定、迁移历史/pending、备份26h/环境键、canonical原件和独立plan-id；始终canExecute=false，变更观察必须重做计划。详情见[实现方案当前状态](Runtime最小更新执行器实现方案.md)。旧deploy/rollback/CLI、250/300guard、17 Bundle/Manifest、current/previous权威不变；未接真实采集、计划持久化、Docker/SQL/Host执行或重启门禁，第一批不关闭。Runtime/Ops内新增计划→发布合同单向边，无跨上下文owner/SCC/债务/scanner基线、依赖/锁文件/CI/Prisma/迁移/生产变化；三组研究暂停保留。本地仅Python3.10 grammar AST、差异/导入/链接静态审阅，24项项目测试未执行、无本批源码CI，不把语法检查当3.10运行兼容。分支 `feat/runtime-minimal-executor-plan-contract-20261026`，未提交/推送本批。下一步先用户审阅/授权远端，以实际Release/Runtime CI核验；随后在原第一批内补真实只读采集/计划展示保存与所选系统Python回归，不恢复暂停研究或直接发布生产。

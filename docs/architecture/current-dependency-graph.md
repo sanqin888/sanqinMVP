@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**2026-10-26 源码 CI 记录：SOURCE_CI_VERIFIED / BATCH1_OPEN / NOT_INSTALLED。**[PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 源码 head `c26c643cd7fd309e28a3d6cff9cf70a8b769178a` 经 [CI #7638](https://github.com/sanqin888/sanqinMVP/actions/runs/40370375474) SUCCESS：ops job121739276109 实际 Release69（含本批24）/Runtime1080/准确CPython3.12.15回归412全部通过，4作业成功、6按范围跳过，无源码修复。本续记仅补证据；最终head检查/合并以PR事件为准，不从CI推出3.10运行兼容或生产就绪。下文 TESTS_NOT_RUN/未推送是原本地审阅时点，真实采集/CLI保存仍未完成，三组研究继续暂停保留。
+
 **2026-10-26 最小执行器第一阶段起步（SOURCE_CONTRACT_LOCAL / BATCH1_OPEN）：**基于方案PR #2979最终head ef63d474/CI #7636（docs-only）合并devbd9f254e，现有 release_contract 新增 exact 候选只读核验，新增纯 deployment_plan 模块及24项聚焦测试，见[实现状态/剩余采集接线](Runtime最小更新执行器实现方案.md)。固定原字节/plan-id、运行对象/SQL清单与历史/备份/环境一致性，不接旧执行入口，不更改原guard/17 Bundle或持久发布权威。新增边为 Runtime/Ops 内的计划模块→发布合同，未增加跨上下文导入、环/SCC、owner/债务或scanner基线变化，无新增兼容读写/外部迁移；未重跑scanner/项目测试。本地仅AST与差异审阅，无源码CI/主机/云/生产操作，三组研究继续暂停、不取消。
 
 **2026-10-26 最小更新执行器实现方案（PLAN_DOCUMENTED_LOCAL）：**前置优先级文档 PR #2978 已由最终 head d2a739ec / CI #7633 SUCCESS（docs-only 1 成功/9 按范围跳过）合并 dev343fefc7。本批仅新增[范围/流程/四批/完结方案](Runtime最小更新执行器实现方案.md)，拟复用现有单一发布器、固定计划、机内一次性任务与本地失败保护，列出 installer/Mac 薄入口的后续明确边界；没有创建拟定源码/unit 或安装目录。C1/CPython/R2 三组研究继续暂停、不取消；Runtime/Ops owner、12 上下文依赖/SCC/债务/scanner基线、兼容读写与17 Bundle均无变化。本批未运行项目测试/scanner/新CI，无主机/云/生产操作，方案未推送。
