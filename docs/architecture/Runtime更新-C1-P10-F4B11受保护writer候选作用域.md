@@ -1,10 +1,10 @@
 # Runtime 更新 — C1 P10-F4-B11 受保护writer候选作用域
 
-**2026-10-26｜IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_WRITER_ASSEMBLY_ONLY / C1_OPEN。**
+**2026-10-26 F4-B11：MERGED_DEV / CI_VERIFIED_OFFLINE / HELD_WRITER_ASSEMBLY_ONLY / C1_OPEN。** [PR #2974](https://github.com/sanqin888/sanqinMVP/pull/2974) 最终 head4485d9fdcec7663faca4f8fd30824378933d233f 基于 dev4f16dd27，经 [CI #7625](https://github.com/sanqin888/sanqinMVP/actions/runs/40329893226) 成功合并003daa21dc0795ec092cac20502e0d9c2918f7aa；ops job121596298756 实际 Release45、Runtime1058、准确CPython3.12.15回归390通过，含16新增测试。首次CI #7624的3项错误为0400测试材料直接覆盖在普通用户下失败，仅修正准备流程后恢复0400，生产实现不变。旧PR #2973关闭未合并，完整保留R2 #2972文档。本批[受保护writer候选作用域](Runtime更新-C1-P10-F4B11受保护writer候选作用域.md)固定三批准文件/独立双pin、原进程匹配、源码祖先/文件FD与私有模块scope至consumer退出；仅装配，无消费/Flow/实际效果许可。5文档同步，无owner/依赖图/债务/scanner基线、依赖/迁移或生产变化。
 
 F4-B10由[PR #2971](https://github.com/sanqin888/sanqinMVP/pull/2971)最终headb06c4fc386298c53ff4421529cf6f14ea7ecfe1d经[CI #7620](https://github.com/sanqin888/sanqinMVP/actions/runs/40327593654)成功，4作业成功/6依范围跳过。ops job121588284474实际Release45、Runtime1042、准确CPython3.12.15回归374通过，含16新增测试，无修复；合并devdc195aba5e45d2053fda858507e9616add457902。
 
-本批起始基于该dev，现已对齐最新dev4f16dd27cbf0609552bd17328215a6dab993e91b，在feat/c1-p10f4b11-protected-writer-scope-dev-20261026交付。R2 PR #2972新增文档及工作日志完整保留，无Runtime源码差异。原PR #2973由对齐后的替代PR承接。未推送、未运行新CI。
+本批起始基于该dev，交付时对齐dev4f16dd27cbf0609552bd17328215a6dab993e91b，在feat/c1-p10f4b11-protected-writer-scope-dev-20261026交付并经PR #2974合并。R2 PR #2972新增文档及工作日志完整保留。原PR #2973关闭未合并，由#2974替代；最终head与CI证据见上。
 
 ## 1. 新增入口与准确顺序
 
@@ -41,8 +41,8 @@ _SOURCE_OWNER仅为模块私有生产常量(0,0)，无公开非root覆盖。测�
 
 新增16项测试，临时namespace中使用真实批准文件/源码树、祖先与FD、真实八模块私有加载；进程匹配函数由fixture替换，原进程匹配矩阵按现有独立测试复用。覆盖scope内FD保持与同组类型、外部pin/txid提前拒绝、已安装pins不能覆盖外部批准、输入字节漂移、源字节预先漂移、缺输入/链接/坏模式/额外成员、process/loader失败、consumer期间输入/源同bytes替换及两个目录祖先替换、异常/KeyboardInterrupt/SystemExit原实例保留和FD关闭、固定API。
 
-2份Python已静态AST语法解析、生命周期/输入绑定及差异审阅；**16项新测试与项目lint/build/test未运行**。授权交付后的GitHub Actions将执行Runtime全量及准确Python3.12.15回归，无工作流或skip变化。
+实现阶段完成2份Python静态AST语法解析、生命周期/输入绑定及差异审阅，未在MCP-workspace执行项目lint/build/test。随后授权交付的最终head实际通过GitHub Actions Runtime全量及准确Python3.12.15回归，计数和一次测试材料修复见上；无工作流或skip变化。
 
 本批同步5份文档；Runtime/Ops拥有writer_scope→bootstrap/inputs/process_check/source_anchor/writer_loader，既有模块不反向依赖，单向无循环，无owner/依赖图/债务/scanner基线变化。无包依赖或数据库迁移，九源CLI/v1输入/17 Bundle不变，无root/VM/云/生产动作。
 
-下一步先交付并取得实际CI。然后审阅同一候选来源/当前安装/目标发布检查到writer消费的准确锁/FD持有期及实际能力接线；不能把此装配context直接接到未经核验的Flow。C1保持OPEN。
+交付与实际CI已完成。[F4-B12检查至消费持有期与锁合同](Runtime更新-C1-P10-F4B12检查至消费持有期与锁合同.md)已在本地核对当前安装/目标发布检查到writer消费的准确锁/FD与导入限制，下一源码限定B13只读检查持有context；不能把本装配context直接接到未经核验的Flow。C1保持OPEN。
