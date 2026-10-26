@@ -4,9 +4,13 @@
 
 **B10 TLS_ONLY：FIELD_RECEIPT_CLOSED_PASS_SCOPED / FORMAL_CAS_NOT_RUN / P1_DENY / PRODUCTION_NO-GO。** [B10 TLS_ONLY 安全负例证据收口](Runtime更新-R2-A2-3-P2-C3C3-B10-TLS_ONLY安全负例证据收口.md)按操作者 Mac/Ubuntu 双端回执收口：B10-0 原实验 CA/leaf pin、TLS1.2、两端证书有效与端口预检；B10-A 无 SAN `VERIFY_CODE=64`；B10-B 尚未生效 `VERIFY_CODE=9`；B10-C TLS1.0/1.1 两次协议拒绝；B10-D 两种非白名单 CBC Cipher 因 `NO_SHARED_CIPHER` 2/2 拒绝，全部停止后 Mac 39443 无监听。本批仅新增证据文档并链接 IMPLEMENT-A，不修改 Runtime 源码、17 Bundle、CI、CRL/Enrollment/SQLite、私钥/证书、Guard、VM/AWS/生产，也未重新运行网络测试；正式 Anchor、B1 fence、CRL、CAS 与 P1 仍独立 BLOCKED/NO-GO。
 
+## 2026-10-26 — C1 P10-F4-B11受保护writer候选作用域
+
+**2026-10-26 F4-B11：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_WRITER_ASSEMBLY_ONLY / C1_OPEN。** F4-B10 PR #2971经CI #7620成功合并dc195aba，Runtime1042/Release45/准确3.12.15回归374通过，含16新增测试，无修复。本批新增[受保护writer候选作用域](Runtime更新-C1-P10-F4B11受保护writer候选作用域.md)及16项测试：固定三批准文件与独立双pin、原进程匹配、源码祖先/文件FD与私有模块scope保持至consumer退出，源/输入退出复核异常传播。仅装配，无消费/Flow/效果许可；旧九源CLI不变。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+
 ## 2026-10-26 — C1 P10-F4-B10 writer有限来源加载
 
-**2026-10-26 F4-B10：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / WRITER_ASSEMBLY_ONLY / C1_OPEN。** F4-B9 PR #2970经CI #7618（docs-only，1成功/9跳过）合并7516529d，无修复。本批新增[writer有限来源加载](Runtime更新-C1-P10-F4B10-writer有限来源加载.md)及16项测试：固定8项目模块+不执行bootstrap、精确原bytes清单/双pin、私有writer命名空间、有限受信stdlib、同组核心重解析；无文件/消费/Flow效果。旧三模块API与选择不变，仅抽取私有引擎。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、九源CLI/v1输入/17 Bundle、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+**2026-10-26 F4-B10：MERGED_DEV / CI_VERIFIED_OFFLINE / WRITER_ASSEMBLY_ONLY / C1_OPEN。** [PR #2971](https://github.com/sanqin888/sanqinMVP/pull/2971)最终headb06c4fc386298c53ff4421529cf6f14ea7ecfe1d经[CI #7620](https://github.com/sanqin888/sanqinMVP/actions/runs/40327593654)成功（4成功/6跳过），合并dc195aba5e45d2053fda858507e9616add457902。Release45/Runtime1042/准确CPython3.12.15回归374全部通过，含16新增测试，无修复。固定八模块+未执行bootstrap私有加载及同组类型、旧三模块入口保持；5文档同步，无消费/Flow/依赖/迁移或生产变化；见[来源加载记录](Runtime更新-C1-P10-F4B10-writer有限来源加载.md)。
 
 ## 2026-10-26 — C1 P10-F4-B9可信组合与终结前置审阅
 
