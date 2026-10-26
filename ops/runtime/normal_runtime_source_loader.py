@@ -1,6 +1,6 @@
 """C1-PREP-06: load the selected normal-update modules from fixed source bytes.
 
-Only launch/update/inputs are compiled, after BOTH input pins and the complete
+The default entry compiles only launch/update/inputs, after BOTH pins and the complete
 snapshot inventory match. Candidate imports use a private module map, never a
 canonical-name cache/path fallback. Already loaded stdlib/loader prerequisites
 must be trusted BEFORE this call. This is NOT a sandbox or executable bootstrap.
@@ -53,7 +53,7 @@ class LoadedNormalCandidate:
     modules: Mapping[str, ModuleType]
 
 
-def _verified_sources(snapshot: SourceSnapshot, parsed) -> dict[str, bytes]:
+def _verified_sources(snapshot: SourceSnapshot, parsed, selected=SELECTED_MODULES) -> dict[str, bytes]:
     materials = parsed.request.launch
     pins = materials.document()["sourceFiles"]
     _require(type(snapshot) is SourceSnapshot
@@ -76,7 +76,7 @@ def _verified_sources(snapshot: SourceSnapshot, parsed) -> dict[str, bytes]:
                  "source inventory bytes differ from the pinned launch")
         fixed[name] = raw
     _require(set(fixed) == set(pins)
-             and all(name + ".py" in fixed for name in SELECTED_MODULES),
+             and all(name + ".py" in fixed for name in selected),
              "selected normal-update sources are missing")
     # Directory/file metadata are observations owned by the outer FD context,
     # not proof of provenance or authority that this byte consumer can create.
@@ -84,9 +84,13 @@ def _verified_sources(snapshot: SourceSnapshot, parsed) -> dict[str, bytes]:
 
 
 def _compile_selected(fixed: dict[str, bytes]) -> tuple:
+    return _compile_modules(fixed, SELECTED_MODULES)
+
+
+def _compile_modules(fixed, selected) -> tuple:
     compiled = []
     try:
-        for name in SELECTED_MODULES:
+        for name in selected:
             raw = fixed[name + ".py"]
             filename = "<sanq-pinned:" + name + ":" + digest(raw) + ">"
             compiled.append((name, compile(
@@ -112,13 +116,15 @@ def _check_registry(prefix: str, modules, registered) -> None:
 
 
 @contextmanager
-def load_pinned_normal_candidate(
+def _load_candidate(
     snapshot: SourceSnapshot,
     launch_bytes: bytes,
     request_bytes: bytes,
     *,
     expected_launch_sha256: str,
     expected_request_sha256: str,
+    _selected=SELECTED_MODULES, _preloaded=_PRELOADED, _tag="",
+    _compiler=None, _exact=False,
 ) -> Iterator[LoadedNormalCandidate]:
     """Consume a live reader/anchor scope's fixed bytes; never reopen paths.
 
@@ -133,13 +139,17 @@ def load_pinned_normal_candidate(
             expected_request_sha256=expected_request_sha256)
     except PinnedInputsBlocked as exc:
         raise CandidateLoadBlocked("pinned candidate inputs rejected") from exc
-    fixed = _verified_sources(snapshot, parsed)
-    compiled = _compile_selected(fixed)
-    prefix = "_sanq_candidate_" + expected_launch_sha256
+    fixed = _verified_sources(snapshot, parsed, _selected)
+    if _exact:
+        _require(parsed.request.launch.bootstrap_source not in {name + ".py" for name in _selected}
+                 and set(fixed) == {name + ".py" for name in _selected}
+                 | {parsed.request.launch.bootstrap_source}, "unexpected component sources")
+    compiled = (_compile_selected if _compiler is None else _compiler)(fixed)
+    prefix = "_sanq_candidate_" + _tag + expected_launch_sha256
     package = ModuleType(prefix)
     package.__path__ = ()
     modules = {name: ModuleType(prefix + "." + name)
-               for name in SELECTED_MODULES}
+               for name in _selected}
     registered = {prefix: package}
     registered.update({module.__name__: module for module in modules.values()})
     ready: set[str] = set()
@@ -152,8 +162,8 @@ def load_pinned_normal_candidate(
         if name in modules:
             _require(name in ready, "candidate import is cyclic or out of order")
             return modules[name]
-        _require(name in _PRELOADED, "unselected candidate or stdlib import")
-        return _PRELOADED[name]
+        _require(name in _preloaded, "unselected candidate or stdlib import")
+        return _preloaded[name]
 
     for name, module in modules.items():
         setattr(package, name, module)
@@ -205,3 +215,13 @@ def load_pinned_normal_candidate(
             for name, module in reversed(tuple(registered.items())):
                 if sys.modules.get(name) is module:
                     del sys.modules[name]
+
+
+def load_pinned_normal_candidate(
+    snapshot: SourceSnapshot, launch_bytes: bytes, request_bytes: bytes, *,
+    expected_launch_sha256: str, expected_request_sha256: str,
+) -> Iterator[LoadedNormalCandidate]:
+    """Original three-module contract and namespace remain unchanged."""
+    return _load_candidate(snapshot, launch_bytes, request_bytes,
+        expected_launch_sha256=expected_launch_sha256,
+        expected_request_sha256=expected_request_sha256)
