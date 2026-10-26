@@ -42,6 +42,9 @@
 
 ## 当前详细入口
 
+- [最小更新执行器实现方案（范围、流程、四批与完结条件）](../architecture/Runtime最小更新执行器实现方案.md)：基于 PR #2978 合并后 dev343fefc7 的本地方案；未实现/未部署。
+- [当前优先级与三组研究暂停恢复规则](../architecture/Runtime最小更新执行器与暂停恢复计划.md)：暂停、不取消，正常代码更新恢复后复审继续。
+
 - [Runtime 交付与安装约束](../architecture/Runtime交付与安装约束.md)
 - [Runtime 历史决策与证据索引](../architecture/Runtime历史决策与证据索引.md)
 

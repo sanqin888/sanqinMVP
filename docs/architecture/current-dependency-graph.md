@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+**2026-10-26 最小更新执行器实现方案（PLAN_DOCUMENTED_LOCAL）：**前置优先级文档 PR #2978 已由最终 head d2a739ec / CI #7633 SUCCESS（docs-only 1 成功/9 按范围跳过）合并 dev343fefc7。本批仅新增[范围/流程/四批/完结方案](Runtime最小更新执行器实现方案.md)，拟复用现有单一发布器、固定计划、机内一次性任务与本地失败保护，列出 installer/Mac 薄入口的后续明确边界；没有创建拟定源码/unit 或安装目录。C1/CPython/R2 三组研究继续暂停、不取消；Runtime/Ops owner、12 上下文依赖/SCC/债务/scanner基线、兼容读写与17 Bundle均无变化。本批未运行项目测试/scanner/新CI，无主机/云/生产操作，方案未推送。
+
 **2026-10-26 Runtime 实施顺序调整（DOCUMENTED_LOCAL）：**按用户决定，先完成[最小更新执行器与暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)并恢复单人 MacBook/SSH 的正常镜像发布；C1 来源/输入固定/受保护加载、自建 CPython 3.12.15/完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均暂停、不取消，恢复正常更新后重核最新基线再继续。保留已合并 F4-B13（PR #2977 / dev29004f5b）及全部证据；不补造 CI/现场结果，不取消原 OPEN/DENY。仅调整 Runtime/Ops owner 内的计划/前置依赖说明，未改源码、跨上下文导入、12 上下文所有权、SCC、债务计数、scanner baseline、兼容读写或 17 Bundle；依赖图与基线无变化，未重跑 scanner/测试。
 
 **2026-10-26 F4-B13：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_READONLY_REVIEW_ONLY / C1_OPEN。** 基于dev61bb0e48（F4-B12 PR #2976经CI #7629 docs-only成功，无修复），新增[保持安装只读检查作用域](Runtime更新-C1-P10-F4B13保持安装只读检查作用域.md)：F2/F3有限成员和固定祖先FD保持至consumer退出，显式重检原bytes/元数据/路径边；深副本非授权报告、scope失效/原进程线程约束。旧公开报告接口复用单一实现，B3两处私有三元组解包原子更新；异常/中断保留原因，正常关闭或退出复核失败传播。新增22项测试，5份Python仅静态AST/生命周期/差异审阅，未执行项目测试/新CI。5文档同步及B12结果就地归档，无全局锁/消费/Flow或loader扩展，无owner/依赖图/债务/scanner基线、包依赖/迁移、R2/root/VM/云/生产变化；未推送。
