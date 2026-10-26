@@ -1,6 +1,6 @@
 # GHCR 发布与 Runtime 状态
 
-> **2026-10-26 源码进度：**[最小执行器方案/当前实现状态](../architecture/Runtime最小更新执行器实现方案.md)已完成本地只读计划合同和 exact 候选核验，24 项测试已随源码head c26c643c 的 CI #7638 成功验证（Release69/Runtime1080/准确3.12.15回归412）；最终合并以 PR #2980 事件为准，第一批仍缺真实采集/展示保存与系统 Python 3.10 的运行验证。旧发布器、CLI、Manifest 和 250/300 校验仍原样，当前不能用新合同直接更新生产。文档方案 PR #2979 已合并不等于本批源码或生产验收完成。
+> **2026-10-26 当前源码进度：COLLECTOR_IMPLEMENTED_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED。**前批 [PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 最终head8da41649 / [CI #7639](https://github.com/sanqin888/sanqinMVP/actions/runs/40370911563) SUCCESS，已合并dev7bb83d20。本批新增真实观察、固定计划展示/私有保存源码与42项离线测试，另加3.10 Release CI入口，尚未运行新测试。当前只有 prepare/show 的源码接口，没有 apply 或 Mac 入口；不是可在 VM 执行的新命令。详见[准确采集边界、计划目录和未完成项](../architecture/Runtime最小更新执行器实现方案.md)。旧发布器/CLI/17+Manifest/250/300 guard 未变，新工具未安装，第一批尚未验收，不能直接解除生产阻塞。
 
 > **2026-10-26 当前主线：**依用户决定先完成[最小更新执行器与暂停恢复计划](../architecture/Runtime最小更新执行器与暂停恢复计划.md)，以 MacBook/SSH 上“预检一次、确认执行一次”恢复正常代码更新。C1 来源/输入固定/受保护加载、自建 CPython 3.12.15 及完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均 **PAUSED_NOT_CANCELLED**；待最小执行器完成且真实发布成功后复审继续。下文描述现役发布器与原高保证路线，不能据此把三项暂停工作重新设为最小执行器前置；现役校验未改，新执行器/工具过渡未完成，本批无部署或生产放行。
 

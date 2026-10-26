@@ -73,9 +73,32 @@ jobs:
           bash -n ops/backup/sanq-backup-protected-nginx
           python3 -m unittest discover -s ops/backup/tests -p 'test_*.py'
 
+      - name: Set up Node for offline SQL inventory fixtures
+        if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
       - name: Test paired-image release contract (offline)
         if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
         run: python3 -m unittest discover -s ops/release/tests -p 'test_*.py'
+
+      - name: Set up system-Python compatibility lane (3.10)
+        if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
+        id: release_python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+          architecture: x64
+          update-environment: false
+
+      - name: Test release tools on CPython 3.10 (offline)
+        if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
+        env:
+          RELEASE_TEST_PYTHON: ${{ steps.release_python.outputs.python-path }}
+        run: |
+          "$RELEASE_TEST_PYTHON" -c 'import sys; print(sys.version); sys.exit(0 if sys.implementation.name == "cpython" and sys.version_info[:2] == (3, 10) else "unexpected release test interpreter")'
+          "$RELEASE_TEST_PYTHON" -m unittest discover -s ops/release/tests -p 'test_*.py'
 
       - name: Test Runtime layout preflight (offline)
         if: ${{ needs.ci_scope.outputs.ops_runtime != 'false' }}

@@ -1,5 +1,41 @@
 # Runtime 最小更新执行器实现方案
 
+**2026-10-26 当前进度：COLLECTOR_IMPLEMENTED_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED / PRODUCTION_NOT_AUTHORIZED。**本次基于已合并 dev `7bb83d20808155c6056d7b1b5eb9bbe52e983e0a`，在原第一批内补真实观察适配器、计划展示和私有保存源码。前批 [PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 最终 head `8da416499add108bee4b4586ce6eb53a1aef980a` 经 [CI #7639](https://github.com/sanqin888/sanqinMVP/actions/runs/40370911563) SUCCESS（4 成功/6 按范围跳过），Release69/Runtime1080/准确3.12.15回归412通过后合并；该结果不覆盖本批新增源码。下文原批 CI #7638/本地状态按历史时点保留，当前状态以本段为准。
+
+## 第一批续作：真实观察、展示和保存（本地待审）
+
+内部 helper 固定为三件：本批新增 `collect_deployment_plan.py`、`deployment_plan_store.py` 及前批 `deployment_plan.py`，同属 `ops/release/`。它们复用现有 `release_contract.py` 和 `deploy_release.py`；不复制发布控制器，不写 current/previous。新增件独立于现有 **17+Manifest**，尚未安装或加入 Bundle；第三批须交付可验证的准确三件及其所需现有模块版本、安装位置/导入路径/权限/读回合同，不能把当前源码直接放进旧 Runtime 后提权执行。
+
+### 已实现的采集边界
+
+| 观察 | 源码行为与拒绝边界 |
+| --- | --- |
+| 当前基线 | 复用控制器固定路径、C4 marker、17+Manifest 完整性和真实 DB/Uploads 挂载检查；直接读取原 Manifest、release-state 和 .env，核对 owner/mode/单硬链接/非链接/读取身份。仅接受 active/rolled-back 与 .env 的 current 一致；pending、缺失或不一致阻断 |
+| 实际配置 | 用固定 project/Compose/env-file 展开配置；核对三应用镜像为当前 SHA。配置摘要绑定原 .env 与实际展开值，计划只存摘要和必需键名，不保存环境值。检查声明的必需键，不能自动发现任意业务代码里的动态配置需求 |
+| 目标与当前镜像 | exact main SHA、paired seal、发布 run、最新准确 main push CI 和祖先关系；当前容器的实际 image ID 对应 digest/revision/platform，目标两镜像按 digest 拉取及检查 linux/amd64/revision/RepoDigests。新命令适配器固定本机 Docker socket，不接受环境变量指定外部 daemon；复用的两项旧 Docker 检查新增可选 observe 适配器，采集路径统一使用本机 socket/超时/输出预算，旧入口默认行为保持 |
+| SQL 原件 | 候选 API 镜像只运行固定 Node 文件清单程序，覆盖入口为固定 /usr/local/bin/node，清空镜像自带的 NODE_OPTIONS/NODE_PATH/NODE_COMPILE_CACHE，避免继承预加载或编译缓存；无应用/worker 启动、数据库环境或主机卷。读取原 SQL bytes 的 SHA256/Git blob/大小/顺序；Git commit → tree SHA → 完整非截断 tree 独立绑定，拒绝缺项、链接、额外目录成员和不同对象 |
+| DB 历史 | 在现有 db 容器内运行固定 psql SELECT，包在 `BEGIN READ ONLY` 事务中，凭据只取容器已有环境；读取迁移名/checksum/完成或撤回状态。纯合同验证前缀/摘要/失败历史并推导 pending。只读历史不是物理 schema 漂移检测或 SQL 安全批准 |
+| 备份 | 选既有固定目录内最新命名匹配文件；验证 ubuntu 私有普通单链接、原压缩 bytes 的 SHA256/大小和 gzip 完整性，检查读取前后身份，计划合同检查 26h/非未来时效。不创建备份，不做恢复试验 |
+| 一致性 | 采集结束再次观察当前文件/配置、DB 历史、真实镜像/挂载及准确候选证明；漂移就阻断。它是前后观察一致性检查，未构成发布锁、持续停写或全局原子快照；未来 apply 必须锁内重新核验 |
+
+准备会写 Docker 镜像缓存、一次性探测容器、私有计划/锁文件及临时命令输出，不是整机零写入。仅该容器用 `--read-only --network none --cap-drop ALL --security-opt no-new-privileges`、256MiB 内存/相同 swap 上限、0.5 CPU/64 pids/`--pull never`，45s 命令超时；无网络/卷/env-file/业务入口。失败只尝试删除准确名称且随机 nonce label 一致的本次 probe，不处理业务容器；未能证实清理时本次失败，不能当成功或维护完成。镜像 pull CLI 单次 300s，超时不证明 daemon 后台下载已经停止，不自动重试；结果有输出预算，SQL 单件 2MiB/集合64MiB，备份压缩1GiB/展开4GiB。准备前要求 Runtime 所在文件系统至少空闲5GiB、MemAvailable至少512MiB；这只是保守准入，不保证任意未来镜像大小或整机峰值，安装/隔离验收仍须实测，不自动 prune。
+
+### 计划目录、命令和权限
+
+源码仅提供 `prepare --target-sha <40位SHA> [--save]` 与 `show <plan-id>`，**不是当前生产命令**，不提供 apply/deploy/migrate。只展示 REVIEW_ONLY、准确版本/digest、pending 摘要、备份及必需键名；失败不回显原命令输出、.env 或令牌。具体拒绝仍由合同/适配器阻断；当前 CLI 仅给通用安全错误，分阶段诊断留待任务接线。计划始终 `canExecute=false`，不能拿 JSON 字段当执行授权。
+
+保存位置固定拟为 `/opt/sanq/deploy-state/plans/<plan-id>.json`；父目录 deploy-state 及 plans 均须预先安装为 root:0700，文件 root:0600/普通单硬链接，路径无软链接。采集器不 mkdir/chown/chmod；prepare 使用同目录稳定 inode 的 `.prepare.lock` + 非阻塞 flock，仅串行化采集资源，**不是维护/发布 fence**，show 不锁。创建用 O_EXCL/O_NOFOLLOW，完整写入、同步文件和目录、读回后才报告成功，不覆盖或删除已有身份；部分写入/同步未知保留原件并拒绝同 id 重写。show 用另行保留的 id 验证 canonical 原件，不能凭同文件自报 hash 认证来源。root/操作者和 OS 仍是信任基础，不恢复 C1 的受保护加载或 R2 跨克隆证明。
+
+### 验证与尚未关闭项
+
+本批新增 **42 个离线 unittest 方法**：26 个采集/CLI/观察适配测试和16个存储失败测试。CI 测试使用隔离临时文件/模拟 Docker、SQL、GitHub；其中 Node 文件程序只对可丢弃 fixture 执行，验证原 SQL bytes/Git blob 与拒绝额外成员/链接，不访问镜像或数据库。现有 ops-checks 自动发现新测试，另加 CPython3.10 Release 离线回归入口（同一 Release lane 显式 setup Node20，仅运行可丢弃 SQL fixture）；原默认 Release、Runtime、准确3.12.15 C1 回归完整保留。因本批修改 ci.yml，既有 change_scope 会选择全部 CI lanes；不修改选择器或跳过必需检查。3.10 lane 只验证该 CI 解释器，不冒充实际主机 patch/依赖或生产安装认证。
+
+MCP-workspace 不开放 lint/build/test，本批没有运行项目测试。仅对源码审阅副本作 Python3.10 grammar AST、内嵌 Node 语法及差异/引用静态检查；不能标 CI_VERIFIED。分支 `feat/runtime-minimal-plan-collector-20261026` 本地待审，未提交远端，无生产 Docker/SQL/文件/root/AWS 操作。
+
+**第一批仍 OPEN：**待最终 head 的 Release/Runtime/新增3.10 CI 实际通过、系统解释器/交付导入合同核实及隔离环境真实采集证据。旧 deploy/rollback/CLI 行为、250/300 guard 和17 Bundle/Manifest 均未改；本次只让新只读计划按两个实际运行对象判断兼容，不能据此绕过旧入口发布。旧执行入口替换、锁内 apply、任务/中断门禁属于第二批，安装/Mac 薄入口/一次性工具过渡属于第三批。三组研究继续暂停、不取消。
+
+以下为前批合同和最初方案的历史记录。
+
 **2026-10-26 源码 CI 记录：SOURCE_CI_VERIFIED / BATCH1_OPEN / NOT_INSTALLED。**[PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 源码 head `c26c643cd7fd309e28a3d6cff9cf70a8b769178a` 经 [CI #7638](https://github.com/sanqin888/sanqinMVP/actions/runs/40370375474) SUCCESS：ops job121739276109 实际 Release69（含本批24）/Runtime1080/准确CPython3.12.15回归412全部通过，4作业成功、6按范围跳过，无源码修复。本续记仅补证据；最终head检查/合并以PR事件为准，不从CI推出3.10运行兼容或生产就绪。下文 TESTS_NOT_RUN/未推送是原本地审阅时点，真实采集/CLI保存仍未完成，三组研究继续暂停保留。
 
 ## 2026-10-26 第一阶段起步：只读计划合同（本地）
