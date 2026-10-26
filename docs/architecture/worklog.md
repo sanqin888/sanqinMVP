@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — C1 P10-F4-B7有界追加writer合同
+
+**2026-10-26 F4-B7：CONTRACT_COMPLETE_LOCAL / WRITER_NOT_IMPLEMENTED / C1_OPEN。** F4-B6 PR #2967经CI #7612成功合并564f63d2，Runtime1010/Release45/准确3.12.15回归342通过，含6新增测试，无修复。本批完成[有界追加writer合同](Runtime更新-C1-P10-F4B7有界追加writer合同.md)：首版仅空双布局下一次本机claim及同handle abort，不提供处置/第二笔准入；明确共用scope、create-only/文件与目录fsync、未知阻断与原只读检查保留。5文档同步，无新源码/schema/依赖/迁移、owner/依赖图/债务/scanner基线、R2/root/VM/云/生产变化，未运行新测试/CI、未推送。
+
 ## 2026-10-26 — C1 P10-F4-B6旧入口与双布局门禁
 
-**2026-10-26 F4-B6：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** F4-B5 PR #2966经CI #7610成功合并ab49b2c8，Runtime1004/Release45/准确3.12.15回归336通过，含31新增测试，无修复。本批新增[旧入口与双布局门禁](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)：固定v2路径存在任何对象均在原全局锁内禁用v1消费/观察，并在持有期复核；v2缺失才保留原v1行为，权限错误不当缺失。6新增测试（history共37项），统一固定布局常量，无v2 writer/finalizer或生产入口切换。3份Python仅静态AST/差异审阅，未运行新测试/CI、未推送；6文档同步，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或root/VM/云/生产变化。
+**2026-10-26 F4-B6：MERGED_DEV / CI_VERIFIED_OFFLINE / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** [PR #2967](https://github.com/sanqin888/sanqinMVP/pull/2967)最终headf7202f3641aaede69635d05ef5137b3d88356366经[CI #7612](https://github.com/sanqin888/sanqinMVP/actions/runs/40284643873)成功（4成功/6跳过），合并564f63d2f5a6f14454faa5c200c95cbbbf7ea73f。Release45/Runtime1010/准确CPython3.12.15回归342全部通过，含6新增测试，无修复。固定v2任意对象禁用旧v1入口并持有期复查，6文档同步，无writer/finalizer/依赖/迁移或生产变化；见[门禁记录](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)。
 
 ## 2026-10-25 — C1 P10-F4-B5有界历史只读解释器
 

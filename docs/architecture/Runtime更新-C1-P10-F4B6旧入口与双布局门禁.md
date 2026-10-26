@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 P10-F4-B6 v1旧入口与v2布局共同门禁
 
+**2026-10-26 F4-B7：CONTRACT_COMPLETE_LOCAL / WRITER_NOT_IMPLEMENTED / C1_OPEN。** F4-B6 PR #2967经CI #7612成功合并564f63d2，Runtime1010/Release45/准确3.12.15回归342通过，含6新增测试，无修复。本批完成[有界追加writer合同](Runtime更新-C1-P10-F4B7有界追加writer合同.md)：首版仅空双布局下一次本机claim及同handle abort，不提供处置/第二笔准入；明确共用scope、create-only/文件与目录fsync、未知阻断与原只读检查保留。5文档同步，无新源码/schema/依赖/迁移、owner/依赖图/债务/scanner基线、R2/root/VM/云/生产变化，未运行新测试/CI、未推送。
+
 **2026-10-26｜IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。**
 
 F4-B5由[PR #2966](https://github.com/sanqin888/sanqinMVP/pull/2966)最终head e65ee0031a42e6e653c0394bb2c36b649752e5ef 经[CI #7610](https://github.com/sanqin888/sanqinMVP/actions/runs/40274211158)成功合并dev ab49b2c82faaea25bd1b4c1b16794dae32da6e23。4作业成功/6按范围跳过；ops job121413409111实际Release45、Runtime1004、准确CPython3.12.15回归336通过，包含31项新增测试，无CI修复。
