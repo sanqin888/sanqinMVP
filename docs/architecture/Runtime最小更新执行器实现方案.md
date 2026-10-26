@@ -1,8 +1,36 @@
 # Runtime 最小更新执行器实现方案
 
-**2026-10-26 当前进度：JOB_PRECHECK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批采集/展示/保存 [PR #2981](https://github.com/sanqin888/sanqinMVP/pull/2981) 最终 head `e584be778a238cd53f862dc7d14d8b00408d54e7` 经 [CI #7641](https://github.com/sanqin888/sanqinMVP/actions/runs/40377187532) SUCCESS（10/10作业成功），Release111 在默认 Python 和 CPython3.10.22 下各通过111项，Runtime1080、准确CPython3.12.15回归412通过，无修复；已合并 dev `2b8677c6314843fe5746fa96170f630e1b43ab46`。这仅是前批 SOURCE_CI_VERIFIED，未完成真实主机采集或安装。基于该准确合并状态，本批开始第二批中可独立审阅的只读任务基础；第一批实际平台/交付导入合同及隔离实采缺口仍 OPEN，不能据此进入生产写入。
+**2026-10-26 当前进度：MAINTENANCE_GUARD_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批只读任务 [PR #2982](https://github.com/sanqin888/sanqinMVP/pull/2982) 最终head `00bfc51961382c14148b6d35ae5fabe837050670` 经 [CI #7643](https://github.com/sanqin888/sanqinMVP/actions/runs/40381159117) SUCCESS（4成功/6按范围跳过）：默认Python及CPython3.10.22下Release各134、Runtime1080、准确CPython3.12.15回归412通过，无修复，已合并dev `1fa7bb2153dd3fdd7443612949ae542998e317cd`。本批从准确合并状态继续第二批的维护准备与冷启动门禁源码；尚未接apply/任务收尾或安装。第一批平台/交付/隔离实采及第二批真实故障验收仍OPEN，不能据源码或模拟宣布生产就绪。
 
-## 第二批起步：锁内重核和持久只读任务（本地待审）
+## 第二批续作：维护准备与冷启动门禁（本地待审）
+
+新增 `ops/release/maintenance_guard.py` 和三份 `systemd/**/80-sanq-maintenance.conf` 模板。Runtime/Ops内部普通兼容新增，无既有安装消费者，不改17 Bundle/Manifest、旧发布CLI或current/previous权威；`observedApplicationSha` 只记录维护前观察。辅助源码现为前四件加maintenance_guard及三份drop-in，第三批须统一验真/安装/撤回和权限读回；本批不增加生产权限、不安装unit或目录。
+
+### 范围与执行顺序
+
+1. 内部 `freeze_for_plan` 仅供未来受控执行器调用；CLI只提供 `check-startup/status`，没有freeze、clear、restore、apply或任意命令入口。函数要求root，持原任务锁与计划资源锁；未完结只读任务、维护记录/残件先拒绝，重新核对同一计划/缓存镜像及全部实际观察。
+2. **先验证门禁已安装生效，后允许策略/停服动作。**执行路径必须是固定 `/opt/sanq/runtime/ops/release/maintenance_guard.py`，root非组/全局可写；三份root drop-in原bytes匹配，systemctl报告loaded/无需reload/仅所选drop-in，service有效ExecStartPre包含准确命令且不忽略失败，socket只触发docker.service。已有其他drop-in或未知输出拒绝，不自动删除配置或reload。Docker live-restore必须false，Swarm inactive，否则转单独平台审阅。
+3. 观察三个准确角色的完整container-id、实际image-id/成对digest/revision、项目/镜像标签、运行状态及原restart name/retry-count；只接受三角色均稳定running。观察backup.timer原active/substate/enabled及backup.service原inactive/dead状态。原策略先完整写入私有 `ARMED` 标记，文件/目录fsync并读回成功才继续。
+4. 再次核对基线；仅对这三个保存的完整ID执行restart=no，随后正常stop（30s宽限、命令45s超时）。不重建DB、停daemon/无关容器、prune、改Compose/.env或执行SQL/AWS；不根据名称追踪并停止未知新容器。
+5. 逐角色读回同一container-id/image-id、restart=no/0、exited且Running/Restarting/Paused均false，backup状态原样、门禁仍有效，才持久写 `FROZEN`。它表示本次观察到三应用已停及门禁配置符合合同，不是快照完成、部署许可或跨克隆证明。
+6. 过程失败时尽力对保存的三ID关闭重启/停止，不因一项失败而不尝试其他项；不恢复服务、原restart或timer策略，不删除标记。持久记 `INCIDENT/FENCE_UNCONFIRMED`，无法记录则保留原ARMED/残件。初始写入未知不改容器；最终rename/fsync未知不重试或改写为失败，状态查询只反映当前磁盘快照，不能据FROZEN推断前次调用已经报告耐久成功。
+
+### 固定文件与启动规则
+
+- 拟预装 `/opt/sanq/deploy-state/maintenance` 及父目录root:0700；`active.json` root:0600/普通单硬链接，最多16KiB，保存plan-id/attempt、原容器策略/备份状态、阶段/时间/固定错误码，固定canExecute=false。采集器不mkdir/chown/chmod；全目录只要有任意记录/残件/链接就拒绝冷启动，目录缺失或权限异常也拒绝。
+- `docker.service` drop-in增加固定Python `check-startup` 的ExecStartPre；不在启动检查里调用Docker/systemctl或争用任务锁。Docker由socket拉起也须经过同一service门禁；socket模板另加active.json不存在的condition。**condition跳过不等于业务已停写**；坏链接/残件由service检查继续拒绝daemon启动。
+- `sanq-backup.service` 增加marker condition及准确的root ExecStartPre（`+`仅提权这一固定只读检查），使ubuntu备份用户无需读私有目录；timer不stop/disable/enable，原状态保存但不修改。已运行备份进入维护前拒绝；ARMED后竞态或状态改变记INCIDENT，不能宣称冻结成功。
+- marker存在时daemon冷启动会被拒绝，故事故重启也可能暂时阻断整个Docker及Clover开发隧道；正常准备只处理三应用角色。直接root/手工Docker/旧发布入口仍可绕过本机合作约束，不声称被强制拦截；root/SSH/OS为信任基础，C1/CPython/R2研究仍暂停。
+
+### 验证与未完成项
+
+本批新增 **20个离线unittest方法**，用真实临时私有目录和Docker/systemctl观察替身覆盖原策略先持久、同一计划、备份竞态、更新/停服失败、替换容器、初始/最终同步未知、坏目录/链接、锁冲突、无写CLI、模板与有效门禁/忽略失败/未reload/额外覆盖/live-restore/Swarm拒绝。没有运行项目测试；仅Python3.10 grammar AST、模板字面合同、导入/差异/引用静态审阅。沿用既有Release/3.10/Runtime/准确3.12.15 CI入口，不改工作流。
+
+**第二批仍未完成：**尚缺独立systemd任务/ExecStopPost、中途SIGKILL的立即收尾、新候选容器身份登记与停写、锁内apply/准确SQL授权/最终ACTIVE交接、原策略恢复及受控清标记；本批也没有恢复/清除维护态的API。当前SIGKILL可能留下ARMED且部分原应用仍在运行，不能自报FROZEN；持久标记仅阻断后续冷启动，不证明当下所有writer都已停。三份unit及目标Ubuntu版本的有效输出、socket/daemon/VM重启和真实停止行为必须隔离实测，不能以mock/最新官方文档冒充现场认证。完整故障保护与安装过渡完成前，不接生产发布。
+
+分支 `feat/runtime-minimal-maintenance-guard-20261026` 基于dev1fa7bb21，本地待审、未提交远端。没有运行freeze/安装systemd/停写/SQL/AWS或任何生产动作，第一批现场缺口继续OPEN。参考：[systemd条件](https://www.freedesktop.org/software/systemd/man/systemd.unit.html)、[ExecStartPre与权限前缀](https://www.freedesktop.org/software/systemd/man/systemd.service.html)、[Docker重启策略](https://docs.docker.com/engine/containers/start-containers-automatically/)、[更新restart策略](https://docs.docker.com/reference/cli/docker/container/update/)；目标主机行为仍须实测。
+
+## 第二批起步：锁内重核和持久只读任务（源码已合并）
 
 **本次只实现执行前的任务基础，不实现 apply，也不把第一批现场缺口标为完成。**新增 `ops/release/release_job.py`，把任务生命周期留在 Runtime/Ops；只引用已有 plan、store、collector，不写 `.env`、发布 current/previous、数据库或业务容器策略。平台辅助件的当前源码清单增为四件：plan、collector、store、release_job；尚未安装，仍独立于固定17 Bundle，第三批需统一验真/安装/导入和权限读回，不允许直接塞入旧包。
 
@@ -18,9 +46,9 @@
 
 源码CLI仅 `precheck/status/abandon`，**均不是当前生产可用命令**；没有systemd任务启动、Mac入口、部署、迁移、回退、Docker策略或启动门禁。未来真实执行仍须安装门禁、锁内再次核验、准确SQL授权和中断保护；不能把本次READY直接递给旧deploy。root/OS/SSH仍是信任基础，本机文件和时钟不提供暂停中的C1/R2保证。
 
-本批新增 **23 个离线unittest方法**（job21、collector缓存边界2），覆盖锁竞争/可查询意图、漂移/过期/时钟、部分写/初始与终结同步未知、rename失败保留、重复尝试、未完结/固定身份确认、权限/链接/坏schema/容量及安全CLI。测试只用私有临时文件和观察替身，不调用Docker/DB/GitHub；未运行项目测试。仅审阅副本的Python3.10 grammar AST、导入方向、差异和引用静态检查。复用已合并CI的默认Release/3.10/Runtime/准确3.12.15入口，不修改工作流。
+本批新增 **23 个离线unittest方法**（job21、collector缓存边界2），覆盖锁竞争/可查询意图、漂移/过期/时钟、部分写/初始与终结同步未知、rename失败保留、重复尝试、未完结/固定身份确认、权限/链接/坏schema/容量及安全CLI。测试只用私有临时文件和观察替身，不调用Docker/DB/GitHub；本地未运行，后经上述PR #2982 / CI #7643验证通过。仅审阅副本的Python3.10 grammar AST、导入方向、差异和引用静态检查。复用已合并CI的默认Release/3.10/Runtime/准确3.12.15入口，不修改工作流。
 
-分支 `feat/runtime-minimal-job-precheck-20261026` 基于dev2b8677c6，本批本地待审，未提交远端；无生产操作。下一步以实际CI核验本批，再补真实维护门禁、受控执行及隔离故障验证。第一批现场/交付缺口与第二批执行缺口分别保持OPEN，三组研究继续暂停、不取消。
+分支 `feat/runtime-minimal-job-precheck-20261026` 已由上述PR合并；无生产操作。当前继续维护门禁、受控执行及隔离故障验证；以下只读任务行为仍不授予执行权。第一批现场/交付缺口与第二批执行缺口分别保持OPEN，三组研究继续暂停、不取消。
 
 ## 第一批续作：真实观察、展示和保存（源码已合并，隔离实采待验）
 
