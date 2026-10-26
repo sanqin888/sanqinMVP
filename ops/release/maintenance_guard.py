@@ -161,9 +161,10 @@ def _validate(value: dict) -> None:
     job._attempt(value["attemptId"])
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
-    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT")
-          and value["errorCode"] == ("FENCE_UNCONFIRMED" if value["phase"] == "INCIDENT" else None),
-          "invalid maintenance phase")
+    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT"), "invalid maintenance phase")
+    _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
+          if value["phase"] == "INCIDENT" else value["errorCode"] is None,
+          "invalid maintenance error code")
     rows = value["originalContainers"]
     _need(type(rows) is dict and set(rows) == set(SERVICES), "writer role set differs")
     for row in rows.values():
@@ -215,7 +216,9 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
         name = MARKER
     else:
         old = _read(root)
-        _need(old["phase"] == "ARMED" and value["phase"] in ("FROZEN", "INCIDENT")
+        allowed = {"ARMED": ("FROZEN", "INCIDENT"), "FROZEN": ("INCIDENT",),
+                   "INCIDENT": ("INCIDENT",)}
+        _need(value["phase"] in allowed[old["phase"]]
               and plan._utc(value["updatedAt"]) >= plan._utc(old["updatedAt"])
               and all(old[key] == value[key] for key in value
                       if key not in ("phase", "updatedAt", "errorCode")),
@@ -241,8 +244,7 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
 
 def check_startup() -> None:
     """No Docker/systemd calls or job lock: safe for daemon ExecStartPre."""
-    with storage._directory_fd(MAINTENANCE_DIR) as root:
-        _need(not os.listdir(root), "maintenance or partial evidence blocks cold startup")
+    storage.check_maintenance_clear(MAINTENANCE_DIR)
 
 
 def status() -> dict:
@@ -274,6 +276,46 @@ def _stop_best_effort(record: dict, run) -> bool:
             except Exception:
                 success = False  # Never interpreted as proof that a writer stopped.
     return success
+
+
+def cleanup_after_task(identity: str, service_result: str, *, controller=None,
+                       run=collector.command, now=collector.now_utc) -> dict:
+    """Only the task adapter may call this after verifying its systemd context.
+
+    No plan discovery, SQL, restore or clear. A missing pre-arm record is not
+    success; a foreign or invalid marker never authorizes stopping any writer.
+    """
+    job._root_operator()
+    identity = storage._plan_id(identity)
+    with storage._directory_fd(MAINTENANCE_DIR) as root:
+        if not os.listdir(root):
+            return {"outcome": "NO_RECORDED_MAINTENANCE", "canExecute": False}
+        record = _read(root)
+        _need(record["planId"] == identity, "task does not own this maintenance marker")
+    if service_result == "success" and record["phase"] == "FROZEN":
+        return {"outcome": "RECORDED_FROZEN", "canExecute": False}
+    if controller is None:
+        import deploy_release as controller
+    def bounded(args, **kwargs):
+        return run(args, timeout=min(kwargs.get("timeout", 15), 45))
+    with job._locked_directory(wait_seconds=10), storage._directory_fd(MAINTENANCE_DIR) as root:
+        record = _read(root)
+        _need(record["planId"] == identity, "maintenance owner changed before cleanup")
+        _stop_best_effort(record, bounded)
+        confirmed = False
+        try:
+            _assert_stopped(controller, record, bounded)
+            _installed_gate(bounded)
+            confirmed = True
+        except Exception:
+            confirmed = False
+        code = "TASK_FAILED_WRITERS_STOPPED" if confirmed else "FENCE_UNCONFIRMED"
+        incident = {**record, "phase": "INCIDENT", "updatedAt": job._timestamp(now),
+                    "errorCode": code}
+        _write(root, incident)
+        if not confirmed:
+            raise release.ReleaseContractError("FENCE_UNCONFIRMED: task cleanup requires review")
+        return {"outcome": code, "planId": identity, "canExecute": False}
 
 
 def freeze_for_plan(identity: str, *, controller=None, run=collector.command,

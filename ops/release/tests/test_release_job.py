@@ -30,6 +30,8 @@ class ReadOnlyJobTests(unittest.TestCase):
         self.jobs, self.plans = self.parent / "jobs", self.parent / "plans"
         self.jobs.mkdir(mode=0o700)
         self.plans.mkdir(mode=0o700)
+        self.maintenance = self.parent / "maintenance"
+        self.maintenance.mkdir(mode=0o700)
         for module, name, value in (
             (job, "JOB_DIR", self.jobs), (storage, "PLAN_DIR", self.plans),
             (storage, "OWNER_UID", os.getuid())):
@@ -293,6 +295,23 @@ class ReadOnlyJobTests(unittest.TestCase):
         with self.assertRaises(ReleaseContractError):
             self.precheck(identity)
         self.observer.assert_called_once()
+
+    def test_maintenance_evidence_blocks_new_precheck_before_record_or_observation(self):
+        (self.maintenance / "active.json").write_bytes(b"retained")
+        with self.assertRaises(ReleaseContractError):
+            self.precheck()
+        self.assertFalse(self.target.exists())
+        self.observer.assert_not_called()
+
+    def test_bounded_cleanup_lock_wait_keeps_default_nonblocking(self):
+        with job._locked_directory():
+            with patch.object(job.time, "monotonic", side_effect=[0, 0.2]), \
+                 self.assertRaises(ReleaseContractError):
+                with job._locked_directory(wait_seconds=0.1):
+                    self.fail("busy lock acquired")
+        with self.assertRaises(ReleaseContractError):
+            with job._locked_directory(wait_seconds=11):
+                self.fail("excessive wait accepted")
 
     def test_busy_plan_resource_lock_leaves_a_blocked_job(self):
         with storage.preparation_lock():

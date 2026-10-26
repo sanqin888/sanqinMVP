@@ -42,6 +42,14 @@ def _directory_fd(directory: Path | None = None):
         os.close(fd)
 
 
+def check_maintenance_clear(directory: Path | None = None) -> None:
+    """Only fixed internal paths; no record, residual or missing private directory."""
+    directory = PLAN_DIR.parent / "maintenance" if directory is None else directory
+    with _directory_fd(directory) as root:
+        if os.listdir(root):
+            raise ReleaseContractError("maintenance evidence blocks a new observation job")
+
+
 def _plan_id(value: str) -> str:
     if (not isinstance(value, str) or len(value) != 64
         or any(character not in "0123456789abcdef" for character in value)):
