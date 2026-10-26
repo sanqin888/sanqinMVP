@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 P10-F4-B5 有界历史只读解释器
 
+**2026-10-26 F4-B6：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** F4-B5 PR #2966经CI #7610成功合并ab49b2c8，Runtime1004/Release45/准确3.12.15回归336通过，含31新增测试，无修复。本批新增[旧入口与双布局门禁](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)：固定v2路径存在任何对象均在原全局锁内禁用v1消费/观察，并在持有期复核；v2缺失才保留原v1行为，权限错误不当缺失。6新增测试（history共37项），统一固定布局常量，无v2 writer/finalizer或生产入口切换。3份Python仅静态AST/差异审阅，未运行新测试/CI、未推送；6文档同步，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或root/VM/云/生产变化。
+
 **2026-10-25｜IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HISTORY_STRUCTURE_ONLY / C1_OPEN。**
 
 基于dev `f7108a584e92bed7e55835663b7d5d4ae2edeba6`。F4-B4设计[PR #2965](https://github.com/sanqin888/sanqinMVP/pull/2965)最终head ca0f2f3df62dd9b5d1a1b96c8db7db3bfd2a17e1 经[CI #7608](https://github.com/sanqin888/sanqinMVP/actions/runs/40236390823)成功（docs-only：1作业成功、9跳过），合并上述dev，无CI修复；该CI未运行Runtime测试。本批在feat/c1-p10f4b5-readonly-history-20261025实现，未推送、未运行新CI。

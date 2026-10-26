@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — C1 P10-F4-B6旧入口与双布局门禁
+
+**2026-10-26 F4-B6：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LEGACY_ENTRY_GATE_ONLY / C1_OPEN。** F4-B5 PR #2966经CI #7610成功合并ab49b2c8，Runtime1004/Release45/准确3.12.15回归336通过，含31新增测试，无修复。本批新增[旧入口与双布局门禁](Runtime更新-C1-P10-F4B6旧入口与双布局门禁.md)：固定v2路径存在任何对象均在原全局锁内禁用v1消费/观察，并在持有期复核；v2缺失才保留原v1行为，权限错误不当缺失。6新增测试（history共37项），统一固定布局常量，无v2 writer/finalizer或生产入口切换。3份Python仅静态AST/差异审阅，未运行新测试/CI、未推送；6文档同步，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或root/VM/云/生产变化。
+
 ## 2026-10-25 — C1 P10-F4-B5有界历史只读解释器
 
-**2026-10-25 F4-B5：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HISTORY_STRUCTURE_ONLY / C1_OPEN。** F4-B4设计PR #2965经CI #7608（docs-only，1成功/9跳过）合并f7108a58，无修复。本批新增[有界历史只读解释器](Runtime更新-C1-P10-F4B5有界历史只读解释器.md)及31项测试，复用原全局锁与固定v1/v2目录，限256项/单项16KiB/总4MiB，核对事件原bytes、序列/前序、claim/attempt/input及永久消费身份。所有处置声明未认证，UNKNOWN/旧ledger继续阻断，无writer/finalizer/旧入口切换。v1仅抽取私有BASE+lock scope，原消费API不变；Runtime/Ops单向依赖，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/数据库迁移变化。3份Python仅静态AST/差异审阅，未运行测试/新CI、未推送；6文档同步，无root/VM/云/生产动作。
+**F4-B5：MERGED_DEV / CI_VERIFIED_OFFLINE / HISTORY_STRUCTURE_ONLY / C1_OPEN。** [PR #2966](https://github.com/sanqin888/sanqinMVP/pull/2966)最终heade65ee0031a42e6e653c0394bb2c36b649752e5ef经[CI #7610](https://github.com/sanqin888/sanqinMVP/actions/runs/40274211158)成功合并ab49b2c82faaea25bd1b4c1b16794dae32da6e23；4成功/6跳过，Release45/Runtime1004/准确CPython3.12.15回归336通过，含31新增测试，无修复。固定双布局/共用锁下的有限事件只读解释器，处置声明未认证；v1只抽取共用scope，6文档同步，无writer/终结/依赖/迁移或生产变化。见[解释器记录](Runtime更新-C1-P10-F4B5有界历史只读解释器.md)。
 
 ## 2026-10-25 — C1 P10-F4-B4多事务历史与崩溃协议设计
 
