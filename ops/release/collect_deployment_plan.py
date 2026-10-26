@@ -80,13 +80,19 @@ def _canonical(value) -> bytes:
                       ensure_ascii=True, allow_nan=False).encode("ascii")
 
 
-def command(args: list[str], *, timeout: int = 60, limit: int = MAX_OUTPUT) -> str:
+def command(args: list[str], *, timeout: int = 60, limit: int = MAX_OUTPUT,
+            input_bytes: bytes | None = None) -> str:
     """Bound memory/output, suppress raw stderr and never invoke a shell here."""
+    _need(input_bytes is None or (type(input_bytes) is bytes and len(input_bytes) <= MAX_OUTPUT),
+          "command input exceeds budget")
     environment = {**os.environ, "DOCKER_HOST": "unix:///var/run/docker.sock",
                    "DOCKER_CONTEXT": ""}
-    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors, tempfile.TemporaryFile() as source:
+        if input_bytes is not None:
+            source.write(input_bytes)
+            source.seek(0)
         try:
-            result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=output,
+            result = subprocess.run(args, stdin=source if input_bytes is not None else subprocess.DEVNULL, stdout=output,
                                     stderr=errors, timeout=timeout, check=False, env=environment)
         except (subprocess.TimeoutExpired, OSError) as exc:
             raise release.ReleaseContractError("plan observation command unavailable or timed out") from exc
