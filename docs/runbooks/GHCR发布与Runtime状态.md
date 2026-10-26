@@ -1,6 +1,6 @@
 # GHCR 发布与 Runtime 状态
 
-> **2026-10-26 当前源码进度：COLLECTOR_IMPLEMENTED_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED。**前批 [PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 最终head8da41649 / [CI #7639](https://github.com/sanqin888/sanqinMVP/actions/runs/40370911563) SUCCESS，已合并dev7bb83d20。本批新增真实观察、固定计划展示/私有保存源码与42项离线测试，另加3.10 Release CI入口，尚未运行新测试。当前只有 prepare/show 的源码接口，没有 apply 或 Mac 入口；不是可在 VM 执行的新命令。详见[准确采集边界、计划目录和未完成项](../architecture/Runtime最小更新执行器实现方案.md)。旧发布器/CLI/17+Manifest/250/300 guard 未变，新工具未安装，第一批尚未验收，不能直接解除生产阻塞。
+> **2026-10-26 当前源码进度：JOB_PRECHECK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**采集/计划保存 [PR #2981](https://github.com/sanqin888/sanqinMVP/pull/2981) 最终head e584be77 / [CI #7641](https://github.com/sanqin888/sanqinMVP/actions/runs/40377187532) 10/10成功，已合并dev2b8677c6：默认及3.10.22下Release各111、Runtime1080、准确3.12.15回归412通过。本批本地补只读任务锁、持久意图/结果、同一计划缓存只验重核及状态查询，新增23项测试尚未运行。只有precheck/status/abandon源码，READY始终canExecute=false，不是ACTIVE/生产许可；未安装、没有apply/Mac/systemd门禁。见[源码边界与事故记录语义](../architecture/Runtime最小更新执行器实现方案.md)。旧发布入口、17+Manifest和250/300 guard仍有效，第一批现场缺口/第二批受控执行未验收，不能据此解除生产阻塞。
 
 > **2026-10-26 当前主线：**依用户决定先完成[最小更新执行器与暂停恢复计划](../architecture/Runtime最小更新执行器与暂停恢复计划.md)，以 MacBook/SSH 上“预检一次、确认执行一次”恢复正常代码更新。C1 来源/输入固定/受保护加载、自建 CPython 3.12.15 及完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均 **PAUSED_NOT_CANCELLED**；待最小执行器完成且真实发布成功后复审继续。下文描述现役发布器与原高保证路线，不能据此把三项暂停工作重新设为最小执行器前置；现役校验未改，新执行器/工具过渡未完成，本批无部署或生产放行。
 

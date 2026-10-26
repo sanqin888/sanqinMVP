@@ -26,13 +26,15 @@ def _check(info, *, directory: bool = False) -> None:
 
 
 @contextlib.contextmanager
-def _directory_fd():
+def _directory_fd(directory: Path | None = None):
+    # Only internal callers supply a fixed private directory; no CLI path input.
+    directory = PLAN_DIR if directory is None else directory
     # Installation provisions the private parent and directory; never mkdir here.
-    for ancestor in (PLAN_DIR, *PLAN_DIR.parents):
+    for ancestor in (directory, *directory.parents):
         if ancestor.is_symlink():
             raise ReleaseContractError("symlink in plan storage path")
-    _check(PLAN_DIR.parent.stat(), directory=True)
-    fd = os.open(PLAN_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    _check(directory.parent.stat(), directory=True)
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         _check(os.fstat(fd), directory=True)
         yield fd

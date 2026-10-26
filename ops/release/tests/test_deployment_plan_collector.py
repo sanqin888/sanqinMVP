@@ -85,6 +85,24 @@ class CollectorFlowTests(unittest.TestCase):
             collector._pinned(self.values["candidate"]["images"]["sanq-api"]), self.run)
         self.assertNotIn("canExecute=true", raw.decode())
 
+    def test_precheck_uses_only_cached_digest_images_without_pulling(self):
+        raw = collector.collect(NEW, controller=self.controller, run=self.run,
+                                fetch=self.fetch, cache_images=False)
+        self.assertFalse(json.loads(raw)["canExecute"])
+        self.assertEqual(self.inspect_image.call_count, 2)
+        self.probe.assert_called_once()
+        self.assertEqual(self.run.call_count, 1)
+        self.assertEqual(self.run.call_args.args[0][0], "bash")
+
+    def test_missing_cached_image_blocks_without_pull_or_probe(self):
+        self.inspect_image.side_effect = release.ReleaseContractError("cache missing")
+        with self.assertRaises(release.ReleaseContractError):
+            collector.collect(NEW, controller=self.controller, run=self.run,
+                              fetch=self.fetch, cache_images=False)
+        self.probe.assert_not_called()
+        self.assertTrue(all(call.args[0][:2] != ["docker", "pull"]
+                            for call in self.run.call_args_list))
+
     def test_current_configuration_state_or_environment_drift_blocks(self):
         for position in (0, 1, 2):
             after = list(copy.deepcopy(self.snapshot.return_value))

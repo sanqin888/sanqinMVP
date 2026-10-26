@@ -288,8 +288,12 @@ def _probe_sql(pinned: str, run) -> list:
         raise
 
 
-def collect(target_sha: str, *, controller=None, run=command, fetch=None) -> bytes:
-    """Collect actual observations. Caller must separately authorize a real run."""
+def collect(target_sha: str, *, controller=None, run=command, fetch=None,
+            cache_images: bool = True) -> bytes:
+    """Collect observations; cache_images=False never pulls a missing digest.
+
+    Caller must separately authorize a real run. No apply authority is granted.
+    """
     target_sha = release.require_sha(target_sha)
     _need(os.geteuid() == 0, "plan preparation requires the authorized root operator")
     _need(not any(os.environ.get(key) for key in (
@@ -315,7 +319,8 @@ def collect(target_sha: str, *, controller=None, run=command, fetch=None) -> byt
     backup = _backup(controller)
     for image in candidate["images"].values():
         pinned = _pinned(image)
-        run(["docker", "pull", pinned], timeout=300)
+        if cache_images:
+            run(["docker", "pull", pinned], timeout=300)
         _inspect_image(pinned, pinned, target_sha, run)
     inventory = _probe_sql(_pinned(candidate["images"]["sanq-api"]), run)
     commit = fetch(f"/repos/{release.REPOSITORY}/git/commits/{target_sha}")

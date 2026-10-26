@@ -1,8 +1,28 @@
 # Runtime 最小更新执行器实现方案
 
-**2026-10-26 当前进度：COLLECTOR_IMPLEMENTED_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED / PRODUCTION_NOT_AUTHORIZED。**本次基于已合并 dev `7bb83d20808155c6056d7b1b5eb9bbe52e983e0a`，在原第一批内补真实观察适配器、计划展示和私有保存源码。前批 [PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 最终 head `8da416499add108bee4b4586ce6eb53a1aef980a` 经 [CI #7639](https://github.com/sanqin888/sanqinMVP/actions/runs/40370911563) SUCCESS（4 成功/6 按范围跳过），Release69/Runtime1080/准确3.12.15回归412通过后合并；该结果不覆盖本批新增源码。下文原批 CI #7638/本地状态按历史时点保留，当前状态以本段为准。
+**2026-10-26 当前进度：JOB_PRECHECK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批采集/展示/保存 [PR #2981](https://github.com/sanqin888/sanqinMVP/pull/2981) 最终 head `e584be778a238cd53f862dc7d14d8b00408d54e7` 经 [CI #7641](https://github.com/sanqin888/sanqinMVP/actions/runs/40377187532) SUCCESS（10/10作业成功），Release111 在默认 Python 和 CPython3.10.22 下各通过111项，Runtime1080、准确CPython3.12.15回归412通过，无修复；已合并 dev `2b8677c6314843fe5746fa96170f630e1b43ab46`。这仅是前批 SOURCE_CI_VERIFIED，未完成真实主机采集或安装。基于该准确合并状态，本批开始第二批中可独立审阅的只读任务基础；第一批实际平台/交付导入合同及隔离实采缺口仍 OPEN，不能据此进入生产写入。
 
-## 第一批续作：真实观察、展示和保存（本地待审）
+## 第二批起步：锁内重核和持久只读任务（本地待审）
+
+**本次只实现执行前的任务基础，不实现 apply，也不把第一批现场缺口标为完成。**新增 `ops/release/release_job.py`，把任务生命周期留在 Runtime/Ops；只引用已有 plan、store、collector，不写 `.env`、发布 current/previous、数据库或业务容器策略。平台辅助件的当前源码清单增为四件：plan、collector、store、release_job；尚未安装，仍独立于固定17 Bundle，第三批需统一验真/安装/导入和权限读回，不允许直接塞入旧包。
+
+| 范围 | 已编写行为 |
+| --- | --- |
+| 固定记录 | 拟用 `/opt/sanq/deploy-state/jobs/<plan-id>.json`，jobs及父目录预先 root:0700，文件root:0600/普通单硬链接/非链接。单条4KiB、最多1024条，不自动清理或越过容量；目录不创建、不改权限 |
+| 独占与观察锁 | jobs内稳定 `.release.lock` 的非阻塞 flock；按“任务锁→原计划资源锁”顺序重核。状态查询不等待正在运行的任务锁。它不是维护 fence，不拦截旧手工部署/直接Docker，也不证明SIGKILL/reboot后业务已停写 |
+| 持久阶段 | 每个计划只创建一次尝试，固定随机attempt-id；`REVALIDATING → READY/BLOCKED`。意图先fsync文件/目录并读回，之后才采集；终结用私有临时文件+fsync+replace+目录fsync+读回，不覆盖尝试身份，不重放同一plan-id |
+| 准确重核 | 从固定私有计划目录按另行保留的plan-id读取canonical原件，先检查时效/时钟，再完整观察相同目标。新采集选项 `cache_images=False` 只inspect已缓存digest；缺失拒绝，不pull/build/改选latest。比较当前、候选、运行合同、SQL、历史/pending、备份、环境，并验证观察时间落在任务区间 |
+| 结果与异常 | `kind=sanq-read-only-precheck`、`canExecute=false` 固定。READY只表示观察匹配，不是ACTIVE、SQL批准、持久性豁免或后续执行许可。错误只存固定code，不保存命令原输出/secret；中断记录BLOCKED后传播，无finally启动业务 |
+| 未明记录 | 任何REVALIDATING、残件、未知/坏记录阻断新尝试。不会根据PID消失、锁释放或SSH断线自动清除。意图写入未知时不开始观察；最终rename/fsync未知时不重试或改写为FAILED，保留实际对象。查询仅反映当前磁盘快照，即使读到READY，也不能推断前次CLI已报告耐久成功或可以部署 |
+| 有限确认 | 源码 `abandon <plan-id> --attempt-id <id>` 只允许root在任务锁可取得、同一未完结READ-ONLY记录下记BLOCKED/ABANDONED_OBSERVATION。它不删除记录/残件/探测容器，不清维护态或事故，不接受执行型/未知schema记录；解析不了的残件仍需人工审查，不能自动修复 |
+
+源码CLI仅 `precheck/status/abandon`，**均不是当前生产可用命令**；没有systemd任务启动、Mac入口、部署、迁移、回退、Docker策略或启动门禁。未来真实执行仍须安装门禁、锁内再次核验、准确SQL授权和中断保护；不能把本次READY直接递给旧deploy。root/OS/SSH仍是信任基础，本机文件和时钟不提供暂停中的C1/R2保证。
+
+本批新增 **23 个离线unittest方法**（job21、collector缓存边界2），覆盖锁竞争/可查询意图、漂移/过期/时钟、部分写/初始与终结同步未知、rename失败保留、重复尝试、未完结/固定身份确认、权限/链接/坏schema/容量及安全CLI。测试只用私有临时文件和观察替身，不调用Docker/DB/GitHub；未运行项目测试。仅审阅副本的Python3.10 grammar AST、导入方向、差异和引用静态检查。复用已合并CI的默认Release/3.10/Runtime/准确3.12.15入口，不修改工作流。
+
+分支 `feat/runtime-minimal-job-precheck-20261026` 基于dev2b8677c6，本批本地待审，未提交远端；无生产操作。下一步以实际CI核验本批，再补真实维护门禁、受控执行及隔离故障验证。第一批现场/交付缺口与第二批执行缺口分别保持OPEN，三组研究继续暂停、不取消。
+
+## 第一批续作：真实观察、展示和保存（源码已合并，隔离实采待验）
 
 内部 helper 固定为三件：本批新增 `collect_deployment_plan.py`、`deployment_plan_store.py` 及前批 `deployment_plan.py`，同属 `ops/release/`。它们复用现有 `release_contract.py` 和 `deploy_release.py`；不复制发布控制器，不写 current/previous。新增件独立于现有 **17+Manifest**，尚未安装或加入 Bundle；第三批须交付可验证的准确三件及其所需现有模块版本、安装位置/导入路径/权限/读回合同，不能把当前源码直接放进旧 Runtime 后提权执行。
 
@@ -30,9 +50,9 @@
 
 本批新增 **42 个离线 unittest 方法**：26 个采集/CLI/观察适配测试和16个存储失败测试。CI 测试使用隔离临时文件/模拟 Docker、SQL、GitHub；其中 Node 文件程序只对可丢弃 fixture 执行，验证原 SQL bytes/Git blob 与拒绝额外成员/链接，不访问镜像或数据库。现有 ops-checks 自动发现新测试，另加 CPython3.10 Release 离线回归入口（同一 Release lane 显式 setup Node20，仅运行可丢弃 SQL fixture）；原默认 Release、Runtime、准确3.12.15 C1 回归完整保留。因本批修改 ci.yml，既有 change_scope 会选择全部 CI lanes；不修改选择器或跳过必需检查。3.10 lane 只验证该 CI 解释器，不冒充实际主机 patch/依赖或生产安装认证。
 
-MCP-workspace 不开放 lint/build/test，本批没有运行项目测试。仅对源码审阅副本作 Python3.10 grammar AST、内嵌 Node 语法及差异/引用静态检查；不能标 CI_VERIFIED。分支 `feat/runtime-minimal-plan-collector-20261026` 本地待审，未提交远端，无生产 Docker/SQL/文件/root/AWS 操作。
+前批在 MCP-workspace 仅做静态审阅，后经上述 PR #2981 / CI #7641 验证并合并；此处原“未测试/未提交”状态已由真实 CI 更新。没有生产 Docker/SQL/文件/root/AWS 操作，也未安装工具。
 
-**第一批仍 OPEN：**待最终 head 的 Release/Runtime/新增3.10 CI 实际通过、系统解释器/交付导入合同核实及隔离环境真实采集证据。旧 deploy/rollback/CLI 行为、250/300 guard 和17 Bundle/Manifest 均未改；本次只让新只读计划按两个实际运行对象判断兼容，不能据此绕过旧入口发布。旧执行入口替换、锁内 apply、任务/中断门禁属于第二批，安装/Mac 薄入口/一次性工具过渡属于第三批。三组研究继续暂停、不取消。
+**第一批仍 OPEN：**最终 head 的 Release/Runtime/新增3.10 CI 已通过；仍待系统实际版本/交付导入合同核实及隔离环境真实采集证据。旧 deploy/rollback/CLI 行为、250/300 guard 和17 Bundle/Manifest 均未改；本次只让新只读计划按两个实际运行对象判断兼容，不能据此绕过旧入口发布。旧执行入口替换、锁内 apply、任务/中断门禁属于第二批，安装/Mac 薄入口/一次性工具过渡属于第三批。三组研究继续暂停、不取消。
 
 以下为前批合同和最初方案的历史记录。
 
