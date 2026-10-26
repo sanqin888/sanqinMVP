@@ -1,5 +1,28 @@
 # Runtime 最小更新执行器实现方案
 
+**2026-10-26 源码 CI 记录：SOURCE_CI_VERIFIED / BATCH1_OPEN / NOT_INSTALLED。**[PR #2980](https://github.com/sanqin888/sanqinMVP/pull/2980) 源码 head `c26c643cd7fd309e28a3d6cff9cf70a8b769178a` 经 [CI #7638](https://github.com/sanqin888/sanqinMVP/actions/runs/40370375474) SUCCESS：ops job121739276109 实际 Release69（含本批24）/Runtime1080/准确CPython3.12.15回归412全部通过，4作业成功、6按范围跳过，无源码修复。本续记仅补证据；最终head检查/合并以PR事件为准，不从CI推出3.10运行兼容或生产就绪。下文 TESTS_NOT_RUN/未推送是原本地审阅时点，真实采集/CLI保存仍未完成，三组研究继续暂停保留。
+
+## 2026-10-26 第一阶段起步：只读计划合同（本地）
+
+**SOURCE_CONTRACT_LOCAL / TESTS_NOT_RUN / BATCH1_OPEN / NOT_INSTALLED / PRODUCTION_NOT_AUTHORIZED。**基于 dev `bd9f254e8a8dc503a26b0835119da02c09f4281e`。方案 PR [#2979](https://github.com/sanqin888/sanqinMVP/pull/2979) 最终 head `ef63d474689e4b3709871764cd6396dfc3d24162` 经 [CI #7636](https://github.com/sanqin888/sanqinMVP/actions/runs/40364596712) SUCCESS（1 成功/9 按文档范围跳过）合并；这是方案文档验证，不是本批源码 CI。
+
+本次在 Runtime/Ops owner 内先实现可审阅的准确计划合同：现有 release_contract 新增 exact main 候选/配对 seal/发布 run/最新 main push CI/祖先关系只读核验，不重新选择 latest，也不从全仓 files/commit 数量推断兼容。新增纯计划模块 `ops/release/deployment_plan.py`，与原发布控制器分离，仅负责具体运行对象、SQL 原字节清单、数据库迁移历史与固定计划的结构/一致性；没有第二套部署流程或 current/previous 写入权。
+
+首版计划 v1 使用 canonical JSON 原字节及另行保存的 plan-id：固定当前 app/runtime/Manifest/release-state/配置摘要、目标成对 digest 与发布/CI 身份、Compose/readiness 两个实际合同文件摘要、SQL 名称/顺序/SHA256/Git blob、历史与 pending 集、备份身份/26h 时效、环境键名、UTC 时间。拒绝重复 JSON/未知字段/缺项/篡改、失败或非前缀迁移历史和过期备份；`canExecute=false` 固定。计划摘要只证明匹配原件，不能认证观察来源、SQL 安全或生产权限。
+
+`fetch_runtime_files` 固定 exact SHA/路径并校验 GitHub 原字节、大小和 Git blob；`runtime_contract` 只接受首版 Compose/readiness 原合同相同，改变即 NEEDS_PLATFORM_UPDATE；SQL 原字节 inventory 与独立固定的完整 Git tree 对照，拒绝截断、漏项与链接对象。Git tree 的 commit 绑定与输入观察真实性仍由后续真实采集器负责，不接受“字段合法就是已真实核验”的推断。
+
+### 本批固定范围与剩余工作
+
+- 本批只新增上述纯计划模块及 `test_deployment_plan.py`，在原 release_contract 新增只读 helper；没有改旧 deploy/rollback/plan CLI、旧 250/300 guard 或 Manifest 校验，更未解除生产发布阻塞。该 guard 的正式替换必须在第一批真实采集/计划接线时与完整当前安装校验一起完成。
+- 新模块是 Runtime/Ops 的内部纯合同，不属于现有 17 Bundle。本批不新增第 18 项、不安装辅助件；后续交付件限定为计划模块、已拟定的 release_job/Mac 薄入口/有限 installer 与必要 unit，具体安装位置和认证交付仍在实现前审阅。
+- 计划 v1 尚未持久写入。后续计划/job 记录只能关联 plan-id/尝试/阶段，不拥有第二套发布 current/previous；原 release-state 保持唯一权威。目录/owner/锁与崩溃间隙由后续接线明确，不创建生产目录。
+- **第一批仍 OPEN：**缺真实只读采集（当前 17+Manifest/配置、Docker 候选 SQL/源树绑定、DB 历史、备份/环境）、计划展示/私有保存，以及现有系统 Python 的实际 Release 回归。当前只做 Python 3.10 grammar 的 AST 静态解析，不宣布已选定/认证生产解释器或完成 3.10 执行兼容。
+- 24 个新 unittest 方法覆盖 exact 目标不漂移、300 文件/500 commit 不误阻、伪造/较新失败或重复 CI 身份、运行对象/SQL 源树不符、计划篡改/重复 JSON/错误 pending/历史、备份时效与环境缺项；测试已编写、未运行。本地仅 AST/导入方向/空白/差异静态审阅；授权远端后由现有 ops-checks 自动运行 Release/Runtime 与原 3.12.15 回归，不修改或禁用 CI。
+- 按 A 类内部兼容新增处理，无外部消费者、持久迁移、兼容双写/删除或跨上下文边变化；不触及业务依赖、DB/Uploads、暂停研究或任何 Host/AWS/生产状态。新功能分支 `feat/runtime-minimal-executor-plan-contract-20261026` 本地待审，未提交远端。
+
+以下保留方案审批时的设计正文与当时状态；源码进度、第一批未完成项以上述当前记录为准。
+
 > **2026-10-26（America/Toronto）｜PLAN_DOCUMENTED_LOCAL / EXECUTOR_NOT_IMPLEMENTED / PRODUCTION_NOT_AUTHORIZED。**以 `dev@343fefc7dce5849ca3401981ee6174f4f9d2ec59` 为准确基线。前置文档 [PR #2978](https://github.com/sanqin888/sanqinMVP/pull/2978) 的最终 head `d2a739ecf36610fddf80564a26d52d25c053579c` 经 [CI #7633](https://github.com/sanqin888/sanqinMVP/actions/runs/40360253396) SUCCESS（1 成功、9 按文档范围跳过，无修复），已合并。本方案落实[当前优先级与暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)，仅制作实现方案，不开始执行器代码或生产操作。
 
 ## 1. 范围与交付目标
