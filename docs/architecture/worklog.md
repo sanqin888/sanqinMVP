@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — C1 P10-F4-B11受保护writer候选作用域
+
+**2026-10-26 F4-B11：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / HELD_WRITER_ASSEMBLY_ONLY / C1_OPEN。** F4-B10 PR #2971经CI #7620成功合并dc195aba，Runtime1042/Release45/准确3.12.15回归374通过，含16新增测试，无修复。本批新增[受保护writer候选作用域](Runtime更新-C1-P10-F4B11受保护writer候选作用域.md)及16项测试：固定三批准文件与独立双pin、原进程匹配、源码祖先/文件FD与私有模块scope保持至consumer退出，源/输入退出复核异常传播。仅装配，无消费/Flow/效果许可；旧九源CLI不变。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+
 ## 2026-10-26 — C1 P10-F4-B10 writer有限来源加载
 
-**2026-10-26 F4-B10：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / WRITER_ASSEMBLY_ONLY / C1_OPEN。** F4-B9 PR #2970经CI #7618（docs-only，1成功/9跳过）合并7516529d，无修复。本批新增[writer有限来源加载](Runtime更新-C1-P10-F4B10-writer有限来源加载.md)及16项测试：固定8项目模块+不执行bootstrap、精确原bytes清单/双pin、私有writer命名空间、有限受信stdlib、同组核心重解析；无文件/消费/Flow效果。旧三模块API与选择不变，仅抽取私有引擎。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、九源CLI/v1输入/17 Bundle、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+**2026-10-26 F4-B10：MERGED_DEV / CI_VERIFIED_OFFLINE / WRITER_ASSEMBLY_ONLY / C1_OPEN。** [PR #2971](https://github.com/sanqin888/sanqinMVP/pull/2971)最终headb06c4fc386298c53ff4421529cf6f14ea7ecfe1d经[CI #7620](https://github.com/sanqin888/sanqinMVP/actions/runs/40327593654)成功（4成功/6跳过），合并dc195aba5e45d2053fda858507e9616add457902。Release45/Runtime1042/准确CPython3.12.15回归374全部通过，含16新增测试，无修复。固定八模块+未执行bootstrap私有加载及同组类型、旧三模块入口保持；5文档同步，无消费/Flow/依赖/迁移或生产变化；见[来源加载记录](Runtime更新-C1-P10-F4B10-writer有限来源加载.md)。
 
 ## 2026-10-26 — C1 P10-F4-B9可信组合与终结前置审阅
 
