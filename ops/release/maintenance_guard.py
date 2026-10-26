@@ -111,14 +111,14 @@ def _installed_gate(run) -> None:
           "live-restore or an unsupported orchestrator requires separate review")
 
 
-def _inspect(identifier: str, service: str, sha: str, run) -> dict:
+def _inspect(identifier: str, service: str, sha: str, run, *, reference: str | None = None) -> dict:
     info = collector._json(run(["docker", "inspect", "--format", "{{json .}}", _id(identifier)]))
     _need(type(info) is dict and info.get("Id") == identifier
           and type(info.get("Config")) is dict and type(info["Config"].get("Labels")) is dict
           and info["Config"]["Labels"].get("com.docker.compose.project") == "sanq-app"
           and info["Config"]["Labels"].get("com.docker.compose.service") == service
           and info["Config"].get("Image") ==
-          f"ghcr.io/sanqin888/{'sanq-web' if service == 'web' else 'sanq-api'}:{sha}",
+          (reference or f"ghcr.io/sanqin888/{'sanq-web' if service == 'web' else 'sanq-api'}:{sha}"),
           "container role, project or release differs")
     release.checked_digest(info.get("Image"))
     _need(type(info.get("State")) is dict and type(info.get("HostConfig")) is dict,
@@ -150,18 +150,23 @@ def _original_containers(controller, sha: str, paired: dict, run) -> dict:
 
 
 def _validate(value: dict) -> None:
-    _need(type(value) is dict and set(value) == {
+    fields = {
         "schemaVersion", "kind", "planId", "attemptId", "observedApplicationSha",
         "originalContainers", "backupUnits", "phase", "createdAt", "updatedAt",
-        "errorCode", "canExecute"}, "maintenance fields differ")
-    _need(type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+        "errorCode", "canExecute"}
+    _need(type(value) is dict, "maintenance record differs")
+    version = value.get("schemaVersion")
+    _need(type(version) is int and version in (1, 2)
+          and set(value) == (fields if version == 1 else fields | {"candidate"}),
+          "maintenance fields differ")
+    _need(type(value["schemaVersion"]) is int
           and value["kind"] == "sanq-maintenance-marker" and value["canExecute"] is False,
           "invalid maintenance record kind")
     storage._plan_id(value["planId"])
     job._attempt(value["attemptId"])
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
-    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT"), "invalid maintenance phase")
+    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CANDIDATES_REGISTERED"), "invalid maintenance phase")
     _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
           if value["phase"] == "INCIDENT" else value["errorCode"] is None,
           "invalid maintenance error code")
@@ -174,6 +179,13 @@ def _validate(value: dict) -> None:
         release.checked_digest(row["imageId"])
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
+    if version == 1:
+        _need(value["phase"] != "CANDIDATES_REGISTERED", "candidate registration is missing")
+    else:
+        _need(value["phase"] in ("CANDIDATES_REGISTERED", "INCIDENT"), "invalid candidate phase")
+        _candidate_record(value["candidate"], rows)
+        _need(value["candidate"]["release"]["sourceSha"] != value["observedApplicationSha"],
+              "candidate release is unchanged")
     backups = value["backupUnits"]
     _need(type(backups) is dict and set(backups) == {"timer", "service"}, "backup record differs")
     for name, fields in backups.items():
@@ -216,12 +228,17 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
         name = MARKER
     else:
         old = _read(root)
+        registering = (old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
+                       and value["schemaVersion"] == 2
+                       and value["phase"] == "CANDIDATES_REGISTERED")
         allowed = {"ARMED": ("FROZEN", "INCIDENT"), "FROZEN": ("INCIDENT",),
-                   "INCIDENT": ("INCIDENT",)}
-        _need(value["phase"] in allowed[old["phase"]]
+                   "CANDIDATES_REGISTERED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
+        ignored = {"phase", "updatedAt", "errorCode"}
+        if registering:
+            ignored |= {"schemaVersion", "candidate"}
+        _need((registering or value["phase"] in allowed[old["phase"]])
               and plan._utc(value["updatedAt"]) >= plan._utc(old["updatedAt"])
-              and all(old[key] == value[key] for key in value
-                      if key not in ("phase", "updatedAt", "errorCode")),
+              and all(old.get(key) == value[key] for key in value if key not in ignored),
               "invalid maintenance transition")
         name = ".maintenance-" + uuid.uuid4().hex + ".tmp"
     fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
@@ -255,6 +272,9 @@ def status() -> dict:
 
 
 def _assert_stopped(controller, record: dict, run) -> None:
+    if record["schemaVersion"] == 2:
+        _assert_registered_stopped(record, run)
+        return
     for service, row in record["originalContainers"].items():
         _need(_container_id(controller, service, run) == row["containerId"], "writer was replaced")
         info = _inspect(row["containerId"], service, record["observedApplicationSha"], run)
@@ -268,7 +288,10 @@ def _assert_stopped(controller, record: dict, run) -> None:
 
 def _stop_best_effort(record: dict, run) -> bool:
     success = True
-    for row in record["originalContainers"].values():
+    rows = list(record["originalContainers"].values())
+    if record["schemaVersion"] == 2:
+        rows = list(record["candidate"]["containers"].values()) + rows
+    for row in rows:
         for args in (["docker", "update", "--restart=no", row["containerId"]],
                      ["docker", "stop", "--time", "30", row["containerId"]]):
             try:
@@ -276,6 +299,117 @@ def _stop_best_effort(record: dict, run) -> bool:
             except Exception:
                 success = False  # Never interpreted as proof that a writer stopped.
     return success
+
+
+def _candidate_record(candidate: dict, originals: dict) -> None:
+    _need(type(candidate) is dict and set(candidate) == {"release", "containers"},
+          "candidate registration differs")
+    plan._candidate(candidate["release"])
+    rows = candidate["containers"]
+    _need(type(rows) is dict and set(rows) == set(SERVICES), "candidate roles differ")
+    for row in rows.values():
+        _need(type(row) is dict and set(row) == {"containerId", "imageId"},
+              "candidate identity fields differ")
+        _id(row["containerId"])
+        release.checked_digest(row["imageId"])
+    _need(rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"],
+          "candidate API/worker images differ")
+    identifiers = [row["containerId"] for row in originals.values()]
+    identifiers += [row["containerId"] for row in rows.values()]
+    _need(len(set(identifiers)) == 6, "candidate identities overlap")
+
+
+def _role_ids(service: str, run) -> set[str]:
+    raw = run(["docker", "ps", "-a", "--no-trunc",
+               "--filter", "label=com.docker.compose.project=sanq-app",
+               "--filter", "label=com.docker.compose.service=" + service,
+               "--format", "{{.ID}}"])
+    _need(type(raw) is str and len(raw) <= 1024, "writer inventory exceeds budget")
+    identifiers = raw.splitlines()
+    _need(len(identifiers) <= 2 and len(set(identifiers)) == len(identifiers),
+          "writer inventory is ambiguous")
+    return {_id(item) for item in identifiers}
+
+
+def _stopped_identity(info: dict, row: dict, *, created: bool = False) -> None:
+    state = info["State"]
+    _need(info["Image"] == row["imageId"]
+          and info["HostConfig"]["RestartPolicy"] == {"Name": "no", "MaximumRetryCount": 0}
+          and state.get("Status") in (("created", "exited") if created else ("exited",))
+          and state.get("Running") is False and state.get("Restarting") is False
+          and state.get("Paused") is False, "registered writer stop is unconfirmed")
+
+
+def _assert_registered_stopped(record: dict, run) -> None:
+    """Require exact candidates; confirm absent originals by full role inventory."""
+    candidate = record["candidate"]
+    for service in SERVICES:
+        original = record["originalContainers"][service]
+        row = candidate["containers"][service]
+        identifiers = _role_ids(service, run)
+        _need(row["containerId"] in identifiers
+              and identifiers <= {original["containerId"], row["containerId"]},
+              "unknown, missing or replaced candidate writer")
+        if original["containerId"] in identifiers:
+            old = _inspect(original["containerId"], service, record["observedApplicationSha"], run)
+            _stopped_identity(old, original)
+        name = "sanq-web" if service == "web" else "sanq-api"
+        image = candidate["release"]["images"][name]
+        sha = candidate["release"]["sourceSha"]
+        info = _inspect(row["containerId"], service, sha, run, reference=collector._pinned(image))
+        _stopped_identity(info, row, created=True)
+
+
+def register_created_candidates(identity: str, attempt: str, identifiers: dict, *,
+                                run=collector.command, now=collector.now_utc) -> dict:
+    """Unwired internal adapter: register all stopped candidates BEFORE any start.
+
+    Never creates/starts containers, changes policy, writes release state or authorizes
+    SQL. Future controller must create with restart=no and never start on unknown
+    registration durability. An existing registration is never replayed or replaced.
+    """
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    _need(type(identifiers) is dict and set(identifiers) == set(SERVICES),
+          "exact candidate roles required")
+    for identifier in identifiers.values():
+        _id(identifier)
+    with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+        record = _read(root)
+        _need(record["planId"] == identity and record["attemptId"] == attempt
+              and record["schemaVersion"] == 1 and record["phase"] == "FROZEN",
+              "candidate registration requires the same frozen attempt")
+        _installed_gate(run)
+        original_plan = plan.validate_plan(storage.load_plan(identity), identity)
+        _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
+              "plan baseline differs from maintenance")
+        candidate = original_plan["candidate"]
+        _need(candidate["sourceSha"] != record["observedApplicationSha"], "no new candidate")
+        rows = {}
+        for service in SERVICES:
+            name = "sanq-web" if service == "web" else "sanq-api"
+            image = candidate["images"][name]
+            sha = candidate["sourceSha"]
+            info = _inspect(identifiers[service], service, sha, run,
+                            reference=collector._pinned(image))
+            _need(info["State"].get("Status") == "created", "candidate was already started")
+            row = {"containerId": identifiers[service], "imageId": info["Image"]}
+            _stopped_identity(info, row, created=True)
+            collector._inspect_image(info["Image"], collector._pinned(image), sha, run)
+            rows[service] = row
+        _need(rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"],
+              "API and worker must share the exact image")
+        registered = {**record, "schemaVersion": 2, "phase": "CANDIDATES_REGISTERED",
+                      "updatedAt": job._timestamp(now),
+                      "candidate": {"release": candidate, "containers": rows}}
+        _validate(registered)
+        _assert_registered_stopped(registered, run)
+        _need(_backup(run) == record["backupUnits"], "backup state changed")
+        _write(root, registered)  # Unknown fsync/readback never permits a start.
+        _assert_registered_stopped(registered, run)
+        _installed_gate(run)
+        return registered
 
 
 def cleanup_after_task(identity: str, service_result: str, *, controller=None,
