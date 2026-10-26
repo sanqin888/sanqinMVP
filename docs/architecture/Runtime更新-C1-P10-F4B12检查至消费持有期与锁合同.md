@@ -1,8 +1,8 @@
 # Runtime 更新 — C1 P10-F4-B12 检查至消费持有期与锁合同
 
-**2026-10-26｜CONTRACT_AUDIT_COMPLETE_LOCAL / HELD_REVIEW_NOT_IMPLEMENTED / REAL_ADMISSION_NOT_IMPLEMENTED / C1_OPEN。**
+**2026-10-26 F4-B12：MERGED_DEV / CI_VERIFIED_DOCS / CONTRACT_AUDIT_COMPLETE / REAL_ADMISSION_NOT_IMPLEMENTED / C1_OPEN。** [PR #2976](https://github.com/sanqin888/sanqinMVP/pull/2976) 最终head08bcca56c18564b6af85f806869a9cff387f5d96经 [CI #7629](https://github.com/sanqin888/sanqinMVP/actions/runs/40340308379) 成功，docs-only 1成功/9按范围跳过，无修复；合并dev61bb0e484f0748646ac5740bb2d69d31c85b07e4。五份文档明确[检查至消费持有期与锁合同](Runtime更新-C1-P10-F4B12检查至消费持有期与锁合同.md)：F2/F3返回前关闭FD、消费独立取锁；一次锁/动作前重检及HANDOFF交接，旧.handoff.lock与normal-update.lock不同，发布检查8个新增项目依赖及sys.path副作用仍阻止直接扩loader。完整保留R2 #2975，归档B11实际CI；无源码/依赖/迁移、owner/依赖图/债务/scanner基线或生产变化，未运行新Runtime测试。
 
-基线为最新 `dev@e01c921c339a49de7a9855e233c11c21d32c17c8`，包含 C1 F4-B11 与 R2 PR #2975 的阶段/B1 审计。本批分支 `docs/c1-p10f4b12-held-review-admission-contract-20261026`。仅审阅源码与合同、同步进度；没有新执行入口或测试，没有运行项目测试、创建 root 对象或执行效果，未推送。
+基线为最新 `dev@e01c921c339a49de7a9855e233c11c21d32c17c8`，包含 C1 F4-B11 与 R2 PR #2975 的阶段/B1 审计。本批分支 `docs/c1-p10f4b12-held-review-admission-contract-20261026`。本批仅审阅源码与合同、同步进度；没有新执行入口或测试，没有运行项目测试、创建 root 对象或执行效果。已提交并经上述准确head的docs-only CI合并。
 
 F4-B11 [PR #2974](https://github.com/sanqin888/sanqinMVP/pull/2974) 最终 head `4485d9fdcec7663faca4f8fd30824378933d233f` 经 [CI #7625](https://github.com/sanqin888/sanqinMVP/actions/runs/40329893226) 成功，合并 `003daa21dc0795ec092cac20502e0d9c2918f7aa`。ops job `121596298756` 实际通过 Release 45、Runtime 1058、精确 CPython 3.12.15 的 C1 390 项。首次 CI #7624 的三个错误来自普通用户不能覆盖测试材料的 0400 文件；同分支仅调整材料准备时改写后恢复 0400，生产实现不变。此证据只覆盖既有装配与离线回归，不能覆盖本合同尚未实现的组合。
 
@@ -100,4 +100,4 @@ B13 实现时复用现有 F2/F3 的双 pin、newest 拒绝、来源/Manifest/成
 
 本批五份文档：本合同、B11 结果归档、P10-F 总审计、依赖图和单条 worklog；旧 B11 记录就地更新，不重复登记。Runtime/Ops owner、既有依赖图/循环/债务/scanner 基线没有变化，未运行架构扫描；无源码、依赖、数据库迁移、候选交付、解释器/root/VM/AWS/生产修改。原 Python 3.12.15、九源只读 CLI、v1 输入与 17 Bundle 保持。
 
-**最高状态：B12 本地合同审计完成，B13 源码未开始；实际准入/全 Flow/可信终结未完成，C1 仍 OPEN。** 本批等待用户审阅后的远端交付授权。
+**最高状态：B12 已合并，docs-only CI 已验证；实际准入/全 Flow/可信终结未完成，C1 仍 OPEN。** 后续 [B13保持安装只读检查作用域](Runtime更新-C1-P10-F4B13保持安装只读检查作用域.md)已在本地实现，新增22项测试尚未运行；本合同第4节的设计提议仍保留为B12审阅时的阶段记录。

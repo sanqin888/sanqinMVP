@@ -65,8 +65,8 @@ def review_fixed_installed_target(launch_bytes, request_bytes, *,
              and old_manifest != "0" * 64, "original manifest baseline missing")
     # Open and hold the finite tree BEFORE network verification: final FD/edge
     # checks cover mutations during GETs as well as the comparison itself.
-    with _fixed_runtime() as (root_fd, directories):
-        with _installed(root_fd) as (files, metadata):
+    with _fixed_runtime() as (root_fd, directories, _):
+        with _installed(root_fd) as (files, metadata, _):
             proof, target_files, manifest_raw = _target(request, target_archive, fetch)
             _require(files[MANIFEST] == manifest_raw,
                      "installed manifest differs from original target bytes")

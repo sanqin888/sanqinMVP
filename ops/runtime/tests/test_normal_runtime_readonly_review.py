@@ -318,5 +318,201 @@ class ReadonlyReviewTests(unittest.TestCase):
         os.fstat(self.fd)
 
 
+class HeldReadonlyReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = ReadonlyReviewTests()
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+
+    def hold(self, **changes):
+        f = self.fixture
+        args = dict(expected_launch_sha256=digest(f.launch),
+                    expected_request_sha256=digest(f.request),
+                    target_archive=f.target, installed_root_fd=f.fd,
+                    preserved_observation=f.observation, fetch=f.fetch)
+        args.update(changes)
+        return review.hold_readonly_update(f.launch, f.request, **args)
+
+    def test_member_fds_held_through_consumer_and_borrowed_fd_survives(self):
+        f = self.fixture
+        before = set(os.listdir("/proc/self/fd"))
+        with self.hold() as held:
+            self.assertGreater(len(os.listdir("/proc/self/fd")),
+                               len(before) + len(f.installed))
+            held.recheck()
+            result = held.report
+            self.assertEqual(result["changedMembers"], ["ops/release/deploy_release.py"])
+            self.assertEqual(result["decision"], "BLOCKED")
+            self.assertFalse(result["transactionAdmitted"])
+            self.assertNotIn("never-print-me", json.dumps(result))
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+        os.fstat(f.fd)
+        self.assertEqual({n: (f.root / n).read_bytes() for n in f.installed}, f.installed)
+
+    def test_same_bytes_member_replacement_rejected_explicitly_and_on_exit(self):
+        before = set(os.listdir("/proc/self/fd"))
+        with self.assertRaises(ValueError):
+            with self.hold() as held:
+                path = self.fixture.root / "ops/release/deploy_release.py"
+                raw = path.read_bytes()
+                path.unlink()
+                path.write_bytes(raw)
+                path.chmod(0o644)
+                with self.assertRaises(ValueError):
+                    held.recheck()
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+
+    def test_in_place_member_drift_rejected_on_normal_exit(self):
+        with self.assertRaises(ValueError):
+            with self.hold():
+                (self.fixture.root / "ops/release/deploy_release.py").write_bytes(b"drift")
+
+    def test_preserved_bytes_drift_rejected_explicitly_and_on_exit(self):
+        with self.assertRaises(ValueError):
+            with self.hold() as held:
+                path = self.fixture.root / ".env"
+                path.write_bytes(path.read_bytes() + b"OTHER=value\n")
+                with self.assertRaises(ValueError):
+                    held.recheck()
+
+    def test_safe_but_changed_member_mode_rejected(self):
+        with self.assertRaises(ValueError):
+            with self.hold() as held:
+                (self.fixture.root / "ops/release/deploy_release.py").chmod(0o640)
+                with self.assertRaises(ValueError):
+                    held.recheck()
+
+    def test_directory_replacement_rejected_and_owned_fds_close(self):
+        before = set(os.listdir("/proc/self/fd"))
+        with self.assertRaises(ValueError):
+            with self.hold() as held:
+                path = self.fixture.root / "ops/release"
+                path.rename(path.with_name("saved-release"))
+                path.mkdir(mode=0o700)
+                with self.assertRaises(ValueError):
+                    held.recheck()
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+
+    def test_extra_member_during_consumer_rejected_without_repair(self):
+        path = self.fixture.root / "extra"
+        with self.assertRaises(ValueError):
+            with self.hold():
+                path.write_bytes(b"unexpected")
+        self.assertEqual(path.read_bytes(), b"unexpected")
+
+    def test_network_time_replacement_rejected_before_yield(self):
+        f = self.fixture
+        replaced = False
+        def fetch(path):
+            nonlocal replaced
+            result = f.fetch(path)
+            if not replaced and "/contents/" in path:
+                leaf = f.root / "ops/release/deploy_release.py"
+                raw = leaf.read_bytes()
+                leaf.unlink()
+                leaf.write_bytes(raw)
+                leaf.chmod(0o644)
+                replaced = True
+            return result
+        before = set(os.listdir("/proc/self/fd"))
+        with self.assertRaises(ValueError):
+            with self.hold(fetch=fetch):
+                self.fail("drifted installed tree was yielded")
+        self.assertTrue(replaced)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+
+    def test_wrong_pin_and_network_failure_never_yield_and_close_owned_fds(self):
+        before = set(os.listdir("/proc/self/fd"))
+        with self.assertRaises(ValueError):
+            with self.hold(expected_request_sha256="0" * 64):
+                self.fail("wrong pin yielded")
+        self.assertEqual(self.fixture.calls, [])
+        f = self.fixture
+        def fetch(path):
+            if "/contents/" in path:
+                raise OSError("repository unavailable")
+            return f.fetch(path)
+        with self.assertRaises(OSError):
+            with self.hold(fetch=fetch):
+                self.fail("failed verification yielded")
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+        os.fstat(f.fd)
+
+    def test_closed_handle_rejects_report_and_recheck_before_reusing_fds(self):
+        with self.hold() as held:
+            held.recheck()
+        with patch.object(held, "_recheck", side_effect=AssertionError("closed FD use")):
+            with self.assertRaises(ValueError):
+                held.recheck()
+        with self.assertRaises(ValueError):
+            _ = held.report
+
+    def test_report_copies_cannot_modify_stored_observation(self):
+        with self.hold() as held:
+            value = held.report
+            value["transactionAdmitted"] = True
+            value["preservedFiles"][".env"]["mode"] = "0o777"
+            self.assertFalse(held.report["transactionAdmitted"])
+            self.assertEqual(held.report["preservedFiles"][".env"]["mode"], "0o600")
+            held.recheck()
+
+    def test_live_handle_rejects_other_process_thread_and_serialization(self):
+        import pickle
+        with self.hold() as held:
+            with patch.object(review.os, "getpid", return_value=-1):
+                with self.assertRaises(ValueError):
+                    held.recheck()
+            with patch.object(review.threading, "get_ident", return_value=-1):
+                with self.assertRaises(ValueError):
+                    _ = held.report
+            with self.assertRaises(TypeError):
+                pickle.dumps(held)
+            held.recheck()
+
+    def test_original_exception_and_interruptions_survive_drift_and_close_error(self):
+        before = set(os.listdir("/proc/self/fd"))
+        close = os.close
+        def failed_close(fd):
+            close(fd)
+            raise OSError("injected close failure after actual close")
+        path = self.fixture.root / "ops/release/deploy_release.py"
+        for error in (RuntimeError("consumer"), KeyboardInterrupt(), SystemExit(23)):
+            with self.subTest(kind=type(error).__name__):
+                with self.assertRaises(type(error)) as caught:
+                    with patch.object(review.os, "close", side_effect=failed_close):
+                        with self.hold() as held:
+                            path.chmod(0o777)
+                            raise error
+                self.assertIs(caught.exception, error)
+                self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+                with self.assertRaises(ValueError):
+                    held.recheck()
+                path.chmod(0o644)
+
+    def test_normal_exit_close_failure_propagates_and_all_owned_fds_close(self):
+        before = set(os.listdir("/proc/self/fd"))
+        close = os.close
+        def failed_close(fd):
+            close(fd)
+            raise OSError("injected close failure after actual close")
+        with patch.object(review.os, "close", side_effect=failed_close):
+            with self.assertRaises(OSError):
+                with self.hold():
+                    pass
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+        os.fstat(self.fixture.fd)
+
+
+    def test_normal_exit_inside_outer_exception_handler_still_rechecks(self):
+        before = set(os.listdir("/proc/self/fd"))
+        try:
+            raise RuntimeError("unrelated outer handler")
+        except RuntimeError:
+            with self.assertRaises(ValueError):
+                with self.hold():
+                    (self.fixture.root / "ops/release/deploy_release.py").chmod(0o640)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
+
+
 if __name__ == "__main__":
     unittest.main()
