@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-26 — C1 P10-F4-B9可信组合与终结前置审阅
+
+**2026-10-26 F4-B9：COMPOSITION_AUDIT_COMPLETE_LOCAL / REAL_ADMISSION_NOT_IMPLEMENTED / C1_OPEN。** F4-B8 PR #2969经CI #7616成功合并77bf55dd，Runtime1026/Release45/准确3.12.15回归358通过，含16新增测试，无修复。本批[可信组合与终结前置审阅](Runtime更新-C1-P10-F4B9可信组合与终结前置审阅.md)核对九源bootstrap/三模块loader及7个组件实际blob/直接导入，明确源码/输入/同组类型/FD/锁全生命周期缺口。下一源码转向有限受保护来源集合与加载接线，不扩writer为自报终结器；R2真实终态和效果闭包仍缺。5文档同步，无新源码/schema/依赖/迁移、owner/依赖图/债务/scanner基线或root/VM/云/生产变化，未运行新测试/CI、未推送。
+
 ## 2026-10-26 — C1 P10-F4-B8受限v2历史writer
 
-**2026-10-26 F4-B8：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B7 PR #2968经CI #7614（docs-only，1成功/9跳过）合并707749fd，无修复。本批新增[受限v2 writer](Runtime更新-C1-P10-F4B8受限v2历史writer.md)及16项测试，仅空双布局首claim与同handle abort；create-only/文件及目录fsync/原bytes复核，未知留原件阻断，无处置/第二笔准入/终结或Flow。共用目录身份scope与只读完整stat快照分开，原读者不放宽。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+**2026-10-26 F4-B8：MERGED_DEV / CI_VERIFIED_OFFLINE / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** [PR #2969](https://github.com/sanqin888/sanqinMVP/pull/2969)最终head029ad1cad12a70e6d5a00b8ca57462f345b99ffe经[CI #7616](https://github.com/sanqin888/sanqinMVP/actions/runs/40324393082)成功（4成功/6跳过），合并77bf55ddbb273bdcb397cb030de6ca492e172059。Release45/Runtime1026/准确CPython3.12.15回归358全部通过，含16新增测试，无修复。空双布局首claim与同handle abort、create-only/文件及目录fsync/未知保留，无处置/第二笔准入/Flow；5文档同步，无依赖/迁移或生产变化；见[writer记录](Runtime更新-C1-P10-F4B8受限v2历史writer.md)。
 
 ## 2026-10-26 — C1 P10-F4-B7有界追加writer合同
 
