@@ -377,88 +377,199 @@ def _assert_registered_stopped(record: dict, run) -> None:
 
 def begin_candidate_creation(identity: str, attempt: str, *, controller=None,
                              run=collector.command, now=collector.now_utc) -> dict:
-    """Persist exact create intention before any candidate container mutation.
+    """Internal create-intention adapter; never create or start a container."""
+    job._root_operator()
+    with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
 
-    Internal/unwired. A returned record authorizes no start, SQL or release commit.
-    Creation command construction and the lock spanning creation remain unfinished.
-    """
+def _begin_candidate_creation_locked(root, identity, attempt, controller, run, now):
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     if controller is None:
         import deploy_release as controller
-    with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
-        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
-        record = _read(root)
-        _need(record["planId"] == identity and record["attemptId"] == attempt
-              and record["schemaVersion"] == 1 and record["phase"] == "FROZEN",
-              "creation requires the same frozen attempt")
-        _installed_gate(run)
-        original_plan = plan.validate_plan(storage.load_plan(identity), identity)
-        _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
-              "plan baseline differs from maintenance")
-        _assert_stopped(controller, record, run)
-        for service in SERVICES:
-            _need(_role_ids(service, run) == {record["originalContainers"][service]["containerId"]},
-                  "unexpected writer exists before creation intent")
-        _need(_backup(run) == record["backupUnits"], "backup state changed")
-        intention = {**record, "schemaVersion": 2, "phase": "CREATING_CANDIDATES",
-                     "updatedAt": job._timestamp(now),
-                     "candidate": {"release": original_plan["candidate"], "containers": {}}}
-        _write(root, intention)  # Neither an unknown write nor leftovers may be retried.
-        return intention
+    _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+    record = _read(root)
+    _need(record["planId"] == identity and record["attemptId"] == attempt
+          and record["schemaVersion"] == 1 and record["phase"] == "FROZEN",
+          "creation requires the same frozen attempt")
+    _installed_gate(run)
+    original_plan = plan.validate_plan(storage.load_plan(identity), identity)
+    _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
+          "plan baseline differs from maintenance")
+    _assert_stopped(controller, record, run)
+    for service in SERVICES:
+        _need(_role_ids(service, run) == {record["originalContainers"][service]["containerId"]},
+              "unexpected writer exists before creation intent")
+    _need(_backup(run) == record["backupUnits"], "backup state changed")
+    intention = {**record, "schemaVersion": 2, "phase": "CREATING_CANDIDATES",
+                 "updatedAt": job._timestamp(now),
+                 "candidate": {"release": original_plan["candidate"], "containers": {}}}
+    _write(root, intention)  # Neither an unknown write nor leftovers may be retried.
+    return intention
 
 
 def register_created_candidates(identity: str, attempt: str, identifiers: dict, *,
                                 run=collector.command, now=collector.now_utc) -> dict:
-    """Unwired internal adapter: register all stopped candidates BEFORE any start.
+    """Internal adapter; all created/no-restart candidates need a durable intention."""
+    job._root_operator()
+    with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _register_created_candidates_locked(root, identity, attempt, identifiers, run, now)
 
-    Never creates/starts containers, changes policy, writes release state or authorizes
-    SQL. Future controller must create with restart=no and never start on unknown
-    registration durability. An existing registration is never replayed or replaced.
-    """
+def _register_created_candidates_locked(root, identity, attempt, identifiers, run, now):
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     _need(type(identifiers) is dict and set(identifiers) == set(SERVICES),
           "exact candidate roles required")
     for identifier in identifiers.values():
         _id(identifier)
-    with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
-        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
-        record = _read(root)
-        _need(record["planId"] == identity and record["attemptId"] == attempt
-              and record["schemaVersion"] == 2 and record["phase"] == "CREATING_CANDIDATES"
-              and record["candidate"]["containers"] == {},
-              "candidate registration requires the same durable creation intent")
-        _installed_gate(run)
-        original_plan = plan.validate_plan(storage.load_plan(identity), identity)
-        _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
-              "plan baseline differs from maintenance")
-        candidate = original_plan["candidate"]
-        _need(candidate == record["candidate"]["release"], "creation intent and plan differ")
-        rows = {}
-        for service in SERVICES:
-            name = "sanq-web" if service == "web" else "sanq-api"
-            image = candidate["images"][name]
-            sha = candidate["sourceSha"]
-            info = _inspect(identifiers[service], service, sha, run,
-                            reference=collector._pinned(image))
-            _need(info["State"].get("Status") == "created", "candidate was already started")
-            row = {"containerId": identifiers[service], "imageId": info["Image"]}
-            _stopped_identity(info, row, created=True)
-            collector._inspect_image(info["Image"], collector._pinned(image), sha, run)
-            rows[service] = row
-        _need(rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"],
-              "API and worker must share the exact image")
-        registered = {**record, "schemaVersion": 2, "phase": "CANDIDATES_REGISTERED",
-                      "updatedAt": job._timestamp(now),
-                      "candidate": {"release": candidate, "containers": rows}}
-        _validate(registered)
-        _assert_registered_stopped(registered, run)
-        _need(_backup(run) == record["backupUnits"], "backup state changed")
-        _write(root, registered)  # Unknown fsync/readback never permits a start.
-        _assert_registered_stopped(registered, run)
-        _installed_gate(run)
-        return registered
+    _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+    record = _read(root)
+    _need(record["planId"] == identity and record["attemptId"] == attempt
+          and record["schemaVersion"] == 2 and record["phase"] == "CREATING_CANDIDATES"
+          and record["candidate"]["containers"] == {},
+          "candidate registration requires the same durable creation intent")
+    _installed_gate(run)
+    original_plan = plan.validate_plan(storage.load_plan(identity), identity)
+    _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
+          "plan baseline differs from maintenance")
+    candidate = original_plan["candidate"]
+    _need(candidate == record["candidate"]["release"], "creation intent and plan differ")
+    rows = {}
+    for service in SERVICES:
+        name = "sanq-web" if service == "web" else "sanq-api"
+        image = candidate["images"][name]
+        sha = candidate["sourceSha"]
+        info = _inspect(identifiers[service], service, sha, run,
+                        reference=collector._pinned(image))
+        _need(info["State"].get("Status") == "created", "candidate was already started")
+        row = {"containerId": identifiers[service], "imageId": info["Image"]}
+        _stopped_identity(info, row, created=True)
+        collector._inspect_image(info["Image"], collector._pinned(image), sha, run)
+        rows[service] = row
+    _need(rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"],
+          "API and worker must share the exact image")
+    registered = {**record, "schemaVersion": 2, "phase": "CANDIDATES_REGISTERED",
+                  "updatedAt": job._timestamp(now),
+                  "candidate": {"release": candidate, "containers": rows}}
+    _validate(registered)
+    _assert_registered_stopped(registered, run)
+    _need(_backup(run) == record["backupUnits"], "backup state changed")
+    _write(root, registered)  # Unknown fsync/readback never permits a start.
+    _assert_registered_stopped(registered, run)
+    _installed_gate(run)
+    return registered
+
+
+def _creation_config(expanded: dict, candidate: dict) -> bytes:
+    """A complete stdin config excludes DB/dependencies and uses the existing network."""
+    import copy
+    _need(type(expanded) is dict and set(expanded) <= {"name", "services", "networks", "volumes"}
+          and expanded.get("name") == "sanq-app"
+          and set(expanded.get("services", {})) == {"db", *SERVICES}
+          and set(expanded.get("networks", {})) == {"default"}
+          and expanded["networks"]["default"].get("name") == "sanq-app_default",
+          "unsupported creation configuration")
+    services = copy.deepcopy({name: expanded["services"][name] for name in SERVICES})
+    for service, fields in services.items():
+        name = "sanq-web" if service == "web" else "sanq-api"
+        _need("build" not in fields and "profiles" not in fields
+              and "configs" not in fields and "secrets" not in fields
+              and "deploy" not in fields
+              and type(fields.get("scale", 1)) is int and fields.get("scale", 1) == 1
+              and all(row.get("type") == "bind" for row in fields.get("volumes", [])),
+              "unsupported candidate resources")
+        fields.pop("depends_on", None)
+        fields["image"], fields["restart"] = collector._pinned(candidate["images"][name]), "no"
+    return plan._canonical({"name": "sanq-app", "services": services,
+                            "networks": {"default": {"external": True, "name": "sanq-app_default"}}})
+
+
+def _database_identity(controller, run) -> dict:
+    identifier = _container_id(controller, "db", run)
+    info = collector._json(run(["docker", "inspect", "--format", "{{json .}}", identifier]))
+    _need(type(info) is dict and info.get("Id") == identifier
+          and info.get("State", {}).get("Running") is True
+          and info.get("Config", {}).get("Labels", {}).get("com.docker.compose.project") == "sanq-app"
+          and info["Config"]["Labels"].get("com.docker.compose.service") == "db"
+          and type(info.get("Mounts")) is list
+          and sum(row.get("Type") == "volume" and row.get("Name") == "sanq-app_pgdata"
+                  and row.get("Destination") == "/var/lib/postgresql/data"
+                  for row in info["Mounts"]) == 1, "database identity differs")
+    release.checked_digest(info.get("Image"))
+    return {key: info[key] for key in ("Id", "Image", "Mounts")}
+
+
+def _created_mounts(identifier: str, expected: list, run) -> None:
+    info = collector._json(run(["docker", "inspect", "--format", "{{json .}}", identifier]))
+    mounts = info.get("Mounts")
+    _need(type(mounts) is list and len(mounts) == len(expected),
+          "candidate mount count differs")
+    for row in expected:
+        _need(sum(actual.get("Type") == "bind" and actual.get("Source") == row["source"]
+                  and actual.get("Destination") == row["target"]
+                  and actual.get("RW") is (not row.get("read_only", False))
+                  for actual in mounts) == 1, "candidate bind mount differs")
+
+
+def prepare_candidate_containers(identity: str, attempt: str, *, controller=None,
+                                 run=collector.command, fetch=None, now=collector.now_utc) -> dict:
+    """Unwired no-migration creation slice. No start, SQL, env update or ACTIVE.
+
+    Holds both original locks through revalidation, intent, PENDING, create and
+    registration. Unknown outcomes retain evidence and are never replayed here.
+    """
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    _need(callable(getattr(controller, "write_creation_pending", None)),
+          "installed controller lacks durable creation intent")
+    if fetch is None:
+        fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        job._no_pending(jobs_root)
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
+        _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                      **job._observations(original))
+        before, installed, environment = collector._snapshot(controller, run)
+        _need(before == original["current"] and environment == original["environment"]
+              and plan.runtime_contract(installed, installed) == original["runtimeContract"]
+              and collector._history(controller, run) == original["migrationHistory"]
+              and collector._backup(controller) == original["backup"],
+              "frozen plan observations changed")
+        candidate = original["candidate"]
+        _need(release.verify_exact_candidate(original["current"]["applicationSha"],
+                                            candidate["sourceSha"], fetch) == candidate,
+              "candidate proof changed")
+        collector._resource_preflight(controller)
+        for image in candidate["images"].values():
+            collector._inspect_image(collector._pinned(image), collector._pinned(image),
+                                     candidate["sourceSha"], run)
+        expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+        body = _creation_config(expanded, candidate)
+        _need(len(body) <= collector.MAX_OUTPUT, "creation input exceeds command budget")
+        database = _database_identity(controller, run)
+        # Re-observe the exact base after preparing private stdin, before any durable mutation.
+        _need(collector._snapshot(controller, run) == (before, installed, environment),
+              "configuration changed before creation")
+        _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
+        controller.write_creation_pending(original["current"]["applicationSha"], candidate["sourceSha"])
+        # Full config includes only the three app services and no depends_on/DB volumes.
+        # Compose create has no --no-deps option; DB exclusion is structural.
+        args = ["docker", "compose", "--project-name", "sanq-app", "--project-directory",
+                str(controller.ROOT), "--env-file", str(controller.ENV), "--parallel", "1",
+                "-f", "-", "create", "--no-build", "--pull", "never", "--force-recreate", *SERVICES]
+        run(args, input_bytes=body, timeout=180)
+        _need(_database_identity(controller, run) == database, "database changed during creation")
+        identifiers = {service: _container_id(controller, service, run) for service in SERVICES}
+        for service, identifier in identifiers.items():
+            _created_mounts(identifier, expanded["services"][service].get("volumes", []), run)
+        registered = _register_created_candidates_locked(root, identity, attempt, identifiers, run, now)
+        return {"planId": identity, "attemptId": registered["attemptId"],
+                "outcome": "CANDIDATES_CREATED_NOT_STARTED", "canExecute": False}
+
 
 
 def cleanup_after_task(identity: str, service_result: str, *, controller=None,

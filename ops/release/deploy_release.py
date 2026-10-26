@@ -144,6 +144,29 @@ def write_state(phase: str, current: str, previous: str, *, reason: str) -> None
     }, indent=2) + "\n")
 
 
+
+def write_creation_pending(current: str, target: str) -> None:
+    """Internal new-path adapter: durable sole release-state intent before create."""
+    require_mutation_privilege()
+    current, target = require_sha(current), require_sha(target)
+    if current == target:
+        raise DeploymentBlocked("candidate is unchanged")
+    state = read_state()
+    if (state is None or state["phase"] not in ("active", "rolled-back")
+        or state["current"] != current or read_current_sha() != current):
+        raise DeploymentBlocked("release baseline differs before creation")
+    write_state("pending", current=target, previous=current, reason="candidate-create-start")
+    fd = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    observed = read_state()
+    if (observed is None or observed["phase"] != "pending" or observed["current"] != target
+        or observed["previous"] != current or observed["reason"] != "candidate-create-start"):
+        raise DeploymentBlocked("creation pending durability requires review")
+
+
 def run(
     args: list[str], *, target_sha: str | None = None,
     capture: bool = False, cwd: Path | None = None
