@@ -49,7 +49,7 @@ def _names(fd, maximum):
 
 
 @contextmanager
-def _scope():
+def _layout_scope():
     with local._locked_base() as (base, device, base_recheck, stack):
         directories = {}
         keys = {}
@@ -62,22 +62,33 @@ def _scope():
             directories[name] = fd
         _require(len(set(key[:2] for key in keys.values())) == 2,
                  "legacy and history directories alias")
-        # Content timestamps detect additions/removals even if names return to
-        # the same set. Ancestors retain their existing finite-edge semantics.
-        snapshots = {name: local._key(os.fstat(fd)) for name, fd in directories.items()}
-
         def recheck():
             base_recheck()
             for name, fd in directories.items():
                 entry = os.stat(name, dir_fd=base, follow_symlinks=False)
                 _require(local._directory_key(fd, *local._OWNER, device) == keys[name]
-                         and local._key(os.fstat(fd)) == snapshots[name]
-                         and local._key(entry) == snapshots[name],
-                         "history directory changed or replaced")
-
+                         and (entry.st_dev, entry.st_ino, entry.st_mode, entry.st_uid,
+                              entry.st_gid) == keys[name], "history directory edge changed")
         recheck()
         try:
             yield directories[local._LEDGER], directories[_HISTORY], device, recheck, stack
+        finally:
+            if sys.exc_info()[0] is None:
+                recheck()
+
+
+@contextmanager
+def _scope():
+    # Read-only consumers keep their original full directory stat snapshot.
+    with _layout_scope() as (legacy, history, device, edges, stack):
+        snapshots = {fd: local._key(os.fstat(fd)) for fd in (legacy, history)}
+        def recheck():
+            edges()
+            _require(all(local._key(os.fstat(fd)) == key for fd, key in snapshots.items()),
+                     "history directory changed or replaced")
+        recheck()
+        try:
+            yield legacy, history, device, recheck, stack
         finally:
             if sys.exc_info()[0] is None:
                 recheck()

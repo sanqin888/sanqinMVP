@@ -1,5 +1,7 @@
 # Runtime 更新 — C1 P10-F4-B7 v2有界追加writer合同
 
+**2026-10-26 F4-B8：IMPLEMENTED_LOCAL / TESTS_NOT_RUN / LOCAL_CONSUMPTION_ONLY / C1_OPEN。** F4-B7 PR #2968经CI #7614（docs-only，1成功/9跳过）合并707749fd，无修复。本批新增[受限v2 writer](Runtime更新-C1-P10-F4B8受限v2历史writer.md)及16项测试，仅空双布局首claim与同handle abort；create-only/文件及目录fsync/原bytes复核，未知留原件阻断，无处置/第二笔准入/终结或Flow。共用目录身份scope与只读完整stat快照分开，原读者不放宽。5文档同步，Runtime/Ops单向边，无owner/依赖图/债务/scanner基线、九源/v1输入/17 Bundle、依赖/迁移或生产变化；仅静态AST/差异审阅，未运行新测试/CI、未推送。
+
 **2026-10-26｜CONTRACT_COMPLETE_LOCAL / WRITER_NOT_IMPLEMENTED / C1_OPEN。**
 
 F4-B6 [PR #2967](https://github.com/sanqin888/sanqinMVP/pull/2967)最终head f7202f3641aaede69635d05ef5137b3d88356366 经[CI #7612](https://github.com/sanqin888/sanqinMVP/actions/runs/40284643873)成功，4作业成功/6依范围跳过；ops job121445395397实际Release45、Runtime1010、准确CPython3.12.15回归342全部通过，含6新增测试，无修复。合并dev 564f63d2f5a6f14454faa5c200c95cbbbf7ea73f。
