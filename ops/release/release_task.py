@@ -19,6 +19,7 @@ import deployment_plan_store as storage
 import maintenance_guard as guard
 import release_job as job
 import start_candidates as starter
+import finalize_candidates as finalizer
 from release_contract import ReleaseContractError
 
 TASK_SCRIPT = Path("/opt/sanq/runtime/ops/release/release_task.py")
@@ -44,6 +45,8 @@ def _installed() -> None:
           and callable(getattr(guard, "prepare_candidate_containers", None))
           and callable(getattr(guard, "_incident_locked", None))
           and callable(getattr(starter, "start_and_verify", None))
+          and callable(getattr(finalizer, "finalize_ready", None))
+          and "policies" in inspect.signature(starter._running).parameters
           and "input_bytes" in inspect.signature(collector.command).parameters
           and callable(getattr(storage, "check_maintenance_clear", None))
           and "wait_seconds" in inspect.signature(job._locked_directory).parameters,

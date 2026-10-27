@@ -1,8 +1,34 @@
 # Runtime 最小更新执行器实现方案
 
-**2026-10-26 当前进度：START_READINESS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批候选创建已由[PR #2987](https://github.com/sanqin888/sanqinMVP/pull/2987) 最终head `fb9949e54db8de90f7464fc43585187d1bd8b52e` 经 [CI #7655](https://github.com/sanqin888/sanqinMVP/actions/runs/40419873594) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各217、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `067521149fd9104303f09d4c057b4277a489a2cd`。本批补已登记候选的受控启动/就绪阶段源码；尚未由任务或CLI调用，没有执行真实Docker/HTTP/SQL或生产安装。三组研究继续暂停、不取消。
+**2026-10-26 当前进度：SUCCESS_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批启动/就绪由[PR #2988](https://github.com/sanqin888/sanqinMVP/pull/2988) 最终head `6ca86a55d1aadef814f37d97d9f999212f55608f` 经 [CI #7658](https://github.com/sanqin888/sanqinMVP/actions/runs/40427556642) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各234、Runtime1080、准确CPython3.12.15回归412），合并dev `d87c98b50582fc2ff58165921926433d4710776b`。首次CI #7657发现测试controller夹具缺COMPOSE属性，同分支仅补一条路径后通过，不改生产逻辑/门禁。本批补READY候选的成功交接源码，仍未接CLI/异步任务，没有真实Docker/HTTP/SQL/AWS或生产安装。三组研究继续暂停、不取消。
 
-## 第二批续作：准确ID启动与就绪验证（本地待审）
+## 第二批续作：成功交接与受控清标记（本地待审）
+
+### 顺序、唯一权威与故障边界
+
+新增内部 `finalize_candidates.py`，只接受同一无迁移plan/attempt的CANDIDATES_READY，不提供事故恢复、手动clear、任意命令或CLI。它引用原controller的atomic_write/write_state、原启动验证、共享事故收尾和同一组锁/维护目录；不新增发布数据库或current/previous权威。平台辅助件现为**八件**加原三份drop-in，第三批必须统一来源/版本/导入/权限验真；本模块不加入固定17 Bundle。
+
+1. 持原job锁及计划资源锁，重核READY、原pending/current/previous/reason、原.env/配置、Manifest/两运行文件、计划时效、无SQL、备份/历史/准确候选证明、准确候选健康/绑定、DB、备份unit与门禁。任一不符先拒绝；不从旧FINALIZING/INCIDENT/HANDOFF_COMMITTED继续或重放。
+2. 先持久FINALIZING，再用既有atomic_write只替换.env的SANQ_IMAGE_SHA值。对原字节/UID/GID/mode重核，保留其他内容及LF/CRLF，文件最终mode/owner元数据及父目录分别fsync后读回；按原展开配置仅替换三服务的SHA声明得到期望值，实际展开配置必须逐项相同。实际容器仍按已保存image ID/digest认证，不把可变SHA标签当镜像证据。
+3. 用目标.env执行固定readiness，复核候选/DB/历史及唯一pending，再通过原state writer把**唯一发布状态**写为ACTIVE（目标/原previous/readiness-verified），fsync目录并读回。ACTIVE记录的是已选且验证的目标版本；维护标记存在时交接仍未完成，不能仅凭ACTIVE启动新发布/冷启动或报告操作成功。
+4. 只对保存的三候选ID逐项恢复各自原restart Name/MaximumRetryCount，包括on-failure次数、unless-stopped或原no，不一律always。逐对象健康/实际策略/挂载读回，DB/备份unit、目标配置/ACTIVE和门禁再核；不改timer enabled/active，也不start旧容器。
+5. 全部确认后持久HANDOFF_COMMITTED，再核同一plan/attempt和目录仅有marker，最后unlink marker→fsync维护目录→空目录读回；只有此调用已知完成才返回ACTIVE。HANDOFF_COMMITTED本身不开放冷启动或赋予恢复/clear权限。
+6. FINALIZING之前写入未知不改.env/state/policy。其后、提交封口之前失败时只停保存对象并保留INCIDENT/FENCE；.env与发布状态保持实际结果，**若ACTIVE已写，不自动改回旧版本或伪造PENDING**。ACTIVE+INCIDENT表示目标已选但事故未处置，不能报告完整交接成功；新发布/冷启动仍被维护目录拒绝。
+7. 最终HANDOFF_COMMITTED写入/同步未知只尽力停保存ID，不重写未知marker。**最后清标记未知属于终结边界：**此时ACTIVE/目标配置/策略读回已完成，可能marker还在，也可能已不存在且目标继续运行；不重建marker、重跑或自动回退，以实际state/marker/容器审阅。重启后若marker重新出现仍由冷启动门禁拒绝；若已清空则可启动已确认的目标。不能把这种未知伪装成“仍PENDING且保证冻结”或“操作已成功”。marker若仍在，原ExecStopPost仍可按保存对象停写并记INCIDENT。
+
+启动至交接之间已可能产生订单/外部副作用；失败不授权覆盖旧整盘、逆迁移或抹掉未知付款。固定两次操作目标适用于正常发布，终结未知仍是需审证据的事故/对账场景。
+
+### 验证、交付与剩余工作
+
+新增21项离线unittest方法，使用原create/start fixture、真实临时私有维护文件与Docker/PID1/HTTP替身，覆盖成功顺序/唯一state、准确原策略与重试次数、LF/CRLF/私有env字节、root/attempt/锁/健康拒绝、初始/环境/ACTIVE/封口/clear同步未知、配置/readiness/策略失败、已提交marker被StopPost收尾、禁止错误/有残件clear、target env/owner/Manifest/runtime/config与ACTIVE读回拒绝。没有执行项目测试；仅Python3.10 grammar AST、保留测试方法名/静态名字、差异/导入/引用审阅。前批CI不替代本批验证，mock不是真实故障证明。
+
+marker v2兼容扩充FINALIZING/HANDOFF_COMMITTED，完整三ID/证明/原策略不允许更换；starter只新增内部期望策略读回参数，默认no-restart行为不变。task仅检查新API/签名，没有调用finalize或新增用户命令。Runtime/Ops归属、唯一state权威、固定17成员/Manifest及旧发布guard不变；旧控制器未改，原controller atomic_write被新阶段复用，前批controller源码仍须正式Bundle验真安装。
+
+分支 `feat/runtime-minimal-success-handoff-20261026` 本地待审、未提交/推送。**普通无迁移发布的各内部阶段已有源码，不等于完整执行器已完成：**异步任务中freeze/create/start/finalize贯通、终结未知的联合status、准确SQL批准/执行、回退、八helper/单位安装及Mac入口、隔离中断/恢复与至少一次准确main真实发布仍OPEN；当前没有可生产使用的1–2次操作命令。没有新依赖包、业务schema/migration、生产权限/目录/unit或云动作，三组研究继续暂停。
+
+**前批启动/就绪交付：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**前批候选创建已由[PR #2987](https://github.com/sanqin888/sanqinMVP/pull/2987) 最终head `fb9949e54db8de90f7464fc43585187d1bd8b52e` 经 [CI #7655](https://github.com/sanqin888/sanqinMVP/actions/runs/40419873594) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各217、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `067521149fd9104303f09d4c057b4277a489a2cd`。本批补已登记候选的受控启动/就绪阶段源码；尚未由任务或CLI调用，没有执行真实Docker/HTTP/SQL或生产安装。三组研究继续暂停、不取消。
+
+## 第二批续作：准确ID启动与就绪验证（源码已合并）
 
 ### 范围、拆分与固定流程
 
@@ -21,7 +47,7 @@
 
 marker v2只兼容扩充STARTING_CANDIDATES/CANDIDATES_READY及严格的完整三ID约束，旧v1/前批v2可读，无已安装消费者/双写或降级迁移。共享incident函数只是原收尾的同实现抽取；Runtime/Ops owner和唯一current/previous权威不变。本批不改17成员/Manifest/旧guard，前批控制器源码变化仍须正式Bundle验真交付，不能直接覆写现役文件。
 
-分支 `feat/runtime-minimal-start-readiness-20261026` 本地待审、未提交/推送。**还不能正常生产更新：**create和start阶段尚未接到同一个异步执行任务，最终.env/PENDING→ACTIVE/原策略与维护标记交接、准确SQL批准/执行、回退、七helper安装/一页手册、隔离故障及真实发布均OPEN。成功READY仍保留PENDING/维护/no-restart，不把它标为第二批完结或最小执行器完成；无新包依赖/业务schema/migration、生产权限/目录/unit或AWS动作。
+分支 `feat/runtime-minimal-start-readiness-20261026` 随后由[PR #2988](https://github.com/sanqin888/sanqinMVP/pull/2988) 最终head `6ca86a55d1aadef814f37d97d9f999212f55608f` 经 [CI #7658](https://github.com/sanqin888/sanqinMVP/actions/runs/40427556642) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各234、Runtime1080、准确CPython3.12.15回归412），合并dev `d87c98b50582fc2ff58165921926433d4710776b`；首次CI #7657缺COMPOSE测试夹具属性只补一条路径后通过。上文未运行/未提交为原审阅时点，本地仍未执行项目测试。**还不能正常生产更新：**create和start阶段尚未接到同一个异步执行任务，最终.env/PENDING→ACTIVE/原策略与维护标记交接、准确SQL批准/执行、回退、七helper安装/一页手册、隔离故障及真实发布均OPEN。成功READY仍保留PENDING/维护/no-restart，不把它标为第二批完结或最小执行器完成；无新包依赖/业务schema/migration、生产权限/目录/unit或AWS动作。
 
 **前批候选创建交付：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**前批创建意图已由[PR #2986](https://github.com/sanqin888/sanqinMVP/pull/2986) 最终head `1d5d19a12a7fa3abdcf902a7464c753c513c0a85` 经 [CI #7653](https://github.com/sanqin888/sanqinMVP/actions/runs/40400151439) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各203、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `d133e92eef9f76faeb8af8f1272e84eafaf02152`。本批接入无迁移的“准确候选只创建、不启动”内部源码；尚未由任务或CLI调用，没有真实创建/发布或生产操作。三组研究继续暂停、不取消。
 

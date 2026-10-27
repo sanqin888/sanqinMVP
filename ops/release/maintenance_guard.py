@@ -167,7 +167,7 @@ def _validate(value: dict) -> None:
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
     _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
-                              "STARTING_CANDIDATES", "CANDIDATES_READY"), "invalid maintenance phase")
+                              "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "invalid maintenance phase")
     _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
           if value["phase"] == "INCIDENT" else value["errorCode"] is None,
           "invalid maintenance error code")
@@ -182,10 +182,10 @@ def _validate(value: dict) -> None:
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
     if version == 1:
         _need(value["phase"] not in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
-                                     "STARTING_CANDIDATES", "CANDIDATES_READY"), "candidate registration is missing")
+                                     "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "candidate registration is missing")
     else:
         _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT",
-                                 "STARTING_CANDIDATES", "CANDIDATES_READY"), "invalid candidate phase")
+                                 "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "invalid candidate phase")
         _candidate_record(value["candidate"], rows, incomplete=value["phase"] in ("CREATING_CANDIDATES", "INCIDENT"))
         if value["phase"] == "CREATING_CANDIDATES":
             _need(value["candidate"]["containers"] == {}, "creation intent already has identities")
@@ -245,7 +245,9 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
                    "CREATING_CANDIDATES": ("INCIDENT",),
                    "CANDIDATES_REGISTERED": ("STARTING_CANDIDATES", "INCIDENT"),
                    "STARTING_CANDIDATES": ("CANDIDATES_READY", "INCIDENT"),
-                   "CANDIDATES_READY": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
+                   "CANDIDATES_READY": ("FINALIZING", "INCIDENT"),
+                   "FINALIZING": ("HANDOFF_COMMITTED", "INCIDENT"),
+                   "HANDOFF_COMMITTED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
         ignored = {"phase", "updatedAt", "errorCode"}
         if beginning:
             ignored |= {"schemaVersion", "candidate"}

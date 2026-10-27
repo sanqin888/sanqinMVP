@@ -1,10 +1,10 @@
 # Runtime 最小更新执行器与暂停恢复计划
 
-> **2026-10-26（America/Toronto）｜优先级文档已由 PR #2978 / CI #7633 合并；MERGED_DEV / MINIMAL_EXECUTOR_START_READINESS_LOCAL / PRODUCTION_NOT_AUTHORIZED。** 基线 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已包含 C1 F4-B13 / PR #2977）。本文件是当前实施顺序、暂停范围与恢复条件的权威入口；不把文档批准等同源码实施、生产安装、数据库或 AWS 操作授权。
+> **2026-10-26（America/Toronto）｜优先级文档已由 PR #2978 / CI #7633 合并；MERGED_DEV / MINIMAL_EXECUTOR_SUCCESS_HANDOFF_LOCAL / PRODUCTION_NOT_AUTHORIZED。** 基线 `origin/dev@29004f5b277803b7b4ff597b4456d4b748e4f6f4`（已包含 C1 F4-B13 / PR #2977）。本文件是当前实施顺序、暂停范围与恢复条件的权威入口；不把文档批准等同源码实施、生产安装、数据库或 AWS 操作授权。
 
 ## 1. 当前目标与适用范围
 
-**2026-10-26 当前实现：START_READINESS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批候选创建由[PR #2987](https://github.com/sanqin888/sanqinMVP/pull/2987) 最终head `fb9949e54db8de90f7464fc43585187d1bd8b52e` 经 [CI #7655](https://github.com/sanqin888/sanqinMVP/actions/runs/40419873594) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各217、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `067521149fd9104303f09d4c057b4277a489a2cd`。本批补已登记候选的内部启动/就绪阶段：同一锁内重核pending/计划/配置/证明/挂载/DB，先持久STARTING再只start保存ID，健康与现有readiness后才记READY；失败复用原事故收尾，未知不放行。新增17项离线方法未运行，新增一个内部阶段模块，辅助件变为七件，第三批须统一验真安装。READY仍保留PENDING/原.env/维护/no-restart，不是业务ACTIVE，启动已可能有真实写入。见[当前实现与未完成交接](Runtime最小更新执行器实现方案.md)。任务/CLI尚未接start，ACTIVE/策略恢复/准确SQL和现场/安装仍OPEN；本地待审未推送，无生产操作，三组研究暂停保留。
+**2026-10-26 当前实现：SUCCESS_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批由[PR #2988](https://github.com/sanqin888/sanqinMVP/pull/2988) 最终head `6ca86a55d1aadef814f37d97d9f999212f55608f` 经 [CI #7658](https://github.com/sanqin888/sanqinMVP/actions/runs/40427556642) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各234、Runtime1080、准确CPython3.12.15回归412），合并dev `d87c98b50582fc2ff58165921926433d4710776b`；CI #7657只补缺COMPOSE测试路径后通过。本批新增READY成功交接内部阶段：锁内重核、先持久FINALIZING、只改.env SHA并保留原字节/owner/mode、目标就绪、唯一ACTIVE耐久读回、恢复准确原策略并核验、HANDOFF_COMMITTED后最后清marker。中途失败保留实际版本及INCIDENT；末尾clear未知不伪造冻结或重跑。新增21项离线方法未运行，八helper待统一验真安装，见[顺序/终结未知与缺口](Runtime最小更新执行器实现方案.md)。异步贯通/联合status、准确SQL、隔离/安装与真实发布仍OPEN；本地待审未推送，无生产操作，三组研究暂停保留。
 
 **交付与当前下一步：**[PR #2978](https://github.com/sanqin888/sanqinMVP/pull/2978) 最终 head `d2a739ecf36610fddf80564a26d52d25c053579c` 经 [CI #7633](https://github.com/sanqin888/sanqinMVP/actions/runs/40360253396) SUCCESS（1 成功/9 按文档范围跳过，无修复），合并 dev `343fefc7dce5849ca3401981ee6174f4f9d2ec59`。用户已授权合并后制作方案，现已形成本地[最小更新执行器实现方案](Runtime最小更新执行器实现方案.md)，列出范围、单一控制器/薄 SSH 入口、固定计划流程、四批实现与完结矩阵；待本地审阅，不代表代码已实现或生产已可更新。以下原批“本地/未推送”保留历史时点。
 

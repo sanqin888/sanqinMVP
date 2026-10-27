@@ -48,7 +48,7 @@ def _pending_and_config(original, controller, run):
     return expanded
 
 
-def _running(record, expanded, run):
+def _running(record, expanded, run, *, policies=None):
     healthy = True
     candidate = record["candidate"]
     for service in guard.SERVICES:
@@ -69,7 +69,8 @@ def _running(record, expanded, run):
         guard._need(info["Image"] == row["imageId"] and state.get("Status") == "running"
                     and state.get("Running") is True and state.get("Restarting") is False
                     and state.get("Paused") is False
-                    and info["HostConfig"]["RestartPolicy"] == {"Name": "no", "MaximumRetryCount": 0},
+                    and info["HostConfig"]["RestartPolicy"] ==
+                    ({"Name": "no", "MaximumRetryCount": 0} if policies is None else policies[service]),
                     "candidate running state or restart inhibition differs")
         health = state.get("Health")
         guard._need(type(health) is dict and health.get("Status") in ("starting", "healthy"),
