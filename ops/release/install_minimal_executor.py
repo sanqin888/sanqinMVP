@@ -1692,6 +1692,48 @@ def _installation_migration_consistency(inventory, history):
             "requiresHostRecheck": True, "canExecute": False}
 
 
+
+# D2-9b: exact Git objects for supplied inventory/history; no host collection.
+def _installation_migration_source(source_sha, inventory, history, *, fetch=release.github_json):
+    source_sha = release.require_sha(source_sha)
+    consistency = _installation_migration_consistency(inventory, history)
+    commit = fetch(PREFIX + "/git/commits/" + source_sha)
+    _need(type(commit) is dict and commit.get("sha") == source_sha and type(commit.get("tree")) is dict,
+          "migration source commit binding differs")
+    tree_sha = release.require_sha(commit["tree"].get("sha", ""))
+    tree = fetch(PREFIX + "/git/trees/" + tree_sha + "?recursive=1")
+    _need(type(tree) is dict and tree.get("sha") == tree_sha and tree.get("truncated") is False
+          and type(tree.get("tree")) is list and len(tree["tree"]) <= 100000,
+          "complete migration source tree unavailable")
+    prefix, rows, expected = "apps/api/prisma/migrations/", set(), {}
+    for row in tree["tree"]:
+        _need(type(row) is dict and isinstance(row.get("path"), str) and row["path"] not in rows,
+              "ambiguous migration source path")
+        path = row["path"]
+        rows.add(path)
+        if not path.startswith(prefix) or not path.endswith("/migration.sql"):
+            continue
+        name = path[len(prefix):-len("/migration.sql")]
+        _need(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}", name)
+              and row.get("type") == "blob" and row.get("mode") in ("100644", "100755")
+              and type(row.get("size")) is int and 0 < row["size"] <= 2097152,
+              "migration source object type or size differs")
+        expected[name] = (release.require_sha(row.get("sha", "")), row["size"])
+    _need(expected == {item["name"]: (item["gitBlobSha"], item["bytes"]) for item in inventory},
+          "migration source set differs from supplied inventory")
+    for item in inventory:
+        blob = fetch(PREFIX + "/git/blobs/" + item["gitBlobSha"])
+        _need(type(blob) is dict and blob.get("sha") == item["gitBlobSha"]
+              and type(blob.get("size")) is int and blob["size"] == item["bytes"]
+              and blob.get("encoding") == "base64" and isinstance(blob.get("content"), str)
+              and len(blob["content"]) <= 2 * 2097152, "migration source blob fields differ")
+        raw = base64.b64decode("".join(blob["content"].split()), validate=True)
+        _need(len(raw) == item["bytes"] and _object(raw) == item["gitBlobSha"]
+              and _hash(raw) == item["sha256"], "migration source blob bytes differ")
+    return {**consistency, "sourceSha": source_sha, "treeSha": tree_sha,
+            "gitMigrationObjectsMatched": True, "applicationReleaseAuthenticated": False}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
