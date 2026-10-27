@@ -380,6 +380,35 @@ def _execute_registered_migration_locked(root, jobs_root, identity, attempt, app
             "canExecute": False}
 
 
+
+def handoff_migrated_release(identity, attempt, approval, *, controller=None,
+        run=collector.command, fetch=None, now=collector.now_utc,
+        clock=time.monotonic, pause=time.sleep):
+    """Internal inline continuation only; no CLI, recovery or replay entry."""
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    _need("pending_config" in inspect.signature(guard._prepare_candidate_containers_locked).parameters
+          and callable(getattr(guard.migration, "assert_application_history", None)),
+          "post-migration helper APIs are incomplete")
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        job._no_pending(jobs_root)
+        _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
+        record = guard._read(root)
+        _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED"
+              and record["planId"] == identity and record["attemptId"] == attempt
+              and record["migration"]["approvalSha256"] == approval, "migration continuation differs")
+        plan.assert_sql_approval(storage.load_plan(identity), identity, approval)
+        guard._prepare_candidate_containers_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=run, fetch=fetch, now=now,
+            pending_config=starter._pending_and_config)
+        starter._start_and_verify_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=run, fetch=fetch, now=now, clock=clock, pause=pause)
+        return finalizer._finalize_ready_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=run, fetch=fetch, now=now)
+
+
 def _observed_writers(controller, candidate, expanded, run):
     rows = {}
     for service in guard.SERVICES:

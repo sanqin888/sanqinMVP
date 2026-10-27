@@ -168,8 +168,9 @@ def _validate(value: dict) -> None:
         "errorCode", "canExecute"}
     _need(type(value) is dict, "maintenance record differs")
     version = value.get("schemaVersion")
-    _need(type(version) is int and version in (1, 2, 3)
-          and set(value) == (fields if version == 1 else fields | ({"candidate"} if version == 2 else {"migration"})),
+    _need(type(version) is int and version in (1, 2, 3, 4)
+          and set(value) == (fields if version == 1 else fields |
+              ({"candidate"} if version == 2 else {"migration"} if version == 3 else {"candidate", "migration"})),
           "maintenance fields differ")
     _need(type(value["schemaVersion"]) is int
           and value["kind"] == "sanq-maintenance-marker" and value["canExecute"] is False,
@@ -216,6 +217,13 @@ def _validate(value: dict) -> None:
             _need(value["candidate"]["containers"] == {}, "creation intent already has identities")
         _need(value["candidate"]["release"]["sourceSha"] != value["observedApplicationSha"],
               "candidate release is unchanged")
+    if version == 4:
+        migration.validate(value["migration"], rows)
+        item = value["migration"]
+        _need(item["container"] is not None and item["release"] == value["candidate"]["release"]
+              and item["container"]["containerId"] not in {
+                  row["containerId"] for row in value["candidate"]["containers"].values()},
+              "migration evidence overlaps or differs from application candidates")
     backups = value["backupUnits"]
     _need(type(backups) is dict and set(backups) == {"timer", "service"}, "backup record differs")
     for name, fields in backups.items():
@@ -258,11 +266,15 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
         name = MARKER
     else:
         old = _read(root)
-        beginning = (old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
-                     and value["schemaVersion"] == 2
+        beginning = (((old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
+                       and value["schemaVersion"] == 2) or
+                      (old["schemaVersion"] == 3 and old["phase"] == "MIGRATION_VERIFIED"
+                       and value["schemaVersion"] == 4))
                      and value["phase"] == "CREATING_CANDIDATES"
                      and value["candidate"]["containers"] == {})
-        registering = (old["schemaVersion"] == 2 and old["phase"] == "CREATING_CANDIDATES"
+        registering = (old["schemaVersion"] in (2, 4)
+                       and value["schemaVersion"] == old["schemaVersion"]
+                       and old["phase"] == "CREATING_CANDIDATES"
                        and value["phase"] == "CANDIDATES_REGISTERED"
                        and old["candidate"]["containers"] == {}
                        and old["candidate"]["release"] == value["candidate"]["release"])
@@ -327,7 +339,7 @@ def status() -> dict:
 
 
 def _assert_stopped(controller, record: dict, run) -> None:
-    if record["schemaVersion"] == 2:
+    if record["schemaVersion"] in (2, 4):
         _need(bool(record["candidate"]["containers"]),
               "candidate creation is incomplete; no writer identity may be inferred")
         _assert_registered_stopped(record, run)
@@ -342,16 +354,16 @@ def _assert_stopped(controller, record: dict, run) -> None:
               and state.get("Restarting") is False and state.get("Paused") is False,
               "writer stop or restart inhibition is unconfirmed")
 
-    if record["schemaVersion"] == 3:
+    if record["schemaVersion"] in (3, 4):
         migration.assert_stopped(record, run)
 
 
 def _stop_best_effort(record: dict, run) -> bool:
     success = True
     rows = list(record["originalContainers"].values())
-    if record["schemaVersion"] == 2:
+    if record["schemaVersion"] in (2, 4):
         rows = list(record["candidate"]["containers"].values()) + rows
-    if record["schemaVersion"] == 3 and record["migration"]["container"] is not None:
+    if record["schemaVersion"] in (3, 4) and record["migration"]["container"] is not None:
         rows.insert(0, record["migration"]["container"])
     for row in rows:
         for args in (["docker", "update", "--restart=no", row["containerId"]],
@@ -407,6 +419,8 @@ def _stopped_identity(info: dict, row: dict, *, created: bool = False) -> None:
 
 def _assert_registered_stopped(record: dict, run) -> None:
     """Require exact candidates; confirm absent originals by full role inventory."""
+    if record["schemaVersion"] == 4:
+        migration.assert_stopped(record, run)
     candidate = record["candidate"]
     for service in SERVICES:
         original = record["originalContainers"][service]
@@ -440,18 +454,24 @@ def _begin_candidate_creation_locked(root, identity, attempt, controller, run, n
     _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
     record = _read(root)
     _need(record["planId"] == identity and record["attemptId"] == attempt
-          and record["schemaVersion"] == 1 and record["phase"] == "FROZEN",
-          "creation requires the same frozen attempt")
+          and ((record["schemaVersion"] == 1 and record["phase"] == "FROZEN")
+               or (record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED")),
+          "creation requires the same frozen or migrated attempt")
     _installed_gate(run)
     original_plan = plan.validate_plan(storage.load_plan(identity), identity)
     _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
           "plan baseline differs from maintenance")
+    if original_plan["pendingMigrations"]:
+        migration.assert_application_history(original_plan, record, collector._history(controller, run), run)
+    else:
+        _need(record["schemaVersion"] == 1, "no-SQL creation requires the frozen record")
     _assert_stopped(controller, record, run)
     for service in SERVICES:
         _need(_role_ids(service, run) == {record["originalContainers"][service]["containerId"]},
               "unexpected writer exists before creation intent")
     _need(_backup(run) == record["backupUnits"], "backup state changed")
-    intention = {**record, "schemaVersion": 2, "phase": "CREATING_CANDIDATES",
+    intention = {**record, "schemaVersion": 4 if record["schemaVersion"] == 3 else 2,
+                 "phase": "CREATING_CANDIDATES",
                  "updatedAt": job._timestamp(now),
                  "candidate": {"release": original_plan["candidate"], "containers": {}}}
     _write(root, intention)  # Neither an unknown write nor leftovers may be retried.
@@ -465,7 +485,7 @@ def register_created_candidates(identity: str, attempt: str, identifiers: dict, 
     with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
         return _register_created_candidates_locked(root, identity, attempt, identifiers, run, now)
 
-def _register_created_candidates_locked(root, identity, attempt, identifiers, run, now):
+def _register_created_candidates_locked(root, identity, attempt, identifiers, run, now, *, controller=None):
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     _need(type(identifiers) is dict and set(identifiers) == set(SERVICES),
@@ -475,7 +495,7 @@ def _register_created_candidates_locked(root, identity, attempt, identifiers, ru
     _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
     record = _read(root)
     _need(record["planId"] == identity and record["attemptId"] == attempt
-          and record["schemaVersion"] == 2 and record["phase"] == "CREATING_CANDIDATES"
+          and record["schemaVersion"] in (2, 4) and record["phase"] == "CREATING_CANDIDATES"
           and record["candidate"]["containers"] == {},
           "candidate registration requires the same durable creation intent")
     _installed_gate(run)
@@ -484,6 +504,12 @@ def _register_created_candidates_locked(root, identity, attempt, identifiers, ru
           "plan baseline differs from maintenance")
     candidate = original_plan["candidate"]
     _need(candidate == record["candidate"]["release"], "creation intent and plan differ")
+    if original_plan["pendingMigrations"]:
+        if controller is None:
+            import deploy_release as controller
+        migration.assert_application_history(original_plan, record, collector._history(controller, run), run)
+    else:
+        _need(record["schemaVersion"] == 2, "no-SQL registration requires its original record")
     rows = {}
     for service in SERVICES:
         name = "sanq-web" if service == "web" else "sanq-api"
@@ -498,7 +524,7 @@ def _register_created_candidates_locked(root, identity, attempt, identifiers, ru
         rows[service] = row
     _need(rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"],
           "API and worker must share the exact image")
-    registered = {**record, "schemaVersion": 2, "phase": "CANDIDATES_REGISTERED",
+    registered = {**record, "phase": "CANDIDATES_REGISTERED",
                   "updatedAt": job._timestamp(now),
                   "candidate": {"release": candidate, "containers": rows}}
     _validate(registered)
@@ -569,8 +595,9 @@ def prepare_candidate_containers(identity: str, attempt: str, *, controller=None
 
 
 def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: str, attempt: str, *, controller=None,
-                                 run=collector.command, fetch=None, now=collector.now_utc) -> dict:
-    """No-migration creation stage body. No start, SQL, env update or ACTIVE.
+                                 run=collector.command, fetch=None, now=collector.now_utc,
+                                 pending_config=None) -> dict:
+    """Shared candidate creation stage body. No start, SQL, env update or ACTIVE.
 
     Holds both original locks through revalidation, intent, PENDING, create and
     registration. Unknown outcomes retain evidence and are never replayed here.
@@ -586,15 +613,25 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
     job._no_pending(jobs_root)
     raw = storage.load_plan(identity)
     original = plan.validate_plan(raw, identity)
-    _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+    has_sql = bool(original["pendingMigrations"])
+    _need(not has_sql or callable(pending_config), "SQL authorization path is not implemented")
     plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
                                   **job._observations(original))
-    before, installed, environment = collector._snapshot(controller, run)
-    _need(before == original["current"] and environment == original["environment"]
-          and plan.runtime_contract(installed, installed) == original["runtimeContract"]
-          and collector._history(controller, run) == original["migrationHistory"]
-          and collector._backup(controller) == original["backup"],
-          "frozen plan observations changed")
+    if has_sql:
+        record = _read(root)
+        _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED"
+              and record["planId"] == identity and record["attemptId"] == attempt,
+              "post-migration creation attempt differs")
+        expanded = pending_config(original, controller, run)
+        migration.assert_application_history(original, record, collector._history(controller, run), run)
+        _need(collector._backup(controller) == original["backup"], "migration backup changed")
+    else:
+        before, installed, environment = collector._snapshot(controller, run)
+        _need(before == original["current"] and environment == original["environment"]
+              and plan.runtime_contract(installed, installed) == original["runtimeContract"]
+              and collector._history(controller, run) == original["migrationHistory"]
+              and collector._backup(controller) == original["backup"],
+              "frozen plan observations changed")
     candidate = original["candidate"]
     _need(release.verify_exact_candidate(original["current"]["applicationSha"],
                                         candidate["sourceSha"], fetch) == candidate,
@@ -603,15 +640,24 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
     for image in candidate["images"].values():
         collector._inspect_image(collector._pinned(image), collector._pinned(image),
                                  candidate["sourceSha"], run)
-    expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+    rendered = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+    if has_sql:
+        _need(rendered == expanded, "post-migration configuration drifted")
+    expanded = rendered
     body = _creation_config(expanded, candidate)
     _need(len(body) <= collector.MAX_OUTPUT, "creation input exceeds command budget")
     database = _database_identity(controller, run)
     # Re-observe the exact base after preparing private stdin, before any durable mutation.
-    _need(collector._snapshot(controller, run) == (before, installed, environment),
-          "configuration changed before creation")
+    if has_sql:
+        _need(pending_config(original, controller, run) == expanded
+              and collector._backup(controller) == original["backup"], "migration configuration changed")
+        migration.assert_application_history(original, record, collector._history(controller, run), run)
+    else:
+        _need(collector._snapshot(controller, run) == (before, installed, environment),
+              "configuration changed before creation")
     _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
-    controller.write_creation_pending(original["current"]["applicationSha"], candidate["sourceSha"])
+    if not has_sql:
+        controller.write_creation_pending(original["current"]["applicationSha"], candidate["sourceSha"])
     # Full config includes only the three app services and no depends_on/DB volumes.
     # Compose create has no --no-deps option; DB exclusion is structural.
     args = ["docker", "compose", "--project-name", "sanq-app", "--project-directory",
@@ -622,7 +668,10 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
     identifiers = {service: _container_id(controller, service, run) for service in SERVICES}
     for service, identifier in identifiers.items():
         _created_mounts(identifier, expanded["services"][service].get("volumes", []), run)
-    registered = _register_created_candidates_locked(root, identity, attempt, identifiers, run, now)
+    registered = _register_created_candidates_locked(root, identity, attempt, identifiers, run, now,
+                                                      controller=controller)
+    if has_sql:
+        migration.assert_application_history(original, registered, collector._history(controller, run), run)
     return {"planId": identity, "attemptId": registered["attemptId"],
             "outcome": "CANDIDATES_CREATED_NOT_STARTED", "canExecute": False}
 

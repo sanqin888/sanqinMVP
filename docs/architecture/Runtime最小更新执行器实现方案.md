@@ -1,6 +1,28 @@
 # Runtime 最小更新执行器实现方案
 
-## 已登记迁移执行与准确历史核对（2026-10-27，本地待审）
+## 迁移后的应用交接（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：POST_MIGRATION_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一task新增内部handoff_migrated_release，持原job/计划锁和维护目录FD，独立核同一SQL批准后，复用原create/register→start/readiness→finalize锁内主体。原计划字节/planId不变；迁移后history按原历史+准确批准pending的applied差量验证，不清空pending或伪造无迁移计划。v3/MIGRATION_VERIFIED仅可前进到保留migration与candidate两组准确对象的v4创建意图；后续原阶段/唯一ACTIVE/准确restart策略/最终清标记继续使用同一实现，迁移容器保持退出、restart=no且不删除。
+
+迁移执行批已由[PR #2996](https://github.com/sanqin888/sanqinMVP/pull/2996) 最终head `9da4771dbc7f7f2768b9d8a932471ab1a218ce5b` 经 [CI #7677](https://github.com/sanqin888/sanqinMVP/actions/runs/40514962099) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各331、Runtime1080、准确CPython3.12.15回归412），合并dev `e013287898a88dba7af375f9dc96279055b8f550`。首次CI #7676发现持久转换表遗漏新阶段，修复提交9da4771d仅补REGISTERED→STARTING_MIGRATION→MIGRATION_VERIFIED与事故转换，保留原不可变字段检查；不是放宽门禁。原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 原计划、持久记录与共享阶段
+
+- migration_container新增assert_application_history：无SQL仍要求原history完全一致及v1/v2记录；有SQL则要求v3已VERIFIED或v4、相同目标/旧SHA/准确批准摘要、原迁移ID/image/digest/固定命令和exited/零退出/无OOM/重启证据，以及准确已批准history差量。SQL历史被改动、缺项、额外/失败/重复项、缺失或被替换的迁移对象均阻断，不用Prisma命令退出码单独批准应用运行。
+- guard的未安装记录扩v4，仅在原字段上同时保留migration和candidate；原v1/v2/v3仍按各自结构读取，旧读取器遇v4拒绝。v3 VERIFIED→v4 CREATING_CANDIDATES须先核实际迁移历史/退出/原writer已停/备份unit/角色全集；随后登记仅允许相同v4、准确三created对象、candidate release与migration release一致、原/迁移/候选ID不重叠。新阶段转换保留migration原字段不可变，禁止降级、删证据、回到VERIFIED或重放。
+- 原候选创建主体增加专用pending_config适配函数参数，只有task内部SQL交接传入原starter的PENDING/Manifest/运行文件/展开配置核验；未提供该函数的普通create入口仍拒绝SQL。它不是跳过检查开关，SQL分支还必须具有准确VERIFIED记录和实际history/迁移完成证明。无guard→starter反向导入；task已依赖二者。无迁移仍走原snapshot/历史校验及写PENDING，SQL分支保留已写PENDING、旧.env且不重复state写入。创建固定同一三服务、不涉及DB，前后核DB身份与实际history。
+- start/readiness/finalize共享主体以同一history核验替换“必须无pending”的局部断言；只允许v2无迁移或v4已验证迁移，不能只删SQL限制。启动前后、每次运行健康检查、ACTIVE前与原策略恢复后的最终交接重核迁移对象；实际history在创建/登记/启动/就绪/ACTIVE前及提交封口前重核。原.env替换、唯一ACTIVE、原策略逐对象读回、HANDOFF_COMMITTED及最后clear顺序未更换，也不另建发布状态。
+- v4失败收尾先停保存迁移ID，再停已登记应用候选与原writer，最后核对象/门禁；部分create尚无完整候选ID时仍FENCE_UNCONFIRMED，不猜对象或自动恢复业务。已执行SQL保留实际账本，应用失败不反向迁移或恢复旧盘；ACTIVE已写后的失败继续保留实际ACTIVE+INCIDENT，最终封口/clear未知沿原不覆盖、不重放边界处置。正常成功保留退出的迁移容器供核对，不自动rm。
+
+### 验证、交付和结束位置
+
+新增16项离线模型测试，从可丢弃的已验证迁移边界出发，运行原create/start/finalize主体，覆盖完整同锁交接、唯一ACTIVE/计划字节不变/不重复SQL或PENDING、批准/attempt/历史/退出/命令负例、部分create与禁止重放、启动/目标readiness/ACTIVE前history漂移、ACTIVE后策略失败、创建意图/提交封口/清标记结果未知、v4坏结构/ID重叠及锁竞争。Docker/SQL/配置、来源/时钟及文件writer为替身，真实临时计划/维护文件不代表真实生产迁移或容器行为。原candidate writer/creation-intent两份夹具改成准确无pending计划；它们原本借用了pending SQL的通用freeze夹具，新条件下不能以未验证迁移进入应用创建。原断言保留，并新增冻结SQL未验证不得进入应用意图的回归。
+
+仅Python3.10 AST/静态名字/重复测试方法/差异审阅，项目测试未运行。本批不宣称SQL整任务贯通、第二批完成或可安装；所有九helper必须统一验真交付，不能让新记录被旧版本工具处理。guard仍独占持久记录/转换/收尾，migration_container拥有SQL对象/历史检查，task只编排原三个阶段，无新模块/反向导入环或12上下文owner/债务/scanner基线变化，未运行scanner。
+
+尚未把SQL批准/冻结/迁移创建/执行/本次交接串入同一systemd提交主线，原submit/run继续拒绝pending SQL，本内部函数没有CLI。必须仅在前一迁移执行调用已知成功的同一任务中使用；读取到VERIFIED记录不是从持久结果未知/事故恢复或续跑的许可。下一步统一SQL任务参数、阶段间锁及整体超时/StopPost，再补受控回退、固定交付/安装与Mac入口、真实隔离故障/连续双发布/恢复和生产过渡。九helper件数与17+Manifest/250/300旧guard不变，原controller正式Bundle交付仍待完成。三组研究暂停、不取消；无依赖/业务schema/迁移文件/生产目录、Docker/systemd/SQL/AWS操作。
+
+## 已登记迁移执行与准确历史核对（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：MIGRATION_EXECUTE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一task新增内部execute_registered_migration及锁内主体，原job/计划锁和维护目录FD贯穿批准/时效、唯一PENDING与旧.env、Manifest/运行合同/展开配置、DB/history/备份/准确来源/缓存API digest与SQL inventory重核。只从同一v3/MIGRATION_REGISTERED进入；先耐久STARTING_MIGRATION再start已保存ID并wait，阶段monotonic预算900s（含重核与等待，start至多30s）。wait返回0还须确认同一对象exited/ExitCode=0、无OOM/Dead/Error/重启，以及数据库历史准确增加本计划有序pending对应的applied行、保留原历史含rolled-back行与重复数量，无额外SQL或失败项。复核完成写MIGRATION_VERIFIED，仍保留PENDING/维护标记/原策略禁止重启；不是ACTIVE或恢复许可。
 

@@ -1,4 +1,4 @@
-"""Task-connected start/readiness stage for registered no-migration candidates.
+"""Shared start/readiness stage for registered candidates with exact SQL evidence.
 
 No CLI, environment mutation, SQL apply, ACTIVE, policy restore or maintenance
 clear. Candidate startup can write business data even while PENDING is retained.
@@ -50,6 +50,8 @@ def _pending_and_config(original, controller, run):
 
 def _running(record, expanded, run, *, policies=None):
     healthy = True
+    if record["schemaVersion"] == 4:
+        guard.migration.assert_completed(record, run)
     candidate = record["candidate"]
     for service in guard.SERVICES:
         row = candidate["containers"][service]
@@ -108,7 +110,7 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
                 and record["phase"] == "CANDIDATES_REGISTERED", "start attempt or phase differs")
     raw = storage.load_plan(identity)
     original = plan.validate_plan(raw, identity)
-    guard._need(not original["pendingMigrations"]
+    guard._need(record["schemaVersion"] in (2, 4)
                 and record["observedApplicationSha"] == original["current"]["applicationSha"]
                 and record["candidate"]["release"] == original["candidate"],
                 "SQL path is unavailable or candidate proof differs")
@@ -117,7 +119,7 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
     guard._installed_gate(bounded)
     expanded = _pending_and_config(original, controller, bounded)
     guard._need(collector._backup(controller) == original["backup"]
-                and collector._history(controller, bounded) == original["migrationHistory"]
+                and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded)
                 and release.verify_exact_candidate(original["current"]["applicationSha"],
                     original["candidate"]["sourceSha"], fetch) == original["candidate"],
                 "backup, SQL history or candidate proof changed")
@@ -160,7 +162,7 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
         guard._need(_running(record, expanded, bounded)
                     and guard._database_identity(controller, bounded) == database
                     and guard._backup(bounded) == backup_units
-                    and collector._history(controller, bounded) == original["migrationHistory"],
+                    and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded),
                     "post-readiness baseline changed")
         _pending_and_config(original, controller, bounded)
         guard._installed_gate(bounded)
