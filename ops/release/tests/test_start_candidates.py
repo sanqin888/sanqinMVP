@@ -265,6 +265,7 @@ class PendingBindingTests(unittest.TestCase):
                       "reason": "candidate-create-start", "updatedAt": NOW}
         self.controller = SimpleNamespace(ROOT=Path("/uninstalled"), ENV=Path("/uninstalled/.env"),
             STATE=Path("/uninstalled/state"), RUNTIME_MANIFEST=Path("/uninstalled/manifest"),
+            COMPOSE=Path("/uninstalled/docker-compose.yml"),
             ensure_repo_location=Mock(), current_sha_from_text=deploy.current_sha_from_text,
             pwd=SimpleNamespace(getpwnam=Mock(return_value=SimpleNamespace(pw_uid=0))))
 
