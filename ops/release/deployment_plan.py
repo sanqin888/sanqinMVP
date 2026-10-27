@@ -424,3 +424,30 @@ def rollback_review_summary(raw: bytes, expected_plan_id: str) -> dict:
             "compatibilityApprovalSha256": hashlib.sha256(_canonical(scope)).hexdigest(),
             "requiresExplicitCompatibilityReview": True, "databaseCompatibilityProven": False,
             "incidentRecoveryAuthorized": False, "canExecute": False}
+
+
+def assert_rollback_compatibility(raw: bytes, expected_plan_id: str, approved_sha256: str) -> None:
+    """Bind an independent acknowledgement, including when SQL inventories match."""
+    review = rollback_review_summary(raw, expected_plan_id)
+    _require(_sha256(approved_sha256) == review["compatibilityApprovalSha256"],
+             "compatibility acknowledgement differs from the exact rollback review")
+
+
+def assert_same_rollback_observations(raw: bytes, expected_plan_id: str, *,
+                                      fresh_raw: bytes, observed_at: str) -> None:
+    """Compare two trusted collections, not a persisted permission to execute."""
+    original = validate_rollback_review(raw, expected_plan_id)
+    _require(type(fresh_raw) is bytes and 0 < len(fresh_raw) <= MAX_PLAN_BYTES,
+             "fresh rollback review bytes invalid")
+    try:
+        fresh_id = json.loads(fresh_raw, object_pairs_hook=_unique_object)["planId"]
+    except (ValueError, UnicodeError, RecursionError, KeyError, TypeError) as exc:
+        raise ReleaseContractError("fresh rollback review identity invalid") from exc
+    fresh = validate_rollback_review(fresh_raw, fresh_id)
+    now = _utc(observed_at)
+    _require(_utc(original["createdAt"]) <= _utc(fresh["createdAt"]) <= now
+             and dt.timedelta(0) <= now - _utc(original["backup"]["modifiedAt"])
+                 <= dt.timedelta(hours=26), "rollback clock moved backwards or backup expired")
+    def baseline(value):
+        return {key: item for key, item in value.items() if key not in ("createdAt", "planId")}
+    _require(baseline(fresh) == baseline(original), "rollback baseline changed; prepare and review again")

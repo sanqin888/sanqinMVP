@@ -1,7 +1,8 @@
 """Uninstalled asynchronous release task for exact plans and reviewed SQL.
 
 One locked task owns freeze through final handoff. SQL requires its independent
-scope digest. Query evidence after unknown results; never replay or restore.
+scope digest. Rollback preflight is read-only for business state and cannot execute.
+Query evidence after unknown results; never replay or restore.
 """
 
 from __future__ import annotations
@@ -65,6 +66,10 @@ def _installed() -> None:
           and "policies" in inspect.signature(starter._running).parameters
           and "input_bytes" in inspect.signature(collector.command).parameters
           and callable(getattr(storage, "check_maintenance_clear", None))
+          and callable(getattr(storage, "load_rollback_review", None))
+          and callable(getattr(collector, "collect_rollback", None))
+          and callable(getattr(plan, "assert_rollback_compatibility", None))
+          and callable(getattr(plan, "assert_same_rollback_observations", None))
           and "wait_seconds" in inspect.signature(job._locked_directory).parameters,
           "installed helper APIs are incomplete; do not mix tool versions")
 
@@ -121,6 +126,50 @@ def _context(identity: str, role: str, run, *, approval=None) -> None:
     _need(_command_matches(fields["ExecStart"], _command("run", identity, approval))
           and _command_matches(fields["ExecStopPost"], _command("cleanup", identity, approval)),
           "task executable arguments or failure handling differ")
+
+
+def check_rollback(identity: str, *, approval: str, controller=None,
+                   run=collector.command, fetch=None, now=collector.now_utc,
+                   clock=time.monotonic) -> dict:
+    """Locked preflight only. Its result cannot queue, freeze or resume a rollback."""
+    job._root_operator()
+    identity = storage._plan_id(identity)
+    _installed()
+    deadline = clock() + 300
+    def remaining():
+        value = deadline - clock()
+        _need(value > 0, "rollback preflight budget exhausted")
+        return value
+    def bounded(args, **kwargs):
+        kwargs["timeout"] = min(kwargs.get("timeout", 60), remaining())
+        value = run(args, **kwargs)
+        remaining()
+        return value
+    if fetch is None:
+        fetch = lambda path: guard.release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    def bounded_fetch(path):
+        remaining()
+        value = fetch(path)
+        remaining()
+        return value
+    with job._locked_directory() as root, storage.preparation_lock():
+        job._no_pending(root)
+        storage.check_maintenance_clear(guard.MAINTENANCE_DIR)
+        raw = storage.load_rollback_review(identity)
+        plan.assert_rollback_compatibility(raw, identity, approval)
+        guard._installed_gate(bounded)
+        fresh = collector.collect_rollback(controller=controller, run=bounded,
+                                           fetch=bounded_fetch, cache_images=False)
+        _need(storage.load_rollback_review(identity) == raw, "saved rollback review changed")
+        job._no_pending(root)
+        storage.check_maintenance_clear(guard.MAINTENANCE_DIR)
+        guard._installed_gate(bounded)
+        remaining()
+        plan.assert_same_rollback_observations(raw, identity, fresh_raw=fresh,
+                                               observed_at=job._timestamp(now))
+        return {**plan.rollback_review_summary(raw, identity), "outcome": "BASELINE_RECHECKED",
+                "mode": "ROLLBACK_PREFLIGHT_ONLY", "compatibilityAcknowledged": True,
+                "executionImplemented": False}
 
 
 def submit(identity: str, *, approval=None, run=collector.command, now=collector.now_utc) -> dict:
@@ -565,17 +614,25 @@ def main(argv=None) -> int:
             sub.add_argument("--confirm-release", required=True, action="store_true")
         if name in ("submit", "run", "cleanup"):
             sub.add_argument("--approve-sql", help="exact SQL review SHA-256 for this plan")
+    rollback = commands.add_parser("check-rollback", help="Check a reviewed rollback without executing it")
+    rollback.add_argument("plan_id")
+    rollback.add_argument("--approve-compatibility", required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == "logs":
+        if args.command == "check-rollback":
+            print(json.dumps(check_rollback(args.plan_id, approval=args.approve_compatibility), indent=2))
+        elif args.command == "logs":
             print(logs(args.plan_id), end="")
         else:
             handlers = {"submit": submit, "run": run_task, "cleanup": cleanup_task, "status": status}
             kwargs = {"approval": args.approve_sql} if args.command in ("submit", "run", "cleanup") else {}
             print(json.dumps(handlers[args.command](args.plan_id, **kwargs), indent=2))
         return 0
-    except (ReleaseContractError, OSError, ValueError, TypeError, KeyError, RecursionError):
-        print("Task outcome requires review; query status/logs. No automatic retry or restore.")
+    except (ReleaseContractError, OSError, EOFError, ValueError, TypeError, KeyError, RecursionError):
+        if args.command == "check-rollback":
+            print("Rollback preflight blocked; no rollback task or business change was requested.")
+        else:
+            print("Task outcome requires review; query status/logs. No automatic retry or restore.")
         return 1
 
 

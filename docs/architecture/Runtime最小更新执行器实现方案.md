@@ -1,8 +1,34 @@
 # Runtime 最小更新执行器实现方案
 
-## 回退现场采集与私有计划保存（2026-10-27，本地待审）
+## 回退兼容确认与锁内复核（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：ROLLBACK_COLLECT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原collector新增prepare-rollback [--save] [--cached-only]和show-rollback <plan-id>，只从唯一state的previous确定目标，不接受任意SHA。重核17+Manifest/配置/state原字节、准确历史proof/两运行文件、当前与目标实际digest及各自API SQL/Git树、当前history/DB身份/真实挂载/备份；结束前重读关键基线，任一变化阻断。当前应用可不健康/已退出，但对象身份/镜像/挂载仍须证明，DB必须运行且是原固定卷；维护记录/PENDING仍拒绝。只输出兼容审阅摘要，canExecute保持false。
+**2026-10-27 当前进度：ROLLBACK_PREFLIGHT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原plan新增独立准确兼容确认及新旧现场审阅原件比对，collector新增show-rollback-sql，只展示当前数据库比旧镜像多出的已应用SQL。原task新增check-rollback <plan-id> --approve-compatibility <准确摘要>：持原job锁和计划锁，禁止未完结job/维护记录，缓存模式重新采集两镜像/两份SQL来源/现场基线，结束前重读原计划与门禁；只返回BASELINE_RECHECKED，不能排队或执行回退。canExecute/databaseCompatibilityProven/incidentRecoveryAuthorized始终false，executionImplemented=false。
+
+回退采集批已由[PR #3000](https://github.com/sanqin888/sanqinMVP/pull/3000) 最终head `ee12e4f1bb69c4cdee31e97ae7e6b1763bc0fd85` 经 [CI #7686](https://github.com/sanqin888/sanqinMVP/actions/runs/40532730955) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各399、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `05c65d07f2ee059cdaf012378075e34f021ec747`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 准确审阅和独立确认
+
+- show-rollback-sql <plan-id>从原typed store读取回退原件，仅获取extraAppliedMigrations对应的准确Git blob；每项核完整SHA、size/base64、原字节SHA-256与Git blob SHA-1，使用当前commit的sourceUrl展示UTF-8原文。新旧调用共享原SQL读取循环，前向show-sql的校验与输出保持。原始SQL总字节和完整JSON均受原4MiB预算限制，全部核完才输出，不产生部分审阅。
+- assert_rollback_compatibility仅接受原summary给出的准确64位小写compatibilityApprovalSha256，独立参数绑定完整planId；None/布尔/通用id/旧计划摘要拒绝。即使两版本SQL清单相同也必须确认，仍不推断应用数据格式/写入语义、配置、外部副作用或数据库兼容安全。
+- assert_same_rollback_observations验证两个完整canonical回退原件，除createdAt/相应planId外所有字段必须相等；包括唯一state原字节、两份inventory、history、目标proof、运行pin/配置/安装/备份/环境。新采集时间须不早于原计划且不晚于最终观测，原备份仍须在26h内；只允许采集时刻自然前进，不放宽原计划确认范围。新计划自身的确认摘要不能替代原计划摘要。
+
+### 同锁复核与输出边界
+
+check-rollback先核root、固定安装API和原两锁，原未完结job及维护残留须为空；读取准确typed原件并核独立确认后才检查系统门禁和重新采集。复用collect_rollback(cache_images=False)，不pull/build或起停业务，缺缓存阻断；当前应用健康仍不作为前置，实际身份/镜像/挂载、运行DB、当前完整SQL/history和目标来源均须通过。原collector只读业务观察，可启动原隔离SQL文件探针并创建锁，不能表述为主机零写入。
+
+300s monotonic总预算覆盖命令及来源请求前后，命令timeout取剩余预算与原局部限制较小者，GitHub传输保留原15s上限。完成采集后重读原计划字节、未完结job、维护目录和安装门禁，再按最终时刻比较；未知/变化均报固定脱敏错误，不自动产生新计划替代原件。整个入口不写job/维护/state/.env/批准文件，不调用systemd-run或旧回退。返回只描述本次锁内观察；锁释放后不是后续切换许可，executionImplemented=false。
+
+### 验证、归属与剩余工作
+
+新增18项离线模型测试：缺安装API拒绝及准确/缺失/布尔/错scope确认、同SQL仍需确认、采集时间与备份过期/时钟倒退、state/配置/历史/备份/运行pin/目标proof漂移、坏原件、准确SQL blob/当前commit/字节与输出预算、typed CLI/脱敏，以及持两锁的真实collector与私有store组合、禁pull/业务命令、未完结job/维护/门禁、读回变化、300s预算、竞争/root及CLI参数拒绝。文件存取使用可丢弃私有临时目录，Docker/GitHub/DB/PID1为替身。仅Python3.10 AST、静态名字/重复方法/差异及原SQL读取循环AST等价审阅，项目测试未运行，不把前批399结果当本批通过。
+
+Runtime/Ops普通兼容新增，原task→collector/plan/store及collector→plan/release/store方向保持，无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。原submit/run/cleanup、前向/SQL执行主体、维护schema和唯一版本权威不变；17+Manifest与250/300旧guard保持，受保护源仍须正式Bundle过渡。
+
+本批未接回退停写、对象创建/启动、唯一rolled-back提交与清标记，也无异步回退任务或事故恢复入口。复核结果不保存批准文件/新job，不是可重用执行票据；未来执行仍须在同一锁内重核并保留原计划与数据库真实历史，不可伪装前向计划、执行反向SQL或调用旧rollback --execute。下一步接原维护主线的受控回退阶段，再完成九helper/三drop-in统一验真、固定17+Manifest正式Bundle过渡、Mac薄入口及真实隔离故障/恢复/连续双发布验收。三组研究继续暂停、不取消；无依赖/业务schema/迁移文件、生产Docker/systemd/SQL/AWS操作。
+
+## 回退现场采集与私有计划保存（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原collector新增prepare-rollback [--save] [--cached-only]和show-rollback <plan-id>，只从唯一state的previous确定目标，不接受任意SHA。重核17+Manifest/配置/state原字节、准确历史proof/两运行文件、当前与目标实际digest及各自API SQL/Git树、当前history/DB身份/真实挂载/备份；结束前重读关键基线，任一变化阻断。当前应用可不健康/已退出，但对象身份/镜像/挂载仍须证明，DB必须运行且是原固定卷；维护记录/PENDING仍拒绝。只输出兼容审阅摘要，canExecute保持false。
 
 回退审阅批已由[PR #2999](https://github.com/sanqin888/sanqinMVP/pull/2999) 最终head `ca5993f258faafe7cbca85429ab7768073ef1753` 经 [CI #7684](https://github.com/sanqin888/sanqinMVP/actions/runs/40527848453) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各382、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `17416da3333a34dc19defcbefcfc4a6f242f56e5`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
 

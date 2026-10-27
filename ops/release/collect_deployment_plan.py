@@ -467,8 +467,16 @@ def review_sql(raw: bytes, identity: str, *, fetch=None) -> dict:
           "SQL review exceeds bounded output; explicit separate review required")
     if fetch is None:
         fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    rows = _sql_texts(review["migrations"], review["targetSha"], fetch)
+    result = {**review, "migrations": rows, "mode": "SQL_REVIEW_ONLY"}
+    _need(len(json.dumps(result, indent=2).encode("utf-8")) + 1 <= MAX_OUTPUT,
+          "encoded SQL review exceeds output budget; no partial review emitted")
+    return result
+
+
+def _sql_texts(migrations: list, source_sha: str, fetch) -> list:
     rows = []
-    for item in review["migrations"]:
+    for item in migrations:
         response = fetch(f"/repos/{release.REPOSITORY}/git/blobs/{item['gitBlobSha']}")
         _need(type(response) is dict and response.get("sha") == item["gitBlobSha"]
               and type(response.get("size")) is int and response["size"] == item["bytes"]
@@ -483,11 +491,23 @@ def review_sql(raw: bytes, identity: str, *, fetch=None) -> dict:
                   == item["gitBlobSha"], "SQL bytes differ from reviewed image inventory")
         path = "apps/api/prisma/migrations/" + item["name"] + "/migration.sql"
         rows.append({**item, "sourceUrl": "https://github.com/" + release.REPOSITORY
-                     + "/blob/" + review["targetSha"] + "/" + path,
+                     + "/blob/" + source_sha + "/" + path,
                      "sqlText": source.decode("utf-8")})
-    result = {**review, "migrations": rows, "mode": "SQL_REVIEW_ONLY"}
+    return rows
+
+
+def review_rollback_sql(raw: bytes, identity: str, *, fetch=None) -> dict:
+    """Show SQL already applied beyond the old image; never undo or execute it."""
+    review = contract.rollback_review_summary(raw, identity)
+    migrations = review["extraAppliedMigrations"]
+    _need(sum(item["bytes"] for item in migrations) <= MAX_OUTPUT,
+          "rollback SQL review exceeds bounded output; separate review required")
+    if fetch is None:
+        fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    rows = _sql_texts(migrations, review["currentSha"], fetch)
+    result = {**review, "extraAppliedMigrations": rows, "mode": "ROLLBACK_SQL_REVIEW_ONLY"}
     _need(len(json.dumps(result, indent=2).encode("utf-8")) + 1 <= MAX_OUTPUT,
-          "encoded SQL review exceeds output budget; no partial review emitted")
+          "encoded rollback SQL review exceeds output budget; no partial review emitted")
     return result
 
 
@@ -506,8 +526,14 @@ def main(argv=None) -> int:
     rollback.add_argument("--cached-only", action="store_true")
     rollback_show = sub.add_parser("show-rollback", help="Read a saved rollback review only")
     rollback_show.add_argument("plan_id")
+    rollback_sql = sub.add_parser("show-rollback-sql", help="Show already-applied extra SQL for compatibility review")
+    rollback_sql.add_argument("plan_id")
     args = parser.parse_args(argv)
     try:
+        if args.command == "show-rollback-sql":
+            raw = store.load_rollback_review(args.plan_id)
+            print(json.dumps(review_rollback_sql(raw, args.plan_id), indent=2))
+            return 0
         if args.command in ("prepare-rollback", "show-rollback"):
             if args.command == "show-rollback":
                 raw, identity = store.load_rollback_review(args.plan_id), args.plan_id
