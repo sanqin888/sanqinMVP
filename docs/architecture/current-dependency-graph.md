@@ -1,6 +1,14 @@
 # Current 12-context dependency graph
 
-**2026-10-27 当前进度：DELIVERY_CONTRACT_LOCAL / SOURCE_AUDITED / INSTALLER_NOT_IMPLEMENTED / NOT_INSTALLED。**完成原17+Manifest、九辅助件、三drop-in、状态目录和现有staging/历史来源/备份材料的源码核对，新增[工具交付与安装合同](Runtime最小执行器工具交付与安装合同.md)。本批仅文档，不修改Bundle/schema/权限/guard或生产文件。
+**2026-10-27 当前进度：D1_MATERIALS_LOCAL / TESTS_NOT_RUN / HOST_INSTALL_NOT_IMPLEMENTED / NOT_INSTALLED。**新增独立交付工具ops/release/install_minimal_executor.py，仅pack/verify/plan。复用原17归档封存、准确main/CI/发布及固定Git对象，惰性材料含原归档、17+9+bootstrap共27份源码和三固定模板；重新核验来源后只输出材料/差异观察，所有安装/执行权限标志false。
+
+交付合同已由[PR #3007](https://github.com/sanqin888/sanqinMVP/pull/3007) 最终head `5a703b4b4a309731f68a913ef42a271049eadd85` 经 [CI #7700](https://github.com/sanqin888/sanqinMVP/actions/runs/40562348239) SUCCESS（仅ci-change-scope成功，其余9作业按文档范围跳过；无Release/Runtime测试重跑），无CI修复，合并dev `43d270d0e6d290a95eaa2732918edcbec040c906`。文档合并不代表installer或生产验证完成。
+
+独立交付工具归Runtime/Ops材料清点与只读核验，依赖已审阅build_bundle/versioned_release_contract/release_contract，不导入九辅助件，不由task导入或自更新。未修改既有执行主体、Bundle/schema/CI/publish/权限，无12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。
+
+新增30项离线模型测试未运行，仅静态与差异审阅；pack是非root/create-only的材料输出，verify/plan不加载目标源码、不观察生产主机，不授予安装或续跑许可。D1本地源码尚未远端交付；D2主机安装、独立bootstrap root落地/临时门禁/恢复材料/逐文件交接、D3 Mac薄入口、D4统一真实隔离验收及生产材料仍OPEN。当前打包器来自操作者独立审阅的bootstrap，材料包不能认证正在运行的验证器自身；后续root阶段必须重新验真，不能提权运行用户staging。17+Manifest、250/300旧guard、九常规helper/三永久drop-in数量保持，无新依赖/业务schema/迁移或生产操作，三组研究继续暂停、不取消。 详见[工具交付合同及D1](../architecture/Runtime最小执行器工具交付与安装合同.md)。
+
+**2026-10-27 当前进度：CONTRACT_MERGED_DEV / SOURCE_AUDITED / INSTALLER_NOT_IMPLEMENTED / NOT_INSTALLED。**完成原17+Manifest、九辅助件、三drop-in、状态目录和现有staging/历史来源/备份材料的源码核对，新增[工具交付与安装合同](Runtime最小执行器工具交付与安装合同.md)。本批仅文档，不修改Bundle/schema/权限/guard或生产文件。
 
 回退异步任务批已由[PR #3006](https://github.com/sanqin888/sanqinMVP/pull/3006) 最终head `69950aa86bc35587ef86979a6e32a74ad33ba8de` 经 [CI #7698](https://github.com/sanqin888/sanqinMVP/actions/runs/40558256262) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各544、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `d1768dbd5af4375467d6e998dd7e031665b6f306`。原LOCAL/未运行是原审阅时点；仍未安装/真实隔离验收。
 
