@@ -738,63 +738,75 @@ def _freeze_for_plan_locked(root: int, jobs_root: int, identity: str, *, control
 def begin_migration_creation(identity, attempt, approval, *, controller=None,
                              run=collector.command, now=collector.now_utc):
     job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _begin_migration_creation_locked(root, jobs_root, identity, attempt, approval, controller=controller, run=run, now=now)
+
+
+def _begin_migration_creation_locked(root, jobs_root, identity, attempt, approval, *, controller=None,
+                             run=collector.command, now=collector.now_utc):
+    job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     if controller is None:
         import deploy_release as controller
-    with job._locked_directory() as jobs, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
-        job._no_pending(jobs)
-        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
-        record = _read(root)
-        _need(record["schemaVersion"] == 1 and record["phase"] == "FROZEN"
-              and record["planId"] == identity and record["attemptId"] == attempt, "migration attempt differs")
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        _need(bool(original["pendingMigrations"]), "no SQL requires no migration container")
-        plan.assert_sql_approval(raw, identity, approval)
-        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                      **job._observations(original))
-        _need(record["observedApplicationSha"] == original["current"]["applicationSha"],
-              "migration baseline differs")
-        _installed_gate(run)
-        _assert_stopped(controller, record, run)
-        _need(_backup(run) == record["backupUnits"], "backup state changed")
-        value = {**record, "schemaVersion": 3, "phase": "MIGRATION_CREATING",
-                 "updatedAt": job._timestamp(now), "migration": {
-                     "release": original["candidate"], "approvalSha256": approval, "container": None}}
-        _need(not migration.ids(value, run), "migration container already exists")
-        _write(root, value)
-        return value
+    job._no_pending(jobs_root)
+    _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+    record = _read(root)
+    _need(record["schemaVersion"] == 1 and record["phase"] == "FROZEN"
+          and record["planId"] == identity and record["attemptId"] == attempt, "migration attempt differs")
+    raw = storage.load_plan(identity)
+    original = plan.validate_plan(raw, identity)
+    _need(bool(original["pendingMigrations"]), "no SQL requires no migration container")
+    plan.assert_sql_approval(raw, identity, approval)
+    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                  **job._observations(original))
+    _need(record["observedApplicationSha"] == original["current"]["applicationSha"],
+          "migration baseline differs")
+    _installed_gate(run)
+    _assert_stopped(controller, record, run)
+    _need(_backup(run) == record["backupUnits"], "backup state changed")
+    value = {**record, "schemaVersion": 3, "phase": "MIGRATION_CREATING",
+             "updatedAt": job._timestamp(now), "migration": {
+                 "release": original["candidate"], "approvalSha256": approval, "container": None}}
+    _need(not migration.ids(value, run), "migration container already exists")
+    _write(root, value)
+    return value
 
 
 def register_created_migration(identity, attempt, container_id, *, controller=None,
                                run=collector.command, now=collector.now_utc):
     job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _register_created_migration_locked(root, jobs_root, identity, attempt, container_id, controller=controller, run=run, now=now)
+
+
+def _register_created_migration_locked(root, jobs_root, identity, attempt, container_id, *, controller=None,
+                               run=collector.command, now=collector.now_utc):
+    job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     if controller is None:
         import deploy_release as controller
-    with job._locked_directory(), storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
-        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
-        record = _read(root)
-        _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_CREATING"
-              and record["planId"] == identity and record["attemptId"] == attempt, "migration intent differs")
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        plan.assert_sql_approval(raw, identity, record["migration"]["approvalSha256"])
-        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                      **job._observations(original))
-        _need(original["candidate"] == record["migration"]["release"], "migration proof changed")
-        _installed_gate(run)
-        baseline = {k: v for k, v in record.items() if k != "migration"}
-        _assert_stopped(controller, {**baseline, "schemaVersion": 1, "phase": "FROZEN"}, run)
-        _need(_backup(run) == record["backupUnits"], "backup state changed")
-        _need(migration.ids(record, run) == {migration.identifier(container_id)}, "migration inventory differs")
-        info = migration.inspect_container(record, container_id, run, created=True)
-        value = {**record, "phase": "MIGRATION_REGISTERED", "updatedAt": job._timestamp(now),
-                 "migration": {**record["migration"],
-                               "container": {"containerId": container_id, "imageId": info["Image"]}}}
-        _write(root, value)
-        migration.assert_stopped(value, run)
-        return value
+    _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+    record = _read(root)
+    _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_CREATING"
+          and record["planId"] == identity and record["attemptId"] == attempt, "migration intent differs")
+    raw = storage.load_plan(identity)
+    original = plan.validate_plan(raw, identity)
+    plan.assert_sql_approval(raw, identity, record["migration"]["approvalSha256"])
+    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                  **job._observations(original))
+    _need(original["candidate"] == record["migration"]["release"], "migration proof changed")
+    _installed_gate(run)
+    baseline = {k: v for k, v in record.items() if k != "migration"}
+    _assert_stopped(controller, {**baseline, "schemaVersion": 1, "phase": "FROZEN"}, run)
+    _need(_backup(run) == record["backupUnits"], "backup state changed")
+    _need(migration.ids(record, run) == {migration.identifier(container_id)}, "migration inventory differs")
+    info = migration.inspect_container(record, container_id, run, created=True)
+    value = {**record, "phase": "MIGRATION_REGISTERED", "updatedAt": job._timestamp(now),
+             "migration": {**record["migration"],
+                           "container": {"containerId": container_id, "imageId": info["Image"]}}}
+    _write(root, value)
+    migration.assert_stopped(value, run)
+    return value
 
 
 def main(argv=None) -> int:

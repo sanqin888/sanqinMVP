@@ -218,6 +218,68 @@ def cleanup_task(identity: str, *, run=collector.command) -> dict:
     return guard.cleanup_after_task(identity, os.environ.get("SERVICE_RESULT", "unknown"), run=run)
 
 
+
+def prepare_migration_container(identity, attempt, approval, *, controller=None,
+                                run=collector.command, fetch=None, now=collector.now_utc):
+    """Internal create-only stage. Not wired to submit/run or any SQL command."""
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    _need(callable(getattr(controller, "write_creation_pending", None))
+          and callable(getattr(guard, "_begin_migration_creation_locked", None))
+          and callable(getattr(guard, "_register_created_migration_locked", None))
+          and callable(getattr(guard.migration, "creation_config", None)), "migration APIs are incomplete")
+    if fetch is None:
+        fetch = lambda path: guard.release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        job._no_pending(jobs_root)
+        _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
+        record = guard._read(root)
+        _need(record["planId"] == identity and record["attemptId"] == attempt
+              and record["phase"] == "FROZEN", "migration creation attempt differs")
+        original = plan.validate_plan(storage.load_plan(identity), identity)
+        _need(bool(original["pendingMigrations"]), "migration creation requires pending SQL")
+        plan.assert_sql_approval(storage.load_plan(identity), identity, approval)
+        plan.assert_same_observations(storage.load_plan(identity), identity,
+            observed_at=job._timestamp(now), **job._observations(original))
+        before, installed, environment = collector._snapshot(controller, run)
+        _need(before == original["current"] and environment == original["environment"]
+              and plan.runtime_contract(installed, installed) == original["runtimeContract"]
+              and collector._history(controller, run) == original["migrationHistory"]
+              and collector._backup(controller) == original["backup"], "migration baseline changed")
+        _need(guard.release.verify_exact_candidate(original["current"]["applicationSha"],
+              original["candidate"]["sourceSha"], fetch) == original["candidate"], "candidate proof changed")
+        collector._resource_preflight(controller)
+        image = original["candidate"]["images"]["sanq-api"]
+        collector._inspect_image(collector._pinned(image), collector._pinned(image),
+                                 original["candidate"]["sourceSha"], run)
+        _need(collector._probe_sql(collector._pinned(image), run) == original["migrationInventory"],
+              "cached image SQL inventory changed")
+        expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+        body = guard.migration.creation_config(expanded, {**record, "migration": {
+            "release": original["candidate"]}})
+        _need(len(body) <= collector.MAX_OUTPUT, "migration config exceeds input budget")
+        database = guard._database_identity(controller, run)
+        _need(collector._snapshot(controller, run) == (before, installed, environment),
+              "configuration changed before migration intention")
+        guard._begin_migration_creation_locked(root, jobs_root, identity, attempt, approval,
+                                              controller=controller, run=run, now=now)
+        controller.write_creation_pending(original["current"]["applicationSha"], original["candidate"]["sourceSha"])
+        run(["docker", "compose", "--project-name", "sanq-app", "--project-directory", str(controller.ROOT),
+             "--env-file", str(controller.ENV), "--parallel", "1", "-f", "-", "create",
+             "--no-build", "--pull", "never", "sanq-migration"], input_bytes=body, timeout=180)
+        _need(guard._database_identity(controller, run) == database
+              and collector._history(controller, run) == original["migrationHistory"],
+              "database or history changed during create")
+        identifiers = guard.migration.ids(guard._read(root), run)
+        _need(len(identifiers) == 1, "migration creation identity is unknown")
+        value = guard._register_created_migration_locked(root, jobs_root, identity, attempt, identifiers.pop(),
+                                                       controller=controller, run=run, now=now)
+        return {"planId": identity, "attemptId": value["attemptId"],
+                "outcome": "MIGRATION_CREATED_NOT_STARTED", "canExecute": False}
+
+
 def _observed_writers(controller, candidate, expanded, run):
     rows = {}
     for service in guard.SERVICES:

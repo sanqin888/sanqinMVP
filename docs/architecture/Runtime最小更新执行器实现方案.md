@@ -1,6 +1,20 @@
 # Runtime 最小更新执行器实现方案
 
-## 迁移容器意图、登记与事故收尾（2026-10-27，本地待审）
+## 迁移容器只创建与登记接线（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：MIGRATION_CREATE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原task新增内部prepare_migration_container，持原job/计划锁和维护目录FD贯穿重核、迁移意图、唯一PENDING、只创建、DB/history复核和准确ID登记。锁内重核准确SQL批准、计划时效/原配置/Manifest/运行合同、历史/备份/候选证明/缓存API digest及镜像SQL清单；配置只含一个迁移服务与已有external网络，DATABASE_URL通过原有界私有stdin传入并转义Compose美元符号，不转发JWT等API秘密。固定create --no-build --pull never、180s，不start/SQL/ACTIVE/改.env；未知保留意图/PENDING且禁止重跑。
+
+原guard的begin/register主体提取为同一锁内实现，原公有入口仍加锁后委托；task内部编排直接复用两个实现，不跳过锁或复制持久化逻辑。Docker单对象配置由原migration_container模块生成，无第十helper；guard只增加两个委托入口，不扩大其迁移对象校验职责。唯一发布状态复用原write_creation_pending（reason仍为candidate-create-start），原.env保留旧SHA，绝不新建版本权威；只有后续完整SQL/应用交接才可ACTIVE。
+
+准确迁移配置：仅sanq-migration服务，固定API digest、attempt名称、plan/attempt/role标签、/bin/sh和本地npx --no-install prisma命令、restart=no、非privileged、无应用挂载/DB服务/depends_on，使用已有sanq-app_default网络，固定资源限制并禁用healthcheck。只将已展开API环境中的DATABASE_URL放入私有JSON stdin，$转义为$$以避免Compose二次插值；不把凭据放argv/维护记录/普通日志，不加.env转储。没有运行shell/npm/Prisma，命令只是尚未启动容器的固定配置。缺DB URL、坏批准、SQL inventory或来源/当前基线漂移在意图前拒绝。
+
+原意图fsync/readback成功后才写PENDING，原state writer自带的耐久读回未知时不create。一次固定Compose create不使用force-recreate、不重试；创建前后核同一DB完整Id/Image/Mounts及原迁移历史，随后只能从本attempt完整列表取得唯一ID，再调用同一created/no-restart/digest/标签/命令核验登记。部分创建、命令/同步/DB未知保留v3意图、空ID和实际PENDING，不扫描猜取/停止未登记对象或恢复业务。创建后登记前若管理器收尾，沿原逻辑保留FENCE_UNCONFIRMED。
+
+新增9项离线模型测试，覆盖完整锁/单服务/私有配置/凭据最小化/美元转义、批准/attempt/基线/SQL漂移、缺DB URL、初始意图/PENDING/创建未知、DB替换和竞争；原意图/登记9项测试继续通过同一主体使用。只做Python3.10 AST、阶段主体对照/方法名/静态名字/差异审阅，项目测试未运行。原task submit/run仍拒绝pending SQL，本函数没有CLI/异步接线。下一步独立批准传入任务、执行前完整重核、仅start保存迁移ID并有界等待/核准确DB历史、再接应用交接；回退/安装/Mac入口、真实中断/恢复/连续发布和生产更新仍OPEN。九helper一致安装/17+Manifest正式Bundle规则保持，业务schema/依赖与三组暂停研究不变，无生产Docker/systemd/SQL/AWS操作。
+
+迁移登记批已由[PR #2994](https://github.com/sanqin888/sanqinMVP/pull/2994) 最终head `531d95036dc55d735ae8a92598cabeaf8b88d1ab` 经 [CI #7672](https://github.com/sanqin888/sanqinMVP/actions/runs/40507815863) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各306、Runtime1080、准确CPython3.12.15回归412），无修复，合并dev `0224e0eb7bfba9b762d5098a0da673fa63d81eb2`。原本地未运行/未提交仅为原审阅时点；仍未安装/隔离验收。
+
+## 迁移容器意图、登记与事故收尾（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：MIGRATION_REGISTRATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原guard新增内部begin_migration_creation/register_created_migration，无CLI或任务调用。原FROZEN计划/attempt及独立SQL批准匹配、原writer已停/门禁/备份状态核验后，先将同一维护标记升级v3/MIGRATION_CREATING，容器身份暂空；只允许登记created、restart=no、非auto-remove、无挂载/非privileged、固定网络/名称/命令、准确计划标签/API digest与实际image ID/revision的平台对象。登记后MIGRATION_REGISTERED，不start或执行SQL。事故收尾先处理登记迁移ID再处理原writer；空身份/缺失/额外对象保持FENCE_UNCONFIRMED，不猜ID、不重放或清标记。
 
