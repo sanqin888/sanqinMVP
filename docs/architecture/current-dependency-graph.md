@@ -1,6 +1,14 @@
 # Current 12-context dependency graph
 
-**2026-10-27 当前进度：ROLLBACK_TASK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原release_task新增submit-rollback与status-rollback，复用同一systemd任务、两锁、整体预算及原阶段主体。独立准确兼容摘要绑定run和StopPost参数；子任务缓存重采集后执行回退freeze/create/start/finalize，提交唯一rolled-back并最后清标记。无SQL容器/反向SQL、外层异常改写、自动重放或恢复。
+**2026-10-27 当前进度：DELIVERY_CONTRACT_LOCAL / SOURCE_AUDITED / INSTALLER_NOT_IMPLEMENTED / NOT_INSTALLED。**完成原17+Manifest、九辅助件、三drop-in、状态目录和现有staging/历史来源/备份材料的源码核对，新增[工具交付与安装合同](Runtime最小执行器工具交付与安装合同.md)。本批仅文档，不修改Bundle/schema/权限/guard或生产文件。
+
+回退异步任务批已由[PR #3006](https://github.com/sanqin888/sanqinMVP/pull/3006) 最终head `69950aa86bc35587ef86979a6e32a74ad33ba8de` 经 [CI #7698](https://github.com/sanqin888/sanqinMVP/actions/runs/40558256262) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各544、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `d1768dbd5af4375467d6e998dd7e031665b6f306`。原LOCAL/未运行是原审阅时点；仍未安装/真实隔离验收。
+
+交付采用原已封存17归档加同准确main SHA的固定Git对象/模板，保留独立bootstrap审阅与root私有重验；transport清单不自证来源，不新设发布workflow/seal或版本权威。九辅助件和永久三drop-in独立交付，现有stage_bundle/plan_versioned_install不充当安装器，现有配置备份不能代替完整工具恢复实物。正式工具写入前拟先加载不依赖目标Python的临时拒绝门禁，逐文件替换后再转永久guard；该门禁、安装marker/记录、kit与installer均尚未实现。
+
+下一步D1仅实现惰性材料与只读核验/计划；随后D2受限安装、D3 Mac薄入口、D4统一真实隔离验收和生产材料，均沿原第三批范围。本批未运行项目测试，仅源码/路径/清单及文档差异核对；未测现场Python/Compose/systemd/Prisma/故障恢复，未选择生产main SHA/归档/快照。无新helper/依赖/业务schema/迁移、owner/SCC/债务/scanner基线变化，未重跑scanner；17+Manifest/250/300保持，三组研究继续暂停、不取消。
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原release_task新增submit-rollback与status-rollback，复用同一systemd任务、两锁、整体预算及原阶段主体。独立准确兼容摘要绑定run和StopPost参数；子任务缓存重采集后执行回退freeze/create/start/finalize，提交唯一rolled-back并最后清标记。无SQL容器/反向SQL、外层异常改写、自动重放或恢复。
 
 回退交接批已由[PR #3005](https://github.com/sanqin888/sanqinMVP/pull/3005) 最终head `cfd05ec939d653f2bfd8fceee94d5718fdafdfed` 经 [CI #7696](https://github.com/sanqin888/sanqinMVP/actions/runs/40556088534) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各514、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `678d50dde7e7295da05c3e2857d8f019ff7d553a`。原LOCAL/未运行为原审阅时点；仍未安装/隔离验收。
 
