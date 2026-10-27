@@ -1,8 +1,24 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 预检A有效容器配置（本地待审）
+## D2 预检B外部备份实物绑定（本地待审）
 
-**2026-10-27 当前进度：D2_EFFECTIVE_CONFIGURATION_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_EXTERNAL_BACKUP_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+预检A[PR #3022](https://github.com/sanqin888/sanqinMVP/pull/3022) head `d7166403fd668b0183fb2b83d3399f8660c2ebe2` 经[CI #7731](https://github.com/sanqin888/sanqinMVP/actions/runs/40591551676)全绿（4成功/6范围跳过；Release默认Python与3.10各787、Runtime1080、既有C1回归412），合并dev `2a4f70b62ca7441b137e9adab953e2cc70a69b88`，无CI修复。原批LOCAL/未运行说明为当时状态；仍未执行生产预检或安装。
+
+本批从该dev建立feat/runtime-minimal-external-backup-20261027，实现审计B。固定读取/home/ubuntu/backup-db.sh、/usr/local/sbin/sanq-backup-protected-nginx及/etc/sudoers.d/sanq-backup，原字节分别绑定本轮已核旧封存Runtime的ops/backup对应成员，不扩大原17清单。逐层目录FD nofollow，普通root父目录及ubuntu用户目录按各自owner/group、无组/其他写和特殊权限核对，进入/退出核路径与FD稳定身份；不把ubuntu主脚本改成root所有。
+
+文件nofollow/非阻塞打开，必须普通单链接、非空且≤原MAX_FILE，主脚本ubuntu:ubuntu 0750、helper root:root 0755、sudoers root:root 0440，沿既有安装合同检查而非修改。完整有界读取后核FD/原路径的dev/inode/大小/mtime/ctime/owner/gid/mode/link一致，再逐字比较封存源；相同字节换inode也拒绝。只返回固定路径、源成员、SHA256/大小/身份与目录身份，不输出脚本正文。
+
+新增严格bool include_external_backup，要求全部前置直到effective_configuration；内部_observe_installed_external_backup在原两锁/全局双读中核三文件，旧接口不触发。仅externalBackupExecutablesObserved=true及摘要，backupExecutionVerified/restoreProven=false，整体hostPreflightComplete/applicationConfigurationObserved/readyToInstall/canExecute等继续false。未执行脚本、sudo、rclone、备份或恢复，不自动修权限/装文件/清残件；有界文件读取不扩称独立硬时间上限或现场备份成功。
+
+新增8项临时真实文件模型测试：三原件准确摘要/无执行写入、逐文件权限与字节、不存在/软硬链接/FIFO、父目录写权限/链接、账户身份、读取中同字节替换、空/大小预算及前置开关/无CLI。root锚点与账户为模型，未运行项目测试；仅Python3.10 AST、全局名字/方法/空白审阅和准确写回核对，不把787当本批通过。完整阶段组合与真实系统验证留C/D4。
+
+A已合并、B源码本地完成且尚未提交；下一步C做组合故障回归、逐项核预检合同并明确未证明项，不直接翻转整体完成许可。之后按既定顺序进入安装意图/临时拒绝门禁及恢复实物/停写快照、逐文件安装/交接、Mac入口和统一真实隔离验收。无新依赖包/九helper导入/持久化格式/公开CLI或业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件及三永久门禁保持。三组研究继续暂停、不取消；未执行生产操作。
+
+## D2 预检A有效容器配置（源码已合并）
+
+**2026-10-27 当前进度：D2_EFFECTIVE_CONFIGURATION_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 审计文档[PR #3021](https://github.com/sanqin888/sanqinMVP/pull/3021) head `8d6ea058fcfc525b832845de105c7aec645a462c` 经[CI #7729](https://github.com/sanqin888/sanqinMVP/actions/runs/40590497085)成功（仅scope成功，其余9项范围跳过，未运行项目测试），合并dev `1fa95bbc7253a3a7ca0278207b410e97e13b8898`。
 
@@ -14,7 +30,7 @@
 
 新增8项离线Docker模型测试：合法摘要/输入不变、自动删除/自动发布/提权、缺多/公开/不一致实际端口、Compose端口/协议/重复、health命令/时长/整数类型/disable漂移、美元一次解码与未发布端口、保存config与时长格式、旧入口/前置开关/无CLI。仅Python3.10 AST、全局名字/方法/空白审阅及准确读回，项目测试待CI。组合全阶段故障与真实Compose导出差异留C/D4，不将模型等同真实Docker验收。
 
-A源码本地完成，尚未提交；下一批B补外部备份脚本/helper/sudoers绑定，之后C统一组合及预检合同收口。安装意图、临时拒绝门禁、完整恢复实物与准确停写/快照、逐文件安装/交接、Mac入口和统一真实隔离验收仍OPEN。无新依赖包/九helper导入/持久化格式/公开CLI或业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件及三永久门禁保持，三组研究继续暂停、不取消。未执行现场预检或生产安装。
+A源码已通过PR #3022合并dev；下一批B补外部备份脚本/helper/sudoers绑定，之后C统一组合及预检合同收口。安装意图、临时拒绝门禁、完整恢复实物与准确停写/快照、逐文件安装/交接、Mac入口和统一真实隔离验收仍OPEN。无新依赖包/九helper导入/持久化格式/公开CLI或业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件及三永久门禁保持，三组研究继续暂停、不取消。未执行现场预检或生产安装。
 
 ## D2 剩余预检缺口审计（已合并）
 

@@ -718,14 +718,15 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
-          and (not include_effective_configuration or include_migrations),
+          and (not include_effective_configuration or include_migrations)
+          and (not include_external_backup or include_effective_configuration),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -744,7 +745,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         migrations = (_installation_migration_snapshot(configuration[1]["applicationSha"], docker, prerequisites,
                           lambda args: _runtime_command(args, deadline=deadline), fetch=fetch) if include_migrations else None)
         effective = _effective_configuration_snapshot(docker, run) if include_effective_configuration else None
-        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations, effective
+        external_backup = _external_backup_snapshot(runtime[0]) if include_external_backup else None
+        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations, effective, external_backup
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -799,6 +801,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                            "migrations": before[7]})
         if include_effective_configuration:
             result.update({"effectiveContainerConfigurationObserved": True, "effectiveConfiguration": before[8]})
+        if include_external_backup:
+            result.update({"externalBackupExecutablesObserved": True, "externalBackup": before[9]})
         return result
 
 
@@ -1866,6 +1870,93 @@ def _observe_installed_effective_configuration(identity, *, fetch=release.github
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True,
         include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
         include_migrations=True, include_effective_configuration=True)
+
+
+
+EXTERNAL_BACKUP_FILES = (
+    (("home", "ubuntu"), "backup-db.sh", "ops/backup/backup-db.sh", "ubuntu", 0o750),
+    (("usr", "local", "sbin"), "sanq-backup-protected-nginx", "ops/backup/sanq-backup-protected-nginx", "root", 0o755),
+    (("etc", "sudoers.d"), "sanq-backup", "ops/backup/sanq-backup.sudoers", "root", 0o440),
+)
+
+
+@contextlib.contextmanager
+def _backup_external_directory(parent, name, account):
+    _need(name in {"home", "ubuntu", "usr", "local", "sbin", "etc", "sudoers.d"},
+          "unreviewed external backup directory")
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    def check(info):
+        owner, group = ((account.pw_uid, account.pw_gid) if name == "ubuntu"
+                        else (PRIVATE_OWNER_UID, PRIVATE_GROUP_GID))
+        _need(stat.S_ISDIR(info.st_mode) and info.st_uid == owner and info.st_gid == group
+              and not stat.S_IMODE(info.st_mode) & 0o7022, "external backup parent permissions differ")
+    try:
+        before = os.fstat(fd)
+        check(before)
+        path = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        check(path)
+        _need(_directory_identity(before) == _directory_identity(path), "external backup parent changed during open")
+        yield fd
+        after, path = os.fstat(fd), os.stat(name, dir_fd=parent, follow_symlinks=False)
+        check(after)
+        check(path)
+        _need(_directory_identity(before) == _directory_identity(after) == _directory_identity(path),
+              "external backup parent changed during observation")
+    finally:
+        os.close(fd)
+
+
+def _external_backup_snapshot(runtime):
+    account = pwd.getpwnam("ubuntu")
+    root = _host_storage_root()
+    files, directories = {}, {}
+    try:
+        for parts, name, source, owner, mode in EXTERNAL_BACKUP_FILES:
+            with contextlib.ExitStack() as stack:
+                parent = root
+                for index, part in enumerate(parts):
+                    parent = stack.enter_context(_backup_external_directory(parent, part, account))
+                    directories["/" + "/".join(parts[:index + 1])] = list(_directory_identity(os.fstat(parent)))
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+                def check(info):
+                    uid, gid = ((account.pw_uid, account.pw_gid) if owner == "ubuntu"
+                                else (PRIVATE_OWNER_UID, PRIVATE_GROUP_GID))
+                    _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                          and info.st_uid == uid and info.st_gid == gid and stat.S_IMODE(info.st_mode) == mode
+                          and 0 < info.st_size <= MAX_FILE, "external backup file metadata differs")
+                try:
+                    before = os.fstat(fd)
+                    check(before)
+                    chunks, size = [], 0
+                    while size <= MAX_FILE:
+                        raw = os.read(fd, min(65536, MAX_FILE + 1 - size))
+                        if not raw:
+                            break
+                        chunks.append(raw)
+                        size += len(raw)
+                    after, path = os.fstat(fd), os.stat(name, dir_fd=parent, follow_symlinks=False)
+                    check(after)
+                    check(path)
+                    _need(size == before.st_size and _installed_fingerprint(before) ==
+                          _installed_fingerprint(after) == _installed_fingerprint(path),
+                          "external backup file changed during read")
+                    raw = b"".join(chunks)
+                    _need(raw == runtime[source][0], "external backup executable differs from sealed Runtime source")
+                    files["/" + "/".join((*parts, name))] = {
+                        "source": source, "sha256": _hash(raw), "bytes": size,
+                        "identity": list(_installed_fingerprint(before))}
+                finally:
+                    os.close(fd)
+        return {"files": files, "directories": directories, "backupExecutionVerified": False,
+                "restoreProven": False}
+    finally:
+        os.close(root)
+
+
+def _observe_installed_external_backup(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True)
 
 
 def main(argv=None):
