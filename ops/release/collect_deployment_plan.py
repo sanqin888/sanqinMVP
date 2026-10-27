@@ -8,6 +8,7 @@ and create private plan/lock files. It does not grant apply authority.
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
 import gzip
 import hashlib
@@ -366,7 +367,39 @@ def summary(raw: bytes, identity: str) -> dict:
             "images": value["candidate"]["images"],
             "pendingMigrations": value["pendingMigrations"],
             "backup": value["backup"], "requiredEnvironmentKeys": value["environment"]["requiredKeys"],
-            "canExecute": False}
+            "sqlReview": contract.sql_review(raw, identity), "canExecute": False}
+
+
+
+def review_sql(raw: bytes, identity: str, *, fetch=None) -> dict:
+    """Read only the exact pending blobs; emit nothing until all bytes verify."""
+    review = contract.sql_review(raw, identity)
+    _need(sum(item["bytes"] for item in review["migrations"]) <= MAX_OUTPUT,
+          "SQL review exceeds bounded output; explicit separate review required")
+    if fetch is None:
+        fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    rows = []
+    for item in review["migrations"]:
+        response = fetch(f"/repos/{release.REPOSITORY}/git/blobs/{item['gitBlobSha']}")
+        _need(type(response) is dict and response.get("sha") == item["gitBlobSha"]
+              and type(response.get("size")) is int and response["size"] == item["bytes"]
+              and response.get("encoding") == "base64" and isinstance(response.get("content"), str)
+              and len(response["content"]) <= 4 * ((item["bytes"] + 2) // 3) + 1024,
+              "SQL Git blob identity, size or encoding differs")
+        encoded = response["content"].replace("\n", "").replace("\r", "")
+        source = base64.b64decode(encoded, validate=True)
+        _need(len(source) == item["bytes"]
+              and hashlib.sha256(source).hexdigest() == item["sha256"]
+              and hashlib.sha1(b"blob " + str(len(source)).encode() + b"\0" + source).hexdigest()
+                  == item["gitBlobSha"], "SQL bytes differ from reviewed image inventory")
+        path = "apps/api/prisma/migrations/" + item["name"] + "/migration.sql"
+        rows.append({**item, "sourceUrl": "https://github.com/" + release.REPOSITORY
+                     + "/blob/" + review["targetSha"] + "/" + path,
+                     "sqlText": source.decode("utf-8")})
+    result = {**review, "migrations": rows, "mode": "SQL_REVIEW_ONLY"}
+    _need(len(json.dumps(result, indent=2).encode("utf-8")) + 1 <= MAX_OUTPUT,
+          "encoded SQL review exceeds output budget; no partial review emitted")
+    return result
 
 
 def main(argv=None) -> int:
@@ -377,8 +410,14 @@ def main(argv=None) -> int:
     prepare.add_argument("--save", action="store_true", help="Create a private immutable plan file")
     show = sub.add_parser("show", help="Read an existing private plan by its independently retained id")
     show.add_argument("plan_id")
+    sql = sub.add_parser("show-sql", help="Verify and show exact pending SQL; never execute it")
+    sql.add_argument("plan_id")
     args = parser.parse_args(argv)
     try:
+        if args.command == "show-sql":
+            raw = store.load_plan(args.plan_id)
+            print(json.dumps(review_sql(raw, args.plan_id), indent=2))
+            return 0
         if args.command == "show":
             raw, identity = store.load_plan(args.plan_id), args.plan_id
         else:
