@@ -279,7 +279,9 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
                    "CANDIDATES_READY": ("FINALIZING", "INCIDENT"),
                    "FINALIZING": ("HANDOFF_COMMITTED", "INCIDENT"),
                    "HANDOFF_COMMITTED": ("INCIDENT",), "MIGRATION_CREATING": ("INCIDENT",),
-                   "MIGRATION_REGISTERED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
+                   "MIGRATION_REGISTERED": ("STARTING_MIGRATION", "INCIDENT"),
+                   "STARTING_MIGRATION": ("MIGRATION_VERIFIED", "INCIDENT"),
+                   "MIGRATION_VERIFIED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
         ignored = {"phase", "updatedAt", "errorCode"}
         if migration_begin:
             ignored |= {"schemaVersion", "migration"}
