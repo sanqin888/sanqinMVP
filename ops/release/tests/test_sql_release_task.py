@@ -34,7 +34,7 @@ class SQLTaskContextTests(unittest.TestCase):
         values = job._observations(before)
         last = values["history"].pop()
         values["pending"] = [{key: last[key] for key in ("name", "sha256")}]
-        raw = plan.create_plan(created_at=before["createdAt"], **values)
+        raw = plan.create_plan(created_at=self.case.fixture.time, **values)
         self.identity = storage.save_plan(raw)
         self.approval = plan.sql_review(raw, self.identity)["approvalSha256"]
         self.case.fields.update(ControlGroup="/system.slice/" + task._unit(self.identity),
@@ -232,7 +232,8 @@ class SQLReleasePipelineTests(unittest.TestCase):
         self.assertFalse(self.case.creates)
         self.assertEqual(self.mstarts, 1)
         stops = [args[-1] for args, _ in self.calls if args[:2] == ["docker", "stop"]]
-        self.assertEqual(stops[0], self.mid)
+        self.assertEqual(stops[-4], self.mid)
+        self.assertEqual(set(stops[-3:]), set(self.case.fixture.ids.values()))
 
     def test_wait_unknown_never_advances_to_application_creation(self):
         self.fail_wait = True
