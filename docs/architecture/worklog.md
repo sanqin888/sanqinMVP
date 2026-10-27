@@ -1,10 +1,32 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：D2备份与宿主目录核对
+
+**2026-10-27 当前进度：D2_BACKUP_FILESYSTEM_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增宿主固定目录、部署磁盘余量及最新本地DB备份的只读核对，沿原两锁和来源/源码/配置/Docker/systemd双读；不备份、恢复、复制业务数据或写安装意图。
+
+基于dev `fbbee891fba9820f31f3cf1d859d745286ee49f3`，分支feat/runtime-minimal-backup-filesystem-20261027。本批本地待审、未提交远端。
+
+systemd预检批已由[PR #3013](https://github.com/sanqin888/sanqinMVP/pull/3013) 最终head `359a1c22400a222f90facbe78480dee914c425ae` 经 [CI #7713](https://github.com/sanqin888/sanqinMVP/actions/runs/40578976996) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各685、Runtime1080、准确CPython3.12.15回归412），无本批CI修复，合并dev `fbbee891fba9820f31f3cf1d859d745286ee49f3`。下文该批原LOCAL/未运行仅为原审阅时点，仍未安装或真实隔离验收。
+
+内部_observe_installed_filesystem只通过原观察主体的严格bool开关启用，要求原配置/Docker/systemd观察同时存在，默认原接口不读取业务目录/备份。固定从/逐层nofollow目录FD打开/srv、/srv/sanq、uploads/backups及/home、/home/ubuntu、sanq-assets/sounds，核真实目录、root或ubuntu祖先UID/GID、无组/其他写和特殊权限位，backups须ubuntu:ubuntu 0700。uploads/sounds按既有无其他写合同核目录，其实际owner/gid只保存为事实，不擅自chown或宣称无其他writer。每层核读前后FD与原路径inode/owner/gid/mode，部署/opt/sanq所在文件系统须余量至少5GiB；余量只报告门槛满足和设备，不把正常剩余字节波动当身份漂移。
+
+备份目录最多4096项，匹配原sanqin_db_YYYYMMDD_HHMMSS.sql.gz合同，按mtime/ns与名称稳定选最新；最新缺失/坏类型/链接/权限/内容不回退选旧成功。原件nofollow/非阻塞打开，普通单链接、固定ubuntu UID/GID和0400/0600，非空压缩大小≤1GiB。用本机墙钟核0至26h时效，分块完整SHA256原压缩字节，再完整读取gzip（含多member、CRC/末尾错误），非空展开总量≤4GiB；沿原300s monotonic截止逐块检查并结束前重核时效。文件/目录清单读前后完整身份/mtime/ctime必须一致，读取中替换或新备份出现阻断，不改原件、不执行SQL、不生成新备份。时效仅本机时间检查，不恢复可信时间研究或证明跨克隆时间。
+
+全局两次观察还比较最新备份原字节摘要/完整身份与宿主目录稳定身份；相同字节换文件inode、挂载目录被替换或维护/来源晚变仍阻断。目录仅核身份/权限，不递归盘点uploads/sounds，正常营业新增文件不因目录mtime变化被误判替换，也不宣称目录内容已快照。只返回固定路径/元数据、备份名称/摘要/字节数，不返回SQL正文或复制数据。
+
+结果仍INSTALLED_RUNTIME_FILES_OBSERVED，仅新增hostPersistentDirectoriesObserved/backupIntegrityObserved=true及filesystem摘要；backupRestoreProven=false，内部restoreProven=false。hostPreflightComplete/installedBaselineObserved/c4StorageObserved/readyToInstall/canExecute/authorizedToMutateProduction/operationSuccessProven仍false、requiresHostRecheck=true。gzip完整和26h时效不等于SQL可恢复、全量VM恢复、DB业务一致性或AWS快照available；DB卷的Docker绑定观察不扩称宿主卷inode/全部C4证明。内存/系统Python与剩余就绪/DB只读前置尚未完成，观察结果不持久化成安装票据或第二版本权威。
+
+新增20项离线模型测试：原两锁下组合只读/无写同步/秘密不输出、最新选择与坏最新不回退、旧/未来/缺备份、截断/坏CRC/空payload/尾部损坏、多gzip member完整摘要、压缩/展开/目录项预算、同名目录/FIFO/软硬链接、私有权限/只读/owner/gid、root/ubuntu/data目录权限与缺失/链接不修复、低磁盘、正常上传及余量波动不致误报、起始/块间monotonic耗尽、同字节备份替换/读中新清单、两次目录替换、原锁与晚期维护保留、默认路径不读数据/严格开关/无CLI及固定根元数据。临时真实文件/gzip/目录/锁，Docker/systemd/GitHub/root/anchor/容量为模型；未运行项目测试，仅Python3.10 AST、静态名字/重复方法/unittest钩子、55个既有定义不变及唯一观察函数接线、差异/准确读回，不把前批685当本批通过。
+
+归Runtime/Ops独立bootstrap只读文件预检，复用标准库gzip/hash/FD与原来源和锁方向，不导入九helper或执行现役/目标Python；无新依赖包/常规helper/反向导入/第二版本权威或12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。固定17+Manifest/250/300、九helper/三永久drop-in、D1/私有四文件格式和CLI保持，原观察函数仅加可选filesystem分支，其余55个既有函数/类定义不变。
+
+下一步补本机运行环境/内存及剩余就绪与DB只读前置，完成主机预检收口后接安装意图/临时拒绝门禁。准确原ID停写、手动快照available/完整恢复实物、逐文件安装与成功交接、D3 Mac薄入口、D4统一真实隔离/生产材料仍OPEN。三组研究继续暂停、不取消；无业务schema/迁移或现场生产操作。
+
 ## 2026-10-27 — 最小更新执行器：D2 systemd有效配置与原件核对
 
-**2026-10-27 当前进度：D2_SYSTEMD_BASELINE_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部systemd初次安装预检，沿原两锁、来源/源码/配置/Docker双读流程，核四个有效unit、未决reload/override和旧备份unit实物；没有安装/重载/停启服务或维护marker写入。
+**2026-10-27 当前进度：D2_SYSTEMD_BASELINE_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部systemd初次安装预检，沿原两锁、来源/源码/配置/Docker双读流程，核四个有效unit、未决reload/override和旧备份unit实物；没有安装/重载/停启服务或维护marker写入。
 
-基于dev `ca0507f522a6bb10f982f0e0e9746a6d902a62fc`，分支feat/runtime-minimal-systemd-baseline-20261027。本批本地待审、未提交远端。
+基于dev `ca0507f522a6bb10f982f0e0e9746a6d902a62fc`，分支feat/runtime-minimal-systemd-baseline-20261027。本批已通过PR #3013合并dev。
 
 Docker/挂载批已由[PR #3012](https://github.com/sanqin888/sanqinMVP/pull/3012) 最终head `f20ede98945ae6ea2f740804f389d59410b7ac9c` 经 [CI #7711](https://github.com/sanqin888/sanqinMVP/actions/runs/40577327857) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各664、Runtime1080、准确CPython3.12.15回归412），合并dev `ca0507f522a6bb10f982f0e0e9746a6d902a62fc`。首次CI #7710因测试夹具run覆盖unittest.TestCase.run而中断；同分支仅将模拟方法及引用改名observe_command，生产代码/门禁未放宽。下文原LOCAL/未运行或修复待核仅为原审阅时点，仍未安装/真实隔离验收。
 
