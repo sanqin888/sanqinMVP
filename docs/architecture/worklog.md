@@ -1,8 +1,15 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：已登记迁移启动与历史核对
+
+**2026-10-27 当前进度：MIGRATION_EXECUTE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一task新增内部execute_registered_migration及锁内主体，原job/计划锁和维护目录FD贯穿批准/时效、唯一PENDING与旧.env、Manifest/运行合同/展开配置、DB/history/备份/准确来源/缓存API digest与SQL inventory重核。只从同一v3/MIGRATION_REGISTERED进入；先耐久STARTING_MIGRATION再start已保存ID并wait，阶段monotonic预算900s（含重核与等待，start至多30s）。wait返回0还须确认同一对象exited/ExitCode=0、无OOM/Dead/Error/重启，以及数据库历史准确增加本计划有序pending对应的applied行、保留原历史含rolled-back行与重复数量，无额外SQL或失败项。复核完成写MIGRATION_VERIFIED，仍保留PENDING/维护标记/原策略禁止重启；不是ACTIVE或恢复许可。 基于dev `49e1d65705119386b21c79c144bdf30d8c078ed8`，分支feat/runtime-minimal-migration-execute-20261027。固定900s预算与保存ID start/wait，原incident/StopPost处理未知，不撤销已发生SQL或重放；原件最终同步未知只尽力停保存ID且不覆盖阶段。migration_container增加完成/准确历史delta检查，guard仅扩v3阶段枚举，task复用starter配置核验；无新helper/环/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。新增16项离线模型测试未运行，仅静态审阅/AST/名字/差异检查；原CLI仍拒绝SQL，迁移后应用交接/安装/隔离/生产仍OPEN。17+Manifest/业务schema/依赖不变，三组研究继续暂停。无生产操作，未提交远端；详见[已登记迁移执行](Runtime最小更新执行器实现方案.md)。
+
 ## 2026-10-27 — 最小更新执行器：迁移容器只创建与登记接线
 
-**2026-10-27 当前进度：MIGRATION_CREATE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原task新增内部prepare_migration_container，持原job/计划锁和维护目录FD贯穿重核、迁移意图、唯一PENDING、只创建、DB/history复核和准确ID登记。锁内重核准确SQL批准、计划时效/原配置/Manifest/运行合同、历史/备份/候选证明/缓存API digest及镜像SQL清单；配置只含一个迁移服务与已有external网络，DATABASE_URL通过原有界私有stdin传入并转义Compose美元符号，不转发JWT等API秘密。固定create --no-build --pull never、180s，不start/SQL/ACTIVE/改.env；未知保留意图/PENDING且禁止重跑。 基于dev `0224e0eb7bfba9b762d5098a0da673fa63d81eb2`，分支feat/runtime-minimal-migration-create-20261027。原guard两个入口委托同一锁内主体，task→guard/migration_container方向不变，无新增helper/反向导入/上下文owner/SCC/债务/scanner基线变化，未重跑scanner。新增9项模型测试未运行，仅AST/方法名/静态名字/差异检查，无依赖/业务schema/迁移/17+Manifest变化。完整SQL执行/应用接续、回退/安装/隔离/生产仍OPEN；九helper待统一验真交付，三组研究继续暂停。本批本地待审未提交，无生产操作，详见[迁移只创建](Runtime最小更新执行器实现方案.md)。
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原task新增内部prepare_migration_container，持原job/计划锁和维护目录FD贯穿重核、迁移意图、唯一PENDING、只创建、DB/history复核和准确ID登记。锁内重核准确SQL批准、计划时效/原配置/Manifest/运行合同、历史/备份/候选证明/缓存API digest及镜像SQL清单；配置只含一个迁移服务与已有external网络，DATABASE_URL通过原有界私有stdin传入并转义Compose美元符号，不转发JWT等API秘密。固定create --no-build --pull never、180s，不start/SQL/ACTIVE/改.env；未知保留意图/PENDING且禁止重跑。 基于dev `0224e0eb7bfba9b762d5098a0da673fa63d81eb2`，分支feat/runtime-minimal-migration-create-20261027。原guard两个入口委托同一锁内主体，task→guard/migration_container方向不变，无新增helper/反向导入/上下文owner/SCC/债务/scanner基线变化，未重跑scanner。原本地审阅新增9项模型测试且未运行，仅AST/方法名/静态名字/差异检查，无依赖/业务schema/迁移/17+Manifest变化。完整SQL执行/应用接续、回退/安装/隔离/生产仍OPEN；九helper待统一验真交付，三组研究继续暂停。本批已合并dev、未安装，无生产操作，详见[迁移只创建](Runtime最小更新执行器实现方案.md)。
+
+
+迁移只创建批已由[PR #2995](https://github.com/sanqin888/sanqinMVP/pull/2995) 最终head `b22b4ba0ad66d1eed2f798c02504048d5686e9a6` 经 [CI #7674](https://github.com/sanqin888/sanqinMVP/actions/runs/40512651573) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各315、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `49e1d65705119386b21c79c144bdf30d8c078ed8`。提交前修正Compose美元转义实现为两个美元符号，原回归用例随本head通过。其原LOCAL/未运行描述是原审阅时点，仍未安装/隔离验收。
 
 ## 2026-10-27 — 最小更新执行器：迁移容器登记与收尾
 

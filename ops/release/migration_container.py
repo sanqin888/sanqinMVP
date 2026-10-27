@@ -102,3 +102,26 @@ def creation_config(expanded, record):
                    "io.sanq.release.attempt": record["attemptId"]}}
     return plan._canonical({"name": "sanq-app", "services": {"sanq-migration": service},
         "networks": {"default": {"external": True, "name": "sanq-app_default"}}})
+
+
+def assert_completed(record, run):
+    """A zero wait result alone cannot establish the retained container outcome."""
+    assert_stopped(record, run)
+    row = record["migration"]["container"]
+    info = inspect_container(record, row["containerId"], run)
+    state = info["State"]
+    need(info["Image"] == row["imageId"] and state.get("Status") == "exited"
+         and type(state.get("ExitCode")) is int and state["ExitCode"] == 0
+         and state.get("OOMKilled") is False and state.get("Dead") is False
+         and state.get("Error") == "" and type(info.get("RestartCount")) is int
+         and info["RestartCount"] == 0, "migration completion is unconfirmed")
+
+
+def assert_applied_history(original, history):
+    """Preserve every old row and add exactly the approved applied rows."""
+    expected = original["migrationHistory"] + [
+        {**row, "state": "applied"} for row in original["pendingMigrations"]]
+    need(type(history) is list and len(history) == len(expected)
+         and sorted(plan._canonical(row) for row in history) ==
+             sorted(plan._canonical(row) for row in expected),
+         "migration history differs from the exact approved delta")

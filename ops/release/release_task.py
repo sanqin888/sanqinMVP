@@ -1,7 +1,7 @@
-"""Uninstalled systemd transient no-migration release task.
+"""Uninstalled transient release task with internal, unwired migration stages.
 
-Only an explicitly confirmed fixed plan is queued. No SQL, replay, restore or
-recovery entry; query status/logs after disconnect or unknown results.
+Only a confirmed no-migration plan is queued by the CLI. Internal SQL stages
+are not submitted here. Query evidence after unknown results; never replay.
 """
 
 from __future__ import annotations
@@ -278,6 +278,106 @@ def prepare_migration_container(identity, attempt, approval, *, controller=None,
                                                        controller=controller, run=run, now=now)
         return {"planId": identity, "attemptId": value["attemptId"],
                 "outcome": "MIGRATION_CREATED_NOT_STARTED", "canExecute": False}
+
+
+
+def execute_registered_migration(identity, attempt, approval, *, controller=None,
+                                 run=collector.command, fetch=None, now=collector.now_utc,
+                                 clock=time.monotonic):
+    """Internal stage only; not wired to the submission or run CLI."""
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        return _execute_registered_migration_locked(root, jobs_root, identity, attempt, approval,
+            controller=controller, run=run, fetch=fetch, now=now, clock=clock)
+
+
+def _execute_registered_migration_locked(root, jobs_root, identity, attempt, approval, *,
+        controller=None, run=collector.command, fetch=None, now=collector.now_utc,
+        clock=time.monotonic):
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    if fetch is None:
+        fetch = lambda path: guard.release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    deadline = clock() + 900
+    def bounded(args, **kwargs):
+        remaining = deadline - clock()
+        _need(remaining > 0, "migration execution budget expired")
+        kwargs["timeout"] = min(kwargs.get("timeout", 60), remaining)
+        result = run(args, **kwargs)
+        _need(clock() < deadline, "migration execution budget expired")
+        return result
+    job._no_pending(jobs_root)
+    _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
+    record = guard._read(root)
+    _need(record["schemaVersion"] == 3 and record["planId"] == identity
+          and record["attemptId"] == attempt and record["phase"] == "MIGRATION_REGISTERED",
+          "migration start attempt or phase differs")
+    raw = storage.load_plan(identity)
+    original = plan.validate_plan(raw, identity)
+    _need(bool(original["pendingMigrations"])
+          and record["migration"]["release"] == original["candidate"]
+          and record["observedApplicationSha"] == original["current"]["applicationSha"]
+          and record["migration"]["approvalSha256"] == approval, "migration approval or target differs")
+    plan.assert_sql_approval(raw, identity, approval)
+    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now), **job._observations(original))
+    guard._installed_gate(bounded)
+    expanded = starter._pending_and_config(original, controller, bounded)
+    database = guard._database_identity(controller, bounded)
+    _need(collector._history(controller, bounded) == original["migrationHistory"]
+          and collector._backup(controller) == original["backup"], "migration baseline changed")
+    _need(guard.release.verify_exact_candidate(original["current"]["applicationSha"],
+          original["candidate"]["sourceSha"], fetch) == original["candidate"], "candidate proof changed")
+    _need(clock() < deadline, "migration proof exceeded execution budget")
+    collector._resource_preflight(controller)
+    image = original["candidate"]["images"]["sanq-api"]
+    collector._inspect_image(collector._pinned(image), collector._pinned(image),
+                             original["candidate"]["sourceSha"], bounded)
+    _need(collector._probe_sql(collector._pinned(image), bounded) == original["migrationInventory"],
+          "cached migration SQL differs")
+    guard._assert_stopped(controller, record, bounded)
+    row = record["migration"]["container"]
+    info = guard.migration.inspect_container(record, row["containerId"], bounded, created=True)
+    _need(info["Image"] == row["imageId"], "registered migration image changed")
+    _need(starter._pending_and_config(original, controller, bounded) == expanded
+          and guard._database_identity(controller, bounded) == database
+          and collector._history(controller, bounded) == original["migrationHistory"]
+          and collector._backup(controller) == original["backup"]
+          and guard._backup(bounded) == record["backupUnits"], "migration baseline drifted")
+    guard._installed_gate(bounded)
+    starting = {**record, "phase": "STARTING_MIGRATION", "updatedAt": job._timestamp(now)}
+    guard._write(root, starting)  # Unknown durability never permits docker start.
+    try:
+        bounded(["docker", "start", row["containerId"]], timeout=30)
+        result = bounded(["docker", "wait", row["containerId"]], timeout=900)
+        _need(type(result) is str and result.strip() == "0", "migration exit result is not zero")
+        guard.migration.assert_completed(starting, bounded)
+        guard.migration.assert_applied_history(original, collector._history(controller, bounded))
+        guard._assert_stopped(controller, starting, bounded)
+        _need(starter._pending_and_config(original, controller, bounded) == expanded
+              and guard._database_identity(controller, bounded) == database
+              and collector._backup(controller) == original["backup"]
+              and guard._backup(bounded) == record["backupUnits"], "post-migration baseline changed")
+        guard._installed_gate(bounded)
+        # Re-read completion and history after the remaining observations.
+        guard.migration.assert_completed(starting, bounded)
+        guard.migration.assert_applied_history(original, collector._history(controller, bounded))
+    except BaseException as error:
+        def cleanup_command(args, **kwargs):
+            kwargs["timeout"] = min(kwargs.get("timeout", 45), 45)
+            return run(args, **kwargs)
+        guard._incident_locked(root, identity, controller, cleanup_command, now)
+        raise ReleaseContractError("migration outcome requires review; retained PENDING and incident") from error
+    verified = {**starting, "phase": "MIGRATION_VERIFIED", "updatedAt": job._timestamp(now)}
+    try:
+        guard._write(root, verified)
+    except BaseException as error:
+        # Do not overwrite an unknown final record or infer permission to replay.
+        guard._stop_best_effort(starting, run)
+        raise ReleaseContractError("migration record durability unknown; inspect retained evidence") from error
+    return {"planId": identity, "attemptId": attempt, "outcome": "MIGRATION_VERIFIED",
+            "canExecute": False}
 
 
 def _observed_writers(controller, candidate, expanded, run):
