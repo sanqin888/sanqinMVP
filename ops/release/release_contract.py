@@ -229,6 +229,23 @@ def sealed_release_for_sha(source_sha: str, fetch=github_json) -> dict[str, Any]
     }
 
 
+def _verify_lineage(base: str, head: str, fetch) -> None:
+    comparison = fetch(f"/repos/{REPOSITORY}/compare/{base}...{head}")
+    if (not isinstance(comparison, dict)
+        or comparison.get("status") not in ("ahead", "identical")
+        or type(comparison.get("behind_by")) is not int
+        or comparison["behind_by"] != 0
+        or not isinstance(comparison.get("base_commit"), dict)
+        or comparison["base_commit"].get("sha") != base
+        or not isinstance(comparison.get("merge_base_commit"), dict)
+        or comparison["merge_base_commit"].get("sha") != base):
+        raise ReleaseContractError("exact candidate is not on the required main lineage")
+    if head != "main" and comparison["status"] != (
+        "identical" if base == head else "ahead"
+    ):
+        raise ReleaseContractError("candidate is not a forward release")
+
+
 def verify_exact_candidate(current_sha: str, target_sha: str, fetch=github_json) -> dict[str, Any]:
     """Read-only exact candidate checks; never discover or substitute latest.
 
@@ -239,24 +256,8 @@ def verify_exact_candidate(current_sha: str, target_sha: str, fetch=github_json)
     current_sha, target_sha = require_sha(current_sha), require_sha(target_sha)
     candidate = sealed_release_for_sha(target_sha, fetch)
 
-    def forward(base: str, head: str) -> None:
-        comparison = fetch(f"/repos/{REPOSITORY}/compare/{base}...{head}")
-        if (not isinstance(comparison, dict)
-            or comparison.get("status") not in ("ahead", "identical")
-            or type(comparison.get("behind_by")) is not int
-            or comparison["behind_by"] != 0
-            or not isinstance(comparison.get("base_commit"), dict)
-            or comparison["base_commit"].get("sha") != base
-            or not isinstance(comparison.get("merge_base_commit"), dict)
-            or comparison["merge_base_commit"].get("sha") != base):
-            raise ReleaseContractError("exact candidate is not on the required main lineage")
-        if head != "main" and comparison["status"] != (
-            "identical" if base == head else "ahead"
-        ):
-            raise ReleaseContractError("candidate is not a forward release")
-
-    forward(target_sha, "main")
-    forward(current_sha, target_sha)
+    _verify_lineage(target_sha, "main", fetch)
+    _verify_lineage(current_sha, target_sha, fetch)
     publish_id = int(candidate["publicationUrl"].rsplit("/", 1)[1])
     publication = fetch(f"/repos/{REPOSITORY}/actions/runs/{publish_id}")
     if (not isinstance(publication, dict)
@@ -293,6 +294,19 @@ def verify_exact_candidate(current_sha: str, target_sha: str, fetch=github_json)
         or latest["repository"].get("full_name") != REPOSITORY):
         raise ReleaseContractError("latest exact main CI is not successful")
     return {**candidate, "ciRunId": latest["id"]}
+
+
+def verify_exact_rollback(current_sha: str, previous_sha: str, fetch=github_json) -> dict[str, Any]:
+    """Authenticate the exact historical target, not its database compatibility."""
+    current_sha, previous_sha = require_sha(current_sha), require_sha(previous_sha)
+    if current_sha == previous_sha:
+        raise ReleaseContractError("rollback target equals current release")
+    # Reuse all exact target seal/CI/publication checks. Current app health or
+    # a newer failed current CI run is not historical-target authentication.
+    candidate = verify_exact_candidate(previous_sha, previous_sha, fetch)
+    _verify_lineage(current_sha, "main", fetch)
+    _verify_lineage(previous_sha, current_sha, fetch)
+    return candidate
 
 
 def discover_release(fetch=github_json, *, max_commits: int = 20) -> dict[str, Any]:

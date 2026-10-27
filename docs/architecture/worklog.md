@@ -1,8 +1,15 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：受控回退审阅门禁
+
+**2026-10-27 当前进度：ROLLBACK_REVIEW_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**在原release_contract/plan内补受控回退审阅门禁，无新helper或执行入口。准确历史目标校验复用seal/目标最新main CI/publication与同一祖先检查，要求目标是current的主线祖先，不发现latest，也不以当前应用健康或当前CI重跑失败替代历史目标证明。纯审阅计划绑定唯一发布state原始字节/哈希、current与准确previous、备份/环境/运行合同、当前完整SQL/history及旧镜像SQL清单；列明额外已应用迁移，兼容批准摘要仅绑定本次审阅范围，canExecute与databaseCompatibilityProven始终false。 基于dev `2d1aed320f59716ee233d7f5f79b37dd80a57095`，分支feat/runtime-minimal-rollback-review-20261027。新回退审阅kind与forward隔离，stateRaw仅为原state快照，兼容未证明/事故恢复未授权/执行权限恒false；无采集/持久保存/执行接线。复用历史来源和前向基础观测校验，原lineage主体提取AST一致；新增17项模型测试未运行，仅AST/静态名字/方法名/差异审阅。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。release_contract为固定17成员，必须正式Bundle/Manifest交付；现役工具/唯一state/业务schema/依赖不变，三组研究继续暂停。回退执行/安装/Mac入口/隔离/生产仍OPEN，无生产操作，未提交远端；详见[回退审阅门禁](Runtime最小更新执行器实现方案.md)。
+
 ## 2026-10-27 — 最小更新执行器：完整 SQL 异步任务接线
 
-**2026-10-27 当前进度：SQL_TASK_CONNECTED_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一release_task的submit/run/cleanup接收独立准确--approve-sql摘要；提交与停写前都用原计划校验，pending SQL缺失/错摘要、布尔或无迁移却附批准均拒绝。管理器ExecStart/ExecStopPost同时绑定planId与批准参数，PID/cgroup/固定unit校验保持。run持同一job锁/计划锁/维护目录FD完成freeze→迁移create/register→start/wait/history→原应用交接，仅前一阶段调用已知成功才继续；无新批准文件、发布状态或helper。 基于dev `3cb66317b49a2cdfdd8e97e6a9b21210369e4035`，分支feat/runtime-minimal-sql-task-20261027。整体1800s/管理器2100s/StopPost900s原预算保持，局部900s迁移与命令上限取剩余预算较小值；主进程未知不重放/改记录，独立StopPost不依赖计划重读。原两个适配器提取锁内主体，AST对照主体相同；缺迁移/helper API停写前拒绝。新增18项模型测试且扩安装API缺件测试，项目测试未运行；仅AST/静态名字/方法名/主体等价/差异审阅。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。受控回退/安装/Mac入口/真实隔离和生产仍OPEN，九helper/三drop-in须统一交付，17+Manifest/唯一state不变，三组研究继续暂停。已通过PR #2998提交；首次CI #7681（run 40526052017）显示CLI批准夹具重复保存原不可变计划、事故收尾顺序断言误包含先前freeze停止；同分支仅改夹具createdAt为独立时间并核收尾四个保存ID的停止后缀，保留原计划拒绝覆盖和生产逻辑。待修复head CI，无生产/业务schema/依赖操作；详见[完整SQL任务接线](Runtime最小更新执行器实现方案.md)。
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**同一release_task的submit/run/cleanup接收独立准确--approve-sql摘要；提交与停写前都用原计划校验，pending SQL缺失/错摘要、布尔或无迁移却附批准均拒绝。管理器ExecStart/ExecStopPost同时绑定planId与批准参数，PID/cgroup/固定unit校验保持。run持同一job锁/计划锁/维护目录FD完成freeze→迁移create/register→start/wait/history→原应用交接，仅前一阶段调用已知成功才继续；无新批准文件、发布状态或helper。 基于dev `3cb66317b49a2cdfdd8e97e6a9b21210369e4035`，分支feat/runtime-minimal-sql-task-20261027。整体1800s/管理器2100s/StopPost900s原预算保持，局部900s迁移与命令上限取剩余预算较小值；主进程未知不重放/改记录，独立StopPost不依赖计划重读。原两个适配器提取锁内主体，AST对照主体相同；缺迁移/helper API停写前拒绝。新增18项模型测试且扩安装API缺件测试，原本地审阅项目测试未运行；仅AST/静态名字/方法名/主体等价/差异审阅。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。受控回退/安装/Mac入口/真实隔离和生产仍OPEN，九helper/三drop-in须统一交付，17+Manifest/唯一state不变，三组研究继续暂停。已通过PR #2998提交；首次CI #7681（run 40526052017）显示CLI批准夹具重复保存原不可变计划、事故收尾顺序断言误包含先前freeze停止；同分支仅改夹具createdAt为独立时间并核收尾四个保存ID的停止后缀，保留原计划拒绝覆盖和生产逻辑。修复head CI #7682通过并合并dev，无生产/业务schema/依赖操作；详见[完整SQL任务接线](Runtime最小更新执行器实现方案.md)。
+
+
+完整SQL任务批已由[PR #2998](https://github.com/sanqin888/sanqinMVP/pull/2998) 最终head `af11fd4d3374ef180c5fbdc9f8d5e55abc6c7344` 经 [CI #7682](https://github.com/sanqin888/sanqinMVP/actions/runs/40526376795) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各365、Runtime1080、准确CPython3.12.15回归412），合并dev `2d1aed320f59716ee233d7f5f79b37dd80a57095`。首次CI #7681发现测试重复保存原不可变计划、停止顺序断言包含freeze命令，仅af11fd4d修正夹具时间及收尾停止后缀；生产逻辑/拒绝覆盖门禁不变。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
 
 ## 2026-10-27 — 最小更新执行器：迁移后的应用交接
 

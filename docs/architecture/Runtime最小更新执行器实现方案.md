@@ -1,6 +1,29 @@
 # Runtime 最小更新执行器实现方案
 
-## 完整 SQL 异步任务接线（2026-10-27，本地待审）
+## 受控回退审阅门禁（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：ROLLBACK_REVIEW_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**在原release_contract/plan内补受控回退审阅门禁，无新helper或执行入口。准确历史目标校验复用seal/目标最新main CI/publication与同一祖先检查，要求目标是current的主线祖先，不发现latest，也不以当前应用健康或当前CI重跑失败替代历史目标证明。纯审阅计划绑定唯一发布state原始字节/哈希、current与准确previous、备份/环境/运行合同、当前完整SQL/history及旧镜像SQL清单；列明额外已应用迁移，兼容批准摘要仅绑定本次审阅范围，canExecute与databaseCompatibilityProven始终false。
+
+完整SQL任务批已由[PR #2998](https://github.com/sanqin888/sanqinMVP/pull/2998) 最终head `af11fd4d3374ef180c5fbdc9f8d5e55abc6c7344` 经 [CI #7682](https://github.com/sanqin888/sanqinMVP/actions/runs/40526376795) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各365、Runtime1080、准确CPython3.12.15回归412），合并dev `2d1aed320f59716ee233d7f5f79b37dd80a57095`。首次CI #7681发现测试重复保存原不可变计划、停止顺序断言包含freeze命令，仅af11fd4d修正夹具时间及收尾停止后缀；生产逻辑/拒绝覆盖门禁不变。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 准确目标与兼容审阅
+
+- verify_exact_rollback只接受两个不同完整SHA；历史目标的当前有效paired seal、publication run和最新准确main CI须通过，目标/current各自须在main谱系，目标必须是current祖先。复用verify_exact_candidate(target,target)检查准确目标，再检查current→main及target→current，不用全仓250/300差异或任意标签猜旧镜像；当前应用是否健康不参与此纯来源检查，亦不要求当前CI重跑仍成功。默认七个固定只读GET，无镜像pull/inspect或版本修改。
+- 原verify_exact_candidate内部forward主体提取为_verify_lineage，两次调用顺序、原条件与五个请求保持；AST对照确认提取主体不变。没有改变正常前向发布门禁或原historical seal协议；这些检查仍只代表既有可信workflow边界，不是新的离机签名或完整暂停来源研究。
+- create_rollback_review接收受信采集者的观测，复用原create_plan验证当前全部SQL已应用、历史无未知/失败/缺失、备份时效/运行pin/环境/成对镜像结构；targetMigrationInventory必须是current inventory的完整不变前缀，改动/重排旧SQL或引入未应用SQL均拒绝。旧镜像少于当前数据库的部分以extraAppliedMigrations完整名称/摘要/字节/Git blob元数据展示，不因它是前缀就断言旧程序兼容新增结构。
+- 唯一发布state原始UTF-8字节保留在审阅快照releaseStateRaw，逐字节SHA-256须等于current.releaseStateSha256，current须等于观测运行版本、previous须等于目标且二者不同。原件必须严格为已知schema、active/readiness-verified或rolled-back/rollback-verified，时间不得晚于审阅；PENDING/未知phase/reason、坏JSON/字段/摘要拒绝。这里只读取传入原件的快照，不生成第二current/previous权威，不替代之后对现场.env/state/维护记录的重核。rolled-back中的previous若不是主线祖先，准确来源检查仍拒绝该方向，应另行按前向发布审阅，不能据纯结构校验越过谱系条件。
+- 新kind sanq-rollback-review-plan单独规范化验证/独立planId，原forward validator/store/SQL审阅不接受它；不是将旧目标伪装成正常前向计划。compatibilityApprovalSha256使用独立域绑定整个planId；任一state原字节/目标proof/配置/备份/history/清单变化均改变范围。即使额外SQL为空，仍requiresExplicitCompatibilityReview=true、databaseCompatibilityProven=false、incidentRecoveryAuthorized=false、canExecute=false，摘要不是授权、SQL安全证明或恢复许可。
+- 两个模块的纯校验分别处理结构/字节绑定和准确GitHub来源，不能自证输入来自现场；下一步collector必须同时取得准确历史proof、实际镜像ID/digest与SQL、完整source树及当前/目标runtime等观测，并原件读回。此批没有伪造现场采集或新增可信输入服务。
+
+### 验证与结束位置
+
+新增17项离线测试：准确历史目标/七请求/无latest/当前CI失败不影响历史目标、历史最新CI失败/失效seal/错谱系或SHA拒绝；state原件及额外SQL展示、与forward/SQL路径隔离、未知/未来/不一致state、完整已应用当前history、旧SQL前缀/修改负例、同SQL仍须兼容审阅、摘要/原件空白/目标proof绑定、重复JSON/错id/非规范字节拒绝。GitHub为替身，其余为纯内存，不访问Docker/DB/文件/网络。仅Python3.10 AST、静态名字/方法名、祖先主体AST对照和差异审阅；项目测试未运行，不把前批365等结果当本批通过。
+
+本批属于未安装工具内部原子增量；原forward计划v1、维护v1–v4、唯一state schema及task更新主线不变。无新helper、反向导入或12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。只完成回退审阅第一片，受控回退整体仍OPEN，最小执行器未交付。
+
+本批未新增回退collector/计划保存/CLI/提交、确认或应用切换，不调用旧rollback --execute，不处理PENDING/INCIDENT恢复，不执行SQL/down migration、旧盘恢复或清维护标记。下一步将实际state/旧镜像与当前SQL/source树/runtime/DB/备份采集、保存与准确兼容确认接入同一受控回退主线，再统一安装/Mac入口及真实隔离故障/恢复/连续更新验收。九helper/三drop-in数量不变；本批release_contract.py属于固定17成员，后续必须随controller等变更走正式17+Manifest Bundle验真过渡，不能仅投递辅助件、手改hash或覆盖现役文件。三组研究继续暂停、不取消，无业务schema/迁移文件/依赖/生产Docker/systemd/SQL/AWS操作。
+
+## 完整 SQL 异步任务接线（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：SQL_TASK_CONNECTED_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一release_task的submit/run/cleanup接收独立准确--approve-sql摘要；提交与停写前都用原计划校验，pending SQL缺失/错摘要、布尔或无迁移却附批准均拒绝。管理器ExecStart/ExecStopPost同时绑定planId与批准参数，PID/cgroup/固定unit校验保持。run持同一job锁/计划锁/维护目录FD完成freeze→迁移create/register→start/wait/history→原应用交接，仅前一阶段调用已知成功才继续；无新批准文件、发布状态或helper。
 

@@ -337,3 +337,90 @@ def assert_sql_approval(raw: bytes, expected_plan_id: str, approved_sha256: str 
         _require(_sha256(approved_sha256) == expected,
                  "SQL approval differs from the exact reviewed plan")
 
+
+
+def _rollback_state(raw: bytes, current: dict, candidate: dict, created_at: str) -> dict:
+    _require(type(raw) is bytes and 0 < len(raw) <= 16384, "rollback state bytes invalid")
+    try:
+        state = json.loads(raw, object_pairs_hook=_unique_object)
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise ReleaseContractError("rollback state JSON invalid") from exc
+    _fields(state, {"schemaVersion", "phase", "current", "previous", "reason", "updatedAt"}, "release state")
+    _require(type(state["schemaVersion"]) is int and state["schemaVersion"] == 1
+             and state["phase"] in ("active", "rolled-back"), "rollback requires a resolved release state")
+    _require(state["reason"] == ("readiness-verified" if state["phase"] == "active" else "rollback-verified"),
+             "release state completion reason differs")
+    require_sha(state["current"])
+    require_sha(state["previous"])
+    _require(state["current"] == current["applicationSha"]
+             and state["previous"] == candidate["sourceSha"]
+             and state["current"] != state["previous"], "rollback target must be the exact recorded previous")
+    _require(hashlib.sha256(raw).hexdigest() == current["releaseStateSha256"],
+             "rollback state bytes differ from current observation")
+    _require(_utc(state["updatedAt"]) <= _utc(created_at), "rollback state is future dated")
+    return state
+
+
+def _validate_rollback_body(body: dict) -> None:
+    _require(type(body) is dict and body.get("kind") == "sanq-rollback-review-plan"
+             and "releaseStateRaw" in body and "targetMigrationInventory" in body,
+             "rollback review kind or fields differ")
+    common = {key: value for key, value in body.items()
+              if key not in ("releaseStateRaw", "targetMigrationInventory")}
+    _validate_body({**common, "kind": "sanq-deployment-review-plan"})
+    _require(body["pendingMigrations"] == [], "rollback cannot apply unapplied current SQL")
+    _require(isinstance(body["releaseStateRaw"], str), "rollback state original bytes missing")
+    try:
+        state_raw = body["releaseStateRaw"].encode("utf-8")
+    except UnicodeError as exc:
+        raise ReleaseContractError("rollback state encoding invalid") from exc
+    _rollback_state(state_raw, body["current"], body["candidate"], body["createdAt"])
+    target = _inventory(body["targetMigrationInventory"])
+    current = body["migrationInventory"]
+    _require(list(target.values()) == current[:len(target)],
+             "rollback target SQL is not an unchanged source prefix")
+
+
+def create_rollback_review(*, release_state: bytes, target_inventory: list, **observations) -> bytes:
+    """Pure review artifact; no persistence, recovery or backward SQL execution."""
+    forward = json.loads(create_plan(**observations))
+    body = {key: value for key, value in forward.items() if key != "planId"}
+    _require(type(release_state) is bytes and 0 < len(release_state) <= 16384,
+             "rollback state original bytes missing or oversized")
+    try:
+        text = release_state.decode("utf-8")
+    except UnicodeError as exc:
+        raise ReleaseContractError("rollback state encoding invalid") from exc
+    body.update(kind="sanq-rollback-review-plan", releaseStateRaw=text,
+                targetMigrationInventory=target_inventory)
+    _validate_rollback_body(body)
+    identity = hashlib.sha256(_canonical(body)).hexdigest()
+    raw = _canonical({**body, "planId": identity}) + b"\n"
+    _require(len(raw) <= MAX_PLAN_BYTES, "rollback review exceeds size budget")
+    return raw
+
+
+def validate_rollback_review(raw: bytes, expected_plan_id: str) -> dict:
+    _sha256(expected_plan_id)
+    _require(type(raw) is bytes and 0 < len(raw) <= MAX_PLAN_BYTES, "rollback review bytes invalid")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique_object)
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise ReleaseContractError("rollback review JSON invalid") from exc
+    _require(type(value) is dict and "planId" in value, "rollback review id missing")
+    body = {key: item for key, item in value.items() if key != "planId"}
+    _validate_rollback_body(body)
+    _require(hashlib.sha256(_canonical(body)).hexdigest() == value["planId"] == expected_plan_id
+             and raw == _canonical(value) + b"\n", "rollback review identity or canonical bytes differ")
+    return value
+
+
+def rollback_review_summary(raw: bytes, expected_plan_id: str) -> dict:
+    value = validate_rollback_review(raw, expected_plan_id)
+    extra = value["migrationInventory"][len(value["targetMigrationInventory"]):]
+    scope = {"kind": "sanq-rollback-compatibility-review-v1", "planId": expected_plan_id}
+    return {"planId": expected_plan_id, "currentSha": value["current"]["applicationSha"],
+            "targetSha": value["candidate"]["sourceSha"], "extraAppliedMigrations": extra,
+            "compatibilityApprovalSha256": hashlib.sha256(_canonical(scope)).hexdigest(),
+            "requiresExplicitCompatibilityReview": True, "databaseCompatibilityProven": False,
+            "incidentRecoveryAuthorized": False, "canExecute": False}
