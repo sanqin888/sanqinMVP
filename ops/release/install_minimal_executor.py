@@ -1652,6 +1652,46 @@ def _observe_installed_application_binding(identity, *, fetch=release.github_jso
         include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True)
 
 
+
+# D2-9a: pure input consistency only; collection/source binding remain separate.
+def _installation_migration_consistency(inventory, history):
+    """Reject pending SQL during tool installation. Inputs do not prove host facts."""
+    _need(type(inventory) is list and 0 < len(inventory) <= 10000,
+          "installation migration inventory is empty or exceeds budget")
+    migrations, total = {}, 0
+    for item in inventory:
+        _need(type(item) is dict and set(item) == {"name", "bytes", "sha256", "gitBlobSha"},
+              "installation migration inventory fields differ")
+        name = item["name"]
+        _need(isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}", name)
+              and name not in migrations and type(item["bytes"]) is int and 0 < item["bytes"] <= 2 * 1024 * 1024
+              and isinstance(item["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", item["sha256"])
+              and isinstance(item["gitBlobSha"], str) and re.fullmatch(r"[a-f0-9]{40}", item["gitBlobSha"]),
+              "installation migration inventory identity differs")
+        total += item["bytes"]
+        _need(total <= 64 * 1024 * 1024, "installation migration byte budget exceeded")
+        migrations[name] = item
+    _need(list(migrations) == sorted(migrations), "installation migrations are not in source order")
+    _need(type(history) is list and 0 < len(history) <= 20000, "installation migration history exceeds budget")
+    applied = set()
+    for row in history:
+        _need(type(row) is dict and set(row) == {"name", "sha256", "state"}
+              and isinstance(row["name"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}", row["name"])
+              and isinstance(row["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", row["sha256"])
+              and row["state"] in ("applied", "rolled-back"), "installation migration history is unresolved")
+        if row["state"] == "applied":
+            _need(row["name"] in migrations and row["name"] not in applied
+                  and row["sha256"] == migrations[row["name"]]["sha256"],
+                  "installation applied migration is missing, modified or duplicated")
+            applied.add(row["name"])
+    _need(applied == set(migrations), "tool installation cannot have pending migrations")
+    return {"inventorySha256": _hash(_json(inventory)), "historySha256": _hash(_json(history)),
+            "migrationCount": len(migrations), "historyRows": len(history),
+            "rolledBackRows": sum(row["state"] == "rolled-back" for row in history),
+            "inputConsistencyObserved": True, "databaseMigrationParityProven": False,
+            "requiresHostRecheck": True, "canExecute": False}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
