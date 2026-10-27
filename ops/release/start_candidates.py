@@ -48,6 +48,21 @@ def _pending_and_config(original, controller, run):
     return expanded
 
 
+def _application_history(original, record, history, run):
+    """Rollback retains every applied row; the ordinary SQL path keeps its proof."""
+    if record["schemaVersion"] != 6:
+        return guard.migration.assert_application_history(original, record, history, run)
+    raw = plan._canonical(original) + b"\n"
+    plan.assert_rollback_compatibility(raw, original["planId"], record["rollback"]["approvalSha256"])
+    guard._need(record["planId"] == original["planId"]
+                and record["phase"] in ("CANDIDATES_REGISTERED", "STARTING_CANDIDATES", "CANDIDATES_READY")
+                and record["rollback"]["release"] == record["candidate"]["release"] == original["candidate"]
+                and record["observedApplicationSha"] == original["current"]["applicationSha"]
+                and original["pendingMigrations"] == [] and history == original["migrationHistory"],
+                "rollback application history or review differs")
+    return True
+
+
 def _running(record, expanded, run, *, policies=None):
     healthy = True
     if record["schemaVersion"] == 4:
@@ -74,6 +89,8 @@ def _running(record, expanded, run, *, policies=None):
                     and info["HostConfig"]["RestartPolicy"] ==
                     ({"Name": "no", "MaximumRetryCount": 0} if policies is None else policies[service]),
                     "candidate running state or restart inhibition differs")
+        if record["schemaVersion"] == 6:
+            guard._need(state.get("Dead") is False, "rollback candidate state is unresolved")
         health = state.get("Health")
         guard._need(type(health) is dict and health.get("Status") in ("starting", "healthy"),
                     "candidate health is missing or unhealthy")
@@ -92,7 +109,7 @@ def start_and_verify(identity: str, attempt: str, *, controller=None,
 
 def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: str, *, controller=None,
                      run=collector.command, fetch=None, now=collector.now_utc,
-                     clock=time.monotonic, pause=time.sleep) -> dict:
+                     clock=time.monotonic, pause=time.sleep, rollback_approval=None) -> dict:
     """Internal stage; successful READY remains PENDING and in maintenance."""
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
@@ -108,19 +125,30 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
     record = guard._read(root)
     guard._need(record["planId"] == identity and record["attemptId"] == attempt
                 and record["phase"] == "CANDIDATES_REGISTERED", "start attempt or phase differs")
-    raw = storage.load_plan(identity)
-    original = plan.validate_plan(raw, identity)
-    guard._need(record["schemaVersion"] in (2, 4)
+    rollback = rollback_approval is not None
+    if rollback:
+        guard._need(record["schemaVersion"] == 6, "rollback requires its registered maintenance record")
+        raw = storage.load_rollback_review(identity)
+        original = guard._review_for_record(record, identity)
+        plan.assert_rollback_compatibility(raw, identity, rollback_approval)
+        guard._need(rollback_approval == record["rollback"]["approvalSha256"],
+                    "rollback acknowledgement changed")
+        plan.assert_same_rollback_observations(raw, identity, fresh_raw=raw, observed_at=job._timestamp(now))
+    else:
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
+        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                      **job._observations(original))
+    guard._need(record["schemaVersion"] in ((6,) if rollback else (2, 4))
                 and record["observedApplicationSha"] == original["current"]["applicationSha"]
                 and record["candidate"]["release"] == original["candidate"],
                 "SQL path is unavailable or candidate proof differs")
-    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                  **job._observations(original))
     guard._installed_gate(bounded)
     expanded = _pending_and_config(original, controller, bounded)
+    verify = release.verify_exact_rollback if rollback else release.verify_exact_candidate
     guard._need(collector._backup(controller) == original["backup"]
-                and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded)
-                and release.verify_exact_candidate(original["current"]["applicationSha"],
+                and _application_history(original, record, collector._history(controller, bounded), bounded)
+                and verify(original["current"]["applicationSha"],
                     original["candidate"]["sourceSha"], fetch) == original["candidate"],
                 "backup, SQL history or candidate proof changed")
     collector._resource_preflight(controller)
@@ -137,6 +165,12 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
     database = guard._database_identity(controller, bounded)
     backup_units = guard._backup(bounded)
     guard._need(backup_units == record["backupUnits"], "backup units changed")
+    if rollback:
+        guard._need(_pending_and_config(original, controller, bounded) == expanded
+                    and collector._backup(controller) == original["backup"]
+                    and guard._database_identity(controller, bounded) == database
+                    and _application_history(original, record, collector._history(controller, bounded), bounded),
+                    "rollback baseline changed before start intention")
     starting = {**record, "phase": "STARTING_CANDIDATES", "updatedAt": job._timestamp(now)}
     guard._write(root, starting)  # Unknown durability never reaches docker start.
     try:
@@ -162,7 +196,7 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
         guard._need(_running(record, expanded, bounded)
                     and guard._database_identity(controller, bounded) == database
                     and guard._backup(bounded) == backup_units
-                    and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded),
+                    and _application_history(original, record, collector._history(controller, bounded), bounded),
                     "post-readiness baseline changed")
         _pending_and_config(original, controller, bounded)
         guard._installed_gate(bounded)
@@ -178,3 +212,15 @@ def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: 
         raise release.ReleaseContractError("readiness record durability unknown; inspect retained evidence") from error
     return {"planId": identity, "attemptId": attempt, "outcome": "CANDIDATES_READY",
             "canExecute": False}
+
+
+def start_rollback_and_verify(identity: str, attempt: str, approval: str, *, controller=None,
+                              run=collector.command, fetch=None, now=collector.now_utc,
+                              clock=time.monotonic, pause=time.sleep) -> dict:
+    """Internal exact-ID rollback startup; no independent resume or execution CLI."""
+    job._root_operator()
+    plan._sha256(approval)
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        return _start_and_verify_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=run, fetch=fetch, now=now, clock=clock,
+            pause=pause, rollback_approval=approval)

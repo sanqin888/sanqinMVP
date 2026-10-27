@@ -339,11 +339,11 @@ class RollbackCreateTests(unittest.TestCase):
         self.assertEqual(len(self.creates), 1)
         self.assertFalse(any("start" in row for row in self.calls))
 
-    def test_scope_downgrade_and_unimplemented_start_phase_cannot_overwrite_marker(self):
+    def test_scope_downgrade_and_unimplemented_finalize_phase_cannot_overwrite_marker(self):
         self.prepare()
         record = guard.status()
         with storage._directory_fd(self.rb.base.maintenance) as root:
-            for changes in ({"phase": "STARTING_CANDIDATES"}, {"phase": "CREATING_CANDIDATES"},
+            for changes in ({"phase": "FINALIZING"}, {"phase": "CREATING_CANDIDATES"},
                             {"phase": "INCIDENT", "rollback": {**record["rollback"], "approvalSha256": "0" * 64}}):
                 with self.subTest(changes=changes), self.assertRaises(ReleaseContractError):
                     guard._write(root, {**record, **changes})
