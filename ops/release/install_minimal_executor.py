@@ -1431,6 +1431,8 @@ def _runtime_observation_allowed(args):
     if tuple(args) == PYTHON_ARGS or any(tuple(args) == (*CURL_ARGS, url) for url in READINESS_URLS):
         return True
     position = len(DOCKER) + 1
+    if len(args) == len(DOCKER) + 8 and re.fullmatch(r"[a-f0-9]{64}", args[position]):
+        return args == _installation_inventory_args(args[position])
     return (len(args) == len(DOCKER) + 7 and re.fullmatch(r"[a-f0-9]{64}", args[position]) is not None
             and args == _installation_history_args(args[position]))
 
@@ -1732,6 +1734,40 @@ def _installation_migration_source(source_sha, inventory, history, *, fetch=rele
               and _hash(raw) == item["sha256"], "migration source blob bytes differ")
     return {**consistency, "sourceSha": source_sha, "treeSha": tree_sha,
             "gitMigrationObjectsMatched": True, "applicationReleaseAuthenticated": False}
+
+
+
+INSTALL_INVENTORY_PROBE = "\nconst fs=require('fs'), crypto=require('crypto');\nconst root='/app/apps/api/prisma/migrations', result=[];\nlet total=0;\nfor(const entry of fs.readdirSync(root,{withFileTypes:true}).sort((a,b)=>a.name<b.name?-1:1)){\n if(entry.name==='migration_lock.toml' && entry.isFile()) continue;\n if(!entry.isDirectory() || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/.test(entry.name))\n  throw Error('invalid migration directory');\n const dir=root+'/'+entry.name, names=fs.readdirSync(dir);\n if(names.length!==1 || names[0]!=='migration.sql') throw Error('unexpected SQL members');\n const fd=fs.openSync(dir+'/migration.sql',fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);\n let raw;\n try{\n  const s=fs.fstatSync(fd);\n  if(!s.isFile() || s.size<=0 || s.size>2097152) throw Error('invalid SQL file');\n  raw=fs.readFileSync(fd);\n }finally{fs.closeSync(fd);}\n total+=raw.length;\n if(total>67108864 || result.length>=10000) throw Error('SQL budget exceeded');\n result.push({name:entry.name,bytes:raw.length,\n  sha256:crypto.createHash('sha256').update(raw).digest('hex'),\n  gitBlobSha:crypto.createHash('sha1').update(Buffer.from('blob '+raw.length+'\\0')).update(raw).digest('hex')});\n}\nprocess.stdout.write(JSON.stringify(result));\n"
+
+
+def _installation_inventory_args(identifier):
+    _need(isinstance(identifier, str) and re.fullmatch(r"[a-f0-9]{64}", identifier),
+          "invalid saved API container identity")
+    return [*DOCKER, "exec", identifier, "/usr/bin/env", "-i", "PATH=/usr/local/bin:/usr/bin:/bin",
+            "/usr/local/bin/node", "--eval", INSTALL_INVENTORY_PROBE]
+
+
+def _installation_migration_snapshot(source_sha, docker, prerequisites, run, *, fetch=release.github_json):
+    """Read current saved objects twice. Caller still owns original host locks."""
+    source_sha = release.require_sha(source_sha)
+    api_id, db_id = (docker["containers"][role]["containerId"] for role in ("api", "db"))
+    def observe():
+        proof = release.verify_exact_candidate(source_sha, source_sha, fetch)
+        _need(proof["sourceSha"] == source_sha and proof["images"] == docker["currentImageSeal"]["images"],
+              "current migration publication differs from saved image pair")
+        inventory = _docker_json(_installation_inventory_args(api_id), run)
+        database = _docker_json(_installation_history_args(db_id), run)
+        _need(type(database) is dict and set(database) == set(prerequisites["databaseIdentity"]) | {"history"}
+              and _json({key: value for key, value in database.items() if key != "history"}) == _json(prerequisites["databaseIdentity"])
+              and prerequisites["databaseContainerId"] == db_id
+              and _hash(_json(database["history"])) == prerequisites["migrationHistorySha256"],
+              "database history changed before migration binding")
+        result = _installation_migration_source(source_sha, inventory, database["history"], fetch=fetch)
+        return {**result, "databaseMigrationParityProven": True, "applicationReleaseAuthenticated": True,
+                "apiContainerId": api_id, "databaseContainerId": db_id, "currentPublication": proof}
+    before = observe()
+    _need(observe() == before, "current migration inventory, history or source changed during observation")
+    return before
 
 
 def main(argv=None):
