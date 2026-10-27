@@ -718,13 +718,13 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
-          and (not include_application_binding or include_prerequisites),
+          and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -740,7 +740,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         prerequisites = (_runtime_prerequisite_snapshot(docker, lambda args: _runtime_command(args, deadline=deadline))
                          if include_prerequisites else None)
         binding = _application_binding_snapshot(docker, run) if include_application_binding else None
-        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding
+        migrations = (_installation_migration_snapshot(configuration[1]["applicationSha"], docker, prerequisites,
+                          lambda args: _runtime_command(args, deadline=deadline), fetch=fetch) if include_migrations else None)
+        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -790,6 +792,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         if include_application_binding:
             result.update({"containerEnvironmentObserved": True, "databaseConnectionTargetObserved": True,
                            "applicationBinding": before[6]})
+        if include_migrations:
+            result.update({"databaseMigrationParityProven": True, "applicationReleaseAuthenticated": True,
+                           "migrations": before[7]})
         return result
 
 
@@ -1768,6 +1773,12 @@ def _installation_migration_snapshot(source_sha, docker, prerequisites, run, *, 
     before = observe()
     _need(observe() == before, "current migration inventory, history or source changed during observation")
     return before
+
+
+def _observe_installed_migrations(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True)
 
 
 def main(argv=None):
