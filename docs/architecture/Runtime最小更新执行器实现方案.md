@@ -1,6 +1,20 @@
 # Runtime 最小更新执行器实现方案
 
-## 准确 SQL 审阅与批准绑定（2026-10-27，本地待审）
+## 迁移容器意图、登记与事故收尾（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：MIGRATION_REGISTRATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原guard新增内部begin_migration_creation/register_created_migration，无CLI或任务调用。原FROZEN计划/attempt及独立SQL批准匹配、原writer已停/门禁/备份状态核验后，先将同一维护标记升级v3/MIGRATION_CREATING，容器身份暂空；只允许登记created、restart=no、非auto-remove、无挂载/非privileged、固定网络/名称/命令、准确计划标签/API digest与实际image ID/revision的平台对象。登记后MIGRATION_REGISTERED，不start或执行SQL。事故收尾先处理登记迁移ID再处理原writer；空身份/缺失/额外对象保持FENCE_UNCONFIRMED，不猜ID、不重放或清标记。
+
+新增migration_container.py仅持有迁移对象验证/只读inventory，不反向导入guard；guard仍独占维护原件、阶段转换、两个原锁和失败收尾，未新增发布状态或批准数据库。辅助件从八增为九件，第三批必须统一来源/版本/权限交付，不放进17 Bundle。guard约817行，此次按职责把新对象检查拆到小模块，持久状态转换留原owner；未夹带旧阶段重构。v1/v2仍可读；v3只含原基线和migration描述（准确release/批准摘要/可空container ID+image ID），不含candidate应用集合，不能降级、替换登记或重放。v3只能从MIGRATION_CREATING到REGISTERED或INCIDENT，REGISTERED只能事故收尾，尚无SQL运行/完成/应用接续阶段。
+
+begin先核root/锁/原计划canonical/时效/pending非空/准确批准、同一FROZEN/attempt/旧SHA、原对象已停/no-restart、备份unit与已安装门禁，检查本attempt无迁移对象，再fsync/readback意图。登记再核原件、批准/时效/目标、原停写/备份与门禁，只接受完整单一ID和尚未启动对象，写前与写后核实际容器；目录残件/失败保留。该记录不是SQL执行许可，未重新核DB历史/备份内容/完整候选来源的执行前检查仍须下一步补齐。
+
+迁移对象固定/bin/sh和受审阅migrate deploy命令，名称sanq-migrate-<attempt>，三项plan/attempt/role标签、sanq-app_default网络、无挂载、restart=no、AutoRemove=false及实际API镜像身份。未知/已运行过的对象不能首次登记；未来创建命令必须明确设置这些条件，不能直接套旧Compose run。当前源码**没有**创建/启动/等待迁移容器，没有执行SQL或变更发布.env/state。StopPost复用原收尾并核迁移对象created/exited且不运行、准确ID/image/角色列表；它只证明保存写入者已停，不证明迁移成功、失败或可重试。无登记ID时只停保存旧writer，固定FENCE_UNCONFIRMED，不扫描认领未知新对象。
+
+新增9项离线fixture测试：意图先于登记、准确批准/attempt/root/竞争、未登记未知、迁移先停、缺失对象、命令/镜像/标签/网络/挂载/策略拒绝、已启动/额外对象及意图/登记fsync未知。Docker/PID1/SQL均为替身；仅Python3.10 AST/名字/差异审阅，项目测试未运行。下一步实际create-only与登记接线、批准传入任务、在完整执行前重核下启动/等待迁移和准确历史核对、迁移后应用交接；安装/回退、统一真实故障/恢复和最终生产发布仍OPEN。原task继续拒绝pending SQL。固定17+Manifest/旧guard、业务schema/migration和依赖不变，无生产目录/unit/Docker/DB/AWS操作；三组研究继续暂停。
+
+SQL审阅批已由[PR #2993](https://github.com/sanqin888/sanqinMVP/pull/2993) 最终head `2d76d1da35ee98bee6183961816622e837a7ac6e` 经 [CI #7670](https://github.com/sanqin888/sanqinMVP/actions/runs/40504787295) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各297、Runtime1080、准确CPython3.12.15回归412），合并dev `afbd7c515e15603d5eff8b588c4f27561a98a578`。首次CI #7669因GitHub blob测试替身未接受token关键字导致CLI成功用例失败，仅补**kwargs后通过，生产逻辑/门禁不变。原LOCAL/未运行是原审阅时点，不等于已安装/隔离验收。
+
+## 准确 SQL 审阅与批准绑定（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：SQL_REVIEW_BINDING_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**在原plan/collector补准确待执行SQL审阅与批准范围绑定，不新增helper、批准数据库或版本权威。plan.sql_review给出planId/目标/API digest/有序原始SQL元数据及域分离approvalSha256；assert_sql_approval只核独立传入的准确摘要，缺失/布尔/planId/错摘要拒绝，无pending只接受None。原prepare/show摘要新增sqlReview，show-sql按计划gitBlobSha读取固定SanQ GitHub blob，核size/base64/原字节SHA-256和Git blob SHA-1后展示UTF-8原文与准确commit来源；所有SQL核完且完整JSON不超过4MiB才输出。canExecute/sqlSafetyAssessed始终false，摘要不是授权凭证/安全判定，不写批准文件或执行SQL。
 

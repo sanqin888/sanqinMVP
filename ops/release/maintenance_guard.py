@@ -18,6 +18,7 @@ import deployment_plan as plan
 import deployment_plan_store as storage
 import release_contract as release
 import release_job as job
+import migration_container as migration
 
 MAINTENANCE_DIR = Path("/opt/sanq/deploy-state/maintenance")
 GUARD_SCRIPT = Path("/opt/sanq/runtime/ops/release/maintenance_guard.py")
@@ -167,8 +168,8 @@ def _validate(value: dict) -> None:
         "errorCode", "canExecute"}
     _need(type(value) is dict, "maintenance record differs")
     version = value.get("schemaVersion")
-    _need(type(version) is int and version in (1, 2)
-          and set(value) == (fields if version == 1 else fields | {"candidate"}),
+    _need(type(version) is int and version in (1, 2, 3)
+          and set(value) == (fields if version == 1 else fields | ({"candidate"} if version == 2 else {"migration"})),
           "maintenance fields differ")
     _need(type(value["schemaVersion"]) is int
           and value["kind"] == "sanq-maintenance-marker" and value["canExecute"] is False,
@@ -178,7 +179,7 @@ def _validate(value: dict) -> None:
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
     _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
-                              "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "invalid maintenance phase")
+                              "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED", "MIGRATION_CREATING", "MIGRATION_REGISTERED"), "invalid maintenance phase")
     _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
           if value["phase"] == "INCIDENT" else value["errorCode"] is None,
           "invalid maintenance error code")
@@ -191,9 +192,19 @@ def _validate(value: dict) -> None:
         release.checked_digest(row["imageId"])
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
-    if version == 1:
+    if version == 3:
+        _need(value["phase"] in ("MIGRATION_CREATING", "MIGRATION_REGISTERED", "INCIDENT"),
+              "invalid migration phase")
+        migration.validate(value["migration"], rows)
+        _need(value["migration"]["release"]["sourceSha"] != value["observedApplicationSha"],
+              "migration target is unchanged")
+        _need(value["phase"] == "INCIDENT" or
+              (value["migration"]["container"] is None) == (value["phase"] == "MIGRATION_CREATING"),
+              "migration registration phase differs")
+    elif version == 1:
         _need(value["phase"] not in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
                                      "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "candidate registration is missing")
+        _need(value["phase"] not in ("MIGRATION_CREATING", "MIGRATION_REGISTERED"), "migration record missing")
     else:
         _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT",
                                  "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "invalid candidate phase")
@@ -252,19 +263,30 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
                        and value["phase"] == "CANDIDATES_REGISTERED"
                        and old["candidate"]["containers"] == {}
                        and old["candidate"]["release"] == value["candidate"]["release"])
+        migration_begin = (old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
+                           and value["schemaVersion"] == 3 and value["phase"] == "MIGRATION_CREATING")
+        migration_register = (old["schemaVersion"] == value["schemaVersion"] == 3
+            and old["phase"] == "MIGRATION_CREATING" and value["phase"] == "MIGRATION_REGISTERED"
+            and old["migration"]["release"] == value["migration"]["release"]
+            and old["migration"]["approvalSha256"] == value["migration"]["approvalSha256"])
         allowed = {"ARMED": ("FROZEN", "INCIDENT"), "FROZEN": ("INCIDENT",),
                    "CREATING_CANDIDATES": ("INCIDENT",),
                    "CANDIDATES_REGISTERED": ("STARTING_CANDIDATES", "INCIDENT"),
                    "STARTING_CANDIDATES": ("CANDIDATES_READY", "INCIDENT"),
                    "CANDIDATES_READY": ("FINALIZING", "INCIDENT"),
                    "FINALIZING": ("HANDOFF_COMMITTED", "INCIDENT"),
-                   "HANDOFF_COMMITTED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
+                   "HANDOFF_COMMITTED": ("INCIDENT",), "MIGRATION_CREATING": ("INCIDENT",),
+                   "MIGRATION_REGISTERED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
         ignored = {"phase", "updatedAt", "errorCode"}
-        if beginning:
+        if migration_begin:
+            ignored |= {"schemaVersion", "migration"}
+        elif migration_register:
+            ignored |= {"migration"}
+        elif beginning:
             ignored |= {"schemaVersion", "candidate"}
         elif registering:
             ignored |= {"candidate"}
-        _need((beginning or registering or value["phase"] in allowed[old["phase"]])
+        _need((beginning or registering or migration_begin or migration_register or value["phase"] in allowed[old["phase"]])
               and plan._utc(value["updatedAt"]) >= plan._utc(old["updatedAt"])
               and all(old.get(key) == value[key] for key in value if key not in ignored),
               "invalid maintenance transition")
@@ -315,12 +337,17 @@ def _assert_stopped(controller, record: dict, run) -> None:
               and state.get("Restarting") is False and state.get("Paused") is False,
               "writer stop or restart inhibition is unconfirmed")
 
+    if record["schemaVersion"] == 3:
+        migration.assert_stopped(record, run)
+
 
 def _stop_best_effort(record: dict, run) -> bool:
     success = True
     rows = list(record["originalContainers"].values())
     if record["schemaVersion"] == 2:
         rows = list(record["candidate"]["containers"].values()) + rows
+    if record["schemaVersion"] == 3 and record["migration"]["container"] is not None:
+        rows.insert(0, record["migration"]["container"])
     for row in rows:
         for args in (["docker", "update", "--restart=no", row["containerId"]],
                      ["docker", "stop", "--time", "30", row["containerId"]]):
@@ -706,6 +733,69 @@ def _freeze_for_plan_locked(root: int, jobs_root: int, identity: str, *, control
     frozen = {**record, "phase": "FROZEN", "updatedAt": job._timestamp(now)}
     _write(root, frozen)  # Unknown final durability is never retried/cleared.
     return frozen
+
+
+def begin_migration_creation(identity, attempt, approval, *, controller=None,
+                             run=collector.command, now=collector.now_utc):
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    with job._locked_directory() as jobs, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        job._no_pending(jobs)
+        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+        record = _read(root)
+        _need(record["schemaVersion"] == 1 and record["phase"] == "FROZEN"
+              and record["planId"] == identity and record["attemptId"] == attempt, "migration attempt differs")
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
+        _need(bool(original["pendingMigrations"]), "no SQL requires no migration container")
+        plan.assert_sql_approval(raw, identity, approval)
+        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                      **job._observations(original))
+        _need(record["observedApplicationSha"] == original["current"]["applicationSha"],
+              "migration baseline differs")
+        _installed_gate(run)
+        _assert_stopped(controller, record, run)
+        _need(_backup(run) == record["backupUnits"], "backup state changed")
+        value = {**record, "schemaVersion": 3, "phase": "MIGRATION_CREATING",
+                 "updatedAt": job._timestamp(now), "migration": {
+                     "release": original["candidate"], "approvalSha256": approval, "container": None}}
+        _need(not migration.ids(value, run), "migration container already exists")
+        _write(root, value)
+        return value
+
+
+def register_created_migration(identity, attempt, container_id, *, controller=None,
+                               run=collector.command, now=collector.now_utc):
+    job._root_operator()
+    identity, attempt = storage._plan_id(identity), job._attempt(attempt)
+    if controller is None:
+        import deploy_release as controller
+    with job._locked_directory(), storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
+        record = _read(root)
+        _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_CREATING"
+              and record["planId"] == identity and record["attemptId"] == attempt, "migration intent differs")
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
+        plan.assert_sql_approval(raw, identity, record["migration"]["approvalSha256"])
+        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                      **job._observations(original))
+        _need(original["candidate"] == record["migration"]["release"], "migration proof changed")
+        _installed_gate(run)
+        baseline = {k: v for k, v in record.items() if k != "migration"}
+        _assert_stopped(controller, {**baseline, "schemaVersion": 1, "phase": "FROZEN"}, run)
+        _need(_backup(run) == record["backupUnits"], "backup state changed")
+        _need(migration.ids(record, run) == {migration.identifier(container_id)}, "migration inventory differs")
+        info = migration.inspect_container(record, container_id, run, created=True)
+        value = {**record, "phase": "MIGRATION_REGISTERED", "updatedAt": job._timestamp(now),
+                 "migration": {**record["migration"],
+                               "container": {"containerId": container_id, "imageId": info["Image"]}}}
+        _write(root, value)
+        migration.assert_stopped(value, run)
+        return value
+
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
