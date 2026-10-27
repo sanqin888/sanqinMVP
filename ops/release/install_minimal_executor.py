@@ -19,6 +19,10 @@ import json
 import os
 import pwd
 import re
+import selectors
+import signal
+import subprocess
+import time
 import stat
 import sys
 import tarfile
@@ -705,12 +709,18 @@ def _installed_runtime_snapshot(old, old_sha):
         return observed, identities
 
 
-def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False):
+def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
-    _need(type(include_configuration) is bool, "configuration observation switch must be boolean")
+    _need(type(include_configuration) is bool and type(include_docker) is bool
+          and (not include_docker or include_configuration), "invalid installation observation switches")
+    deadline = time.monotonic() + 300
+    run = lambda args: _docker_command(args, deadline=deadline)
     def snapshot():
-        return (_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]),
-                _configuration_snapshot() if include_configuration else None)
+        runtime = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
+        configuration = _configuration_snapshot() if include_configuration else None
+        docker = (_docker_snapshot(configuration[1], runtime[0]["docker-compose.yml"][0], run, fetch)
+                  if include_docker else None)
+        return runtime, configuration, docker
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -744,8 +754,11 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                                   for p, (raw, info) in files.items()},
                            "composeExpansionObserved": False, "applicationReleaseAuthenticated": False,
                            "c4StorageObserved": False})
+        if include_docker:
+            result.update({"containersObserved": True, "composeExpansionObserved": True,
+                           "containerMountsObserved": True, "currentImagePairBound": True,
+                           "docker": before[2]})
         return result
-
 
 
 # D2-3: raw configuration observations, not Compose expansion or host readiness.
@@ -835,6 +848,211 @@ def _configuration_snapshot():
 def _observe_installed_configuration(identity, *, fetch=release.github_json):
     """Raw source/configuration observation only; never returns secret file bytes."""
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True)
+
+
+
+# D2-4: allowlisted local Docker observations only. Never run/create/pull/exec.
+DOCKER = ("/usr/bin/docker", "--host", "unix:///var/run/docker.sock")
+COMPOSE = (*DOCKER, "compose", "--project-name", "sanq-app", "--project-directory", "/opt/sanq/runtime",
+           "--env-file", "/opt/sanq/runtime/.env", "-f", "/opt/sanq/runtime/docker-compose.yml")
+PROJECT_PS = (*DOCKER, "ps", "--all", "--no-trunc", "--filter",
+              "label=com.docker.compose.project=sanq-app", "--format", "{{.ID}}")
+MAX_HOST_OUTPUT = 2 * 1024 * 1024
+
+
+def _docker_allowed(args):
+    if type(args) is not list or not all(isinstance(v, str) for v in args):
+        return False
+    command = tuple(args)
+    if command in ((*DOCKER, "info", "--format", "{{json .}}"), PROJECT_PS,
+                   (*COMPOSE, "config", "--environment"), (*COMPOSE, "config", "--format", "json"),
+                   (*DOCKER, "volume", "inspect", "--format", "{{json .}}", "sanq-app_pgdata")):
+        return True
+    return ((tuple(args[:-1]) == (*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}")
+             and re.fullmatch(r"[a-f0-9]{64}", args[-1]) is not None)
+            or (tuple(args[:-1]) == (*DOCKER, "image", "inspect", "--format", "{{json .}}")
+                and re.fullmatch(r"sha256:[a-f0-9]{64}", args[-1]) is not None))
+
+
+def _docker_command(args, *, deadline):
+    _need(os.geteuid() == 0 and _docker_allowed(args), "unreviewed or unprivileged Docker observation")
+    _need(not any(os.environ.get(key) for key in (
+          "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
+          "non-default Docker endpoint requires separate review")
+    stop = min(deadline, time.monotonic() + 30)
+    _need(stop > time.monotonic(), "Docker observation deadline exhausted")
+    try:
+        process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, start_new_session=True, cwd="/opt/sanq/runtime",
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
+                 "DOCKER_HOST": "unix:///var/run/docker.sock", "DOCKER_CONTEXT": ""})
+    except OSError:
+        raise release.ReleaseContractError("Docker observation client unavailable") from None
+    try:
+        output, total = [], 0
+        with selectors.DefaultSelector() as selector:
+            for stream in (process.stdout, process.stderr):
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = stop - time.monotonic()
+                _need(remaining > 0, "Docker observation timed out")
+                for key, _ in selector.select(min(remaining, 0.25)):
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    total += len(chunk)
+                    _need(total <= MAX_HOST_OUTPUT, "Docker observation output exceeds budget")
+                    if key.fileobj is process.stdout:
+                        output.append(chunk)
+        remaining = stop - time.monotonic()
+        _need(remaining > 0, "Docker observation timed out")
+        code = process.wait(timeout=remaining)
+        _need(code == 0, "Docker observation command failed")
+        try:
+            return b"".join(output).decode("utf-8")
+        except UnicodeError:
+            raise release.ReleaseContractError("Docker observation output encoding invalid") from None
+    except BaseException:
+        # Only terminate this read-only CLI process group, never any container.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        raise
+    finally:
+        process.stdout.close()
+        process.stderr.close()
+
+
+def _docker_json(args, run):
+    raw = run(list(args))
+    _need(isinstance(raw, str) and len(raw.encode("utf-8")) <= MAX_HOST_OUTPUT,
+          "Docker JSON output exceeds budget")
+    return json.loads(raw, object_pairs_hook=_unique,
+                      parse_constant=lambda _: _need(False, "invalid Docker JSON constant"))
+
+
+def _docker_snapshot(application, compose_source, run, fetch):
+    sha = release.require_sha(application["applicationSha"])
+    paired = release.sealed_release_for_sha(sha, fetch)
+    engine = _docker_json((*DOCKER, "info", "--format", "{{json .}}"), run)
+    _need(type(engine) is dict and engine.get("LiveRestoreEnabled") is False
+          and type(engine.get("Swarm")) is dict and engine["Swarm"].get("LocalNodeState") == "inactive"
+          and engine.get("OSType") == "linux" and engine.get("Architecture") in ("x86_64", "amd64")
+          and isinstance(engine.get("ID"), str) and bool(engine["ID"])
+          and isinstance(engine.get("DockerRootDir"), str) and engine["DockerRootDir"].startswith("/")
+          and isinstance(engine.get("ServerVersion"), str) and bool(engine["ServerVersion"]),
+          "Docker engine identity, platform or restart fence differs")
+    required = {key.decode("ascii") for key, suffix in re.findall(
+        rb"(?<!\$)\$\{([A-Z_][A-Z0-9_]*)([^}]*)\}", compose_source)
+        if not suffix or suffix.startswith((b"?", b":?"))}
+    environment = {}
+    for line in run(list((*COMPOSE, "config", "--environment"))).splitlines():
+        key, separator, value = line.partition("=")
+        _need(separator == "=" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+              and key not in environment and len(environment) < 4096, "Compose environment observation differs")
+        environment[key] = value
+    _need(all(environment.get(key) for key in required) and environment.get("SANQ_IMAGE_SHA") == sha,
+          "required Compose environment is missing or has a different application SHA")
+    expanded = _docker_json((*COMPOSE, "config", "--format", "json"), run)
+    roles = ("api", "ubereats-worker", "web", "db")
+    _need(type(expanded) is dict and expanded.get("name") == "sanq-app"
+          and type(expanded.get("services")) is dict and set(expanded["services"]) == set(roles),
+          "expanded Compose project or service set differs")
+    for service in roles[:-1]:
+        image = "sanq-web" if service == "web" else "sanq-api"
+        _need(expanded["services"][service].get("image") == paired["images"][image]["ref"],
+              "expanded Compose application image differs")
+    _need(expanded["services"]["db"].get("image") == "postgres:15-alpine", "expanded DB image differs")
+    identifiers = run(list(PROJECT_PS)).splitlines()
+    _need(len(identifiers) == len(set(identifiers)) == 4 and all(
+          re.fullmatch(r"[a-f0-9]{64}", value) for value in identifiers),
+          "project container inventory is incomplete, ambiguous or has extra objects")
+    volume = _docker_json((*DOCKER, "volume", "inspect", "--format", "{{json .}}", "sanq-app_pgdata"), run)
+    _need(type(volume) is dict and volume.get("Name") == "sanq-app_pgdata"
+          and volume.get("Driver") == volume.get("Scope") == "local"
+          and volume.get("Options") in (None, {}) and type(volume.get("Labels")) is dict
+          and volume["Labels"].get("com.docker.compose.project") == "sanq-app"
+          and volume["Labels"].get("com.docker.compose.volume") == "pgdata"
+          and volume.get("Mountpoint") == engine["DockerRootDir"].rstrip("/") + "/volumes/sanq-app_pgdata/_data",
+          "existing DB volume identity or driver differs")
+    result, images = {}, {}
+    for identifier in sorted(identifiers):
+        info = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}", identifier), run)
+        _need(type(info) is dict and info.get("Id") == identifier and type(info.get("Config")) is dict
+              and type(info["Config"].get("Labels")) is dict, "container identity differs")
+        config = info["Config"]
+        labels = config["Labels"]
+        service = labels.get("com.docker.compose.service")
+        _need(labels.get("com.docker.compose.project") == "sanq-app" and service in roles
+              and service not in result, "container role or project differs")
+        state, host = info.get("State"), info.get("HostConfig")
+        _need(type(state) is dict and state.get("Running") is True and state.get("Status") == "running"
+              and state.get("Paused") is False and state.get("Restarting") is False and state.get("Dead") is False
+              and type(state.get("Health")) is dict and state["Health"].get("Status") == "healthy"
+              and type(host) is dict and host.get("Privileged") is False,
+              "container is not healthy and steadily running")
+        policy = host.get("RestartPolicy")
+        _need(type(policy) is dict and set(policy) == {"Name", "MaximumRetryCount"}
+              and policy["Name"] in ("no", "always", "unless-stopped", "on-failure")
+              and type(policy["MaximumRetryCount"]) is int and policy["MaximumRetryCount"] >= 0
+              and (policy["Name"] == "on-failure" or policy["MaximumRetryCount"] == 0),
+              "container restart policy differs")
+        image_id = release.checked_digest(info.get("Image"))
+        if image_id not in images:
+            images[image_id] = _docker_json((*DOCKER, "image", "inspect", "--format", "{{json .}}", image_id), run)
+        image_info = images[image_id]
+        _need(type(image_info) is dict and image_info.get("Id") == image_id
+              and image_info.get("Os") == "linux" and image_info.get("Architecture") == "amd64"
+              and type(image_info.get("Config")) is dict, "local image identity or platform differs")
+        if service != "db":
+            image = "sanq-web" if service == "web" else "sanq-api"
+            pair = paired["images"][image]
+            pinned = pair["ref"].rsplit(":", 1)[0] + "@" + release.checked_digest(pair["digest"])
+            _need(config.get("Image") in (pair["ref"], pinned)
+                  and type(image_info.get("RepoDigests")) is list and pinned in image_info["RepoDigests"]
+                  and type(image_info["Config"].get("Labels")) is dict
+                  and image_info["Config"]["Labels"].get("org.opencontainers.image.revision") == sha,
+                  "current application image differs from sealed digest or revision")
+        else:
+            _need(config.get("Image") == "postgres:15-alpine", "current database image declaration differs")
+        for field, option in (("Cmd", "command"), ("Entrypoint", "entrypoint")):
+            desired = expanded["services"][service].get(option, image_info["Config"].get(field))
+            _need((desired is None or type(desired) is list and all(isinstance(v, str) for v in desired))
+                  and config.get(field) == desired, "container command differs from reviewed Compose/image")
+        expected = (("volume", "/var/lib/postgresql/data", volume["Mountpoint"], True) if service == "db" else
+                    ("bind", "/app/apps/web/public/sounds", "/home/ubuntu/sanq-assets/sounds", False) if service == "web"
+                    else ("bind", "/app/uploads", "/srv/sanq/uploads", True))
+        mounts = info.get("Mounts")
+        _need(type(mounts) is list and len(mounts) == 1 and type(mounts[0]) is dict,
+              "container persistent mount set differs")
+        mount = mounts[0]
+        _need((mount.get("Type"), mount.get("Destination"), mount.get("Source"), mount.get("RW")) == expected
+              and type(mount.get("RW")) is bool
+              and (service != "db" or mount.get("Name") == "sanq-app_pgdata"),
+              "container persistent mount identity differs")
+        _need(type(info.get("RestartCount")) is int and info["RestartCount"] >= 0
+              and isinstance(state.get("StartedAt"), str) and bool(state["StartedAt"]),
+              "container lifetime observation differs")
+        result[service] = {"containerId": identifier, "imageId": image_id, "restartPolicy": policy,
+                           "restartCount": info["RestartCount"], "startedAt": state["StartedAt"],
+                           "configurationSha256": _hash(_json(config)), "mountSha256": _hash(_json(mounts))}
+    _need(set(result) == set(roles) and result["api"]["imageId"] == result["ubereats-worker"]["imageId"],
+          "service inventory or API/worker image pair differs")
+    return {"containers": result, "currentImageSeal": paired,
+            "renderedComposeSha256": _hash(_json(expanded)),
+            "dockerEngine": {key: engine[key] for key in ("ID", "DockerRootDir", "ServerVersion", "OSType", "Architecture")},
+            "databaseVolumeSha256": _hash(_json(volume))}
+
+
+def _observe_installed_docker(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True)
 
 
 def main(argv=None):
