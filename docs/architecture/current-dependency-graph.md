@@ -1,8 +1,20 @@
 # Current 12-context dependency graph
 
-## D2 迁移一致性纯判定（本地待审）
+## D2 迁移Git对象绑定（本地待审）
 
-**2026-10-27 当前进度：D2_MIGRATION_CONSISTENCY_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_MIGRATION_GIT_SOURCE_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+迁移纯判定批[PR #3017](https://github.com/sanqin888/sanqinMVP/pull/3017) head `904142b98c9a617b7d10d69010e928abc5493a78` 经[CI #7721](https://github.com/sanqin888/sanqinMVP/actions/runs/40587343957)全绿（4成功/6范围跳过；Release默认Python与3.10各755、Runtime1080、既有C1回归412），合并dev `a1a9a3d04d7210c87e05775b2863f3b446bfcb4d`，无CI修复。原批LOCAL/未运行文字为当时审阅状态，尚未安装。
+
+本批从该dev建立feat/runtime-minimal-migration-source-20261027，新增独立bootstrap内部_installation_migration_source。先复用完整迁移输入一致性判定，再读取准确SHA的Git commit与完整非截断tree（最多100000项），拒绝重复路径、坏名称、链接/非普通blob/坏大小；全部migration.sql的Git blob身份和大小必须与输入库存集合准确相等。逐项读取base64原始blob，核encoding/字段/预算、原大小、Git SHA1及SHA256，拒绝库存自报摘要或遗漏/额外SQL。沿既有单项2MiB/总64MiB及10000项库存预算，不解析/执行SQL，不导入九helper。
+
+只返回原一致性摘要、sourceSha/treeSha与gitMigrationObjectsMatched=true；applicationReleaseAuthenticated/databaseMigrationParityProven/canExecute仍false、requiresHostRecheck=true。此接口只把给定库存/历史与准确Git对象绑定，尚未采集当前镜像或现场DB，也未把调用者提供的SHA当成当前应用版本证明。下一步仍须接保存的当前API容器库存读取、当前成对镜像来源及DB历史双读；完整预检、安装意图/临时拒绝门禁、恢复实物、Mac入口与真实隔离验收仍OPEN。
+
+新增8项模型测试：准确对象/无正文或执行许可、commit/tree错绑/截断/缺失、重复路径/SQL多缺、链接/嵌套名/大小/身份、blob字段/编码/原字节、伪SHA256、历史未决先阻断及SHA/tree项预算。仅Python3.10 AST、静态名字/方法检查和写回核对，项目测试待CI，不把755当本批通过。无依赖包/持久化格式/CLI/既有函数修改，无业务schema或生产操作；依赖图/12上下文owner/SCC/债务基线无变化，未重跑scanner。固定17+Manifest/250/300、九helper及三永久门禁保持；三组研究继续暂停、不取消。
+
+## D2 迁移一致性纯判定（源码已合并）
+
+**2026-10-27 当前进度：D2_MIGRATION_CONSISTENCY_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 应用环境/网络批已由[PR #3016](https://github.com/sanqin888/sanqinMVP/pull/3016) head `03b3cb2f23cb255d66e15f7d123a2779a2c53e98` 经[CI #7719](https://github.com/sanqin888/sanqinMVP/actions/runs/40586796836)全绿（4成功/6范围跳过，Release默认Python与3.10各745项、Runtime1080、既有C1回归412），合并dev `7f67c9d3da56e3559c08dd44403bb79f7db0cfcc`；未执行生产安装。
 
