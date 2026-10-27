@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inert delivery and root-private material retention. No host installation API.
+"""Inert delivery, private materials and installed source observation. No host apply.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -603,6 +603,132 @@ def _inspect_private_materials(identity, *, fetch=release.github_json):
         _need(_retained_contents(root, identity) == (kit, old, value), "private material observation changed")
         return {**value, "outcome": "PRIVATE_MATERIALS_OBSERVED", "operationSuccessProven": False,
                 "hostPreflightComplete": False}
+
+
+
+# D2-2: installed source bytes only. This is not the complete host preflight.
+def _installed_fingerprint(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns, info.st_uid, info.st_gid, info.st_mode, info.st_nlink)
+
+
+def _installed_info(info, *, directory=False):
+    _need((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+          and info.st_uid == PRIVATE_OWNER_UID and info.st_gid == PRIVATE_GROUP_GID
+          and not stat.S_IMODE(info.st_mode) & 0o7022
+          and (directory or info.st_nlink == 1),
+          "installed Runtime owner, mode, links or type differs")
+
+
+@contextlib.contextmanager
+def _installed_directory(parent, name):
+    _need(name in ("runtime", "ops", "backup", "release"),
+          "unreviewed installed Runtime directory")
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        before = os.fstat(fd)
+        _installed_info(before, directory=True)
+        yield fd
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        _installed_info(after, directory=True)
+        _installed_info(path, directory=True)
+        identity = lambda v: (v.st_dev, v.st_ino, v.st_uid, v.st_gid, v.st_mode)
+        _need(identity(before) == identity(after) == identity(path),
+              "installed Runtime directory changed during observation")
+    finally:
+        os.close(fd)
+
+
+def _installed_read(parent, name, maximum):
+    _need(name in {Path(p).name for p in RUNTIME_MEMBERS} | {"runtime-release.json"},
+          "unreviewed installed Runtime input")
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    try:
+        before = os.fstat(fd)
+        _installed_info(before)
+        _need(0 < before.st_size <= maximum, "installed Runtime size differs")
+        chunks, size = [], 0
+        while size <= maximum:
+            raw = os.read(fd, min(65536, maximum + 1 - size))
+            if not raw:
+                break
+            chunks.append(raw)
+            size += len(raw)
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        _installed_info(after)
+        _installed_info(path)
+        _need(size == before.st_size and _installed_fingerprint(before) ==
+              _installed_fingerprint(after) == _installed_fingerprint(path),
+              "installed Runtime changed during read")
+        return b"".join(chunks), _installed_fingerprint(before)
+    finally:
+        os.close(fd)
+
+
+def _installed_runtime_snapshot(old, old_sha):
+    """Read fixed protected files; do not import installed or target Python."""
+    manifest, expected = _runtime_files(old, old_sha)
+    with contextlib.ExitStack() as stack:
+        anchor = _state_parent()
+        stack.callback(os.close, anchor)
+        root = stack.enter_context(_installed_directory(anchor, "runtime"))
+        directories = {(): root}
+        observed, identities = {}, {}
+        for path in (*RUNTIME_MEMBERS, "runtime-release.json"):
+            parts = Path(path).parts
+            for depth in range(1, len(parts)):
+                key = parts[:depth]
+                if key not in directories:
+                    directories[key] = stack.enter_context(
+                        _installed_directory(directories[key[:-1]], key[-1]))
+            observed[path] = _installed_read(directories[parts[:-1]], parts[-1],
+                                            65536 if path == "runtime-release.json" else MAX_FILE)
+        for key, fd in directories.items():
+            info = os.fstat(fd)
+            identities["/".join(key)] = (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode)
+        for path in (*HELPERS, BOOTSTRAP):
+            parts = Path(path).parts
+            try:
+                os.stat(parts[-1], dir_fd=directories[parts[:-1]], follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise release.ReleaseContractError("existing executor file requires separate baseline review: " + path)
+        raw = observed["runtime-release.json"][0]
+        actual_manifest = json.loads(raw, object_pairs_hook=_unique)
+        # Canonical byte equality distinguishes bool from int; preserve actual raw bytes.
+        _need(_json(actual_manifest) == _json(manifest), "installed Runtime manifest differs from sealed archive")
+        for path, content in expected.items():
+            _need(observed[path][0] == content, "installed Runtime differs from sealed archive: " + path)
+        return observed, identities
+
+
+def _observe_installed_runtime(identity, *, fetch=release.github_json):
+    """Initial install source observation only. No CLI, writes or installation permit."""
+    _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
+    with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
+        _idle_for_materials(folders)
+        kit, old, value = _retained_contents(root, identity)
+        review = review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
+        _need(not review["requiresAdditionalPlatformReview"], "retained transition exceeds tool-only scope")
+        before = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
+        _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch) == review,
+              "material source review changed during installed observation")
+        _need(_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]) == before,
+              "installed Runtime baseline changed during observation")
+        _need(_retained_contents(root, identity) == (kit, old, value), "retained material observation changed")
+        _idle_for_materials(folders)
+        observed, directories = before
+        return {**value, "outcome": "INSTALLED_RUNTIME_FILES_OBSERVED",
+                "installedRuntimeFilesObserved": True, "hostPreflightComplete": False,
+                "operationSuccessProven": False, "requiresHostRecheck": True,
+                "existingExecutorFilesAbsent": True, "systemdObserved": False,
+                "applicationConfigurationObserved": False, "containersObserved": False,
+                "installedManifestRawSha256": _hash(observed["runtime-release.json"][0]),
+                "installedFiles": {p: {"sha256": _hash(raw), "bytes": len(raw),
+                                     "identity": list(info)} for p, (raw, info) in observed.items()},
+                "installedDirectories": {p: list(info) for p, info in directories.items()}}
 
 
 def main(argv=None):
