@@ -9,7 +9,7 @@ import os
 import stat
 from pathlib import Path
 
-from deployment_plan import MAX_PLAN_BYTES, validate_plan
+from deployment_plan import MAX_PLAN_BYTES, validate_plan, validate_rollback_review
 from release_contract import ReleaseContractError
 
 PLAN_DIR = Path("/opt/sanq/deploy-state/plans")
@@ -76,6 +76,14 @@ def preparation_lock():
 
 
 def save_plan(raw: bytes) -> str:
+    return _save(raw, validate_plan)
+
+
+def save_rollback_review(raw: bytes) -> str:
+    return _save(raw, validate_rollback_review)
+
+
+def _save(raw: bytes, validator) -> str:
     """Preserve failed partial writes; never overwrite an existing identity."""
     if type(raw) is not bytes or not 0 < len(raw) <= MAX_PLAN_BYTES:
         raise ReleaseContractError("invalid plan size or bytes before saving")
@@ -83,7 +91,7 @@ def save_plan(raw: bytes) -> str:
         identity = _plan_id(json.loads(raw)["planId"])
     except (TypeError, ValueError, KeyError, RecursionError) as exc:
         raise ReleaseContractError("invalid plan before saving") from exc
-    validate_plan(raw, identity)
+    validator(raw, identity)
     with _directory_fd() as root:
         try:
             fd = os.open(identity + ".json", os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -103,12 +111,12 @@ def save_plan(raw: bytes) -> str:
         finally:
             os.close(fd)
         # Read back under the same directory FD before reporting durable success.
-        if _read(root, identity) != raw:
+        if _read(root, identity, validator=validator) != raw:
             raise ReleaseContractError("saved plan readback differs")
     return identity
 
 
-def _read(root: int, identity: str) -> bytes:
+def _read(root: int, identity: str, *, validator=validate_plan) -> bytes:
     fd = os.open(identity + ".json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                  dir_fd=root)
     try:
@@ -127,7 +135,7 @@ def _read(root: int, identity: str) -> bytes:
         if (len(raw) != info.st_size or info.st_mtime_ns != after.st_mtime_ns
             or info.st_ctime_ns != after.st_ctime_ns or info.st_size != after.st_size):
             raise ReleaseContractError("saved plan changed during read")
-        validate_plan(raw, identity)
+        validator(raw, identity)
         return raw
     finally:
         os.close(fd)
@@ -137,3 +145,9 @@ def load_plan(identity: str) -> bytes:
     identity = _plan_id(identity)
     with _directory_fd() as root:
         return _read(root, identity)
+
+
+def load_rollback_review(identity: str) -> bytes:
+    identity = _plan_id(identity)
+    with _directory_fd() as root:
+        return _read(root, identity, validator=validate_rollback_review)

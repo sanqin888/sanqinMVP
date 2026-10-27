@@ -1,8 +1,15 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：回退采集与私有计划保存
+
+**2026-10-27 当前进度：ROLLBACK_COLLECT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原collector新增prepare-rollback [--save] [--cached-only]和show-rollback <plan-id>，只从唯一state的previous确定目标，不接受任意SHA。重核17+Manifest/配置/state原字节、准确历史proof/两运行文件、当前与目标实际digest及各自API SQL/Git树、当前history/DB身份/真实挂载/备份；结束前重读关键基线，任一变化阻断。当前应用可不健康/已退出，但对象身份/镜像/挂载仍须证明，DB必须运行且是原固定卷；维护记录/PENDING仍拒绝。只输出兼容审阅摘要，canExecute保持false。 基于dev `17416da3333a34dc19defcbefcfc4a6f242f56e5`，分支feat/runtime-minimal-rollback-collect-20261027。原collector采两镜像SQL并绑定各自Git树，原store用同一create-only IO主体及各自kind validator，类型不互认；默认可缓存两个目标digest，--cached-only不pull，不停开业务或执行SQL。新增17项模型测试未运行，仅AST/静态名字/方法名/source与IO主体等价/差异检查。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner；17+Manifest/唯一state不变，三组研究继续暂停。回退确认执行/安装/Mac/隔离/生产仍OPEN，无生产/业务schema/依赖操作，未提交远端；详见[回退采集与保存](Runtime最小更新执行器实现方案.md)。
+
 ## 2026-10-27 — 最小更新执行器：受控回退审阅门禁
 
-**2026-10-27 当前进度：ROLLBACK_REVIEW_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**在原release_contract/plan内补受控回退审阅门禁，无新helper或执行入口。准确历史目标校验复用seal/目标最新main CI/publication与同一祖先检查，要求目标是current的主线祖先，不发现latest，也不以当前应用健康或当前CI重跑失败替代历史目标证明。纯审阅计划绑定唯一发布state原始字节/哈希、current与准确previous、备份/环境/运行合同、当前完整SQL/history及旧镜像SQL清单；列明额外已应用迁移，兼容批准摘要仅绑定本次审阅范围，canExecute与databaseCompatibilityProven始终false。 基于dev `2d1aed320f59716ee233d7f5f79b37dd80a57095`，分支feat/runtime-minimal-rollback-review-20261027。新回退审阅kind与forward隔离，stateRaw仅为原state快照，兼容未证明/事故恢复未授权/执行权限恒false；无采集/持久保存/执行接线。复用历史来源和前向基础观测校验，原lineage主体提取AST一致；新增17项模型测试未运行，仅AST/静态名字/方法名/差异审阅。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。release_contract为固定17成员，必须正式Bundle/Manifest交付；现役工具/唯一state/业务schema/依赖不变，三组研究继续暂停。回退执行/安装/Mac入口/隔离/生产仍OPEN，无生产操作，未提交远端；详见[回退审阅门禁](Runtime最小更新执行器实现方案.md)。
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**在原release_contract/plan内补受控回退审阅门禁，无新helper或执行入口。准确历史目标校验复用seal/目标最新main CI/publication与同一祖先检查，要求目标是current的主线祖先，不发现latest，也不以当前应用健康或当前CI重跑失败替代历史目标证明。纯审阅计划绑定唯一发布state原始字节/哈希、current与准确previous、备份/环境/运行合同、当前完整SQL/history及旧镜像SQL清单；列明额外已应用迁移，兼容批准摘要仅绑定本次审阅范围，canExecute与databaseCompatibilityProven始终false。 基于dev `2d1aed320f59716ee233d7f5f79b37dd80a57095`，分支feat/runtime-minimal-rollback-review-20261027。新回退审阅kind与forward隔离，stateRaw仅为原state快照，兼容未证明/事故恢复未授权/执行权限恒false；无采集/持久保存/执行接线。复用历史来源和前向基础观测校验，原lineage主体提取AST一致；原本地审阅新增17项模型测试且未运行，仅AST/静态名字/方法名/差异审阅。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。release_contract为固定17成员，必须正式Bundle/Manifest交付；现役工具/唯一state/业务schema/依赖不变，三组研究继续暂停。回退执行/安装/Mac入口/隔离/生产仍OPEN，无生产操作，已通过PR #2999合并dev；详见[回退审阅门禁](Runtime最小更新执行器实现方案.md)。
+
+
+回退审阅批已由[PR #2999](https://github.com/sanqin888/sanqinMVP/pull/2999) 最终head `ca5993f258faafe7cbca85429ab7768073ef1753` 经 [CI #7684](https://github.com/sanqin888/sanqinMVP/actions/runs/40527848453) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各382、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `17416da3333a34dc19defcbefcfc4a6f242f56e5`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
 
 ## 2026-10-27 — 最小更新执行器：完整 SQL 异步任务接线
 
