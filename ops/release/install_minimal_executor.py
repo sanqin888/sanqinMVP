@@ -716,11 +716,13 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False):
+                               include_filesystem=False, include_prerequisites=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
-    _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd, include_filesystem))
+    _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
+                                             include_filesystem, include_prerequisites))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
-          and (not include_filesystem or include_systemd), "invalid installation observation switches")
+          and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem),
+          "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
     def snapshot():
@@ -732,7 +734,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                     lambda args: _systemd_command(args, deadline=deadline))
                    if include_systemd else None)
         filesystem = _host_filesystem_snapshot(deadline=deadline) if include_filesystem else None
-        return runtime, configuration, docker, systemd, filesystem
+        prerequisites = (_runtime_prerequisite_snapshot(docker, lambda args: _runtime_command(args, deadline=deadline))
+                         if include_prerequisites else None)
+        return runtime, configuration, docker, systemd, filesystem, prerequisites
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -776,6 +780,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         if include_filesystem:
             result.update({"hostPersistentDirectoriesObserved": True, "backupIntegrityObserved": True,
                            "backupRestoreProven": False, "filesystem": before[4]})
+        if include_prerequisites:
+            result.update({"runtimePrerequisitesObserved": True, "databaseHistoryObserved": True,
+                           "readinessEndpointsObserved": True, "prerequisites": before[5]})
         return result
 
 
@@ -898,7 +905,8 @@ def _docker_command(args, *, deadline):
 
 
 def _observation_command(args, *, deadline):
-    _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)), "unreviewed or unprivileged Host observation")
+    _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)
+                                   or _runtime_observation_allowed(args)), "unreviewed or unprivileged Host observation")
     _need(not any(os.environ.get(key) for key in (
           "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
           "non-default Docker endpoint requires separate review")
@@ -1366,6 +1374,123 @@ def _host_filesystem_snapshot(*, deadline):
 def _observe_installed_filesystem(identity, *, fetch=release.github_json):
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True,
                                       include_docker=True, include_systemd=True, include_filesystem=True)
+
+
+
+# D2-7: installed runtime prerequisites. Read-only SQL, fixed HTTP GET and stdlib probe.
+MIN_AVAILABLE_MEMORY = 512 * 1024 * 1024
+PYTHON_OBSERVATION = ("import json,sys; print(json.dumps({'version':list(sys.version_info[:3]),"
+                      "'implementation':sys.implementation.name,'executable':sys.executable,'platform':sys.platform}))")
+PYTHON_ARGS = ("/usr/bin/python3", "-I", "-S", "-B", "-c", PYTHON_OBSERVATION)
+READINESS_URLS = ("http://127.0.0.1:4000/api/v1/ready", "http://127.0.0.1:4001/ready",
+                  "http://127.0.0.1:3000/health", "https://sanq.ca/health",
+                  "https://sanq.ca/api/v1/ready", "https://sanq.ca/api/v1/menu/public")
+CURL_ARGS = ("/usr/bin/curl", "--disable", "--fail", "--silent", "--show-error",
+             "--connect-timeout", "3", "--max-time", "10", "--noproxy", "*",
+             "--proto", "=http,https", "--request", "GET", "--output", "/dev/null",
+             "--write-out", "%{http_code}")
+INSTALL_HISTORY_SQL = """BEGIN READ ONLY;
+SET LOCAL statement_timeout='5s';
+SET LOCAL lock_timeout='2s';
+SELECT pg_catalog.json_build_object(
+ 'database',pg_catalog.current_database(),'port',pg_catalog.current_setting('port'),
+ 'dataDirectory',pg_catalog.current_setting('data_directory'),
+ 'serverVersionNum',pg_catalog.current_setting('server_version_num'),
+ 'inRecovery',pg_catalog.pg_is_in_recovery(),
+ 'transactionReadOnly',pg_catalog.current_setting('transaction_read_only'),
+ 'history',(SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object(
+   'name',migration_name,'sha256',checksum,'state',CASE WHEN rolled_back_at IS NOT NULL THEN 'rolled-back'
+   WHEN finished_at IS NOT NULL THEN 'applied' ELSE 'failed' END)
+   ORDER BY migration_name,started_at,id),'[]'::json) FROM (
+   SELECT migration_name,checksum,rolled_back_at,finished_at,started_at,id
+   FROM public."_prisma_migrations" ORDER BY migration_name,started_at,id LIMIT 20001) AS m));
+COMMIT;"""
+INSTALL_HISTORY_COMMAND = (
+    'exec /usr/bin/env -i PATH=/usr/local/bin:/usr/bin:/bin PGCONNECT_TIMEOUT=5 '
+    'psql -X -w -qAt -v ON_ERROR_STOP=1 -h /var/run/postgresql -p 5432 '
+    '-U "$POSTGRES_USER" -d sanqin_db -c "$1"')
+
+
+def _installation_history_args(identifier):
+    _need(isinstance(identifier, str) and re.fullmatch(r"[a-f0-9]{64}", identifier),
+          "invalid saved database container identity")
+    return [*DOCKER, "exec", identifier, "/bin/sh", "-c", INSTALL_HISTORY_COMMAND,
+            "sanq-install-history", INSTALL_HISTORY_SQL]
+
+
+def _runtime_observation_allowed(args):
+    if type(args) is not list or not all(isinstance(value, str) for value in args):
+        return False
+    if tuple(args) == PYTHON_ARGS or any(tuple(args) == (*CURL_ARGS, url) for url in READINESS_URLS):
+        return True
+    position = len(DOCKER) + 1
+    return (len(args) == len(DOCKER) + 7 and re.fullmatch(r"[a-f0-9]{64}", args[position]) is not None
+            and args == _installation_history_args(args[position]))
+
+
+def _runtime_command(args, *, deadline):
+    _need(_runtime_observation_allowed(args), "unreviewed runtime prerequisite command")
+    return _observation_command(args, deadline=deadline)
+
+
+def _memory_threshold_observed():
+    fd = os.open("/proc/meminfo", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        _installed_info(os.fstat(fd))
+        raw = os.read(fd, 65537)
+        _need(len(raw) <= 65536, "memory observation exceeds budget")
+    finally:
+        os.close(fd)
+    matches = re.findall(rb"(?m)^MemAvailable:[ \t]+([0-9]+) kB$", raw)
+    _need(len(matches) == 1 and int(matches[0]) * 1024 >= MIN_AVAILABLE_MEMORY,
+          "available memory is missing, ambiguous or below the 512 MiB reserve")
+    return {"minimumAvailableMemoryBytes": MIN_AVAILABLE_MEMORY, "availableMemoryThresholdSatisfied": True}
+
+
+def _runtime_prerequisite_snapshot(docker, run):
+    resources = _memory_threshold_observed()
+    # Reuse the bounded strict JSON decoder; arguments are independently allowlisted.
+    python = _docker_json(PYTHON_ARGS, run)
+    _need(type(python) is dict and set(python) == {"version", "implementation", "executable", "platform"}
+          and type(python["version"]) is list and len(python["version"]) == 3
+          and all(type(value) is int and value >= 0 for value in python["version"])
+          and python["version"][0] == 3 and tuple(python["version"][:2]) >= (3, 10)
+          and python["implementation"] == "cpython" and python["platform"] == "linux"
+          and python["executable"] == "/usr/bin/python3", "system Python prerequisite differs")
+    identifier = docker["containers"]["db"]["containerId"]
+    database = _docker_json(_installation_history_args(identifier), run)
+    _need(type(database) is dict and set(database) == {"database", "port", "dataDirectory",
+          "serverVersionNum", "inRecovery", "transactionReadOnly", "history"}
+          and database["database"] == "sanqin_db" and database["port"] == "5432"
+          and database["dataDirectory"] == "/var/lib/postgresql/data"
+          and isinstance(database["serverVersionNum"], str)
+          and re.fullmatch(r"[0-9]{6}", database["serverVersionNum"])
+          and 150000 <= int(database["serverVersionNum"]) < 160000
+          and database["inRecovery"] is False and database["transactionReadOnly"] == "on"
+          and type(database["history"]) is list and 0 < len(database["history"]) <= 20000,
+          "local read-only database identity or history differs")
+    for row in database["history"]:
+        _need(type(row) is dict and set(row) == {"name", "sha256", "state"}
+              and isinstance(row["name"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}", row["name"])
+              and isinstance(row["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", row["sha256"])
+              and row["state"] in ("applied", "rolled-back"), "database history is unresolved or invalid")
+    statuses = {}
+    for url in READINESS_URLS:
+        code = run(list((*CURL_ARGS, url)))
+        _need(code == "200", "fixed readiness endpoint did not return HTTP 200")
+        statuses[url] = code
+    return {"resources": resources, "systemPython": python, "databaseContainerId": identifier,
+            "databaseIdentity": {key: value for key, value in database.items() if key != "history"},
+            "migrationHistorySha256": _hash(_json(database["history"])),
+            "migrationHistoryRows": len(database["history"]),
+            "rolledBackHistoryRows": sum(row["state"] == "rolled-back" for row in database["history"]),
+            "httpStatuses": statuses, "databaseMigrationParityProven": False,
+            "systemPythonProvenanceAuthenticated": False}
+
+
+def _observe_installed_prerequisites(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True)
 
 
 def main(argv=None):
