@@ -1,12 +1,34 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：D2 systemd有效配置与原件核对
+
+**2026-10-27 当前进度：D2_SYSTEMD_BASELINE_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部systemd初次安装预检，沿原两锁、来源/源码/配置/Docker双读流程，核四个有效unit、未决reload/override和旧备份unit实物；没有安装/重载/停启服务或维护marker写入。
+
+基于dev `ca0507f522a6bb10f982f0e0e9746a6d902a62fc`，分支feat/runtime-minimal-systemd-baseline-20261027。本批本地待审、未提交远端。
+
+Docker/挂载批已由[PR #3012](https://github.com/sanqin888/sanqinMVP/pull/3012) 最终head `f20ede98945ae6ea2f740804f389d59410b7ac9c` 经 [CI #7711](https://github.com/sanqin888/sanqinMVP/actions/runs/40577327857) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各664、Runtime1080、准确CPython3.12.15回归412），合并dev `ca0507f522a6bb10f982f0e0e9746a6d902a62fc`。首次CI #7710因测试夹具run覆盖unittest.TestCase.run而中断；同分支仅将模拟方法及引用改名observe_command，生产代码/门禁未放宽。下文原LOCAL/未运行或修复待核仅为原审阅时点，仍未安装/真实隔离验收。
+
+内部_observe_installed_systemd要求同时启用原配置/Docker采集，严格bool开关，默认已有文件/Docker观察不查询systemd。只允许/usr/bin/systemctl --system show固定docker.service、docker.socket、sanq-backup.service、sanq-backup.timer及固定属性全集；拒绝任意unit/属性/远端参数、daemon-reload/stop/start。原Docker客户端提取为共同有界只读客户端，保留原流读取/超时/仅结束自身CLI组主体与最小环境，systemd不继承DBUS_SYSTEM_BUS_ADDRESS/SYSTEMD_HOST等跳转。共用原300s Docker/manager命令截止、单次30s、stdout/stderr合计2MiB；每份show另核64KiB、准确键全集、无重复/未知/缺失键，原始命令属性只摘要，不回显。
+
+有效unit必须loaded、NeedDaemonReload=no、无任何已加载DropInPaths且非masked/未知enable状态。Docker fragment只接受原/lib或/usr/lib的vendor路径别名，backup两unit只接受/etc/systemd/system固定原路径，其他完整override拒绝；Docker service active/running，socket active/listening且只触发docker.service。备份service须inactive/dead、ubuntu用户/默认或ubuntu组、0077/oneshot、准确无忽略失败的/home/ubuntu/backup-db.sh单一启动命令，无额外pre/post/stop-post；timer须active/waiting或inactive/dead且只触发sanq-backup.service。读取状态不证明当前维护门禁已加载。
+
+固定/etc/systemd/system逐层root-owned/root-group、无组/其他写或特殊权限位及nofollow目录FD。旧sanq-backup.service/.timer须普通单链接root文件、有界读与完整FD/路径元数据重核；service字节必须等于旧已封存Runtime的原成员，timer原字节/元数据只观察摘要，不补造来源。拒绝本地docker.service/.socket文件（含悬空链接），四unit .d、service.d/socket.d/timer.d及sanq-前缀目录必须不存在或真实可信空目录；任何未知文件、预留80-sanq-maintenance.conf或部分残件原样保留并阻断。读loaded属性前后都重读磁盘原件和目录身份，全局两次观察再比较稳定unit属性摘要；相同字节换inode、目录或有效unit状态变化仍阻断。
+
+结果仍INSTALLED_RUNTIME_FILES_OBSERVED，仅新增systemdObserved=true及四unit稳定属性/摘要、两备份unit原件摘要和预留门禁不存在的事实；maintenanceGatesLoaded/backupIntegrityObserved、hostPreflightComplete/installedBaselineObserved/readyToInstall/canExecute/authorizedToMutateProduction/operationSuccessProven保持false、requiresHostRecheck=true。vendorUnitBytesAuthenticated/backupTimerSourceAuthenticated=false：只观察加载路径/属性及本地timer实物，未扩展到OS来源研究或宣称timer有封存Git来源。尚未核备份gzip/时效、宿主挂载目录/资源及剩余就绪/DB项，不把unit空闲当成停写/快照或恢复就绪证明。
+
+新增21项离线模型测试，使用临时真实root模型文件/目录及原锁，覆盖组合只读/无写同步、vendor路径别名和空闲timer、load/reload/masked/未知loaded drop-in、完整override、Docker稳定状态与socket触发目标、忙碌backup与timer错误、有效用户/组/UMask/Type/单一命令/hooks、属性重复/缺失/未知/预算、service旧归档字节匹配、缺失/链接/硬链接/权限、三预留或其他/类型级/前缀drop-in残件与可信空目录、悬空本地Docker override、同字节替换/两次有效状态漂移、原两锁跨度与晚期维护、默认路径不查询systemd、严格开关/读白名单/无新CLI、固定anchor走向/元数据及共享真实pipe客户端最小环境。systemd/Docker/GitHub/root/固定anchor为模型，未实际调用管理器或运行项目测试；仅Python3.10 AST、静态名字/重复方法/禁止覆盖unittest.run钩子、43个既有定义不变、root读取主体及有界客户端主体AST等价、差异/准确读回，不把前批664当本批通过。
+
+归Runtime/Ops独立bootstrap只读主机预检，无新依赖包/常规helper/反向导入/第二版本权威、无12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。原root文件读取提取共用主体、原Docker客户端提取共用主体并仅扩固定读取命令分派，原观察函数加可选systemd分支，其余43个既有函数/类保持；不导入九helper或执行现役/材料Python。固定17+Manifest/250/300、九helper/三永久drop-in、D1/私有四文件格式及CLI不变；timer仅外部现役观察，不加入原17或变成第18成员。
+
+下一步接备份完整性/26h时效、宿主uploads/sounds/backup目录实物与资源及剩余就绪/DB只读项；全部前置满足后再接安装意图/临时拒绝门禁。准确原ID停写、手动快照available/完整恢复实物、逐文件安装与成功交接、D3 Mac薄入口、D4统一真实隔离/生产材料仍OPEN。三组研究继续暂停、不取消；无业务schema/迁移、现场预检或生产操作。
+
 ## 2026-10-27 — 最小更新执行器：D2 Docker/Compose与实际挂载核对
 
-**2026-10-27 当前进度：D2_DOCKER_BASELINE_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部Docker/Compose只读观察，在原两锁与来源/源码/配置双读流程内，核当前四容器角色、健康和完整身份、实际应用镜像封存digest/OCI revision，以及DB卷和持久挂载。没有安装入口、维护意图或生产操作。
+**2026-10-27 当前进度：D2_DOCKER_BASELINE_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部Docker/Compose只读观察，在原两锁与来源/源码/配置双读流程内，核当前四容器角色、健康和完整身份、实际应用镜像封存digest/OCI revision，以及DB卷和持久挂载。没有安装入口、维护意图或生产操作。
 
-本批首次[CI #7710](https://github.com/sanqin888/sanqinMVP/actions/runs/40577015596) 在默认Python离线Release套件发现测试夹具将模拟Docker方法命名run，覆盖unittest.TestCase.run，套件于该类前中断。同分支仅将夹具方法及引用改为observe_command，生产代码/门禁不变；修复后的CI待核，尚未合并，不把640或静态检查当本批通过。
+本批首次[CI #7710](https://github.com/sanqin888/sanqinMVP/actions/runs/40577015596) 在默认Python离线Release套件发现测试夹具将模拟Docker方法命名run，覆盖unittest.TestCase.run，套件于该类前中断。同分支仅将夹具方法及引用改为observe_command，生产代码/门禁不变；最终修复head与CI #7711/合并记录见上文；原待核仅为修复提交前时点，不把640或静态检查当本批通过。
 
-基于dev `12f3f840387229a22adf62035f486bcb63ae36e4`，分支feat/runtime-minimal-docker-baseline-20261027。本批本地待审、未提交远端。
+基于dev `12f3f840387229a22adf62035f486bcb63ae36e4`，分支feat/runtime-minimal-docker-baseline-20261027。本批已通过PR #3012合并dev。
 
 配置原件核对批已由[PR #3011](https://github.com/sanqin888/sanqinMVP/pull/3011) 最终head `2c785b95396dfe88bff45840f8e3d95bb6f378b3` 经 [CI #7708](https://github.com/sanqin888/sanqinMVP/actions/runs/40575133829) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各640、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `12f3f840387229a22adf62035f486bcb63ae36e4`。下文该批原LOCAL/未运行仅为原审阅时点，仍未安装或完成真实隔离验收。
 
