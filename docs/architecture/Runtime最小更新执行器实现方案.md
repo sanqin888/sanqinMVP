@@ -1,8 +1,20 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 迁移观察接入原两锁（本地待审）
+## D2 剩余预检缺口审计（本地待审）
 
-**2026-10-27 当前进度：D2_LOCKED_MIGRATIONS_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_PREFLIGHT_GAP_AUDIT_LOCAL / DOCUMENTATION_ONLY / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+原两锁迁移接线批[PR #3020](https://github.com/sanqin888/sanqinMVP/pull/3020) head `e4d1dd8dc333832d605dc757d2db60de99d8b831` 经[CI #7727](https://github.com/sanqin888/sanqinMVP/actions/runs/40589684080)全绿（4成功/6范围跳过；Release默认Python与3.10各779项、Runtime1080、既有C1回归412），合并dev `6a1e423bcf4b0c1f74c6937d5a60cb6638ed0653`；无CI修复，未执行现场预检或安装。
+
+本批基于该dev，在docs/runtime-minimal-preflight-gap-audit-20261027完成剩余预检源码审计。结论：现有来源/17原件/私有材料/环境/挂载/网络/资源/备份gzip/systemd/迁移观察已接线，但完整有效应用配置和外部备份执行文件绑定仍未齐全，不能将hostPreflightComplete、applicationConfigurationObserved或readyToInstall改为true。审计仅静态事实，无生产故障判断。
+
+后续只读预检收敛为三批：A补端口/healthcheck/AutoRemove及保存身份漂移；B补固定外部备份脚本/helper/sudoers原件与旧封存源码绑定；C统一组合回归并逐条核对预检合同，明确真实隔离验收边界，再进入既定安装意图/临时拒绝门禁。完整表及退出条件见交付合同本节。不能仅因本地测试条目增加或多个观察flag为true而宣布预检完成。
+
+本批只更新六份文档；无代码/测试/依赖/业务schema/持久化格式/CLI变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner或项目测试。三组研究继续暂停、不取消；固定17+Manifest/250/300、九helper、私有四文件和三永久门禁不变。所有安装写入、准确原ID停写、手动快照available/恢复实物、Mac入口、统一真实隔离验收与生产交付仍OPEN。
+
+## D2 迁移观察接入原两锁（源码已合并）
+
+**2026-10-27 当前进度：D2_LOCKED_MIGRATIONS_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 库存/历史双读批[PR #3019](https://github.com/sanqin888/sanqinMVP/pull/3019) head `05ff70bd564a16004e9e78754a6e5d6d6a1b0919` 经[CI #7725](https://github.com/sanqin888/sanqinMVP/actions/runs/40589019392)全绿（4成功/6范围跳过；Release默认Python与3.10各771、Runtime1080、既有C1回归412），合并dev `cb42cd20cd3f16a061372456df246e9438573e02`，无CI修复；未执行生产预检或安装。旧批LOCAL/未运行描述仅为当时审阅状态。
 
