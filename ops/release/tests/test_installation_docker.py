@@ -67,7 +67,7 @@ class InstallationDockerTests(unittest.TestCase):
                     "MaximumRetryCount": 3 if role == "ubereats-worker" else 0}}, "Mounts": [mount]}
         self.materials.stack.enter_context(patch.dict(installer.os.environ, {}, clear=True))
 
-    def run(self, args):
+    def observe_command(self, args):
         self.assertTrue(installer._docker_allowed(args), args)
         self.calls.append(args)
         command = tuple(args)
@@ -88,10 +88,10 @@ class InstallationDockerTests(unittest.TestCase):
         raise AssertionError("not a modeled read command")
 
     def snapshot(self, compose=b"inert model Compose"):
-        return installer._docker_snapshot({"applicationSha": configuration.APP}, compose, self.run, self.case.fetch)
+        return installer._docker_snapshot({"applicationSha": configuration.APP}, compose, self.observe_command, self.case.fetch)
 
     def observe(self):
-        with patch.object(installer, "_docker_command", side_effect=lambda args, **_: self.run(args)):
+        with patch.object(installer, "_docker_command", side_effect=lambda args, **_: self.observe_command(args)):
             return installer._observe_installed_docker(self.materials.identity, fetch=self.case.fetch)
 
     def test_locked_end_to_end_observation_returns_only_stable_facts_and_no_permission(self):
@@ -244,7 +244,7 @@ class InstallationDockerTests(unittest.TestCase):
                         configuration.baseline.private.plans.preparation_lock):
             with acquire(), self.assertRaises(ReleaseContractError):
                 self.observe()
-        run = self.run
+        run = self.observe_command
         marker = self.materials.state / "maintenance/active.json"
         def racing(args):
             for acquire in (configuration.baseline.private.jobs._locked_directory,
@@ -256,7 +256,7 @@ class InstallationDockerTests(unittest.TestCase):
             if not marker.exists():
                 marker.write_bytes(b"preserved incident")
             return value
-        with patch.object(self, "run", side_effect=racing), self.assertRaises(ReleaseContractError):
+        with patch.object(self, "observe_command", side_effect=racing), self.assertRaises(ReleaseContractError):
             self.observe()
         self.assertEqual(marker.read_bytes(), b"preserved incident")
 
