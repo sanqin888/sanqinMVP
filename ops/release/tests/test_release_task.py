@@ -64,6 +64,10 @@ class TaskContextTests(unittest.TestCase):
                     self.real_installed()
             with patch.object(task.starter, "start_and_verify", None), self.assertRaises(ReleaseContractError):
                 self.real_installed()
+            with patch.object(task.finalizer, "finalize_ready", None), self.assertRaises(ReleaseContractError):
+                self.real_installed()
+            with patch.object(task.starter, "_running", lambda *args: None), self.assertRaises(ReleaseContractError):
+                self.real_installed()
             source.chmod(0o666)
             with self.assertRaises(ReleaseContractError):
                 self.real_installed()
