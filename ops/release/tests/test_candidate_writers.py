@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_maintenance_guard as fixtures
 import maintenance_guard as guard
 import deployment_plan_store as storage
+import deployment_plan as plan
 import collect_deployment_plan as collector
 from release_contract import ReleaseContractError
 from test_deployment_plan import NEW, inputs
@@ -26,6 +27,12 @@ class CandidateWriterTests(unittest.TestCase):
             "test_original_policies_persist_before_changes_and_all_writers_confirm_stopped")
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        values = inputs()
+        values["pending"] = []
+        values["history"] = [{**{key: row[key] for key in ("name", "sha256")}, "state": "applied"}
+                             for row in values["inventory"]]
+        self.fixture.identity = storage.save_plan(plan.create_plan(created_at=fixtures.NOW, **values))
+        self.fixture.observer.return_value = plan.create_plan(created_at=self.fixture.time, **values)
         self.frozen = self.fixture.freeze()
         self.identity = self.fixture.identity
         self.ids = {service: character * 64 for service, character in

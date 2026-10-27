@@ -125,3 +125,22 @@ def assert_applied_history(original, history):
          and sorted(plan._canonical(row) for row in history) ==
              sorted(plan._canonical(row) for row in expected),
          "migration history differs from the exact approved delta")
+
+
+def assert_application_history(original, record, history, run):
+    """Keep the original review immutable; require retained SQL proof when pending."""
+    if not original["pendingMigrations"]:
+        need(record["schemaVersion"] in (1, 2) and history == original["migrationHistory"],
+             "application history differs from the no-SQL plan")
+        return True
+    need(record["schemaVersion"] == 4 or
+         (record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED"),
+         "application creation requires verified migration evidence")
+    item = record["migration"]
+    need(item["release"] == original["candidate"]
+         and record["observedApplicationSha"] == original["current"]["applicationSha"],
+         "migration release differs from the reviewed application")
+    plan.assert_sql_approval(plan._canonical(original) + b"\n", original["planId"], item["approvalSha256"])
+    assert_completed(record, run)
+    assert_applied_history(original, history)
+    return True

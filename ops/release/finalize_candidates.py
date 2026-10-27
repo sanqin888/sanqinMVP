@@ -1,4 +1,4 @@
-"""Task-connected success handoff for ready no-migration candidates.
+"""Shared success handoff for ready candidates, retaining exact migration proof.
 
 The original release state remains the sole version authority. No CLI, SQL,
 automatic replay, rollback, timer change or recovery/unfreeze entry is exposed.
@@ -122,7 +122,7 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
                 and record["phase"] == "CANDIDATES_READY", "handoff requires the same ready attempt")
     raw = storage.load_plan(identity)
     original = plan.validate_plan(raw, identity)
-    guard._need(not original["pendingMigrations"]
+    guard._need(record["schemaVersion"] in (2, 4)
                 and record["observedApplicationSha"] == original["current"]["applicationSha"]
                 and record["candidate"]["release"] == original["candidate"],
                 "SQL path unavailable or handoff plan differs")
@@ -131,7 +131,7 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
     guard._installed_gate(bounded)
     expanded = starter._pending_and_config(original, controller, bounded)
     guard._need(collector._backup(controller) == original["backup"]
-                and collector._history(controller, bounded) == original["migrationHistory"]
+                and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded)
                 and release.verify_exact_candidate(original["current"]["applicationSha"],
                     original["candidate"]["sourceSha"], fetch) == original["candidate"]
                 and starter._running(record, expanded, bounded), "ready observations changed")
@@ -168,7 +168,7 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
                     and pending["reason"] == "candidate-create-start"
                     and starter._running(record, expected_expanded, bounded)
                     and guard._database_identity(controller, bounded) == database
-                    and collector._history(controller, bounded) == original["migrationHistory"],
+                    and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded),
                     "pre-commit observations changed")
         controller.write_state("active", current=original["candidate"]["sourceSha"],
                                previous=original["current"]["applicationSha"], reason="readiness-verified")
@@ -185,6 +185,8 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
                     and guard._backup(bounded) == units, "policy or final resource readback differs")
         _target_binding(original, expected_env, expected_expanded, metadata, controller, bounded)
         _active(original, controller)
+        if record["schemaVersion"] == 4:
+            guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded)
         guard._installed_gate(bounded)
         committed = {**finalizing, "phase": "HANDOFF_COMMITTED", "updatedAt": job._timestamp(now)}
         sealing = True
