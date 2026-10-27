@@ -1,7 +1,7 @@
-"""Uninstalled transient release task with internal, unwired migration stages.
+"""Uninstalled asynchronous release task for exact plans and reviewed SQL.
 
-Only a confirmed no-migration plan is queued by the CLI. Internal SQL stages
-are not submitted here. Query evidence after unknown results; never replay.
+One locked task owns freeze through final handoff. SQL requires its independent
+scope digest. Query evidence after unknown results; never replay or restore.
 """
 
 from __future__ import annotations
@@ -50,6 +50,14 @@ def _installed() -> None:
           and callable(getattr(guard, "_incident_locked", None))
           and callable(getattr(guard, "_freeze_for_plan_locked", None))
           and callable(getattr(guard, "_prepare_candidate_containers_locked", None))
+          and callable(getattr(guard, "_begin_migration_creation_locked", None))
+          and callable(getattr(guard, "_register_created_migration_locked", None))
+          and callable(getattr(guard.migration, "creation_config", None))
+          and callable(getattr(guard.migration, "assert_completed", None))
+          and callable(getattr(guard.migration, "assert_applied_history", None))
+          and callable(getattr(guard.migration, "assert_application_history", None))
+          and "pending_config" in inspect.signature(guard._prepare_candidate_containers_locked).parameters
+          and "controller" in inspect.signature(guard._register_created_candidates_locked).parameters
           and callable(getattr(starter, "_start_and_verify_locked", None))
           and callable(getattr(finalizer, "_finalize_ready_locked", None))
           and callable(getattr(starter, "start_and_verify", None))
@@ -61,8 +69,11 @@ def _installed() -> None:
           "installed helper APIs are incomplete; do not mix tool versions")
 
 
-def _command(role: str, identity: str) -> str:
-    return "/usr/bin/python3 -B " + str(TASK_SCRIPT) + " " + role + " " + storage._plan_id(identity)
+def _command(role: str, identity: str, approval=None) -> str:
+    if approval is not None:
+        plan._sha256(approval)
+    return ("/usr/bin/python3 -B " + str(TASK_SCRIPT) + " " + role + " " + storage._plan_id(identity)
+            + ("" if approval is None else " --approve-sql " + approval))
 
 
 def _command_matches(value: str, expected: str) -> bool:
@@ -79,7 +90,7 @@ def _cgroup() -> str:
     return rows[0]
 
 
-def _context(identity: str, role: str, run) -> None:
+def _context(identity: str, role: str, run, *, approval=None) -> None:
     """Observed manager PID/cgroup/commands bind a call, never caller booleans."""
     _installed()
     keys = ["LoadState", "Transient", "Type", "Restart", "RemainAfterExit", "KillMode",
@@ -107,12 +118,12 @@ def _context(identity: str, role: str, run) -> None:
         _need(role == "cleanup" and fields["ActiveState"] == "deactivating"
               and fields["SubState"] == "stop-post" and pid == fields["ControlPID"],
               "not the task stop-post process")
-    _need(_command_matches(fields["ExecStart"], _command("run", identity))
-          and _command_matches(fields["ExecStopPost"], _command("cleanup", identity)),
+    _need(_command_matches(fields["ExecStart"], _command("run", identity, approval))
+          and _command_matches(fields["ExecStopPost"], _command("cleanup", identity, approval)),
           "task executable arguments or failure handling differ")
 
 
-def submit(identity: str, *, run=collector.command, now=collector.now_utc) -> dict:
+def submit(identity: str, *, approval=None, run=collector.command, now=collector.now_utc) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
     _installed()
@@ -123,7 +134,7 @@ def submit(identity: str, *, run=collector.command, now=collector.now_utc) -> di
         job._no_pending(root)
         raw = storage.load_plan(identity)
         original = plan.validate_plan(raw, identity)
-        _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+        plan.assert_sql_approval(raw, identity, approval)
         _need(original["candidate"]["sourceSha"] != original["current"]["applicationSha"],
               "target is already the current release")
         plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
@@ -135,19 +146,21 @@ def submit(identity: str, *, run=collector.command, now=collector.now_utc) -> di
             "--property=TimeoutStopSec=" + str(STOP_TIMEOUT_SECONDS),
             "--property=WorkingDirectory=" + str(RUNTIME_ROOT),
             "--property=MemoryMax=256M", "--property=CPUQuota=50%",
-            "--property=ExecStopPost=" + _command("cleanup", identity),
+            "--property=ExecStopPost=" + _command("cleanup", identity, approval),
             "--", "/usr/bin/python3", "-B", str(TASK_SCRIPT), "run", identity]
+    if approval is not None:
+        args += ["--approve-sql", approval]
     # No wait/pty/pipe/scope/replace/collect; a duplicate or unknown result is not retried.
     run(args, timeout=30)
     return {"planId": identity, "unit": _unit(identity), "outcome": "SUBMITTED",
             "canExecute": False}
 
 
-def run_task(identity: str, *, run=collector.command, controller=None, fetch=None,
+def run_task(identity: str, *, approval=None, run=collector.command, controller=None, fetch=None,
              observe=None, now=collector.now_utc, clock=time.monotonic, pause=time.sleep) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
-    _context(identity, "run", run)
+    _context(identity, "run", run, approval=approval)
     if controller is None:
         import deploy_release as controller
     _need(all(callable(getattr(controller, name, None)) for name in (
@@ -180,8 +193,9 @@ def run_task(identity: str, *, run=collector.command, controller=None, fetch=Non
     with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
         job._no_pending(jobs_root)
         storage.check_maintenance_clear(guard.MAINTENANCE_DIR)
-        original = plan.validate_plan(storage.load_plan(identity), identity)
-        _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
+        plan.assert_sql_approval(raw, identity, approval)
         _need(original["candidate"]["sourceSha"] != original["current"]["applicationSha"],
               "target is already the current release")
         remaining()
@@ -190,6 +204,22 @@ def run_task(identity: str, *, run=collector.command, controller=None, fetch=Non
         _need(frozen["planId"] == identity and frozen["phase"] == "FROZEN"
               and frozen["canExecute"] is False, "freeze stage result differs")
         attempt = job._attempt(frozen["attemptId"])
+        if original["pendingMigrations"]:
+            for stage, outcome in (
+                    (_prepare_migration_container_locked, "MIGRATION_CREATED_NOT_STARTED"),
+                    (_execute_registered_migration_locked, "MIGRATION_VERIFIED")):
+                remaining()
+                kwargs = {"controller": controller, "run": bounded, "fetch": bounded_fetch, "now": now}
+                if stage is _execute_registered_migration_locked:
+                    kwargs["clock"] = clock
+                result = stage(root, jobs_root, identity, attempt, approval, **kwargs)
+                _need(result["planId"] == identity and result["attemptId"] == attempt
+                      and result["outcome"] == outcome and result["canExecute"] is False,
+                      "migration stage result differs")
+            remaining()
+            return _handoff_migrated_release_locked(root, jobs_root, identity, attempt, approval,
+                controller=controller, run=bounded, fetch=bounded_fetch, now=now,
+                clock=clock, pause=pause)
         for stage, outcome in (
                 (guard._prepare_candidate_containers_locked, "CANDIDATES_CREATED_NOT_STARTED"),
                 (starter._start_and_verify_locked, "CANDIDATES_READY")):
@@ -209,10 +239,10 @@ def run_task(identity: str, *, run=collector.command, controller=None, fetch=Non
 
 
 
-def cleanup_task(identity: str, *, run=collector.command) -> dict:
+def cleanup_task(identity: str, *, approval=None, run=collector.command) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
-    _context(identity, "cleanup", run)
+    _context(identity, "cleanup", run, approval=approval)
     # Only trusted manager context reaches this branch. Unknown/missing result
     # is failure handling, never an instruction to reopen or clear maintenance.
     return guard.cleanup_after_task(identity, os.environ.get("SERVICE_RESULT", "unknown"), run=run)
@@ -221,7 +251,15 @@ def cleanup_task(identity: str, *, run=collector.command) -> dict:
 
 def prepare_migration_container(identity, attempt, approval, *, controller=None,
                                 run=collector.command, fetch=None, now=collector.now_utc):
-    """Internal create-only stage. Not wired to submit/run or any SQL command."""
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        return _prepare_migration_container_locked(root, jobs_root, identity, attempt, approval,
+            controller=controller, run=run, fetch=fetch, now=now)
+
+
+def _prepare_migration_container_locked(root, jobs_root, identity, attempt, approval, *, controller=None,
+                                run=collector.command, fetch=None, now=collector.now_utc):
+    """Create-only adapter; the task invokes the same locked body."""
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     if controller is None:
@@ -232,59 +270,57 @@ def prepare_migration_container(identity, attempt, approval, *, controller=None,
           and callable(getattr(guard.migration, "creation_config", None)), "migration APIs are incomplete")
     if fetch is None:
         fetch = lambda path: guard.release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
-    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
-        job._no_pending(jobs_root)
-        _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
-        record = guard._read(root)
-        _need(record["planId"] == identity and record["attemptId"] == attempt
-              and record["phase"] == "FROZEN", "migration creation attempt differs")
-        original = plan.validate_plan(storage.load_plan(identity), identity)
-        _need(bool(original["pendingMigrations"]), "migration creation requires pending SQL")
-        plan.assert_sql_approval(storage.load_plan(identity), identity, approval)
-        plan.assert_same_observations(storage.load_plan(identity), identity,
-            observed_at=job._timestamp(now), **job._observations(original))
-        before, installed, environment = collector._snapshot(controller, run)
-        _need(before == original["current"] and environment == original["environment"]
-              and plan.runtime_contract(installed, installed) == original["runtimeContract"]
-              and collector._history(controller, run) == original["migrationHistory"]
-              and collector._backup(controller) == original["backup"], "migration baseline changed")
-        _need(guard.release.verify_exact_candidate(original["current"]["applicationSha"],
-              original["candidate"]["sourceSha"], fetch) == original["candidate"], "candidate proof changed")
-        collector._resource_preflight(controller)
-        image = original["candidate"]["images"]["sanq-api"]
-        collector._inspect_image(collector._pinned(image), collector._pinned(image),
-                                 original["candidate"]["sourceSha"], run)
-        _need(collector._probe_sql(collector._pinned(image), run) == original["migrationInventory"],
-              "cached image SQL inventory changed")
-        expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
-        body = guard.migration.creation_config(expanded, {**record, "migration": {
-            "release": original["candidate"]}})
-        _need(len(body) <= collector.MAX_OUTPUT, "migration config exceeds input budget")
-        database = guard._database_identity(controller, run)
-        _need(collector._snapshot(controller, run) == (before, installed, environment),
-              "configuration changed before migration intention")
-        guard._begin_migration_creation_locked(root, jobs_root, identity, attempt, approval,
-                                              controller=controller, run=run, now=now)
-        controller.write_creation_pending(original["current"]["applicationSha"], original["candidate"]["sourceSha"])
-        run(["docker", "compose", "--project-name", "sanq-app", "--project-directory", str(controller.ROOT),
-             "--env-file", str(controller.ENV), "--parallel", "1", "-f", "-", "create",
-             "--no-build", "--pull", "never", "sanq-migration"], input_bytes=body, timeout=180)
-        _need(guard._database_identity(controller, run) == database
-              and collector._history(controller, run) == original["migrationHistory"],
-              "database or history changed during create")
-        identifiers = guard.migration.ids(guard._read(root), run)
-        _need(len(identifiers) == 1, "migration creation identity is unknown")
-        value = guard._register_created_migration_locked(root, jobs_root, identity, attempt, identifiers.pop(),
-                                                       controller=controller, run=run, now=now)
-        return {"planId": identity, "attemptId": value["attemptId"],
-                "outcome": "MIGRATION_CREATED_NOT_STARTED", "canExecute": False}
-
+    job._no_pending(jobs_root)
+    _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
+    record = guard._read(root)
+    _need(record["planId"] == identity and record["attemptId"] == attempt
+          and record["phase"] == "FROZEN", "migration creation attempt differs")
+    original = plan.validate_plan(storage.load_plan(identity), identity)
+    _need(bool(original["pendingMigrations"]), "migration creation requires pending SQL")
+    plan.assert_sql_approval(storage.load_plan(identity), identity, approval)
+    plan.assert_same_observations(storage.load_plan(identity), identity,
+        observed_at=job._timestamp(now), **job._observations(original))
+    before, installed, environment = collector._snapshot(controller, run)
+    _need(before == original["current"] and environment == original["environment"]
+          and plan.runtime_contract(installed, installed) == original["runtimeContract"]
+          and collector._history(controller, run) == original["migrationHistory"]
+          and collector._backup(controller) == original["backup"], "migration baseline changed")
+    _need(guard.release.verify_exact_candidate(original["current"]["applicationSha"],
+          original["candidate"]["sourceSha"], fetch) == original["candidate"], "candidate proof changed")
+    collector._resource_preflight(controller)
+    image = original["candidate"]["images"]["sanq-api"]
+    collector._inspect_image(collector._pinned(image), collector._pinned(image),
+                             original["candidate"]["sourceSha"], run)
+    _need(collector._probe_sql(collector._pinned(image), run) == original["migrationInventory"],
+          "cached image SQL inventory changed")
+    expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+    body = guard.migration.creation_config(expanded, {**record, "migration": {
+        "release": original["candidate"]}})
+    _need(len(body) <= collector.MAX_OUTPUT, "migration config exceeds input budget")
+    database = guard._database_identity(controller, run)
+    _need(collector._snapshot(controller, run) == (before, installed, environment),
+          "configuration changed before migration intention")
+    guard._begin_migration_creation_locked(root, jobs_root, identity, attempt, approval,
+                                          controller=controller, run=run, now=now)
+    controller.write_creation_pending(original["current"]["applicationSha"], original["candidate"]["sourceSha"])
+    run(["docker", "compose", "--project-name", "sanq-app", "--project-directory", str(controller.ROOT),
+         "--env-file", str(controller.ENV), "--parallel", "1", "-f", "-", "create",
+         "--no-build", "--pull", "never", "sanq-migration"], input_bytes=body, timeout=180)
+    _need(guard._database_identity(controller, run) == database
+          and collector._history(controller, run) == original["migrationHistory"],
+          "database or history changed during create")
+    identifiers = guard.migration.ids(guard._read(root), run)
+    _need(len(identifiers) == 1, "migration creation identity is unknown")
+    value = guard._register_created_migration_locked(root, jobs_root, identity, attempt, identifiers.pop(),
+                                                   controller=controller, run=run, now=now)
+    return {"planId": identity, "attemptId": value["attemptId"],
+            "outcome": "MIGRATION_CREATED_NOT_STARTED", "canExecute": False}
 
 
 def execute_registered_migration(identity, attempt, approval, *, controller=None,
                                  run=collector.command, fetch=None, now=collector.now_utc,
                                  clock=time.monotonic):
-    """Internal stage only; not wired to the submission or run CLI."""
+    """Execution adapter; the task invokes the same locked body."""
     job._root_operator()
     with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
         return _execute_registered_migration_locked(root, jobs_root, identity, attempt, approval,
@@ -384,7 +420,16 @@ def _execute_registered_migration_locked(root, jobs_root, identity, attempt, app
 def handoff_migrated_release(identity, attempt, approval, *, controller=None,
         run=collector.command, fetch=None, now=collector.now_utc,
         clock=time.monotonic, pause=time.sleep):
-    """Internal inline continuation only; no CLI, recovery or replay entry."""
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        return _handoff_migrated_release_locked(root, jobs_root, identity, attempt, approval,
+            controller=controller, run=run, fetch=fetch, now=now, clock=clock, pause=pause)
+
+
+def _handoff_migrated_release_locked(root, jobs_root, identity, attempt, approval, *, controller=None,
+        run=collector.command, fetch=None, now=collector.now_utc,
+        clock=time.monotonic, pause=time.sleep):
+    """Inline continuation after known migration success; never recovery or replay."""
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     if controller is None:
@@ -392,21 +437,20 @@ def handoff_migrated_release(identity, attempt, approval, *, controller=None,
     _need("pending_config" in inspect.signature(guard._prepare_candidate_containers_locked).parameters
           and callable(getattr(guard.migration, "assert_application_history", None)),
           "post-migration helper APIs are incomplete")
-    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
-        job._no_pending(jobs_root)
-        _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
-        record = guard._read(root)
-        _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED"
-              and record["planId"] == identity and record["attemptId"] == attempt
-              and record["migration"]["approvalSha256"] == approval, "migration continuation differs")
-        plan.assert_sql_approval(storage.load_plan(identity), identity, approval)
-        guard._prepare_candidate_containers_locked(root, jobs_root, identity, attempt,
-            controller=controller, run=run, fetch=fetch, now=now,
-            pending_config=starter._pending_and_config)
-        starter._start_and_verify_locked(root, jobs_root, identity, attempt,
-            controller=controller, run=run, fetch=fetch, now=now, clock=clock, pause=pause)
-        return finalizer._finalize_ready_locked(root, jobs_root, identity, attempt,
-            controller=controller, run=run, fetch=fetch, now=now)
+    job._no_pending(jobs_root)
+    _need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
+    record = guard._read(root)
+    _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED"
+          and record["planId"] == identity and record["attemptId"] == attempt
+          and record["migration"]["approvalSha256"] == approval, "migration continuation differs")
+    plan.assert_sql_approval(storage.load_plan(identity), identity, approval)
+    guard._prepare_candidate_containers_locked(root, jobs_root, identity, attempt,
+        controller=controller, run=run, fetch=fetch, now=now,
+        pending_config=starter._pending_and_config)
+    starter._start_and_verify_locked(root, jobs_root, identity, attempt,
+        controller=controller, run=run, fetch=fetch, now=now, clock=clock, pause=pause)
+    return finalizer._finalize_ready_locked(root, jobs_root, identity, attempt,
+        controller=controller, run=run, fetch=fetch, now=now)
 
 
 def _observed_writers(controller, candidate, expanded, run):
@@ -519,13 +563,16 @@ def main(argv=None) -> int:
         sub.add_argument("plan_id")
         if name == "submit":
             sub.add_argument("--confirm-release", required=True, action="store_true")
+        if name in ("submit", "run", "cleanup"):
+            sub.add_argument("--approve-sql", help="exact SQL review SHA-256 for this plan")
     args = parser.parse_args(argv)
     try:
         if args.command == "logs":
             print(logs(args.plan_id), end="")
         else:
             handlers = {"submit": submit, "run": run_task, "cleanup": cleanup_task, "status": status}
-            print(json.dumps(handlers[args.command](args.plan_id), indent=2))
+            kwargs = {"approval": args.approve_sql} if args.command in ("submit", "run", "cleanup") else {}
+            print(json.dumps(handlers[args.command](args.plan_id, **kwargs), indent=2))
         return 0
     except (ReleaseContractError, OSError, ValueError, TypeError, KeyError, RecursionError):
         print("Task outcome requires review; query status/logs. No automatic retry or restore.")

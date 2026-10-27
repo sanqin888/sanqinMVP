@@ -1,8 +1,15 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：完整 SQL 异步任务接线
+
+**2026-10-27 当前进度：SQL_TASK_CONNECTED_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一release_task的submit/run/cleanup接收独立准确--approve-sql摘要；提交与停写前都用原计划校验，pending SQL缺失/错摘要、布尔或无迁移却附批准均拒绝。管理器ExecStart/ExecStopPost同时绑定planId与批准参数，PID/cgroup/固定unit校验保持。run持同一job锁/计划锁/维护目录FD完成freeze→迁移create/register→start/wait/history→原应用交接，仅前一阶段调用已知成功才继续；无新批准文件、发布状态或helper。 基于dev `3cb66317b49a2cdfdd8e97e6a9b21210369e4035`，分支feat/runtime-minimal-sql-task-20261027。整体1800s/管理器2100s/StopPost900s原预算保持，局部900s迁移与命令上限取剩余预算较小值；主进程未知不重放/改记录，独立StopPost不依赖计划重读。原两个适配器提取锁内主体，AST对照主体相同；缺迁移/helper API停写前拒绝。新增18项模型测试且扩安装API缺件测试，项目测试未运行；仅AST/静态名字/方法名/主体等价/差异审阅。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。受控回退/安装/Mac入口/真实隔离和生产仍OPEN，九helper/三drop-in须统一交付，17+Manifest/唯一state不变，三组研究继续暂停。无生产/业务schema/依赖操作，未提交远端；详见[完整SQL任务接线](Runtime最小更新执行器实现方案.md)。
+
 ## 2026-10-27 — 最小更新执行器：迁移后的应用交接
 
-**2026-10-27 当前进度：POST_MIGRATION_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一task新增内部handoff_migrated_release，持原job/计划锁和维护目录FD，独立核同一SQL批准后，复用原create/register→start/readiness→finalize锁内主体。原计划字节/planId不变；迁移后history按原历史+准确批准pending的applied差量验证，不清空pending或伪造无迁移计划。v3/MIGRATION_VERIFIED仅可前进到保留migration与candidate两组准确对象的v4创建意图；后续原阶段/唯一ACTIVE/准确restart策略/最终清标记继续使用同一实现，迁移容器保持退出、restart=no且不删除。 基于dev `e013287898a88dba7af375f9dc96279055b8f550`，分支feat/runtime-minimal-post-migration-handoff-20261027。未安装v4兼容保留SQL与应用对象证据，原三阶段复用同一准确history检查与原PENDING配置适配，无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未运行scanner。v4事故先处理迁移ID再应用/旧writer，不撤销SQL或反写实际ACTIVE；封口/clear未知保留原边界。新增16项模型测试、校正两份原应用意图夹具为无SQL计划，仅静态检查、项目测试未运行。SQL异步任务参数/整体贯通、回退/安装/隔离/生产仍OPEN；九helper待统一验真、17+Manifest不变，三组研究继续暂停。无生产/业务schema/依赖操作，未提交远端；详见[迁移后的应用交接](Runtime最小更新执行器实现方案.md)。
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**同一task新增内部handoff_migrated_release，持原job/计划锁和维护目录FD，独立核同一SQL批准后，复用原create/register→start/readiness→finalize锁内主体。原计划字节/planId不变；迁移后history按原历史+准确批准pending的applied差量验证，不清空pending或伪造无迁移计划。v3/MIGRATION_VERIFIED仅可前进到保留migration与candidate两组准确对象的v4创建意图；后续原阶段/唯一ACTIVE/准确restart策略/最终清标记继续使用同一实现，迁移容器保持退出、restart=no且不删除。 基于dev `e013287898a88dba7af375f9dc96279055b8f550`，分支feat/runtime-minimal-post-migration-handoff-20261027。未安装v4兼容保留SQL与应用对象证据，原三阶段复用同一准确history检查与原PENDING配置适配，无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未运行scanner。v4事故先处理迁移ID再应用/旧writer，不撤销SQL或反写实际ACTIVE；封口/clear未知保留原边界。新增16项模型测试、校正两份原应用意图夹具为无SQL计划，原本地审阅仅静态检查、项目测试未运行。SQL异步任务参数/整体贯通、回退/安装/隔离/生产仍OPEN；九helper待统一验真、17+Manifest不变，三组研究继续暂停。无生产/业务schema/依赖操作，已通过PR #2997合并dev；详见[迁移后的应用交接](Runtime最小更新执行器实现方案.md)。
+
+
+迁移后应用交接批已由[PR #2997](https://github.com/sanqin888/sanqinMVP/pull/2997) 最终head `96d6a3221d6742a6dda0ee9fbe1a8872ec870ffd` 经 [CI #7679](https://github.com/sanqin888/sanqinMVP/actions/runs/40523115618) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各347、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `3cb66317b49a2cdfdd8e97e6a9b21210369e4035`。其LOCAL/未运行记录是原审阅时点，仍未安装/隔离验收。
 
 ## 2026-10-27 — 最小更新执行器：已登记迁移启动与历史核对
 
