@@ -1,10 +1,34 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：D2运行环境与就绪/DB只读前置
+
+**2026-10-27 当前进度：D2_RUNTIME_PREREQUISITES_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增运行环境、固定就绪地址和绑定原DB容器ID的只读历史观察，沿原两锁与来源/文件/Docker/systemd/备份双读；不运行迁移、生成依赖或写安装意图。
+
+基于dev `a7b461dd8594c8c4497dbc7bf510380b55bd99bc`，分支feat/runtime-minimal-readiness-preflight-20261027。本批本地待审、未提交远端。
+
+备份/宿主目录批已由[PR #3014](https://github.com/sanqin888/sanqinMVP/pull/3014) 最终head `f44df660676c6586d9bfd0de04091f492bdf6ef5` 经 [CI #7715](https://github.com/sanqin888/sanqinMVP/actions/runs/40581035319) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各705、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `a7b461dd8594c8c4497dbc7bf510380b55bd99bc`。下文该批原LOCAL/未运行仅为原审阅时点，仍未安装或真实隔离验收。
+
+内部_observe_installed_prerequisites仅打开原观察主体严格bool前置开关，必须同时启用既有filesystem及其前置，默认原观察接口保持。固定/proc/meminfo普通root文件、有界64KiB读取，MemAvailable须唯一且≥512MiB；只返回门槛满足，不将正常可用字节变化列为基线漂移。固定/usr/bin/python3 -I -S -B -c仅import json/sys并输出版本/实现/路径/platform，要求CPython 3.10+且3.x、Linux、固定executable、准确字段与整数版本；不加载site/材料或现役Python。这里只观察系统解释器版本，systemPythonProvenanceAuthenticated=false，不恢复自建CPython/依赖证明研究。
+
+新增独立运行前置命令白名单，复用原有界客户端，不放宽原Docker通用读取白名单。唯一docker exec采用本次Docker观察保存的64位DB容器ID，容器内固定/bin/sh -c调用/usr/bin/env -i，仅保留固定PATH/PGCONNECT_TIMEOUT与引号中的原POSTGRES_USER；psql -X -w固定本地/var/run/postgresql:5432、sanqin_db和固定SQL，不能改SQL/容器别名、访问任意exec或发起迁移。SQL为BEGIN READ ONLY、事务内5s statement/2s lock超时，只SELECT数据库名/端口/data_directory/PG15版本/恢复状态/transaction_read_only及最多20001行迁移历史投影，再COMMIT；验证目标身份、非恢复、只读on，历史必须1至20000行且name/64位checksum/完成状态完整，无failed/进行中。不删除rolled-back或重复行，不推断迁移兼容性。
+
+就绪观察仅六个原合同固定GET地址：API 4000、worker 4001、web 3000与sanq.ca的health、API ready、public menu。固定curl --disable禁用curlrc、禁继承代理/自定参数、限制http/https与3s连接/10s总时，响应正文丢弃至/dev/null，只输出状态码且必须准确200，不跟随redirect、不附令牌或改URL。所有子进程仍原300s共享monotonic命令/文件截止、单次30s、stdout/stderr合计2MiB和最小环境，失败仅终止自身客户端组，不操作容器/服务；来源网络规则沿原D1，不扩称全安装被硬限300s。
+
+两次观察比较稳定Python信息、内存门槛、已保存DB ID/身份、迁移投影的完整有序摘要/行数/rolled-back数量及六地址状态；重复历史保留计数，checksum/状态、解释器版本、来源或维护残件晚变阻断。不返回历史正文、SQL业务数据、HTTP正文或stderr。psql前通过固定本地socket和清空PG环境避免把PGHOST/PGSERVICE等继承值当现场数据库，不调用npx/Prisma迁移或依赖安装命令。
+
+结果仍INSTALLED_RUNTIME_FILES_OBSERVED，仅runtimePrerequisitesObserved/databaseHistoryObserved/readinessEndpointsObserved=true及稳定摘要。databaseMigrationParityProven=false、systemPythonProvenanceAuthenticated=false；hostPreflightComplete/installedBaselineObserved/c4StorageObserved/readyToInstall/canExecute/authorizedToMutateProduction/operationSuccessProven及backupRestoreProven仍false、requiresHostRecheck=true。历史完成和HTTP 200不证明当前镜像完整迁移库存与数据库准确一致，也不替代当前应用配置/数据库连接绑定、完整来源或安装意图。预检只读项仍待收口，不生成可复用批准记录/第二版本权威。
+
+新增20项离线模型测试：原锁下组合无写同步/正文不输出/权限恒false、系统Python实现/版本/字段、DB名/端口/目录/版本/只读/恢复状态、失败/空/坏/超限历史、rolled-back和重复行摘要、六地址准确200/无跳转、SQL参数本地socket/清空环境/只读边界与保存ID、任意SQL/exec/URL拒绝、坏JSON/重复/非有限值、两次历史或Python变化、原两锁与晚期维护/来源、默认接口不读前置/严格开关/无CLI、临时内存输入的缺失/歧义/低值/预算与正常波动、固定Python隔离参数、共享真实pipe客户端不继承DB/Python/proxy环境及命令失败。Docker/systemd/GitHub/SQL/HTTP/Python/root/anchor为模型，未实际查询生产或运行项目测试；仅Python3.10 AST、静态名字/重复方法/unittest钩子、60个原定义不变及两处接线、差异/准确读回，不把前批705作为本批结果。
+
+归Runtime/Ops独立bootstrap只读主机预检，无新依赖包/常规helper/反向导入/第二版本权威，未导入九helper、无12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。原观察函数加可选前置分支，原共用客户端仅新增固定前置命令类别，其余60个既有函数/类保持；固定17+Manifest/250/300、九helper/三永久drop-in、D1/私有四文件格式和CLI不变。
+
+下一步对齐当前镜像迁移库存/历史、有效应用配置与DB连接绑定等剩余预检合同，完成只读主机预检收口后接安装意图/临时拒绝门禁。准确原ID停写、手动快照available与完整恢复实物、逐文件安装/成功交接、D3 Mac薄入口、D4统一真实隔离/生产材料仍OPEN。三组研究继续暂停、不取消；无业务schema/迁移、现场预检或生产操作。
+
 ## 2026-10-27 — 最小更新执行器：D2备份与宿主目录核对
 
-**2026-10-27 当前进度：D2_BACKUP_FILESYSTEM_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增宿主固定目录、部署磁盘余量及最新本地DB备份的只读核对，沿原两锁和来源/源码/配置/Docker/systemd双读；不备份、恢复、复制业务数据或写安装意图。
+**2026-10-27 当前进度：D2_BACKUP_FILESYSTEM_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增宿主固定目录、部署磁盘余量及最新本地DB备份的只读核对，沿原两锁和来源/源码/配置/Docker/systemd双读；不备份、恢复、复制业务数据或写安装意图。
 
-基于dev `fbbee891fba9820f31f3cf1d859d745286ee49f3`，分支feat/runtime-minimal-backup-filesystem-20261027。本批本地待审、未提交远端。
+基于dev `fbbee891fba9820f31f3cf1d859d745286ee49f3`，分支feat/runtime-minimal-backup-filesystem-20261027。本批已通过PR #3014合并dev。
 
 systemd预检批已由[PR #3013](https://github.com/sanqin888/sanqinMVP/pull/3013) 最终head `359a1c22400a222f90facbe78480dee914c425ae` 经 [CI #7713](https://github.com/sanqin888/sanqinMVP/actions/runs/40578976996) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各685、Runtime1080、准确CPython3.12.15回归412），无本批CI修复，合并dev `fbbee891fba9820f31f3cf1d859d745286ee49f3`。下文该批原LOCAL/未运行仅为原审阅时点，仍未安装或真实隔离验收。
 
