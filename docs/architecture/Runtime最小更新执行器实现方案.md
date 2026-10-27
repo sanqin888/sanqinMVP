@@ -1,8 +1,28 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 配置原件只读核对（2026-10-27，本地待审）
+## D2 Docker/Compose与实际挂载只读核对（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：D2_CONFIGURATION_FILES_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部配置原件只读观察：与原17源码核对共用原job/计划锁和来源前后复核，新增.env、唯一发布state及C4标记的原字节/元数据一致性检查。只返回摘要，不写安装意图、不安装或停服务。
+**2026-10-27 当前进度：D2_DOCKER_BASELINE_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部Docker/Compose只读观察，在原两锁与来源/源码/配置双读流程内，核当前四容器角色、健康和完整身份、实际应用镜像封存digest/OCI revision，以及DB卷和持久挂载。没有安装入口、维护意图或生产操作。
+
+配置原件核对批已由[PR #3011](https://github.com/sanqin888/sanqinMVP/pull/3011) 最终head `2c785b95396dfe88bff45840f8e3d95bb6f378b3` 经 [CI #7708](https://github.com/sanqin888/sanqinMVP/actions/runs/40575133829) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各640、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `12f3f840387229a22adf62035f486bcb63ae36e4`。下文该批原LOCAL/未运行仅为原审阅时点，仍未安装或完成真实隔离验收。
+
+内部_observe_installed_docker只打开原观察主体的严格bool Docker/config开关；默认两种文件观察均不调用Docker。固定/usr/bin/docker --host unix:///var/run/docker.sock，白名单仅info、固定项目Compose config --environment/JSON、项目ps全量完整ID、准确容器/image ID inspect及原sanq-app_pgdata volume inspect；不能run/create/start/stop/pull/exec/build或传入任意命令/端点。拒绝继承的Docker端点覆盖，子进程仅固定最小PATH/LANG/本地endpoint环境，不转发GitHub令牌/环境SHA或秘密，不用shell。原状态锁跨度保持。Docker命令共享300s monotonic截止、单次至多30s；selectors并发读取stdout/stderr、合计2MiB上限，失败/超时只结束自身只读CLI进程组，不操作业务容器，stderr不回显。来源网络读取仍沿原D1规则，不宣称全部安装预检被300s全程硬限。
+
+核本地Linux/amd64引擎且live-restore=false、Swarm inactive；Compose项目/准确四服务/所需非空环境和应用SHA，展开内容仅摘要、不重写$/$$。当前应用独立准确paired seal核实际API/web image ID、RepoDigests及OCI revision，容器允许当前tag或该准确digest声明，API与worker实际image ID一致。项目所有容器含已停止对象必须恰好api/ubereats-worker/web/db四角色，完整ID唯一且inspect相同，均稳定running/healthy、无paused/restarting/dead/privileged；核原restart策略及on-failure计数、实际命令/entrypoint与准确展开配置或已观察镜像默认值。DB只核已有对象/镜像ID及postgres:15-alpine声明，不额外宣称其来源证明。
+
+原sanq-app_pgdata须local driver/scope、无额外驱动选项、准确项目/卷标签和引擎卷路径；DB挂载须该卷与对应Source、固定数据目标及RW=true。API/worker仅原/srv/sanq/uploads读写bind，web仅原sounds路径只读bind；错误/额外挂载拒绝。双读比较准确容器/镜像ID、策略、restartCount/StartedAt、配置/挂载/展开内容/卷摘要、稳定引擎身份与当前seal；不比较正常变化的健康检查日志。容器或来源晚变、额外对象和维护残件阻断，不自动重试/清理记录。
+
+结果仍INSTALLED_RUNTIME_FILES_OBSERVED，仅containersObserved/composeExpansionObserved/containerMountsObserved/currentImagePairBound=true并返回稳定观察/摘要；applicationConfigurationObserved/applicationReleaseAuthenticated/c4StorageObserved/systemdObserved、hostPreflightComplete/installedBaselineObserved/readyToInstall/canExecute/authorizedToMutateProduction/operationSuccessProven保持false、requiresHostRecheck=true。当前镜像仅沿原paired seal绑定，不等于全套当前main/CI/就绪证明；未核容器环境与Compose美元插值完整等价，未核宿主路径实物/资源/备份/systemd/SQL历史或公共就绪。返回结果不是第二版本权威、恢复包、停写证明或安装票据。
+
+新增24项离线模型测试，覆盖锁内组合及秘密不输出/无写同步、当前digest声明、engine/live-restore/swarm/platform、Compose必要环境/重复/SHA/角色与镜像、额外/缺失/短/重复ID、错role/project/ID、健康/运行/privileged、实际digest/revision/image平台、API/worker同image、命令/策略、挂载目标/源/RW/额外对象、卷选项/身份、忽略健康日志但比较lifetime、双读健康替换、原两锁与晚期维护/paired seal变化、重复/非有限JSON与预算、默认文件路径不读Docker/严格开关和无CLI；客户端用真实可丢弃pipe/selectors、Popen/clock/root模型核白名单、最小环境、端点拒绝、输出超限/错误/编码/超时与仅kill自身CLI组。Docker/GitHub及固定anchor为模型，没有运行真实Docker/systemd/SSH或测试项目；仅Python3.10 AST、静态名字/重复方法、40个原定义不变及原观察函数接线审阅、差异/准确读回，不把前批640计作本批通过。
+
+归Runtime/Ops独立bootstrap只读主机采集，增加selectors/signal/subprocess/time标准库；不导入九helper或执行现役/材料Python，无新常规helper/反向导入/第二版本权威、无12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。固定17+Manifest/250/300、九helper/三永久drop-in、D1/四私有材料格式及CLI保持，只有原观察函数加可选Docker分支，其他40个既有函数/类定义保持。
+
+下一步补systemd有效units/override和原三外部文件事实、备份完整性/新鲜度、宿主挂载目录与资源及剩余就绪/DB只读项，全部前置满足后再接安装意图/临时拒绝门禁。准确原ID停写、手动快照available与完整恢复实物、逐文件安装及成功交接、D3 Mac薄入口、D4统一真实隔离/生产材料仍OPEN。三组研究继续暂停、不取消；无新依赖包/业务schema/迁移或现场生产操作。
+
+## D2 配置原件只读核对（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：D2_CONFIGURATION_FILES_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增内部配置原件只读观察：与原17源码核对共用原job/计划锁和来源前后复核，新增.env、唯一发布state及C4标记的原字节/元数据一致性检查。只返回摘要，不写安装意图、不安装或停服务。
 
 现役Runtime源码核对批已由[PR #3010](https://github.com/sanqin888/sanqinMVP/pull/3010) 最终head `0824f2a0e14c956673903ae911f24a252b23de07` 经 [CI #7706](https://github.com/sanqin888/sanqinMVP/actions/runs/40573749428) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各620、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `b5bdddf4dba5fe0ee06ef781619c32b03d559093`。下文该批原LOCAL/未运行仅为原审阅时点，仍未现场安装或真实隔离验收。
 
