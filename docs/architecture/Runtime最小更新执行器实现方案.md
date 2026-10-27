@@ -1,8 +1,26 @@
 # Runtime 最小更新执行器实现方案
 
-## 工具交付与安装合同（2026-10-27，本地待审）
+## D1 惰性材料与只读核验（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：DELIVERY_CONTRACT_LOCAL / SOURCE_AUDITED / INSTALLER_NOT_IMPLEMENTED / NOT_INSTALLED。**完成原17+Manifest、九辅助件、三drop-in、状态目录和现有staging/历史来源/备份材料的源码核对，新增[工具交付与安装合同](Runtime最小执行器工具交付与安装合同.md)。本批仅文档，不修改Bundle/schema/权限/guard或生产文件。
+**2026-10-27 当前进度：D1_MATERIALS_LOCAL / TESTS_NOT_RUN / HOST_INSTALL_NOT_IMPLEMENTED / NOT_INSTALLED。**新增独立交付工具ops/release/install_minimal_executor.py，仅pack/verify/plan。复用原17归档封存、准确main/CI/发布及固定Git对象，惰性材料含原归档、17+9+bootstrap共27份源码和三固定模板；重新核验来源后只输出材料/差异观察，所有安装/执行权限标志false。
+
+交付合同已由[PR #3007](https://github.com/sanqin888/sanqinMVP/pull/3007) 最终head `5a703b4b4a309731f68a913ef42a271049eadd85` 经 [CI #7700](https://github.com/sanqin888/sanqinMVP/actions/runs/40562348239) SUCCESS（仅ci-change-scope成功，其余9作业按文档范围跳过；无Release/Runtime测试重跑），无CI修复，合并dev `43d270d0e6d290a95eaa2732918edcbec040c906`。文档合并不代表installer或生产验证完成。
+
+D1由独立审阅的bootstrap运行，不import/exec材料包内Python。先核同准确S的最新main CI/成对seal及历史归档独立摘要/同publish，再另核Manifest原ciRunId的准确main/push成功；原CI与后续成功重跑ID分别报告。完整commit/tree/blob逐路径核27份普通文件及SHA1 Git对象/大小/SHA256，拒绝截断树、错对象和缺件；原17字节还须与已封存归档一致。源码获取后重新读来源，变化阻断。三drop-in采用固定文本，并以AST核已验guard常量语法，不求值或加载目标代码。
+
+传输kit固定32个普通文件成员（原归档1、源码27、模板3、delivery.json 1），规范清单仅作清点，不能自证来源。拒绝多缺/重复/链接/路径绕行/PAX或sparse等非预期成员、坏JSON及篡改；压缩20MiB、展开总量48MiB，单源码2MiB/原归档12MiB/清单64KiB上限。verify重新从可信GitHub核全部字节，不采信包内hash。pack只由非root CLI向安全的操作者目录create-only写0600材料，拒绝生产/系统路径；同步或读回未知保留实物，不覆盖/重试。verify/plan只读材料/来源，无生产目录/状态/units变更。
+
+plan只比较提供的旧/新已验Runtime归档，要求准确主线方向；首次仅两个部署源差异在已定范围，其余列NEEDS_PLATFORM_REVIEW。它不读取现役VM或宣称旧归档等于已安装字节，installedBaselineObserved=false、requiresHostRecheck=true，Manifest摘要明确是规范JSON摘要；readyToInstall/canExecute/authorizedToMutateProduction始终false。不能将计划作为后续安装票据。
+
+新增30项离线模型测试，覆盖确定性材料/17+9+bootstrap与三模板、实际checkout清单/guard语法一致、原CI与最新CI、封存晚期漂移、错/重包归档、严格Manifest整数/重复键、Git树/普通文件/完整blob/350个无关文件、模板变化、自洽篡改kit无效、多缺/重复/路径/链接与预算、差异范围/工具降级拒绝、0600/create-only/链接/不安全父目录/生产路径/同步未知，以及CLI只路由材料、拒绝root pack和install/apply/execute、错误脱敏。GitHub/CI为替身，临时文件实物；未访问实际网络/容器/DB/管理器。仅Python3.10 AST、静态名字/重复方法/空白/guard常量语法与差异读回核对，项目测试未运行，不把前批544或CI #7700作为本批测试结果。
+
+独立交付工具归Runtime/Ops材料清点与只读核验，依赖已审阅build_bundle/versioned_release_contract/release_contract，不导入九辅助件，不由task导入或自更新。未修改既有执行主体、Bundle/schema/CI/publish/权限，无12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。
+
+D1本地源码尚未远端交付；D2主机安装、独立bootstrap root落地/临时门禁/恢复材料/逐文件交接、D3 Mac薄入口、D4统一真实隔离验收及生产材料仍OPEN。当前打包器来自操作者独立审阅的bootstrap，材料包不能认证正在运行的验证器自身；后续root阶段必须重新验真，不能提权运行用户staging。17+Manifest、250/300旧guard、九常规helper/三永久drop-in数量保持，无新依赖/业务schema/迁移或生产操作，三组研究继续暂停、不取消。 详细输入/接口见[工具交付合同及D1](Runtime最小执行器工具交付与安装合同.md)。
+
+## 工具交付与安装合同（2026-10-27，文档已合并）
+
+**2026-10-27 当前进度：CONTRACT_MERGED_DEV / SOURCE_AUDITED / INSTALLER_NOT_IMPLEMENTED / NOT_INSTALLED。**完成原17+Manifest、九辅助件、三drop-in、状态目录和现有staging/历史来源/备份材料的源码核对，新增[工具交付与安装合同](Runtime最小执行器工具交付与安装合同.md)。本批仅文档，不修改Bundle/schema/权限/guard或生产文件。
 
 回退异步任务批已由[PR #3006](https://github.com/sanqin888/sanqinMVP/pull/3006) 最终head `69950aa86bc35587ef86979a6e32a74ad33ba8de` 经 [CI #7698](https://github.com/sanqin888/sanqinMVP/actions/runs/40558256262) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各544、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `d1768dbd5af4375467d6e998dd7e031665b6f306`。原LOCAL/未运行是原审阅时点；仍未安装/真实隔离验收。
 

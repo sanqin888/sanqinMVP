@@ -1,0 +1,401 @@
+#!/usr/bin/env python3
+"""D1 inert delivery materials and source-only review. No host installation API.
+
+Run from an independently reviewed bootstrap checkout. Never import or execute
+Python from the kit. A transport manifest is not a release or root authority.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import base64
+import gzip
+import hashlib
+import io
+import json
+import os
+import stat
+import sys
+import tarfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "ops/runtime"))
+import build_bundle as bundle
+import versioned_release_contract as historical
+import release_contract as release
+
+RUNTIME_MEMBERS = (
+    "docker-compose.yml", "ops/backup/backup-db.sh", "ops/backup/sanq-backup-protected-nginx",
+    "ops/backup/sanq-backup.service", "ops/backup/sanq-backup.sudoers",
+    "ops/release/deploy_release.py", "ops/release/release_contract.py",
+    "ops/runtime/build_bundle.py", "ops/runtime/audit_compose_cutover.py",
+    "ops/runtime/audit_release_provenance.py", "ops/runtime/inspect_layout.py",
+    "ops/runtime/stage_bundle.py", "ops/runtime/runtime_trust.py",
+    "ops/runtime/versioned_release_contract.py", "ops/runtime/plan_versioned_install.py",
+    "ops/runtime/runtime-layout.v1.json", "ops/verify-runtime-readiness.sh",
+)
+HELPERS = tuple("ops/release/" + name + ".py" for name in (
+    "deployment_plan", "deployment_plan_store", "collect_deployment_plan", "release_job",
+    "maintenance_guard", "migration_container", "start_candidates", "finalize_candidates", "release_task"))
+BOOTSTRAP = "ops/release/install_minimal_executor.py"
+SOURCES = (*RUNTIME_MEMBERS, *HELPERS, BOOTSTRAP)
+RUNTIME_ARCHIVE = "runtime-archive.tar.gz"
+RECORD = "delivery.json"
+MAX_FILE = 2 * 1024 * 1024
+MAX_KIT = 20 * 1024 * 1024
+MAX_TOTAL = 48 * 1024 * 1024
+PREFIX = "/repos/" + release.REPOSITORY
+ALLOWED_CHANGES = frozenset(("ops/release/deploy_release.py", "ops/release/release_contract.py"))
+# These are syntax models, never evaluated. Keep identical to the reviewed guard.
+GUARD_MODEL = '''MAINTENANCE_DIR = Path("/opt/sanq/deploy-state/maintenance")
+GUARD_SCRIPT = Path("/opt/sanq/runtime/ops/release/maintenance_guard.py")
+MARKER = "active.json"
+GUARD_COMMAND = "/usr/bin/python3 -B " + str(GUARD_SCRIPT) + " check-startup"
+DROPINS = {
+    "docker.service": "[Service]\\nExecStartPre=" + GUARD_COMMAND + "\\n",
+    "docker.socket": "[Unit]\\nConditionPathExists=!" + str(MAINTENANCE_DIR / MARKER) + "\\n",
+    "sanq-backup.service": "[Unit]\\nConditionPathExists=!" + str(MAINTENANCE_DIR / MARKER)
+        + "\\n\\n[Service]\\nExecStartPre=+" + GUARD_COMMAND + "\\n",
+}
+'''
+COMMAND = "/usr/bin/python3 -B /opt/sanq/runtime/ops/release/maintenance_guard.py check-startup"
+DROPINS = {
+    "docker.service": "[Service]\nExecStartPre=" + COMMAND + "\n",
+    "docker.socket": "[Unit]\nConditionPathExists=!/opt/sanq/deploy-state/maintenance/active.json\n",
+    "sanq-backup.service": "[Unit]\nConditionPathExists=!/opt/sanq/deploy-state/maintenance/active.json"
+        + "\n\n[Service]\nExecStartPre=+" + COMMAND + "\n",
+}
+CONTENT_PATHS = frozenset((RUNTIME_ARCHIVE, *("sources/" + p for p in SOURCES),
+                          *("dropins/" + unit + ".conf" for unit in DROPINS)))
+
+
+def _need(condition, message):
+    if not condition:
+        raise release.ReleaseContractError(message)
+
+
+def _json(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode()
+
+
+def _unique(pairs):
+    result = {}
+    for key, value in pairs:
+        _need(key not in result, "duplicate delivery JSON key")
+        result[key] = value
+    return result
+
+
+def _hash(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _object(raw):
+    return hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+
+
+def _cache(fetch):
+    values = {}
+    def cached(path):
+        if path not in values:
+            values[path] = fetch(path)
+        return values[path]
+    return cached
+
+
+def _runtime_files(payload, sha):
+    _need(type(payload) is bytes and 0 < len(payload) <= bundle.MAX_ARCHIVE_BYTES, "runtime bytes exceed budget")
+    _need(tuple(bundle.SOURCE_FILES) == RUNTIME_MEMBERS, "bootstrap Runtime allowlist changed")
+    manifest = bundle.verify_bundle_bytes(payload, sha)
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        stream = archive.extractfile(bundle.RUNTIME_PREFIX + "/" + bundle.MANIFEST)
+        _need(stream is not None, "runtime manifest unreadable")
+        strict = json.loads(stream.read(MAX_FILE + 1), object_pairs_hook=_unique)
+        _need(strict == manifest and set(strict) == {"schemaVersion", "artifactKind", "sourceBranch", "sourceSha",
+              "ciRunId", "publishRunId", "applicationImages", "files", "productionActivationAuthorized"}
+              and type(strict["schemaVersion"]) is int and strict["schemaVersion"] == 1
+              and type(strict["ciRunId"]) is int and strict["ciRunId"] > 0
+              and type(strict["publishRunId"]) is int and strict["publishRunId"] > 0,
+              "runtime manifest fields or integer identities differ")
+        files = {}
+        for name in RUNTIME_MEMBERS:
+            stream = archive.extractfile(bundle.RUNTIME_PREFIX + "/" + name)
+            _need(stream is not None, "runtime member unreadable")
+            files[name] = stream.read(MAX_FILE + 1)
+            entry = manifest["files"][name]
+            _need(set(entry) == {"sha256", "bytes"} and type(entry["bytes"]) is int,
+                  "runtime file proof fields differ")
+    return manifest, files
+
+
+def _runtime_proof(payload, sha, fetch):
+    manifest, files = _runtime_files(payload, sha)
+    exact = release.verify_exact_candidate(sha, sha, fetch)
+    proof = historical.verify_historical_release(payload, sha, fetch=fetch)
+    _need(exact["publicationUrl"] == proof["publicationUrl"]
+          and exact["images"] == proof["images"], "runtime and exact publication differ")
+    ci_id = manifest.get("ciRunId")
+    _need(type(ci_id) is int and ci_id > 0, "original main CI identity missing")
+    ci = fetch(PREFIX + "/actions/runs/" + str(ci_id))
+    _need(type(ci) is dict and type(ci.get("id")) is int and ci["id"] == ci_id
+          and ci.get("path") == ".github/workflows/ci.yml" and ci.get("head_sha") == sha
+          and ci.get("head_branch") == "main" and ci.get("event") == "push"
+          and ci.get("status") == "completed" and ci.get("conclusion") == "success"
+          and type(ci.get("repository")) is dict
+          and ci["repository"].get("full_name") == release.REPOSITORY,
+          "original archive CI is not exact successful main CI")
+    return manifest, files, exact
+
+
+def _source_files(sha, fetch):
+    commit = fetch(PREFIX + "/git/commits/" + sha)
+    _need(type(commit) is dict and commit.get("sha") == sha and type(commit.get("tree")) is dict,
+          "source commit binding differs")
+    tree_sha = release.require_sha(commit["tree"].get("sha", ""))
+    tree = fetch(PREFIX + "/git/trees/" + tree_sha + "?recursive=1")
+    _need(type(tree) is dict and tree.get("sha") == tree_sha and tree.get("truncated") is False
+          and type(tree.get("tree")) is list and len(tree["tree"]) <= 100000,
+          "complete source tree unavailable")
+    rows = {}
+    for row in tree["tree"]:
+        _need(type(row) is dict and isinstance(row.get("path"), str) and row["path"] not in rows,
+              "ambiguous Git tree path")
+        rows[row["path"]] = row
+    files, total = {}, 0
+    for path in SOURCES:
+        row = rows.get(path)
+        _need(type(row) is dict and row.get("type") == "blob" and row.get("mode") in ("100644", "100755")
+              and type(row.get("size")) is int and 0 < row["size"] <= MAX_FILE, "source member type or size differs")
+        blob_sha = release.require_sha(row.get("sha", ""))
+        blob = fetch(PREFIX + "/git/blobs/" + blob_sha)
+        _need(type(blob) is dict and blob.get("sha") == blob_sha and type(blob.get("size")) is int
+              and blob["size"] == row["size"] and blob.get("encoding") == "base64"
+              and isinstance(blob.get("content"), str) and len(blob["content"]) <= 2 * MAX_FILE,
+              "source blob fields differ")
+        raw = base64.b64decode("".join(blob["content"].split()), validate=True)
+        _need(len(raw) == row["size"] and _object(raw) == blob_sha, "source blob bytes differ")
+        total += len(raw)
+        _need(total <= MAX_TOTAL - bundle.MAX_ARCHIVE_BYTES, "source bytes exceed total budget")
+        files[path] = raw
+    return files
+
+
+def _dropins(guard_source):
+    def assignments(raw):
+        tree = ast.parse(raw, feature_version=(3, 10))
+        return {name: [ast.dump(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                      for target in node.targets if isinstance(target, ast.Name) and target.id == name]
+                for name in ("MAINTENANCE_DIR", "GUARD_SCRIPT", "MARKER", "GUARD_COMMAND", "DROPINS")}
+    _need(assignments(guard_source) == assignments(GUARD_MODEL), "reviewed guard template syntax changed")
+    return {"dropins/" + unit + ".conf": raw.encode() for unit, raw in DROPINS.items()}
+
+
+def _verified_inputs(runtime, sha, fetch):
+    sha = release.require_sha(sha)
+    manifest, runtime_files, proof = _runtime_proof(runtime, sha, _cache(fetch))
+    sources = _source_files(sha, _cache(fetch))
+    _need(all(sources[path] == runtime_files[path] for path in RUNTIME_MEMBERS),
+          "sealed archive differs from exact Git source")
+    dropins = _dropins(sources["ops/release/maintenance_guard.py"])
+    # A fresh endpoint read brackets source fetching. Never keep a stale success.
+    after_manifest, after_files, after_proof = _runtime_proof(runtime, sha, _cache(fetch))
+    _need((manifest, runtime_files, proof) == (after_manifest, after_files, after_proof),
+          "release evidence changed during material review")
+    return manifest, sources, dropins, proof
+
+
+def _contents(runtime, sha, manifest, sources, dropins):
+    contents = {RUNTIME_ARCHIVE: runtime, **{"sources/" + p: b for p, b in sources.items()}, **dropins}
+    _need(set(contents) == CONTENT_PATHS, "delivery content inventory differs")
+    record = {"schemaVersion": 1, "kind": "sanq-minimal-executor-delivery", "sourceSha": sha,
+              "originalCiRunId": manifest["ciRunId"], "publishRunId": manifest["publishRunId"],
+              "files": {p: {"sha256": _hash(b), "bytes": len(b)} for p, b in sorted(contents.items())},
+              "readyToInstall": False, "canExecute": False, "authorizedToMutateProduction": False}
+    return {**contents, RECORD: _json(record)}
+
+
+def build_materials(runtime: bytes, source_sha: str, *, fetch=release.github_json) -> bytes:
+    """Inert in-memory pack. No local target source is imported or trusted."""
+    manifest, sources, dropins, _ = _verified_inputs(runtime, source_sha, fetch)
+    contents = _contents(runtime, source_sha, manifest, sources, dropins)
+    _need(sum(map(len, contents.values())) <= MAX_TOTAL, "kit contents exceed total budget")
+    output = io.BytesIO()
+    with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=0) as zipped:
+        with tarfile.open(fileobj=zipped, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+            for path, raw in sorted(contents.items()):
+                info = tarfile.TarInfo(path)
+                info.size, info.mode = len(raw), 0o600
+                info.uid = info.gid = info.mtime = 0
+                info.uname = info.gname = ""
+                archive.addfile(info, io.BytesIO(raw))
+    payload = output.getvalue()
+    _need(len(payload) <= MAX_KIT, "compressed kit exceeds budget")
+    return payload
+
+
+def _read_kit(payload):
+    _need(type(payload) is bytes and 0 < len(payload) <= MAX_KIT, "invalid kit size or bytes")
+    expected = CONTENT_PATHS | {RECORD}
+    files, total = {}, 0
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        for member in archive:
+            _need(member.name in expected and member.name not in files and member.type == tarfile.REGTYPE
+                  and not member.pax_headers and not member.sparse and not member.linkname
+                  and member.uname == member.gname == "" and member.uid == member.gid == 0
+                  and member.mode == 0o600 and member.mtime == 0,
+                  "unreviewed, duplicate or unsafe kit member")
+            maximum = (bundle.MAX_ARCHIVE_BYTES if member.name == RUNTIME_ARCHIVE
+                       else 65536 if member.name == RECORD else MAX_FILE)
+            _need(0 < member.size <= maximum, "kit member exceeds budget")
+            total += member.size
+            _need(total <= MAX_TOTAL, "expanded kit exceeds budget")
+            stream = archive.extractfile(member)
+            _need(stream is not None, "kit member unreadable")
+            raw = stream.read(maximum + 1)
+            _need(len(raw) == member.size, "kit member truncated")
+            files[member.name] = raw
+    _need(set(files) == expected, "kit is incomplete")
+    record = json.loads(files[RECORD], object_pairs_hook=_unique)
+    _need(type(record) is dict and files[RECORD] == _json(record), "kit record is not canonical")
+    return files
+
+
+def _review(payload, source_sha, fetch):
+    sha = release.require_sha(source_sha)
+    contents = _read_kit(payload)
+    manifest, sources, dropins, proof = _verified_inputs(contents[RUNTIME_ARCHIVE], sha, fetch)
+    _need(contents == _contents(contents[RUNTIME_ARCHIVE], sha, manifest, sources, dropins),
+          "kit differs from independently verified exact source")
+    return contents, manifest, proof
+
+
+def verify_materials(payload: bytes, source_sha: str, *, fetch=release.github_json) -> dict:
+    contents, manifest, proof = _review(payload, source_sha, fetch)
+    return {"sourceSha": source_sha, "kitSha256": _hash(payload),
+            "runtimeArchiveSha256": _hash(contents[RUNTIME_ARCHIVE]),
+            "originalCiRunId": manifest["ciRunId"], "latestMainCiRunId": proof["ciRunId"],
+            "publishRunId": manifest["publishRunId"], "runtimeMemberCount": 17,
+            "helperCount": 9, "bootstrapCount": 1, "dropinCount": 3, "sourceAuthenticated": True,
+            "installedBaselineObserved": False, "readyToInstall": False, "canExecute": False,
+            "authorizedToMutateProduction": False}
+
+
+def review_transition(payload: bytes, source_sha: str, current_runtime: bytes, current_source_sha: str,
+                      *, fetch=release.github_json) -> dict:
+    """Compare supplied artifacts only; never infer installed VM bytes or readiness."""
+    contents, manifest, _ = _review(payload, source_sha, fetch)
+    old_sha = release.require_sha(current_source_sha)
+    old_manifest, old_files = _runtime_files(current_runtime, old_sha)
+    historical.verify_historical_release(current_runtime, old_sha, fetch=_cache(fetch))
+    release._verify_lineage(old_sha, source_sha, fetch)
+    target_manifest, target_files = _runtime_files(contents[RUNTIME_ARCHIVE], source_sha)
+    changed = [p for p in RUNTIME_MEMBERS if old_files[p] != target_files[p]]
+    outside = sorted(set(changed) - ALLOWED_CHANGES)
+    return {"sourceSha": source_sha, "currentRuntimeSourceSha": old_sha,
+            "currentArchiveSha256": _hash(current_runtime), "kitSha256": _hash(payload),
+            "changedRuntimeFiles": changed, "requiresAdditionalPlatformReview": outside,
+            "outcome": "NEEDS_PLATFORM_REVIEW" if outside else "ARTIFACTS_REVIEWED",
+            "targetManifestCanonicalSha256": _hash(_json(target_manifest)),
+            "currentManifestCanonicalSha256": _hash(_json(old_manifest)),
+            "helperCount": len(HELPERS), "dropinCount": len(DROPINS),
+            "installedBaselineObserved": False, "requiresHostRecheck": True,
+            "readyToInstall": False, "canExecute": False, "authorizedToMutateProduction": False}
+
+
+def _read_artifact(path, maximum):
+    path = Path(path)
+    for ancestor in (path, *path.parents):
+        _need(not ancestor.is_symlink(), "symlink in artifact path")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        _need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+              and 0 < before.st_size <= maximum, "artifact type, links or size differs")
+        chunks, size = [], 0
+        while size <= maximum:
+            raw = os.read(fd, min(65536, maximum + 1 - size))
+            if not raw:
+                break
+            chunks.append(raw)
+            size += len(raw)
+        after = os.fstat(fd)
+        fingerprint = lambda v: (v.st_dev, v.st_ino, v.st_size, v.st_mtime_ns, v.st_ctime_ns)
+        _need(size == before.st_size and fingerprint(before) == fingerprint(after)
+              == fingerprint(path.lstat()), "artifact changed during read")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _save_new_artifact(path, payload):
+    # The public pack CLI checks the unprivileged operator before reaching this writer.
+    _need(type(payload) is bytes and 0 < len(payload) <= MAX_KIT, "artifact output exceeds budget")
+    path = Path(path).absolute()
+    _need(".." not in path.parts, "artifact output path is ambiguous")
+    _need(not any(path == root or root in path.parents for root in map(Path, (
+        "/opt/sanq", "/srv/sanq", "/home/ubuntu/sanq-app", "/etc", "/proc", "/sys", "/dev", "/run"))),
+        "D1 artifact output cannot target a production or system path")
+    for ancestor in (path.parent, *path.parent.parents):
+        _need(not ancestor.is_symlink(), "symlink in artifact output parent")
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(parent)
+        _need(info.st_uid == os.geteuid() and not stat.S_IMODE(info.st_mode) & 0o022,
+              "artifact output parent ownership or mode differs")
+        fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        try:
+            _need(stat.S_ISREG(os.fstat(fd).st_mode) and os.fstat(fd).st_nlink == 1, "artifact output differs")
+            remaining = memoryview(payload)
+            while remaining:
+                count = os.write(fd, remaining)
+                _need(count > 0, "short artifact write")
+                remaining = remaining[count:]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+    _need(_read_artifact(path, MAX_KIT) == payload, "artifact output readback differs")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    for name in ("pack", "verify", "plan"):
+        sub = commands.add_parser(name)
+        sub.add_argument("--source-sha", required=True)
+        sub.add_argument("--runtime-archive" if name == "pack" else "--kit", type=Path, required=True)
+        if name == "pack":
+            sub.add_argument("--output", type=Path, required=True)
+        if name == "plan":
+            sub.add_argument("--current-runtime-archive", type=Path, required=True)
+            sub.add_argument("--current-source-sha", required=True)
+    args = parser.parse_args(argv)
+    fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    try:
+        if args.command == "pack":
+            _need(os.geteuid() != 0, "D1 pack output requires an unprivileged operator")
+            payload = build_materials(_read_artifact(args.runtime_archive, bundle.MAX_ARCHIVE_BYTES),
+                                      args.source_sha, fetch=fetch)
+            _save_new_artifact(args.output, payload)
+            result = {"sourceSha": args.source_sha, "kitSha256": _hash(payload),
+                      "outcome": "INERT_MATERIALS_WRITTEN", "readyToInstall": False,
+                      "canExecute": False, "authorizedToMutateProduction": False}
+        elif args.command == "verify":
+            result = verify_materials(_read_artifact(args.kit, MAX_KIT), args.source_sha, fetch=fetch)
+        else:
+            result = review_transition(_read_artifact(args.kit, MAX_KIT), args.source_sha,
+                _read_artifact(args.current_runtime_archive, bundle.MAX_ARCHIVE_BYTES),
+                args.current_source_sha, fetch=fetch)
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+    except (release.ReleaseContractError, ValueError, OSError, EOFError, TypeError, KeyError,
+            RecursionError, SyntaxError, tarfile.TarError):
+        print("Delivery material review blocked; preserve artifacts. No host install or automatic retry.")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
