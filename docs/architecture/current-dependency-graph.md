@@ -1,8 +1,24 @@
 # Current 12-context dependency graph
 
-## D2 预检B外部备份实物绑定（本地待审）
+## D2 预检C组合回归（本地待审）
 
-**2026-10-27 当前进度：D2_EXTERNAL_BACKUP_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_COMBINED_PREFLIGHT_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+预检B[PR #3023](https://github.com/sanqin888/sanqinMVP/pull/3023) head `802e6610927b042917ebf80f96afd625a2a2c403` 经[CI #7733](https://github.com/sanqin888/sanqinMVP/actions/runs/40592294258)全绿（4成功/6范围跳过；Release默认Python与3.10各795、Runtime1080、既有C1回归412），合并dev `741448bc9c039ed553c67e5b7e68d793a83b5f9e`，无CI修复；未执行现场预检或安装。
+
+本批从该dev建立test/runtime-minimal-combined-preflight-20261027，开始C组合回归与合同收口。新增8项组合测试，沿已有D1材料/root文件模型建立完整原件、配置、Docker/systemd/文件/资源、环境网络、迁移库存/Git/历史、有效端口health和外部备份观察。临时文件/目录/锁为真实对象；外部Docker/manager/SQL/Node/HTTP/GitHub/账户和锚点为模型。迁移阶段本身不再整体替换，接固定库存命令的模型结果与Git原始blob模型并执行实际Python校验。
+
+覆盖全阶段成功仍无安装许可/无写同步、实际命令接线持原两锁、全局两遍共4次库存模型读取、外部同字节替换、AutoRemove晚变、迁移中历史改变、晚期维护marker保留、最终来源复核失败及严格开关。只审阅Python3.10 AST/静态名字/重复方法与写回，不运行项目测试。新增测试尚待CI，不把795计成本批结果。本批无生产Python/命令/格式/许可变化；A/B源码虽已合并，C尚未通过自身CI，不宣称闭环已完成。
+
+预检责任核对：17/Manifest与材料来源、原配置和唯一发布state、容器/挂载/网络/环境、systemd有效配置、备份gzip与资源、固定HTTP就绪、迁移Git/历史及外部备份原件均已有只读源码路径和分项模型；本批补组合关系。applicationConfigurationObserved/hostPreflightComplete/installedBaselineObserved/readyToInstall/canExecute等仍false。databaseLoginVerified=false表示未独立以应用凭据登录，fullApplicationConfigurationProven=false表示未证明全部可选配置；不能只凭局部字段或模型成功消除这些边界。现场系统组合、真实Compose美元往返、DB连接行为、运行时权限及恢复材料均待统一隔离验收，仍不允许现场写入。
+
+性能/范围核对：源码结构每次完整观察含两轮迁移阶段、每阶段内部两遍，因此库存命令共4次，Git原件也随各遍重读；实际HTTP请求总量取决于库存条目与原D1来源请求，未测得完整生产墙钟/限流结果。命令共享300s预算不等于整个网络/文件预检有硬300s上限。不虚报性能验证，也不为此恢复暂停的来源/可信时间研究；如后续优化，仅考虑本次观察内不可变准确对象，不缓存最新CI/主机成功资格。
+
+下一步先由CI验证这批组合测试并根据日志修正，再据最终源码完成C的未证明项清单和安装意图记录合同；不得直接把本批模型当readyToInstall。新安装kind/journal、临时拒绝门禁、停写/手动快照available/完整恢复实物、逐文件安装/交接、Mac薄入口和D4统一真实隔离验收仍OPEN。无新依赖包/九helper导入/持久化格式/CLI/业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件和三永久门禁保持。三组研究继续暂停、不取消。
+
+## D2 预检B外部备份实物绑定（源码已合并）
+
+**2026-10-27 当前进度：D2_EXTERNAL_BACKUP_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 预检A[PR #3022](https://github.com/sanqin888/sanqinMVP/pull/3022) head `d7166403fd668b0183fb2b83d3399f8660c2ebe2` 经[CI #7731](https://github.com/sanqin888/sanqinMVP/actions/runs/40591551676)全绿（4成功/6范围跳过；Release默认Python与3.10各787、Runtime1080、既有C1回归412），合并dev `2a4f70b62ca7441b137e9adab953e2cc70a69b88`，无CI修复。原批LOCAL/未运行说明为当时状态；仍未执行生产预检或安装。
 
@@ -14,7 +30,7 @@
 
 新增8项临时真实文件模型测试：三原件准确摘要/无执行写入、逐文件权限与字节、不存在/软硬链接/FIFO、父目录写权限/链接、账户身份、读取中同字节替换、空/大小预算及前置开关/无CLI。root锚点与账户为模型，未运行项目测试；仅Python3.10 AST、全局名字/方法/空白审阅和准确写回核对，不把787当本批通过。完整阶段组合与真实系统验证留C/D4。
 
-A已合并、B源码本地完成且尚未提交；下一步C做组合故障回归、逐项核预检合同并明确未证明项，不直接翻转整体完成许可。之后按既定顺序进入安装意图/临时拒绝门禁及恢复实物/停写快照、逐文件安装/交接、Mac入口和统一真实隔离验收。无新依赖包/九helper导入/持久化格式/公开CLI或业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件及三永久门禁保持。三组研究继续暂停、不取消；未执行生产操作。
+A已合并、B源码已通过PR #3023合并dev；下一步C做组合故障回归、逐项核预检合同并明确未证明项，不直接翻转整体完成许可。之后按既定顺序进入安装意图/临时拒绝门禁及恢复实物/停写快照、逐文件安装/交接、Mac入口和统一真实隔离验收。无新依赖包/九helper导入/持久化格式/公开CLI或业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件及三永久门禁保持。三组研究继续暂停、不取消；未执行生产操作。
 
 ## D2 预检A有效容器配置（源码已合并）
 
