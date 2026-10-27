@@ -20,7 +20,7 @@ import maintenance_guard as guard
 import release_job as job
 import start_candidates as starter
 import finalize_candidates as finalizer
-from release_contract import ReleaseContractError
+from release_contract import ReleaseContractError, require_sha
 
 TASK_SCRIPT = Path("/opt/sanq/runtime/ops/release/release_task.py")
 RUNTIME_ROOT = Path("/opt/sanq/runtime")
@@ -150,6 +150,85 @@ def cleanup_task(identity: str, *, run=collector.command) -> dict:
     return guard.cleanup_after_task(identity, os.environ.get("SERVICE_RESULT", "unknown"), run=run)
 
 
+def _observed_writers(controller, candidate, expanded, run):
+    rows = {}
+    for service in guard.SERVICES:
+        name = "sanq-web" if service == "web" else "sanq-api"
+        image = candidate["images"][name]
+        identifier = guard._container_id(controller, service, run)
+        _need(guard._role_ids(service, run) == {identifier}, "extra runtime writer")
+        info = guard._inspect(identifier, service, candidate["sourceSha"], run,
+                              reference=collector._pinned(image))
+        state = info["State"]
+        _need(state.get("Status") == "running" and state.get("Running") is True
+              and state.get("Restarting") is False and state.get("Paused") is False
+              and state.get("Health", {}).get("Status") == "healthy",
+              "target is not steadily healthy")
+        collector._inspect_image(info["Image"], collector._pinned(image),
+                                 candidate["sourceSha"], run)
+        guard._created_mounts(identifier, expanded["services"][service].get("volumes", []), run)
+        rows[service] = {"containerId": identifier, "imageId": info["Image"],
+                         "restartPolicy": info["HostConfig"]["RestartPolicy"]}
+    _need(len({row["containerId"] for row in rows.values()}) == 3
+          and rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"],
+          "writer or shared API image identities differ")
+    return rows
+
+
+def _release_observation(identity: str, *, controller=None, run=collector.command) -> dict:
+    """Bounded read-only observations, never a receipt or a replay permission."""
+    unknown = {"outcome": "UNKNOWN", "canExecute": False, "operationSuccessProven": False}
+    original_run = run
+    def bounded(args, **kwargs):
+        kwargs["timeout"] = min(kwargs.get("timeout", 15), 15)
+        return original_run(args, **kwargs)
+    run = bounded
+    try:
+        if controller is None:
+            import deploy_release as controller
+        with job._locked_directory(), storage.preparation_lock():
+            raw = storage.load_plan(identity)
+            original = plan.validate_plan(raw, identity)
+            marker = guard.status()
+            controller.ensure_repo_location()
+            state = finalizer._state(controller)
+            require_sha(state["current"])
+            require_sha(state["previous"])
+            plan._utc(state["updatedAt"])
+            _need(state["phase"] in ("active", "pending", "rolled-back")
+                  and isinstance(state["reason"], str), "release state values differ")
+            selected = {"phase": state["phase"], "current": state["current"],
+                        "previous": state["previous"]}
+            result = {**unknown, "releaseState": selected}
+            if "planId" in marker:
+                return {**result, "outcome": "MAINTENANCE_RETAINED",
+                        "maintenancePhase": marker["phase"] if marker["planId"] == identity
+                        else "OTHER_PLAN"}
+            if (state["phase"] != "active"
+                    or state["current"] != original["candidate"]["sourceSha"]
+                    or state["previous"] != original["current"]["applicationSha"]
+                    or state["reason"] != "readiness-verified"):
+                return {**result, "outcome": "RELEASE_INCOMPLETE"}
+            before = collector._snapshot(controller, run)
+            _need(before[0]["applicationSha"] == state["current"]
+                  and before[0]["manifestSha256"] == original["current"]["manifestSha256"]
+                  and plan.runtime_contract(before[1], before[1]) == original["runtimeContract"],
+                  "target runtime differs from reviewed plan")
+            expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+            rows = _observed_writers(controller, original["candidate"], expanded, run)
+            database = guard._database_identity(controller, run)
+            # Do not combine observations from two updater stages or changed files.
+            _need(collector._snapshot(controller, run) == before
+                  and finalizer._state(controller) == state
+                  and guard.status() == marker
+                  and _observed_writers(controller, original["candidate"], expanded, run) == rows
+                  and guard._database_identity(controller, run) == database,
+                  "runtime changed during status observation")
+            return {**result, "outcome": "TARGET_RUNNING_OBSERVED"}
+    except (ReleaseContractError, OSError, ValueError, TypeError, KeyError, RecursionError):
+        return unknown
+
+
 def status(identity: str, *, run=collector.command) -> dict:
     identity = storage._plan_id(identity)
     marker = guard.status()
@@ -164,7 +243,8 @@ def status(identity: str, *, run=collector.command) -> dict:
     # A not-found unit is UNKNOWN; Result=success alone never implies completion.
     return {"planId": identity, "unit": _unit(identity),
             "unitState": fields if fields["LoadState"] == "loaded" else {"LoadState": "unknown"},
-            "maintenancePhase": phase, "canExecute": False}
+            "maintenancePhase": phase,
+            "releaseObservation": _release_observation(identity, run=run), "canExecute": False}
 
 
 def logs(identity: str, *, run=collector.command) -> str:
