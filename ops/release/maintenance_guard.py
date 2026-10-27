@@ -166,7 +166,8 @@ def _validate(value: dict) -> None:
     job._attempt(value["attemptId"])
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
-    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CREATING_CANDIDATES", "CANDIDATES_REGISTERED"), "invalid maintenance phase")
+    _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
+                              "STARTING_CANDIDATES", "CANDIDATES_READY"), "invalid maintenance phase")
     _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
           if value["phase"] == "INCIDENT" else value["errorCode"] is None,
           "invalid maintenance error code")
@@ -180,10 +181,12 @@ def _validate(value: dict) -> None:
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
     if version == 1:
-        _need(value["phase"] not in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED"), "candidate registration is missing")
+        _need(value["phase"] not in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
+                                     "STARTING_CANDIDATES", "CANDIDATES_READY"), "candidate registration is missing")
     else:
-        _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT"), "invalid candidate phase")
-        _candidate_record(value["candidate"], rows, incomplete=value["phase"] != "CANDIDATES_REGISTERED")
+        _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT",
+                                 "STARTING_CANDIDATES", "CANDIDATES_READY"), "invalid candidate phase")
+        _candidate_record(value["candidate"], rows, incomplete=value["phase"] in ("CREATING_CANDIDATES", "INCIDENT"))
         if value["phase"] == "CREATING_CANDIDATES":
             _need(value["candidate"]["containers"] == {}, "creation intent already has identities")
         _need(value["candidate"]["release"]["sourceSha"] != value["observedApplicationSha"],
@@ -240,7 +243,9 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
                        and old["candidate"]["release"] == value["candidate"]["release"])
         allowed = {"ARMED": ("FROZEN", "INCIDENT"), "FROZEN": ("INCIDENT",),
                    "CREATING_CANDIDATES": ("INCIDENT",),
-                   "CANDIDATES_REGISTERED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
+                   "CANDIDATES_REGISTERED": ("STARTING_CANDIDATES", "INCIDENT"),
+                   "STARTING_CANDIDATES": ("CANDIDATES_READY", "INCIDENT"),
+                   "CANDIDATES_READY": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
         ignored = {"phase", "updatedAt", "errorCode"}
         if beginning:
             ignored |= {"schemaVersion", "candidate"}
@@ -593,23 +598,28 @@ def cleanup_after_task(identity: str, service_result: str, *, controller=None,
     def bounded(args, **kwargs):
         return run(args, timeout=min(kwargs.get("timeout", 15), 45))
     with job._locked_directory(wait_seconds=10), storage._directory_fd(MAINTENANCE_DIR) as root:
-        record = _read(root)
-        _need(record["planId"] == identity, "maintenance owner changed before cleanup")
-        _stop_best_effort(record, bounded)
+        return _incident_locked(root, identity, controller, bounded, now)
+
+
+def _incident_locked(root, identity, controller, bounded, now):
+    """Shared failed-stage cleanup; caller holds the original task lock."""
+    record = _read(root)
+    _need(record["planId"] == identity, "maintenance owner changed before cleanup")
+    _stop_best_effort(record, bounded)
+    confirmed = False
+    try:
+        _assert_stopped(controller, record, bounded)
+        _installed_gate(bounded)
+        confirmed = True
+    except Exception:
         confirmed = False
-        try:
-            _assert_stopped(controller, record, bounded)
-            _installed_gate(bounded)
-            confirmed = True
-        except Exception:
-            confirmed = False
-        code = "TASK_FAILED_WRITERS_STOPPED" if confirmed else "FENCE_UNCONFIRMED"
-        incident = {**record, "phase": "INCIDENT", "updatedAt": job._timestamp(now),
-                    "errorCode": code}
-        _write(root, incident)
-        if not confirmed:
-            raise release.ReleaseContractError("FENCE_UNCONFIRMED: task cleanup requires review")
-        return {"outcome": code, "planId": identity, "canExecute": False}
+    code = "TASK_FAILED_WRITERS_STOPPED" if confirmed else "FENCE_UNCONFIRMED"
+    incident = {**record, "phase": "INCIDENT", "updatedAt": job._timestamp(now),
+                "errorCode": code}
+    _write(root, incident)
+    if not confirmed:
+        raise release.ReleaseContractError("FENCE_UNCONFIRMED: task cleanup requires review")
+    return {"outcome": code, "planId": identity, "canExecute": False}
 
 
 def freeze_for_plan(identity: str, *, controller=None, run=collector.command,
