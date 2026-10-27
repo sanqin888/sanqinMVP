@@ -176,7 +176,7 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertEqual(len(self.case.creates), 1)
 
     def test_pending_sql_rejected_before_freeze_and_dispatch(self):
-        raw = plan.create_plan(created_at=NOW, **inputs())
+        raw = plan.create_plan(created_at=self.case.fixture.time, **inputs())
         self.identity = storage.save_plan(raw)
         with self.assertRaises(ReleaseContractError):
             self.execute()
