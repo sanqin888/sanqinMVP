@@ -1,8 +1,36 @@
 # Runtime 最小更新执行器实现方案
 
-## 回退容器创建与登记（2026-10-27，本地待审）
+## 回退启动与就绪核验（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：ROLLBACK_CREATE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原guard新增内部prepare_rollback_candidate_containers，持原job/计划锁与维护目录FD，以原typed回退计划、独立兼容确认及同一v5/FROZEN尝试进入，共用原三服务create/register主体。重核当前完整SQL/history、准确历史目标proof、缓存旧API SQL/source和运行基线；先保留rollback scope升级v6/CREATING_CANDIDATES，再写唯一PENDING、固定--no-build/--pull never创建和登记完整三ID/image ID，不start或执行SQL。登记结束仍保留维护、PENDING和旧.env，数据库历史不删减。
+**2026-10-27 当前进度：ROLLBACK_START_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原starter新增内部start_rollback_and_verify，持原job/计划锁及维护目录FD，核同一v6已登记尝试、typed回退计划、独立准确兼容确认、历史目标proof、唯一PENDING/旧.env配置/运行合同/备份/实际三ID和挂载。复用原启动/健康/固定readiness及失败收尾主体；先持久STARTING_CANDIDATES，再仅start保存三ID，重核后写CANDIDATES_READY，仍保留PENDING、维护与restart=no，不改.env/提交rolled-back或清标记。
+
+回退创建批已由[PR #3003](https://github.com/sanqin888/sanqinMVP/pull/3003) 最终head `6bce17db6e5128ee792770b4a39b5a3db455f426` 经 [CI #7692](https://github.com/sanqin888/sanqinMVP/actions/runs/40546110736) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各461、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `7ee8c0a2b9648ca30e2a6f7b581ad67c29bd3e03`。原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 准确计划、历史和实际身份
+
+- 内部start_rollback_and_verify只接受独立64位小写兼容确认；缺失/布尔/错摘要不得选普通前向分支。原两锁和维护目录FD贯穿检查、启动与READY持久化；仅同planId/attempt的v6/CANDIDATES_REGISTERED可进入，原typed原件、marker rollback.release/approval与实际candidate均须匹配。普通start仍使用前向validator，不因回退无pending SQL就自动放行。
+- 原_start_and_verify_locked新增明确rollback_approval分支，仍调用同一启动/健康/readiness主体，不建立另一发布器。重核原计划时效/备份，复用_pending_and_config核唯一PENDING current=旧目标、previous=原当前，原.env仍指向原当前、Manifest/运行文件/展开配置均未变化；再核准确历史目标来源、原完整迁移历史、三created对象/保存image ID与digest/revision/平台、原bind、DB Id/Image/Mounts及备份unit。
+- starter内_application_history对v6重验规范回退原件/确认范围、目标/current/planId与候选一致，要求完整原migrationHistory逐行不变且无pending；不把历史裁成旧镜像清单、不反向迁移或认为SQL前缀即兼容。普通前向/SQL继续委托原migration.assert_application_history，其迁移完成/精确delta规则不变。启动意图前额外重读pending/config、完整history、备份和DB，晚期变化仍在首次start前阻断。
+
+### 共享启动顺序和未知结果
+
+先沿原_write耐久写STARTING_CANDIDATES再按api/worker/web顺序start保存ID，每次30s上限；健康轮询沿原90s monotonic预算、每次命令取剩余预算与局部上限较小值，至多间隔2s。只接受准确role全集/目标reference/保存image ID、running且非Restarting/Paused、restart=no、已审bind及健康starting/healthy；v6补Dead=false要求。健康通过后沿原固定脚本/ENV/https://sanq.ca执行readiness，300s上限，再核实际三writer、DB/备份unit/完整history、pending配置和安装门禁，才写READY。各局部上限不构成新的整任务预算，未来异步回退仍须纳入原任务整体超时/独立StopPost预算。
+
+初始STARTING写入/同步未知不发start；start可能已生效而结果未知、健康超时或不符、readiness/配置/DB/history等失败，均沿原incident收尾，只处理保存候选和原ID，保留实际PENDING/维护，不能确认即FENCE_UNCONFIRMED。最终READY持久结果未知只尽力停保存ID，不覆盖实际阶段或清标记；即使读到READY也不允许自动续跑。READY已运行的旧程序可能写入业务数据，这不是离线兼容证明或旧盘恢复许可。
+
+v6当前扩到STARTING_CANDIDATES/CANDIDATES_READY，原REGISTERED→STARTING→READY及事故转换/不可变字段检查直接复用，不增加新schema字段或发布权威；FINALIZING/HANDOFF仍拒绝。成功READY仍是restart=no的维护中PENDING，没有恢复原策略、改.env或宣告成功rolled-back。
+
+### 验证、归属和剩余工作
+
+新增23项离线模型测试，覆盖准确旧ID/独立确认/原件与完整history不变、普通start不能采用回退、pending/config/备份/history/proof与晚期配置漂移、原history核验合同及forward kind拒绝、已启动/被替换对象不得重放、start结果未知、unhealthy/starting→healthy/90s超时、readiness失败/Python中断/部分stop、额外writer/DB/history/策略/Dead漂移、初始与最终fsync未知、root/两锁/备份过期，以及真实pending绑定函数接受旧目标PENDING+原.env并拒绝反向关系。文件与锁为可丢弃临时实物，Docker/GitHub/HTTP/DB/PID1为替身；实际VM、SSH/SIGKILL、容器、Prisma及Compose往返未执行。仅Python3.10 AST、静态名字/重复方法、原启动变更段等价及差异/读回审阅，项目测试未运行，不把前批461结果当本批通过。原创建测试的“未实现阶段”负例改为仍未开放的FINALIZING，保留scope/降级/回退创建阻断断言；启动阶段现在通过真实共享主体覆盖。
+
+原_pending_and_config函数保持，原启动变更段除历史校验分派外保持同一顺序/异常收尾/最终未知语义；guard只扩v6阶段白名单，原_write IO/转换与冷启动门禁不变。Runtime/Ops未安装工具内部原子增量，无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner；17+Manifest/250/300旧guard保持，九helper须统一验真交付，旧v6读者会拒绝新阶段，不能混装。
+
+本批仅完成内部回退启动与READY，尚无回退成功交接、唯一rolled-back提交、原策略恢复/最终清标记、异步submit/run/StopPost及状态接线；check-rollback仍仅观察，原前向任务不能采用回退kind。查询到READY不是从未知/事故续跑或重放的许可，旧应用启动可能写业务数据，不能据失败恢复旧盘或反向SQL。下一步接同一原计划/兼容确认/维护证据下的成功交接，再完成异步任务、九helper/三drop-in统一验真、固定17+Manifest正式Bundle过渡、Mac薄入口和真实隔离故障/恢复/连续双发布验收。三组研究继续暂停、不取消，无依赖/业务schema/迁移文件或生产Docker/systemd/SQL/AWS操作。
+
+## 回退容器创建与登记（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原guard新增内部prepare_rollback_candidate_containers，持原job/计划锁与维护目录FD，以原typed回退计划、独立兼容确认及同一v5/FROZEN尝试进入，共用原三服务create/register主体。重核当前完整SQL/history、准确历史目标proof、缓存旧API SQL/source和运行基线；先保留rollback scope升级v6/CREATING_CANDIDATES，再写唯一PENDING、固定--no-build/--pull never创建和登记完整三ID/image ID，不start或执行SQL。登记结束仍保留维护、PENDING和旧.env，数据库历史不删减。
 
 回退停写批已由[PR #3002](https://github.com/sanqin888/sanqinMVP/pull/3002) 最终head `c219a2d8d319ffc8d84a3e1df5a573b99e6f8d77` 经 [CI #7690](https://github.com/sanqin888/sanqinMVP/actions/runs/40541893634) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各438、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `45220d9a0ddacf8be6d108badea3025298e8bf16`。原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
 

@@ -210,7 +210,8 @@ def _validate(value: dict) -> None:
         _need(value["rollback"]["release"]["sourceSha"] != value["observedApplicationSha"],
               "rollback target is unchanged")
         if version == 6:
-            _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT"),
+            _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "STARTING_CANDIDATES",
+                                      "CANDIDATES_READY", "INCIDENT"),
                   "rollback candidates differ from the reviewed target")
     if version == 5:
         _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT"), "rollback freeze phase differs")
