@@ -1,8 +1,34 @@
 # Runtime 最小更新执行器实现方案
 
-## 回退成功交接（2026-10-27，本地待审）
+## 回退异步任务接线（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：ROLLBACK_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原finalizer新增内部finalize_rollback_ready，以独立准确兼容确认、原typed回退计划及同一v6/READY尝试复用原成功交接主体。先持久FINALIZING，再仅替换.env中的SHA、核目标配置/readiness和完整SQL历史，提交唯一rolled-back/rollback-verified；同步读回后只对保存三ID恢复原restart策略，重核后持久HANDOFF_COMMITTED并最后清标记。未知结果保留实际state/.env/维护证据，不重写PENDING或自动重放。
+**2026-10-27 当前进度：ROLLBACK_TASK_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原release_task新增submit-rollback与status-rollback，复用同一systemd任务、两锁、整体预算及原阶段主体。独立准确兼容摘要绑定run和StopPost参数；子任务缓存重采集后执行回退freeze/create/start/finalize，提交唯一rolled-back并最后清标记。无SQL容器/反向SQL、外层异常改写、自动重放或恢复。
+
+回退交接批已由[PR #3005](https://github.com/sanqin888/sanqinMVP/pull/3005) 最终head `cfd05ec939d653f2bfd8fceee94d5718fdafdfed` 经 [CI #7696](https://github.com/sanqin888/sanqinMVP/actions/runs/40556088534) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各514、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `678d50dde7e7295da05c3e2857d8f019ff7d553a`。原LOCAL/未运行为原审阅时点；仍未安装/隔离验收。
+
+### 提交、上下文与单一任务
+
+未安装源码接口新增submit-rollback <plan-id> --confirm-rollback --approve-compatibility <准确摘要>，只接原typed回退计划及独立兼容确认，不接受任意目标SHA、SQL确认或前向kind。submit_rollback在进入共享submit前拒绝缺失/布尔摘要；共享纯参数函数校验64位小写摘要并禁止SQL/兼容双确认。原job锁内核未完成job、维护为空、原件/时效及确认范围；派发前释放检查锁，原systemd-run仍oneshot/root/Restart=no/KillMode=control-group、no-block/remain-after-exit，Start2100s/StopPost900s、256M/50%、固定目录及30s派发上限。run与ExecStopPost绑定同一个--approve-compatibility值，沿原PID/ControlPID、固定unit/cgroup、已加载属性与准确命令校验；派发未知不重试，SUBMITTED不代表成功。
+
+子任务共用run_task，先校验安装API及controller，再以原两把锁与维护目录FD贯穿全程：typed原件/准确确认→原回退freeze（缓存镜像重新采集、全部现场/历史来源核对）→原三服务create/register→原start/readiness→原finalize/唯一rolled-back/策略恢复/清标记。每阶段只在前一调用已知成功返回后继续，不按查询到的阶段续跑；v5/v6原scope与同attempt保持。回退validator要求pending=[]，不能进入SQL阶段，完整当前migrationHistory不裁剪。默认回退observer直接采用collector.collect_rollback并接受原bounded run/fetch，不误调用前向collector。
+
+继续沿原1800s任务预算、阶段前检查及逐命令剩余预算上限；不加入外层catch/finally重写未知证据。失败/SIGKILL/预算结束沿原独立StopPost：先重核管理器PID/cgroup与包含准确确认的run/cleanup命令，再根据真实marker只处理保存ID；不加载计划，因此原件不可读不会阻断已登记writer收尾。marker仍为维护证据而非第二版本权威，不能为恢复而补写/清除。初始/终态同步未知和最终清理未知继续保留原阶段语义。
+
+### 只读观察与交付边界
+
+status-rollback <plan-id>采用固定typed回退loader，在原联合观察中要求唯一state为rolled-back/current=旧目标/previous=原当前/reason=rollback-verified，核运行合同/实际健康writer/挂载/DB及前后完整history；任一变化UNKNOWN，保留marker则MAINTENANCE_RETAINED。即使TARGET_RUNNING_OBSERVED，operationSuccessProven/canExecute仍false，不授予重放或事故恢复许可；普通status仍只采用前向kind。日志继续沿原有限80行入口，不新建任务或发布权威。
+
+check-rollback仍只预检，不排队/停写/启动；源码已有执行主线，能力字段现为executionImplemented=true，并单列executionRequested=false，canExecute/databaseCompatibilityProven/incidentRecoveryAuthorized继续false。该能力字段不证明已安装、现场兼容或生产可用；日常前向更新不增加回退专用审阅操作。
+
+新增30项离线模型测试：异步固定参数/准确兼容确认与SQL互斥、前向kind误用/坏确认/过期备份/维护残留/未知派发、PID/cgroup/策略/命令篡改、StopPost不读计划及坏PID拒绝、混装旧签名阻断、CLI确认/路由/脱敏、回退唯一state与完整history只读联合观察；整条真实阶段主体贯穿两锁、当前应用不健康、原计划/完整历史不变、旧digest三ID/原策略、缺错确认/新鲜基线漂移/默认缓存采集、部分create与禁止重放、start未知/最终readiness失败、总预算前后耗尽/逐命令剩余上限、独立StopPost计划不可用仍收尾、COMMITTED/clear未知及清除后不再停业务。现有预检测试改为executionImplemented=true、executionRequested=false，同时增加回退freeze/submit不调用断言，其业务只读/不排队规则不变。临时私有文件/锁为实物，Docker/DB/GitHub/HTTP/PID1为替身；仅Python3.10 AST、静态名字/重复方法、原函数等价、差异与读回审阅，项目测试未运行，不把前批514视为本批通过。
+
+Runtime/Ops未安装工具内部原子增量，task仍负责调度/上下文/编排/观察，沿task→guard/starter/finalizer/collector/plan/store/job方向；复用原SQL与普通阶段主体，无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。九helper/三drop-in仍须统一验真，旧工具签名拒绝；固定17+Manifest/250/300保持，受保护源改动必须走正式Bundle过渡。
+
+本批源码接齐受控回退异步主线，但尚未统一交付/安装或真实验收。下一步核对九helper/三drop-in与固定17+Manifest正式Bundle过渡的准确交付合同，再完成Mac薄入口及真实隔离的Compose美元往返、Docker/Prisma/PID1、SSH断开/SIGKILL、socket/daemon/reboot、故障/恢复/连续双发布验收。查询、SUBMITTED、COMMITTED或标记消失不是未知/事故续跑许可；旧程序可能已写数据，不能反向SQL或直接恢复旧盘。三组研究继续暂停、不取消；无依赖/业务schema/迁移文件及生产Docker/systemd/SQL/AWS操作。
+
+## 回退成功交接（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原finalizer新增内部finalize_rollback_ready，以独立准确兼容确认、原typed回退计划及同一v6/READY尝试复用原成功交接主体。先持久FINALIZING，再仅替换.env中的SHA、核目标配置/readiness和完整SQL历史，提交唯一rolled-back/rollback-verified；同步读回后只对保存三ID恢复原restart策略，重核后持久HANDOFF_COMMITTED并最后清标记。未知结果保留实际state/.env/维护证据，不重写PENDING或自动重放。
 
 回退启动批已由[PR #3004](https://github.com/sanqin888/sanqinMVP/pull/3004) 最终head `604865cabea9ffcc009edbbcc32ae7d2fd56dbc9` 经 [CI #7694](https://github.com/sanqin888/sanqinMVP/actions/runs/40549990852) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各484、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `c0fad842056f46d644a6075840ebefa203bcbae7`。原LOCAL/未运行描述保留为原审阅时点；仍未安装/隔离验收。
 
