@@ -204,16 +204,19 @@ def _inspect_image(reference: str, expected: str, sha: str, run) -> None:
           "local image platform, revision or digest differs")
 
 
-def _current_images(controller, current: str, run, fetch) -> None:
+def _current_images(controller, current: str, run, fetch, *, include_stopped=False) -> dict:
     paired = release.sealed_release_for_sha(current, fetch)
     for service, image in (("api", "sanq-api"), ("ubereats-worker", "sanq-api"),
                            ("web", "sanq-web")):
-        identifier = run(_compose(controller, "ps", "-q", service)).strip()
-        _need(re.fullmatch(r"[a-f0-9]{12,64}", identifier) is not None,
+        args = ("ps", "-a", "-q", service) if include_stopped else ("ps", "-q", service)
+        identifier = run(_compose(controller, *args)).strip()
+        pattern = r"[a-f0-9]{64}" if include_stopped else r"[a-f0-9]{12,64}"
+        _need(re.fullmatch(pattern, identifier) is not None,
               "current service identity is missing or ambiguous")
         image_id = run(["docker", "inspect", "--format", "{{.Image}}", identifier]).strip()
         release.checked_digest(image_id)
         _inspect_image(image_id, _pinned(paired["images"][image]), current, run)
+    return paired
 
 
 def _history(controller, run) -> list:
@@ -295,6 +298,15 @@ def _probe_sql(pinned: str, run) -> list:
         raise
 
 
+def _verify_sql_source(source_sha: str, inventory: list, fetch) -> None:
+    commit = fetch(f"/repos/{release.REPOSITORY}/git/commits/{source_sha}")
+    _need(type(commit) is dict and commit.get("sha") == source_sha
+          and type(commit.get("tree")) is dict, "candidate Git commit binding differs")
+    tree_sha = release.require_sha(commit["tree"].get("sha", ""))
+    tree = fetch(f"/repos/{release.REPOSITORY}/git/trees/{tree_sha}?recursive=1")
+    contract.verify_migration_objects(inventory, tree, expected_tree_sha=tree_sha)
+
+
 def collect(target_sha: str, *, controller=None, run=command, fetch=None,
             cache_images: bool = True) -> bytes:
     """Collect observations; cache_images=False never pulls a missing digest.
@@ -330,12 +342,7 @@ def collect(target_sha: str, *, controller=None, run=command, fetch=None,
             run(["docker", "pull", pinned], timeout=300)
         _inspect_image(pinned, pinned, target_sha, run)
     inventory = _probe_sql(_pinned(candidate["images"]["sanq-api"]), run)
-    commit = fetch(f"/repos/{release.REPOSITORY}/git/commits/{target_sha}")
-    _need(type(commit) is dict and commit.get("sha") == target_sha
-          and type(commit.get("tree")) is dict, "candidate Git commit binding differs")
-    tree_sha = release.require_sha(commit["tree"].get("sha", ""))
-    tree = fetch(f"/repos/{release.REPOSITORY}/git/trees/{tree_sha}?recursive=1")
-    contract.verify_migration_objects(inventory, tree, expected_tree_sha=tree_sha)
+    _verify_sql_source(target_sha, inventory, fetch)
     history = _history(controller, run)
     applied = {row.get("name") for row in history
                if type(row) is dict and row.get("state") == "applied"}
@@ -353,6 +360,88 @@ def collect(target_sha: str, *, controller=None, run=command, fetch=None,
     _need(candidate == release.verify_exact_candidate(current, target_sha, fetch),
           "candidate proof changed during preparation")
     return raw
+
+
+def collect_rollback(*, controller=None, run=command, fetch=None, cache_images=True) -> bytes:
+    """Collect only the recorded previous target; no current-health requirement."""
+    _need(os.geteuid() == 0, "rollback preparation requires the authorized root operator")
+    _need(not any(os.environ.get(key) for key in (
+        "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
+        "non-default Docker endpoint is unsupported")
+    if controller is None:
+        import deploy_release as controller
+    if fetch is None:
+        fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    store.check_maintenance_clear()
+    before, installed, environment = _snapshot(controller, run)
+    state_raw = _private_bytes(controller.STATE, 0, maximum=16384)
+    state = _json(state_raw.decode("utf-8"))
+    _need(type(state) is dict, "release state observation invalid")
+    previous = release.require_sha(state.get("previous", ""))
+    current = before["applicationSha"]
+    contract._rollback_state(state_raw, before, {"sourceSha": previous}, now_utc())
+    candidate = release.verify_exact_rollback(current, previous, fetch)
+    pins = contract.runtime_contract(installed, contract.fetch_runtime_files(previous, fetch))
+    # Existing mount checks use all app containers, including exited ones; DB
+    # still uses running-only selection and the original fixed volume contract.
+    def observed_compose(sha, *args, **kwargs):
+        if len(args) == 3 and args[:2] == ("ps", "-q") and args[-1] in ("api", "ubereats-worker", "web"):
+            args = ("ps", "-a", "-q", args[-1])
+        return run(_compose(controller, *args)).strip()
+    observe = SimpleNamespace(run=lambda args, **_: run(args).strip(), compose=observed_compose)
+    controller.check_live_storage(current, observe=observe)
+    paired = _current_images(controller, current, run, fetch, include_stopped=True)
+    _resource_preflight(controller)
+    backup = _backup(controller)
+    for image in candidate["images"].values():
+        pinned = _pinned(image)
+        if cache_images:
+            run(["docker", "pull", pinned], timeout=300)
+        _inspect_image(pinned, pinned, previous, run)
+    def database():
+        identifier = run(_compose(controller, "ps", "-q", "db")).strip()
+        _need(re.fullmatch(r"[a-f0-9]{64}", identifier) is not None, "rollback DB identity invalid")
+        info = _json(run(["docker", "inspect", "--format", "{{json .}}", identifier]))
+        _need(type(info) is dict and info.get("Id") == identifier
+              and info.get("State", {}).get("Running") is True
+              and info.get("Config", {}).get("Labels", {}).get("com.docker.compose.project") == "sanq-app"
+              and info["Config"]["Labels"].get("com.docker.compose.service") == "db"
+              and type(info.get("Mounts")) is list
+              and sum(type(row) is dict and row.get("Type") == "volume"
+                  and row.get("Name") == "sanq-app_pgdata"
+                  and row.get("Destination") == "/var/lib/postgresql/data"
+                  for row in info["Mounts"]) == 1, "rollback DB observation differs")
+        release.checked_digest(info.get("Image"))
+        return {key: info[key] for key in ("Id", "Image", "Mounts")}
+    db = database()
+    current_ref = _pinned(paired["images"]["sanq-api"])
+    _inspect_image(current_ref, current_ref, current, run)
+    current_inventory = _probe_sql(current_ref, run)
+    _verify_sql_source(current, current_inventory, fetch)
+    target_inventory = _probe_sql(_pinned(candidate["images"]["sanq-api"]), run)
+    _verify_sql_source(previous, target_inventory, fetch)
+    history = _history(controller, run)
+    raw = contract.create_rollback_review(release_state=state_raw, current=before,
+        candidate=candidate, runtime_pins=pins, inventory=current_inventory, history=history,
+        pending=[], backup=backup, environment=environment, created_at=now_utc(),
+        target_inventory=target_inventory)
+    _need(_snapshot(controller, run) == (before, installed, environment)
+          and _private_bytes(controller.STATE, 0, maximum=16384) == state_raw
+          and _history(controller, run) == history and _backup(controller) == backup
+          and database() == db, "rollback baseline changed during preparation")
+    _need(_current_images(controller, current, run, fetch, include_stopped=True) == paired
+          and release.verify_exact_rollback(current, previous, fetch) == candidate,
+          "rollback image proof changed during preparation")
+    controller.check_live_storage(current, observe=observe)
+    store.check_maintenance_clear()
+    return raw
+
+
+def rollback_summary(raw: bytes, identity: str) -> dict:
+    value = contract.validate_rollback_review(raw, identity)
+    return {**contract.rollback_review_summary(raw, identity), "mode": "ROLLBACK_REVIEW_ONLY",
+            "images": value["candidate"]["images"], "backup": value["backup"],
+            "requiredEnvironmentKeys": value["environment"]["requiredKeys"]}
 
 
 def now_utc() -> str:
@@ -412,8 +501,25 @@ def main(argv=None) -> int:
     show.add_argument("plan_id")
     sql = sub.add_parser("show-sql", help="Verify and show exact pending SQL; never execute it")
     sql.add_argument("plan_id")
+    rollback = sub.add_parser("prepare-rollback", help="Review the recorded previous release; never execute")
+    rollback.add_argument("--save", action="store_true")
+    rollback.add_argument("--cached-only", action="store_true")
+    rollback_show = sub.add_parser("show-rollback", help="Read a saved rollback review only")
+    rollback_show.add_argument("plan_id")
     args = parser.parse_args(argv)
     try:
+        if args.command in ("prepare-rollback", "show-rollback"):
+            if args.command == "show-rollback":
+                raw, identity = store.load_rollback_review(args.plan_id), args.plan_id
+            else:
+                with store.preparation_lock():
+                    raw = collect_rollback(cache_images=not args.cached_only)
+                    identity = json.loads(raw)["planId"]
+                    if args.save:
+                        store.check_maintenance_clear()
+                        store.save_rollback_review(raw)
+            print(json.dumps(rollback_summary(raw, identity), indent=2))
+            return 0
         if args.command == "show-sql":
             raw = store.load_plan(args.plan_id)
             print(json.dumps(review_sql(raw, args.plan_id), indent=2))

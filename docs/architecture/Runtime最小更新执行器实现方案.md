@@ -1,6 +1,34 @@
 # Runtime 最小更新执行器实现方案
 
-## 受控回退审阅门禁（2026-10-27，本地待审）
+## 回退现场采集与私有计划保存（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：ROLLBACK_COLLECT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原collector新增prepare-rollback [--save] [--cached-only]和show-rollback <plan-id>，只从唯一state的previous确定目标，不接受任意SHA。重核17+Manifest/配置/state原字节、准确历史proof/两运行文件、当前与目标实际digest及各自API SQL/Git树、当前history/DB身份/真实挂载/备份；结束前重读关键基线，任一变化阻断。当前应用可不健康/已退出，但对象身份/镜像/挂载仍须证明，DB必须运行且是原固定卷；维护记录/PENDING仍拒绝。只输出兼容审阅摘要，canExecute保持false。
+
+回退审阅批已由[PR #2999](https://github.com/sanqin888/sanqinMVP/pull/2999) 最终head `ca5993f258faafe7cbca85429ab7768073ef1753` 经 [CI #7684](https://github.com/sanqin888/sanqinMVP/actions/runs/40527848453) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各382、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `17416da3333a34dc19defcbefcfc4a6f242f56e5`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 采集、显示与未知边界
+
+- 新prepare-rollback没有target参数；先验证root/固定本地Docker端点、原维护目录为空、安装17+Manifest与当前配置/state一致，再读取原state字节，核准确current/previous/已知完成phase/reason/时间。只有其previous的准确历史来源证明通过且两运行文件与现役合同相同才继续；不发现latest、不接受旧shell路径/任意URL，不修改运行时文件。
+- 当前容器观察复用_current_images，新增仅供回退的include_stopped模式，compose ps -a -q要求单个完整64位ID，逐实际image ID核原seal/digest/revision/平台并返回原paired proof。默认前向调用的运行中选择/原12–64位观察条件不变。原controller.check_live_storage仍验真实挂载，回退适配器只对三应用的ps加入-a，DB仍只选择运行容器；不执行当前应用HTTP/readiness或check_running_images，避免健康失败阻断准确目标审阅。
+- DB在SQL观察前后必须同一Id/Image/Mounts，完整ID/运行状态/project/service标签及sanq-app_pgdata卷与固定数据目录均须匹配；备份仍用原校验/hash/gzip及时效，资源仍需原5GiB/512MiB门禁。当前API digest必须已缓存且核验，目标默认只pull准确两个digest并各自验真；--cached-only完全不pull，缺缓存阻断，不build/prune或更新业务容器。
+- 两次SQL文件探测都复用原network=none/read-only/有限内存CPU/固定Node程序，只读各自API image文件清单，不启动应用/worker或连接DB执行Prisma。分别从准确commit读取完整Git树核SQL blob/size，拒绝truncated、改动或多余对象。原forward collect的相同source块提取为_verify_sql_source，AST对照除参数名外保持，前向门禁不变。真实DB历史只读并必须完整对应当前inventory；旧inventory须为不变前缀，额外applied项供人工兼容审阅，仍不自动判安全。
+- 生成审阅计划后，再核state字节/配置/Manifest与运行文件、history/备份、DB身份、当前paired proof/实际镜像、历史目标proof、真实挂载和维护目录。CLI持原preparation_lock贯穿采集及可选保存；普通更新任务亦持此锁，阶段不能插入。采集可写镜像缓存、启动原隔离文件探针并创建原锁/审阅文件，不能描述为主机零写入；不改业务state/.env/策略或停开服务。
+
+### 同一原件存储与类型隔离
+
+原store增加固定save_rollback_review/load_rollback_review，复用同一plans目录与create-only IO主体，不新建发布数据库。新旧kind通过各自固定validator验证，forward save/load和SQL/task不能接受rollback原件，也不通过fallback猜类型。文件名仍为域分离planId，原root私有0700目录/0600单链接文件、no-follow/owner检查、O_EXCL、完整写/fsync文件及父目录/同FD读回全部保留；保存或同步未知保留实际文件，不覆盖、删除或自动重试。静态AST对照除固定validator选择外IO主体不变。
+
+show-rollback只读准确id原件，无网络/容器；prepare/show摘要包含目标镜像、备份、环境键名、额外迁移及兼容审阅摘要，不输出releaseStateRaw或.env/凭据。错误沿原固定消息，不回显任意子进程/观测文本。新CLI并未安装，不能据文档在现役路径直接操作。
+
+### 验证与下一步
+
+新增17项离线模型测试，覆盖准确previous/两份SQL-source/无健康门禁、缓存/缺镜像、state/配置/history/备份/DB/proof/runtime/mount漂移、DB停止/错role/卷、维护/root/远程端点拒绝、停止应用观察适配、CLI目标不可选/typed保存查询/错误脱敏，以及新旧kind互拒、权限/owner/链接、fsync未知/短写保留。仅临时私有存储为真实文件；Docker/GitHub/DB/系统观测均为替身。只做Python3.10 AST、静态名字/方法名、SQL source/IO主体等价及差异/读回审阅，项目测试未运行，不把前批382等结果当本批通过。
+
+原plan/store/collector职责及九helper数量不变，无反向导入或12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。正常前向计划、SQL任务与维护schema保持；本批仅新增回退review准备能力，未完成受控回退或最小执行器交付。
+
+本批仍无回退确认/提交/执行、自动恢复/反向SQL或旧rollback --execute调用；事故state/维护证据不得借prepare-rollback绕过，查询计划不是准许重放。下一步独立准确兼容确认及回退任务接线，再完成九helper/三drop-in统一验真、固定17+Manifest正式Bundle过渡、Mac薄入口与真实隔离故障/恢复/连续更新验收。release_contract/controller等受保护源改动不能直接覆盖现役文件或手改hash，250/300旧guard保持；三组研究继续暂停、不取消，无业务schema/迁移文件/依赖/生产Docker/systemd/SQL/AWS操作。
+
+## 受控回退审阅门禁（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：ROLLBACK_REVIEW_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**在原release_contract/plan内补受控回退审阅门禁，无新helper或执行入口。准确历史目标校验复用seal/目标最新main CI/publication与同一祖先检查，要求目标是current的主线祖先，不发现latest，也不以当前应用健康或当前CI重跑失败替代历史目标证明。纯审阅计划绑定唯一发布state原始字节/哈希、current与准确previous、备份/环境/运行合同、当前完整SQL/history及旧镜像SQL清单；列明额外已应用迁移，兼容批准摘要仅绑定本次审阅范围，canExecute与databaseCompatibilityProven始终false。
 
