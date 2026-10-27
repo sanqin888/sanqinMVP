@@ -17,6 +17,7 @@ import hashlib
 import io
 import json
 import os
+import pwd
 import re
 import stat
 import sys
@@ -704,23 +705,27 @@ def _installed_runtime_snapshot(old, old_sha):
         return observed, identities
 
 
-def _observe_installed_runtime(identity, *, fetch=release.github_json):
+def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
+    _need(type(include_configuration) is bool, "configuration observation switch must be boolean")
+    def snapshot():
+        return (_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]),
+                _configuration_snapshot() if include_configuration else None)
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
         kit, old, value = _retained_contents(root, identity)
         review = review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
         _need(not review["requiresAdditionalPlatformReview"], "retained transition exceeds tool-only scope")
-        before = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
+        before = snapshot()
         _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch) == review,
               "material source review changed during installed observation")
-        _need(_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]) == before,
+        _need(snapshot() == before,
               "installed Runtime baseline changed during observation")
         _need(_retained_contents(root, identity) == (kit, old, value), "retained material observation changed")
         _idle_for_materials(folders)
-        observed, directories = before
-        return {**value, "outcome": "INSTALLED_RUNTIME_FILES_OBSERVED",
+        observed, directories = before[0]
+        result = {**value, "outcome": "INSTALLED_RUNTIME_FILES_OBSERVED",
                 "installedRuntimeFilesObserved": True, "hostPreflightComplete": False,
                 "operationSuccessProven": False, "requiresHostRecheck": True,
                 "existingExecutorFilesAbsent": True, "systemdObserved": False,
@@ -729,6 +734,107 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json):
                 "installedFiles": {p: {"sha256": _hash(raw), "bytes": len(raw),
                                      "identity": list(info)} for p, (raw, info) in observed.items()},
                 "installedDirectories": {p: list(info) for p, info in directories.items()}}
+        if include_configuration:
+            files, application = before[1]
+            result.update({key: application[key] for key in (
+                "applicationSha", "previousApplicationSha", "releaseStatePhase")})
+            result.update({"configurationFilesObserved": True,
+                           "configurationFiles": {p: {"sha256": _hash(raw), "bytes": len(raw),
+                                                     "identity": list(info)}
+                                                  for p, (raw, info) in files.items()},
+                           "composeExpansionObserved": False, "applicationReleaseAuthenticated": False,
+                           "c4StorageObserved": False})
+        return result
+
+
+
+# D2-3: raw configuration observations, not Compose expansion or host readiness.
+CONFIGURATION_NAMES = (".env", ".sanq-release-state.json", ".sanq-backup-layout-activated")
+
+
+def _configuration_read(root, name, account):
+    _need(name in CONFIGURATION_NAMES, "unreviewed installation configuration input")
+    private = name != ".sanq-backup-layout-activated"
+    maximum = MAX_FILE if name == ".env" else 65536 if private else 4096
+
+    def check(info):
+        if private:
+            owner, group = ((account.pw_uid, account.pw_gid) if name == ".env"
+                            else (PRIVATE_OWNER_UID, PRIVATE_GROUP_GID))
+            _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                  and info.st_uid == owner and info.st_gid == group
+                  and stat.S_IMODE(info.st_mode) in (0o400, 0o600),
+                  "installation configuration identity or permissions differ")
+        else:
+            _installed_info(info)
+
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        check(before)
+        _need(0 < before.st_size <= maximum, "installation configuration size differs")
+        chunks, size = [], 0
+        while size <= maximum:
+            raw = os.read(fd, min(65536, maximum + 1 - size))
+            if not raw:
+                break
+            chunks.append(raw)
+            size += len(raw)
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=root, follow_symlinks=False)
+        check(after)
+        check(path)
+        _need(size == before.st_size and _installed_fingerprint(before) ==
+              _installed_fingerprint(after) == _installed_fingerprint(path),
+              "installation configuration changed during read")
+        return b"".join(chunks), _installed_fingerprint(before)
+    finally:
+        os.close(fd)
+
+
+def _configuration_snapshot():
+    account = pwd.getpwnam("ubuntu")
+    _need(type(account.pw_uid) is int and account.pw_uid > 0
+          and type(account.pw_gid) is int and account.pw_gid > 0,
+          "fixed ubuntu account identity differs")
+    with contextlib.ExitStack() as stack:
+        anchor = _state_parent()
+        stack.callback(os.close, anchor)
+        root = stack.enter_context(_installed_directory(anchor, "runtime"))
+        files = {name: _configuration_read(root, name, account) for name in CONFIGURATION_NAMES}
+        env = files[".env"][0]
+        _need(b"\0" not in env and b"\r" not in env.replace(b"\r\n", b""),
+              "installation environment contains ambiguous line encoding")
+        text = env.decode("utf-8")
+        assignments = re.findall(r"(?m)^[ \t]*(?:export[ \t]+)?SANQ_IMAGE_SHA[ \t]*=", text)
+        values = re.findall(r"(?m)^SANQ_IMAGE_SHA=([^\r\n]*)\r?$", text)
+        _need(len(assignments) == len(values) == 1, "installation environment SHA assignment is ambiguous")
+        application = release.require_sha(values[0])
+        raw_state = files[".sanq-release-state.json"][0]
+        state = json.loads(raw_state, object_pairs_hook=_unique)
+        _need(type(state) is dict and set(state) == {
+              "schemaVersion", "phase", "current", "previous", "updatedAt", "reason"}
+              and type(state["schemaVersion"]) is int and state["schemaVersion"] == 1
+              and state["phase"] in ("active", "rolled-back")
+              and state["current"] == application, "installation release state is unresolved or inconsistent")
+        release.require_sha(state["previous"])
+        _need(state["reason"] == ("readiness-verified" if state["phase"] == "active" else "rollback-verified"),
+              "installation release state completion reason differs")
+        stamp = state["updatedAt"]
+        _need(isinstance(stamp, str) and re.fullmatch(
+              r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|\+00:00)", stamp),
+              "installation release state timestamp is not UTC")
+        dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        _need(files[".sanq-backup-layout-activated"][0].decode("utf-8").strip() == "SANQ_BACKUP_LAYOUT_C4_V1",
+              "installation C4 activation marker differs")
+        return files, {"applicationSha": application, "previousApplicationSha": state["previous"],
+                       "releaseStatePhase": state["phase"], "ubuntuUid": account.pw_uid,
+                       "ubuntuGid": account.pw_gid}
+
+
+def _observe_installed_configuration(identity, *, fetch=release.github_json):
+    """Raw source/configuration observation only; never returns secret file bytes."""
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True)
 
 
 def main(argv=None):
