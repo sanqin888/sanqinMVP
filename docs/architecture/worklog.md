@@ -1,10 +1,34 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：D2应用环境与数据库网络目标核对
+
+**2026-10-27 当前进度：D2_APPLICATION_BINDING_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增四容器有效环境与保存DB网络目标的只读比较，接原双锁、来源和主机双读；尚未提交远端。
+
+基于dev `11deb05597f79b736b2a3a99f5509579a886878c`，分支feat/runtime-minimal-application-binding-20261027；本批本地实现完成、未提交。
+
+运行环境/就绪前置批已由[PR #3015](https://github.com/sanqin888/sanqinMVP/pull/3015) 最终head `bfe2517c464c68cdbec872871636f3232d051d3b` 经 [CI #7717](https://github.com/sanqin888/sanqinMVP/actions/runs/40584486112) SUCCESS（4成功/6范围跳过；默认Python与CPython3.10的Release各725，Runtime1080，准确CPython3.12.15既有回归412），无CI修复，合并dev `11deb05597f79b736b2a3a99f5509579a886878c`。下文该批原LOCAL/未运行描述保留为原审阅时点；此证据不代表现场安装或真实隔离验收。
+
+内部_observe_installed_application_binding要求原configuration/Docker/systemd/filesystem/prerequisites全部启用且开关严格bool，旧接口不触发新观察。在原两锁内，两次分别重读固定Compose JSON、已保存完整四容器ID与其image ID，逐项核既有renderedCompose/config/mount摘要与身份后比较；本批唯一新增Docker读取是固定sanq-app_default network inspect，仍用原300s共享monotonic命令截止/单次30s/2MiB及最小环境客户端，无connect/disconnect或任意network参数。
+
+每容器Env为有界唯一KEY=value列表，值保留首个等号后的全部内容；镜像Config.Env默认值合并Compose environment覆盖后，与容器实际Config.Env完整映射相等，缺、多、改、重复键、空赋值缺separator/NUL/坏类型阻断。仅对Compose config JSON的environment值核美元成对后解码$$→$一次；镜像默认与实际Env不解码，原文件/Compose JSON/创建配置均不改。未配对美元阻断而非猜测；正常空字符串和多行值按原样比较。此为模型规则，真实Compose美元往返仍留D4。
+
+DB环境须非空POSTGRES_USER/POSTGRES_PASSWORD、POSTGRES_DB=sanqin_db和PGDATA=/var/lib/postgresql/data；API/worker的DATABASE_URL必须逐字一致，解析后只允许postgresql、db:5432/sanqin_db、无额外query/fragment/控制空白、合法百分号编码，凭据仅解码一次后与保存DB环境相同。web API_UPSTREAM只允许http://api:4000。不把DB环境中的初始凭据当成数据库当前凭据的证明，不进行远程探测或登录写入。
+
+固定网络须本地bridge/default IPAM、项目/default标签、非internal/ingress/IPv6、无额外网络选项；网络Containers全集准确等于保存四ID。核共同64位network ID与独立endpoint ID、IPv4/subnet/prefix/gateway、网络视图和容器视图一致及地址唯一；每容器只有该网络，无HostConfig DNS/搜索/hosts/links覆盖，准确服务alias存在且db/api不得被其他角色占用。未知拓扑原样阻断，不改现网来迎合。结果只给每角色环境SHA256/条目数、DB容器ID及稳定网络身份/端点，不回显环境、URL、凭据或stderr；两次有效网络身份变化仍阻断。
+
+仅新增containerEnvironmentObserved/databaseConnectionTargetObserved=true及摘要；applicationConfigurationObserved/hostPreflightComplete/installedBaselineObserved/readyToInstall/canExecute/authorizedToMutateProduction/operationSuccessProven继续false，requiresHostRecheck=true。databaseLoginVerified/databaseMigrationParityProven/fullApplicationConfigurationProven=false：环境与网络目标一致不等于实际使用这些凭据登录、完整应用配置或迁移库存/历史一致。
+
+新增20项离线模型测试，覆盖组合只读/摘要脱敏、$/$$准确一次比较与原件不变、坏Env/重复键/超额清单、每角色实际环境漂移、镜像默认与Compose覆盖、DB必填/本地URL/编码凭据、API-worker不一致/web上游、网络身份/额外端点/主机DNS或hosts/别名歧义、地址/前缀/gateway/IPv6/IPAM、保存ID/config/mount/image晚变、两次合法网络替换、原两锁和晚期维护、旧接口默认不查询/严格开关/无新CLI及固定网络读取白名单与失败。仅静态Python3.10 AST、全局名字/重复方法/unittest.run钩子/空白和差异/读回；项目测试待CI，不把725当本批测试通过。所有Docker/systemd/GitHub/SQL/HTTP/root为模型，未执行现场检查或安装。
+
+归Runtime/Ops独立bootstrap内部原子新增观察能力，不涉及持久化/外部合同迁移；仅新增标准库ipaddress/urllib.parse使用，无依赖清单变更、九helper导入、反向依赖或第二版本权威。已审阅无12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。66个既有函数/类定义保持，仅原观察主体加可选分支、Docker白名单多一个固定network inspect；固定17+Manifest/250/300、九helper/三drop-in、私有四文件和公开pack/verify/plan保持。
+
+下一步核当前镜像迁移库存与Git准确对象/数据库历史一致，并收口剩余有效配置和主机预检；之后进入安装意图/临时拒绝门禁。准确原ID停写、手动快照available及完整恢复实物、逐文件安装/交接、D3 Mac薄入口与D4统一真实隔离验收/生产材料仍OPEN。三组研究继续暂停、不取消；无业务schema/迁移、DB写入或生产安装。
+
 ## 2026-10-27 — 最小更新执行器：D2运行环境与就绪/DB只读前置
 
-**2026-10-27 当前进度：D2_RUNTIME_PREREQUISITES_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增运行环境、固定就绪地址和绑定原DB容器ID的只读历史观察，沿原两锁与来源/文件/Docker/systemd/备份双读；不运行迁移、生成依赖或写安装意图。
+**2026-10-27 当前进度：D2_RUNTIME_PREREQUISITES_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增运行环境、固定就绪地址和绑定原DB容器ID的只读历史观察，沿原两锁与来源/文件/Docker/systemd/备份双读；不运行迁移、生成依赖或写安装意图。
 
-基于dev `a7b461dd8594c8c4497dbc7bf510380b55bd99bc`，分支feat/runtime-minimal-readiness-preflight-20261027。本批本地待审、未提交远端。
+基于dev `a7b461dd8594c8c4497dbc7bf510380b55bd99bc`，分支feat/runtime-minimal-readiness-preflight-20261027。本批已通过PR #3015合并dev；准确head/CI/合并证据见本卷新批次记录。
 
 备份/宿主目录批已由[PR #3014](https://github.com/sanqin888/sanqinMVP/pull/3014) 最终head `f44df660676c6586d9bfd0de04091f492bdf6ef5` 经 [CI #7715](https://github.com/sanqin888/sanqinMVP/actions/runs/40581035319) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各705、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `a7b461dd8594c8c4497dbc7bf510380b55bd99bc`。下文该批原LOCAL/未运行仅为原审阅时点，仍未安装或真实隔离验收。
 
