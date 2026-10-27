@@ -154,6 +154,55 @@ class SuccessHandoffTests(unittest.TestCase):
             self.finish()
 
 
+
+    def test_successful_digest_handoff_can_become_next_frozen_baseline_and_creation_intent(self):
+        first = plan.validate_plan(storage.load_plan(self.identity), self.identity)
+        saved_policies = copy.deepcopy(guard.status()["originalContainers"])
+        self.assertEqual(self.finish()["outcome"], "ACTIVE")
+        self.assertFalse(guard.status()["maintenance"])
+        for service in guard.SERVICES:
+            name = "sanq-web" if service == "web" else "sanq-api"
+            self.assertEqual(self.stage.info[self.case.ids[service]]["Config"]["Image"],
+                             collector._pinned(first["candidate"]["images"][name]))
+        # Build a distinct reviewed next release. The preceding handoff is real
+        # adapter code; Docker, external proof and fresh collection remain models.
+        observations = copy.deepcopy(job._observations(first))
+        observations["current"].update(applicationSha=NEW,
+            releaseStateSha256=hashlib.sha256(plan._canonical(self.state)).hexdigest(),
+            configurationSha256=hashlib.sha256(self.env + b"\0rendered-compose\0" +
+                plan._canonical(self.case.expanded)).hexdigest())
+        third = "8" * 40
+        observations["candidate"]["sourceSha"] = third
+        for name, image in observations["candidate"]["images"].items():
+            image["ref"] = f"ghcr.io/sanqin888/{name}:{third}"
+            image["digest"] = "sha256:" + ("1" if name == "sanq-api" else "2") * 64
+        raw = plan.create_plan(created_at=NOW, **observations)
+        identity = storage.save_plan(raw)
+        observed = plan.create_plan(created_at=self.case.fixture.time, **observations)
+        with patch.object(guard.release, "sealed_release_for_sha",
+                          return_value=first["candidate"]) as seal:
+            frozen = guard.freeze_for_plan(identity, controller=self.controller,
+                run=self.stage.observe_command, observe=Mock(return_value=observed),
+                fetch=Mock(), now=lambda: self.case.fixture.time)
+        seal.assert_called_once()
+        self.assertEqual(seal.call_args.args[0], NEW)
+        self.assertEqual(frozen["observedApplicationSha"], NEW)
+        self.assertNotEqual(frozen["attemptId"], self.attempt)
+        for service, row in frozen["originalContainers"].items():
+            self.assertEqual(row["containerId"], self.case.ids[service])
+            self.assertEqual(row["restartPolicy"], saved_policies[service]["restartPolicy"])
+        intention = guard.begin_candidate_creation(identity, frozen["attemptId"],
+            controller=self.controller, run=self.stage.observe_command,
+            now=lambda: self.case.fixture.time)
+        self.assertEqual(intention["phase"], "CREATING_CANDIDATES")
+        self.assertEqual(intention["candidate"]["release"]["sourceSha"], third)
+        self.assertEqual(self.state["phase"], "active")
+        self.assertEqual(self.state["current"], NEW)
+        self.assertEqual(len(self.writes), 1)
+        self.controller.apply_reviewed_migrations.assert_not_called()
+        with self.assertRaises(ReleaseContractError):
+            guard.check_startup()
+
     def test_crlf_env_preserves_all_original_line_endings(self):
         self.env = self.env.replace(b"\n", b"\r\n")
         original = plan.validate_plan(storage.load_plan(self.identity), self.identity)

@@ -113,14 +113,23 @@ def _installed_gate(run) -> None:
 
 def _inspect(identifier: str, service: str, sha: str, run, *, reference: str | None = None) -> dict:
     info = collector._json(run(["docker", "inspect", "--format", "{{json .}}", _id(identifier)]))
+    repository = "ghcr.io/sanqin888/" + ("sanq-web" if service == "web" else "sanq-api")
     _need(type(info) is dict and info.get("Id") == identifier
           and type(info.get("Config")) is dict and type(info["Config"].get("Labels")) is dict
           and info["Config"]["Labels"].get("com.docker.compose.project") == "sanq-app"
           and info["Config"]["Labels"].get("com.docker.compose.service") == service
-          and info["Config"].get("Image") ==
-          (reference or f"ghcr.io/sanqin888/{'sanq-web' if service == 'web' else 'sanq-api'}:{sha}"),
-          "container role, project or release differs")
+          and service in SERVICES, "container role or project differs")
     release.checked_digest(info.get("Image"))
+    declared = info["Config"].get("Image")
+    if reference is not None:
+        _need(declared == reference, "container release reference differs")
+    elif declared != repository + ":" + sha:
+        # A previously promoted candidate keeps its digest declaration. Bind it
+        # to the actual image on EVERY original-writer/cleanup observation.
+        _need(isinstance(declared, str) and declared.startswith(repository + "@"),
+              "original container release reference differs")
+        release.checked_digest(declared[len(repository) + 1:])
+        collector._inspect_image(info["Image"], declared, sha, run)
     _need(type(info.get("State")) is dict and type(info.get("HostConfig")) is dict,
           "container state is missing")
     _policy(info["HostConfig"].get("RestartPolicy"))
@@ -141,7 +150,10 @@ def _original_containers(controller, sha: str, paired: dict, run) -> dict:
               and state.get("Restarting") is False and state.get("Paused") is False,
               "current writer is not steadily running")
         name = "sanq-web" if service == "web" else "sanq-api"
-        collector._inspect_image(info["Image"], collector._pinned(paired["images"][name]), sha, run)
+        pinned = collector._pinned(paired["images"][name])
+        _need(info["Config"]["Image"] in (f"ghcr.io/sanqin888/{name}:{sha}", pinned),
+              "original container reference differs from sealed release")
+        collector._inspect_image(info["Image"], pinned, sha, run)
         result[service] = {"containerId": identifier, "imageId": info["Image"],
                            "restartPolicy": info["HostConfig"]["RestartPolicy"]}
     _need(len({row["containerId"] for row in result.values()}) == 3,

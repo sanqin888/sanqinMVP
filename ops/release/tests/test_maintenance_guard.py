@@ -282,6 +282,100 @@ class MaintenanceFlowTests(unittest.TestCase):
                 guard.main([command])
 
 
+    def _declare_original_digests(self):
+        for service, identifier in self.ids.items():
+            name = "sanq-web" if service == "web" else "sanq-api"
+            self.info[identifier]["Config"]["Image"] = guard.collector._pinned(
+                self.paired["images"][name])
+
+    def test_digest_and_mixed_originals_freeze_without_changing_marker_schema(self):
+        self._declare_original_digests()
+        self.info[self.ids["web"]]["Config"]["Image"] = f"ghcr.io/sanqin888/sanq-web:{OLD}"
+        result = self.freeze()
+        self.assertEqual(result["phase"], "FROZEN")
+        self.assertEqual(result["schemaVersion"], 1)
+        self.assertEqual(set(result["originalContainers"]["api"]),
+                         {"containerId", "imageId", "restartPolicy"})
+        self.assertEqual({args[-1] for args in self.mutations()}, set(self.ids.values()))
+        guard._assert_stopped(self.controller, result, self.observe_command)
+
+    def test_digest_revision_platform_or_actual_digest_mismatch_blocks_before_arming(self):
+        self._declare_original_digests()
+        original = self.observe_command
+        for change in ({"Os": "other"}, {"RepoDigests": []},
+                       {"Config": {"Labels": {"org.opencontainers.image.revision": NEW}}}):
+            def observe(args, **kwargs):
+                raw = original(args, **kwargs)
+                if args[:3] == ["docker", "image", "inspect"]:
+                    value = json.loads(raw)
+                    value.update(change)
+                    return json.dumps(value)
+                return raw
+            with self.subTest(change=change), self.assertRaises(ReleaseContractError):
+                guard.freeze_for_plan(self.identity, controller=self.controller, run=observe,
+                    observe=self.observer, fetch=Mock(), now=lambda: self.time)
+            self.assertFalse(self.marker.exists())
+            self.assertEqual(self.mutations(), [])
+
+    def test_wrong_repository_mutable_tag_sha_or_malformed_digest_is_rejected(self):
+        identifier = self.ids["api"]
+        for reference in ("ghcr.io/other/sanq-api@sha256:" + "1" * 64,
+                          "ghcr.io/sanqin888/sanq-api:latest",
+                          f"ghcr.io/sanqin888/sanq-api:{NEW}",
+                          "ghcr.io/sanqin888/sanq-api@sha256:bad"):
+            self.info[identifier]["Config"]["Image"] = reference
+            with self.subTest(reference=reference), self.assertRaises(ReleaseContractError):
+                self.freeze()
+            self.assertFalse(self.marker.exists())
+            self.assertEqual(self.mutations(), [])
+
+    def test_local_digest_alias_not_in_exact_seal_is_rejected(self):
+        self._declare_original_digests()
+        alternate = "ghcr.io/sanqin888/sanq-api@sha256:" + "7" * 64
+        self.info[self.ids["api"]]["Config"]["Image"] = alternate
+        original = self.observe_command
+        def observe(args, **kwargs):
+            raw = original(args, **kwargs)
+            if args[:3] == ["docker", "image", "inspect"]:
+                value = json.loads(raw)
+                value["RepoDigests"].append(alternate)
+                return json.dumps(value)
+            return raw
+        with self.assertRaises(ReleaseContractError):
+            guard.freeze_for_plan(self.identity, controller=self.controller, run=observe,
+                observe=self.observer, fetch=Mock(), now=lambda: self.time)
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(self.mutations(), [])
+
+    def test_digest_frozen_identity_still_rejects_image_replacement(self):
+        self._declare_original_digests()
+        record = self.freeze()
+        self.info[self.ids["api"]]["Image"] = "sha256:" + "a" * 64
+        with self.assertRaises(ReleaseContractError):
+            guard._assert_stopped(self.controller, record, self.observe_command)
+
+    def test_digest_originals_are_confirmed_stopped_by_failed_task_cleanup(self):
+        self._declare_original_digests()
+        record = self.freeze()
+        def observe(args, **kwargs):
+            if args[:2] in (["docker", "update"], ["docker", "stop"]):
+                self.assertIn(args[-1], self.ids.values())
+                row = self.info[args[-1]]
+                if args[1] == "update":
+                    row["HostConfig"]["RestartPolicy"] = {"Name": "no", "MaximumRetryCount": 0}
+                else:
+                    row["State"].update(Status="exited", Running=False)
+                return ""
+            return self.observe_command(args, **kwargs)
+        result = guard.cleanup_after_task(self.identity, "signal", controller=self.controller,
+                                         run=observe, now=lambda: self.time)
+        self.assertEqual(result["outcome"], "TASK_FAILED_WRITERS_STOPPED")
+        self.assertEqual(guard.status()["phase"], "INCIDENT")
+        self.assertEqual(guard.status()["originalContainers"], record["originalContainers"])
+        with self.assertRaises(ReleaseContractError):
+            guard.check_startup()
+
+
 class InstalledGateTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
