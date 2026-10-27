@@ -715,10 +715,12 @@ def _installed_runtime_snapshot(old, old_sha):
         return observed, identities
 
 
-def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False):
+def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
+                               include_filesystem=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
-    _need(type(include_configuration) is bool and type(include_docker) is bool and type(include_systemd) is bool
-          and (not include_docker or include_configuration) and (not include_systemd or include_docker), "invalid installation observation switches")
+    _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd, include_filesystem))
+          and (not include_docker or include_configuration) and (not include_systemd or include_docker)
+          and (not include_filesystem or include_systemd), "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
     def snapshot():
@@ -729,7 +731,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         systemd = (_systemd_snapshot(runtime[0]["ops/backup/sanq-backup.service"][0],
                                     lambda args: _systemd_command(args, deadline=deadline))
                    if include_systemd else None)
-        return runtime, configuration, docker, systemd
+        filesystem = _host_filesystem_snapshot(deadline=deadline) if include_filesystem else None
+        return runtime, configuration, docker, systemd, filesystem
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -770,6 +773,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         if include_systemd:
             result.update({"systemdObserved": True, "systemd": before[3],
                            "maintenanceGatesLoaded": False, "backupIntegrityObserved": False})
+        if include_filesystem:
+            result.update({"hostPersistentDirectoriesObserved": True, "backupIntegrityObserved": True,
+                           "backupRestoreProven": False, "filesystem": before[4]})
         return result
 
 
@@ -1217,6 +1223,149 @@ def _systemd_snapshot(backup_source, run):
 def _observe_installed_systemd(identity, *, fetch=release.github_json):
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True,
                                       include_docker=True, include_systemd=True)
+
+
+
+# D2-6: host-directory and local backup observations. No backup/restore or data copy.
+MAX_LOCAL_BACKUP = 1024 * 1024 * 1024
+MAX_BACKUP_ENTRIES = 4096
+BACKUP_FILE = re.compile(r"sanqin_db_[0-9]{8}_[0-9]{6}\.sql\.gz\Z")
+HOST_DIRECTORIES = (
+    (("srv",), "root"), (("srv", "sanq"), "root"),
+    (("srv", "sanq", "uploads"), "data"), (("srv", "sanq", "backups"), "backup"),
+    (("home",), "root"), (("home", "ubuntu"), "ubuntu"),
+    (("home", "ubuntu", "sanq-assets"), "ubuntu"),
+    (("home", "ubuntu", "sanq-assets", "sounds"), "data"),
+)
+
+
+def _directory_identity(info):
+    return (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode)
+
+
+def _host_storage_root():
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        _installed_info(os.fstat(fd), directory=True)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+@contextlib.contextmanager
+def _host_directory(parent, name, policy, account):
+    _need(name in {parts[-1] for parts, _ in HOST_DIRECTORIES}
+          and policy in ("root", "ubuntu", "backup", "data"), "unreviewed host directory")
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    def check(info):
+        _need(stat.S_ISDIR(info.st_mode) and not stat.S_IMODE(info.st_mode) & 0o7022,
+              "host data directory type or permissions differ")
+        if policy != "data":
+            owner, group = ((PRIVATE_OWNER_UID, PRIVATE_GROUP_GID) if policy == "root"
+                            else (account.pw_uid, account.pw_gid))
+            _need(info.st_uid == owner and info.st_gid == group, "host directory owner or group differs")
+        if policy == "backup":
+            _need(stat.S_IMODE(info.st_mode) == 0o700, "backup directory must retain private 0700 permissions")
+    try:
+        before = os.fstat(fd)
+        check(before)
+        path = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        check(path)
+        _need(_directory_identity(before) == _directory_identity(path), "host directory changed during open")
+        yield fd
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        check(after)
+        check(path)
+        _need(_directory_identity(before) == _directory_identity(after) == _directory_identity(path),
+              "host directory changed during observation")
+    finally:
+        os.close(fd)
+
+
+def _local_backup_snapshot(root, account, *, deadline):
+    _need(time.monotonic() < deadline, "backup observation deadline exhausted")
+    directory = os.fstat(root)
+    candidates, count = [], 0
+    with os.scandir(root) as entries:
+        for entry in entries:
+            count += 1
+            _need(count <= MAX_BACKUP_ENTRIES, "backup directory entry budget exceeded")
+            if BACKUP_FILE.fullmatch(entry.name):
+                candidates.append((entry.stat(follow_symlinks=False).st_mtime_ns, entry.name))
+    _need(bool(candidates), "no local database backup")
+    # Choose newest first; a bad newest file never falls back to an older success.
+    _, name = max(candidates)
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+              and before.st_uid == account.pw_uid and before.st_gid == account.pw_gid
+              and stat.S_IMODE(before.st_mode) in (0o400, 0o600)
+              and 0 < before.st_size <= MAX_LOCAL_BACKUP, "backup file identity, permissions or size differs")
+        def fresh():
+            age = dt.datetime.now(dt.timezone.utc).timestamp() - before.st_mtime
+            _need(0 <= age <= 26 * 3600, "backup is future dated or older than 26 hours")
+            _need(time.monotonic() < deadline, "backup observation timed out")
+        fresh()
+        digest, expanded = hashlib.sha256(), 0
+        with os.fdopen(os.dup(fd), "rb") as source:
+            compressed = 0
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                compressed += len(chunk)
+                _need(compressed <= MAX_LOCAL_BACKUP, "backup compressed size exceeds budget")
+                digest.update(chunk)
+                fresh()
+            _need(compressed == before.st_size, "backup changed during compressed read")
+            source.seek(0)
+            with gzip.GzipFile(fileobj=source) as archive:
+                for chunk in iter(lambda: archive.read(1024 * 1024), b""):
+                    expanded += len(chunk)
+                    _need(expanded <= 4 * MAX_LOCAL_BACKUP, "backup expanded size exceeds budget")
+                    fresh()
+        _need(expanded > 0, "backup gzip has no SQL payload")
+        fresh()
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=root, follow_symlinks=False)
+        _need(_installed_fingerprint(before) == _installed_fingerprint(after) == _installed_fingerprint(path)
+              and _installed_fingerprint(directory) == _installed_fingerprint(os.fstat(root)),
+              "backup file or inventory changed during observation")
+        return {"fileName": name, "sha256": digest.hexdigest(), "bytes": before.st_size,
+                "expandedBytes": expanded, "identity": list(_installed_fingerprint(before)),
+                "gzipIntegrityObserved": True, "localAgeLimitHours": 26, "restoreProven": False}
+    finally:
+        os.close(fd)
+
+
+def _host_filesystem_snapshot(*, deadline):
+    account = pwd.getpwnam("ubuntu")
+    _need(type(account.pw_uid) is int and account.pw_uid > 0
+          and type(account.pw_gid) is int and account.pw_gid > 0, "fixed ubuntu account identity differs")
+    with contextlib.ExitStack() as stack:
+        root = _host_storage_root()
+        stack.callback(os.close, root)
+        directories = {(): root}
+        identities = {}
+        for parts, policy in HOST_DIRECTORIES:
+            fd = stack.enter_context(_host_directory(directories[parts[:-1]], parts[-1], policy, account))
+            directories[parts] = fd
+            identities["/" + "/".join(parts)] = list(_directory_identity(os.fstat(fd)))
+        state_parent = _state_parent()
+        stack.callback(os.close, state_parent)
+        disk = os.fstatvfs(state_parent)
+        _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES,
+              "installation filesystem has less than the 5 GiB reserve")
+        backup = _local_backup_snapshot(directories[("srv", "sanq", "backups")], account, deadline=deadline)
+        return {"hostDirectories": identities, "backup": backup,
+                "installationFilesystemDevice": os.fstat(state_parent).st_dev,
+                "diskReserveSatisfied": True, "requiredFreeBytes": MIN_PRIVATE_FREE_BYTES,
+                "ubuntuUid": account.pw_uid, "ubuntuGid": account.pw_gid}
+
+
+def _observe_installed_filesystem(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True,
+                                      include_docker=True, include_systemd=True, include_filesystem=True)
 
 
 def main(argv=None):
