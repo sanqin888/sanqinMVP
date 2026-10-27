@@ -1,8 +1,22 @@
 # GHCR 发布与 Runtime 状态
 
-## D2 迁移Git对象绑定（本地待审）
+## D2 当前迁移库存与历史双读（本地待审）
 
-**2026-10-27 当前进度：D2_MIGRATION_GIT_SOURCE_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_MIGRATION_SNAPSHOT_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+Git对象批[PR #3018](https://github.com/sanqin888/sanqinMVP/pull/3018) head `9a18df2983674e03e714ae8f66482e09cfea5536` 经[CI #7723](https://github.com/sanqin888/sanqinMVP/actions/runs/40587929409)全绿，合并dev `eb17c43f29ceff3622cff50451b1137433916f65`；无CI修复，未安装。原批LOCAL/未运行描述保留为当时审阅状态。
+
+本批分支feat/runtime-minimal-migration-snapshot-20261027。新增固定保存API完整ID的docker exec读取命令，用/usr/bin/env -i清空NODE_OPTIONS/NODE_PATH等环境、固定PATH与/usr/local/bin/node --eval，只调用fs/crypto读取/app/apps/api/prisma/migrations普通SQL原字节，沿原collector的10000项/单项2MiB/合计64MiB预算。固定脚本无Prisma/npx/依赖安装或应用模块加载，不创建新容器；只扩运行前置白名单的准确形态，原Docker通用白名单仍拒绝exec。
+
+内部_installation_migration_snapshot重复两次：准确当前SHA的最新main CI/成对发布证明须匹配传入的已保存镜像pair；读取保存API ID的完整库存、保存DB ID的原固定只读SQL，DB身份和完整历史摘要必须与前置观察一致，再调用Git对象/全量已应用判定。两次库存/历史/Git摘要或发布证明变化阻断，只输出摘要/来源/容器身份，不返回SQL或历史正文。局部结果databaseMigrationParityProven/applicationReleaseAuthenticated=true只表示该函数在调用者给定已保存Docker/前置事实下的关系成立；canExecute=false/requiresHostRecheck=true，不构成可复用安装许可。
+
+该函数尚未接入原两锁覆盖的完整主机观察入口，调用者仍须负责锁、当前应用SHA和容器基线的前后重核；因此整体hostPreflightComplete/readyToInstall等仍未关闭。下一步将此阶段接入原全局双读，再审计剩余预检缺口后进入安装意图/临时拒绝门禁。未实际执行容器命令、数据库查询或生产安装。
+
+新增8项模型测试覆盖双读与保存ID、固定命令/环境/任意脚本拒绝、DB身份/历史/ID晚变、发布SHA/pair不一致、第二次历史/来源漂移、来源失败及坏ID/任意exec拒绝。仅Python3.10 AST/静态名字/方法核对，项目测试待CI。无新依赖包、九helper导入、持久化/CLI变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；仅原运行前置命令白名单接线，其余已有函数保持。固定17+Manifest/250/300、私有四文件与三永久门禁保持。三组研究继续暂停、不取消；完整恢复材料、真实安装、Mac入口及统一隔离验收仍OPEN。
+
+## D2 迁移Git对象绑定（源码已合并）
+
+**2026-10-27 当前进度：D2_MIGRATION_GIT_SOURCE_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 迁移纯判定批[PR #3017](https://github.com/sanqin888/sanqinMVP/pull/3017) head `904142b98c9a617b7d10d69010e928abc5493a78` 经[CI #7721](https://github.com/sanqin888/sanqinMVP/actions/runs/40587343957)全绿（4成功/6范围跳过；Release默认Python与3.10各755、Runtime1080、既有C1回归412），合并dev `a1a9a3d04d7210c87e05775b2863f3b446bfcb4d`，无CI修复。原批LOCAL/未运行文字为当时审阅状态，尚未安装。
 
