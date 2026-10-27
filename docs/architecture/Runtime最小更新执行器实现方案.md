@@ -1,8 +1,31 @@
 # Runtime 最小更新执行器实现方案
 
+## 无迁移异步任务贯通（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：NO_SQL_TASK_CONNECTED_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原release_task已接入同一无迁移计划的freeze→create/register→start/readiness→finalize；同一job锁/计划资源锁/维护目录FD贯穿阶段交接，四阶段主体提取为原入口与任务共同使用的内部函数，AST对照确认主体逻辑不变，不复制第二套发布器。执行/排队前拒绝pending SQL和目标等于当前版本；CLI提交确认改为--confirm-release，原--confirm-maintenance不再接受，unit前缀改为sanq-release-apply-，无已安装消费者。仅最终原finalize清标记已知完成返回ACTIVE；保留未知/事故语义。
+
+### 流程、互斥与终结边界
+
+1. 提交仍需root、固定task路径/权限、同版本helper API、有效三份启动门禁、无维护证据/未完结只读任务和同一计划时效。明确确认完整发布才systemd-run --no-block；未确认、旧确认参数、pending SQL或相同目标拒绝。排队结果不明仍不重试，不用latest重新选目标。
+2. systemd管理器身份/PID/cgroup/固定ExecStart/StopPost验证后，任务持原job锁→计划资源锁→维护目录FD，完整执行四阶段；直接调用同一阶段主体的锁内函数，不调用会再次加锁的外层入口，不增加重入锁/跳过锁布尔开关、任务数据库或版本权威。公共阶段入口仍获取原锁并委托同一主体；属于未安装内部工具的原子实现调整，marker v1/v2、计划/只读job/state schema不变。
+3. freeze重新采集同一目标（禁止pull），原计划/备份/历史/配置/成对证明变化拒绝，原停写记录先耐久；create只创建固定三服务并登记同一attempt，start只启动记录ID并验证；finalize仍独占原.env/唯一ACTIVE/准确原策略/最后clear的交接，不改变既有partial/unknown处理。
+4. 原所有阶段持锁至最终函数返回，包括重核/网络证明/备份读取/创建/健康/成功清标记，竞争任务与资源探测在阶段间也无法插入。status原维护阶段和unit仍可只读查询，深度联合观察因锁忙返回UNKNOWN，不冒充一致快照。锁释放不等于完成、重跑或恢复许可。
+5. 任务没有通用异常重写器或finally开业务；部分create、初始/终结fsync未知保留原阶段证据；启动/交接中途失败沿用原事故收尾。Python结束/被kill由原ExecStopPost独立处理保存ID。最终clear未知若marker已消失，仍可能是已选且运行的目标，StopPost不重建/反写版本；marker存在时可沿原路径停写/记事故。不能因unit成功单独认定发布完成。
+
+### 时间预算、交付与验收
+
+- 同一monotonic执行预算1800s，阶段进入/外部命令/每次GitHub调用前后检查剩余时间；命令timeout取本身上限与剩余预算较小者，原create180s、start30s、health90s、两次readiness各300s等局部限制保留。GitHub传输仍有自身15s超时，不改暂停的来源链研究。
+- systemd TimeoutStartSec从维护准备的900调整为2100，给进程级1800预算及有限收尾留出余量；TimeoutStopSec独立900，Restart=no/kill control-group/root/Memory256M/CPU50%不变。阻塞文件/同步无法由Python预算强制中断，以管理器硬超时兜底，真实行为仍待隔离验收；1800/2100/900不是停写保证或性能承诺。进程预算耗尽时其命令收尾可能同样被拒绝，应保留未确认并由新进程StopPost预算重新核对，不自动放行。
+- task一致API检查补四个锁内函数，并在停写前核controller写PENDING/原atomic writer/ACTIVE writer及SHA替换API，缺件先拒绝；八helper及三drop-in须统一验真交付；不增加第九helper或新unit模板，不修改17+Manifest/250/300旧guard。前批controller源码仍需正式Bundle/Manifest交付，不覆写现役文件。
+- 新增13项全任务离线测试，使用真实临时维护/计划文件和四阶段主体、Docker/PID1/采集/文件/网络证明替身，覆盖完整顺序/互斥/唯一ACTIVE、SQL拒绝、部分创建不重放、两次readiness失败、封口/清标记未知、预算/命令上限、竞争和旧确认参数拒绝；更新原task入口/安装API/无SQL夹具。仅Python3.10 grammar AST、阶段主体AST对照、方法名/差异/导入审阅，尚未执行项目测试，待授权提交后的最终head CI。
+
+本批只完成无迁移任务源码接线，不宣称第二批/项目完成。下一步：对最终head CI修复后，继续准确SQL批准/执行和受控回退；第三批固定交付/系统实际Python/权限/安装与Mac薄入口；统一真实隔离采集、连续两次更新、断线/SIGKILL/socket/daemon/VM/工具中断与恢复；最后独立授权生产过渡及至少一次准确main发布。三项研究继续暂停、不取消；无依赖包、业务schema/迁移、生产目录/unit/Docker/DB/AWS操作。
+
+连续更新修正已由[PR #2991](https://github.com/sanqin888/sanqinMVP/pull/2991) 最终head `f37426a7088be8ff7e189d0995617be5281012ce` 经 [CI #7664](https://github.com/sanqin888/sanqinMVP/actions/runs/40498211632) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各271、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `15fcbdcf1af0adbd32f48875e76073a918c89523`。此前本地未运行/未推送为原审阅时点；仍未安装/隔离验收。
 
 
-## 连续更新修正（2026-10-27，本地待审）
+
+## 连续更新修正（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：CONSECUTIVE_UPDATE_FIX_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**修正首次digest候选成功交接后，下一次维护仍只识别SHA标签的问题。原guard._inspect保留固定仓库/角色/完整ID及显式候选引用的精确检查；旧writer若声明digest，逐次以实际image ID核linux/amd64、RepoDigests和目标revision。入维护前再与准确已封存release的SHA标签或digest二选一对齐；后续停写/登记/启动/交接/事故收尾通过同一检查并核原保存image ID，无新marker字段、发布权威或恢复入口。新增7项离线测试方法未运行，其中一项从真实阶段代码完成第一次交接，再对同一digest容器进入下一计划的freeze与创建意图；Docker/采集/GitHub为替身，尚未完成真实连续两次发布验收。
 
@@ -110,7 +133,7 @@ marker v2只兼容扩充STARTING_CANDIDATES/CANDIDATES_READY及严格的完整�
 
 ### 验证与本批结束位置
 
-新增12项离线unittest方法，覆盖意图耐久/准确目标、同一root/plan/attempt/FROZEN、原writer/备份/外来对象拒绝、锁冲突、缺计划/残件、时钟倒退、初始/最终同步未知、未完成创建的保守收尾、禁止直接登记及记录变造；同步原16项候选测试fixture，让模拟创建发生在意图之后，更新task接口断言。仅临时私有目录与Docker/PID1替身，不实际运行create/start/SQL。项目测试未执行；仅Python3.10 grammar AST、测试保留方法名、差异/导入/引用静态审阅；前批CI不替代本批验证。
+新增13项离线unittest方法，覆盖意图耐久/准确目标、同一root/plan/attempt/FROZEN、原writer/备份/外来对象拒绝、锁冲突、缺计划/残件、时钟倒退、初始/最终同步未知、未完成创建的保守收尾、禁止直接登记及记录变造；同步原16项候选测试fixture，让模拟创建发生在意图之后，更新task接口断言。仅临时私有目录与Docker/PID1替身，不实际运行create/start/SQL。项目测试未执行；仅Python3.10 grammar AST、测试保留方法名、差异/导入/引用静态审阅；前批CI不替代本批验证。
 
 分支 `feat/runtime-minimal-creation-intent-20261026` 随后由[PR #2986](https://github.com/sanqin888/sanqinMVP/pull/2986) 最终head `1d5d19a12a7fa3abdcf902a7464c753c513c0a85` 经 [CI #7653](https://github.com/sanqin888/sanqinMVP/actions/runs/40400151439) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各203、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `d133e92eef9f76faeb8af8f1272e84eafaf02152`。上文未运行/未提交为原本地审阅时点，本地仍未执行项目测试。**本批不宣称创建协议或第二批执行已完成：**实际只create不启动的准确Compose/digest/no-restart配置、创建到登记/启动/验证的同一锁贯穿、SQL集合批准与执行、PENDING/ACTIVE和原策略/维护标记交接仍未接；begin/register各自锁仅保护自己的记录操作，返回不表示已持锁进入下一动作。完整create命令结果未知、部分创建及真实Docker行为必须在后续单一控制器接线/隔离环境处理。没有生产目录/unit安装、容器、数据库或AWS执行；真实断线/SIGKILL/socket/daemon/VM故障、第一批平台及完整交付合同、第三批过渡和最终发布均OPEN，三组研究继续暂停、不取消。
 

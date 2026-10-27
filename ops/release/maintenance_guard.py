@@ -1,8 +1,7 @@
 """Local maintenance preparation and cold-start gate; NOT installed/activated.
 
-The CLI only checks startup or reads status. freeze_for_plan is an unwired,
-operator-only adapter for future controlled execution. No release, restore,
-unfreeze, migration or service-start action is available.
+The CLI only checks startup or reads status. The separately verified task calls
+internal locked stages. No standalone release, restore, unfreeze or SQL CLI.
 """
 
 from __future__ import annotations
@@ -532,7 +531,14 @@ def _created_mounts(identifier: str, expected: list, run) -> None:
 
 def prepare_candidate_containers(identity: str, attempt: str, *, controller=None,
                                  run=collector.command, fetch=None, now=collector.now_utc) -> dict:
-    """Unwired no-migration creation slice. No start, SQL, env update or ACTIVE.
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _prepare_candidate_containers_locked(root, jobs_root, identity, attempt, controller=controller, run=run, fetch=fetch, now=now)
+
+
+def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: str, attempt: str, *, controller=None,
+                                 run=collector.command, fetch=None, now=collector.now_utc) -> dict:
+    """No-migration creation stage body. No start, SQL, env update or ACTIVE.
 
     Holds both original locks through revalidation, intent, PENDING, create and
     registration. Unknown outcomes retain evidence and are never replayed here.
@@ -545,51 +551,48 @@ def prepare_candidate_containers(identity: str, attempt: str, *, controller=None
           "installed controller lacks durable creation intent")
     if fetch is None:
         fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
-    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
-        job._no_pending(jobs_root)
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
-        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                      **job._observations(original))
-        before, installed, environment = collector._snapshot(controller, run)
-        _need(before == original["current"] and environment == original["environment"]
-              and plan.runtime_contract(installed, installed) == original["runtimeContract"]
-              and collector._history(controller, run) == original["migrationHistory"]
-              and collector._backup(controller) == original["backup"],
-              "frozen plan observations changed")
-        candidate = original["candidate"]
-        _need(release.verify_exact_candidate(original["current"]["applicationSha"],
-                                            candidate["sourceSha"], fetch) == candidate,
-              "candidate proof changed")
-        collector._resource_preflight(controller)
-        for image in candidate["images"].values():
-            collector._inspect_image(collector._pinned(image), collector._pinned(image),
-                                     candidate["sourceSha"], run)
-        expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
-        body = _creation_config(expanded, candidate)
-        _need(len(body) <= collector.MAX_OUTPUT, "creation input exceeds command budget")
-        database = _database_identity(controller, run)
-        # Re-observe the exact base after preparing private stdin, before any durable mutation.
-        _need(collector._snapshot(controller, run) == (before, installed, environment),
-              "configuration changed before creation")
-        _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
-        controller.write_creation_pending(original["current"]["applicationSha"], candidate["sourceSha"])
-        # Full config includes only the three app services and no depends_on/DB volumes.
-        # Compose create has no --no-deps option; DB exclusion is structural.
-        args = ["docker", "compose", "--project-name", "sanq-app", "--project-directory",
-                str(controller.ROOT), "--env-file", str(controller.ENV), "--parallel", "1",
-                "-f", "-", "create", "--no-build", "--pull", "never", "--force-recreate", *SERVICES]
-        run(args, input_bytes=body, timeout=180)
-        _need(_database_identity(controller, run) == database, "database changed during creation")
-        identifiers = {service: _container_id(controller, service, run) for service in SERVICES}
-        for service, identifier in identifiers.items():
-            _created_mounts(identifier, expanded["services"][service].get("volumes", []), run)
-        registered = _register_created_candidates_locked(root, identity, attempt, identifiers, run, now)
-        return {"planId": identity, "attemptId": registered["attemptId"],
-                "outcome": "CANDIDATES_CREATED_NOT_STARTED", "canExecute": False}
-
-
+    job._no_pending(jobs_root)
+    raw = storage.load_plan(identity)
+    original = plan.validate_plan(raw, identity)
+    _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                  **job._observations(original))
+    before, installed, environment = collector._snapshot(controller, run)
+    _need(before == original["current"] and environment == original["environment"]
+          and plan.runtime_contract(installed, installed) == original["runtimeContract"]
+          and collector._history(controller, run) == original["migrationHistory"]
+          and collector._backup(controller) == original["backup"],
+          "frozen plan observations changed")
+    candidate = original["candidate"]
+    _need(release.verify_exact_candidate(original["current"]["applicationSha"],
+                                        candidate["sourceSha"], fetch) == candidate,
+          "candidate proof changed")
+    collector._resource_preflight(controller)
+    for image in candidate["images"].values():
+        collector._inspect_image(collector._pinned(image), collector._pinned(image),
+                                 candidate["sourceSha"], run)
+    expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+    body = _creation_config(expanded, candidate)
+    _need(len(body) <= collector.MAX_OUTPUT, "creation input exceeds command budget")
+    database = _database_identity(controller, run)
+    # Re-observe the exact base after preparing private stdin, before any durable mutation.
+    _need(collector._snapshot(controller, run) == (before, installed, environment),
+          "configuration changed before creation")
+    _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
+    controller.write_creation_pending(original["current"]["applicationSha"], candidate["sourceSha"])
+    # Full config includes only the three app services and no depends_on/DB volumes.
+    # Compose create has no --no-deps option; DB exclusion is structural.
+    args = ["docker", "compose", "--project-name", "sanq-app", "--project-directory",
+            str(controller.ROOT), "--env-file", str(controller.ENV), "--parallel", "1",
+            "-f", "-", "create", "--no-build", "--pull", "never", "--force-recreate", *SERVICES]
+    run(args, input_bytes=body, timeout=180)
+    _need(_database_identity(controller, run) == database, "database changed during creation")
+    identifiers = {service: _container_id(controller, service, run) for service in SERVICES}
+    for service, identifier in identifiers.items():
+        _created_mounts(identifier, expanded["services"][service].get("volumes", []), run)
+    registered = _register_created_candidates_locked(root, identity, attempt, identifiers, run, now)
+    return {"planId": identity, "attemptId": registered["attemptId"],
+            "outcome": "CANDIDATES_CREATED_NOT_STARTED", "canExecute": False}
 
 def cleanup_after_task(identity: str, service_result: str, *, controller=None,
                        run=collector.command, now=collector.now_utc) -> dict:
@@ -638,7 +641,14 @@ def _incident_locked(root, identity, controller, bounded, now):
 
 def freeze_for_plan(identity: str, *, controller=None, run=collector.command,
                     observe=None, fetch=None, now=collector.now_utc) -> dict:
-    """Unwired maintenance adapter. Must NOT be called by the old deploy CLI."""
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _freeze_for_plan_locked(root, jobs_root, identity, controller=controller, run=run, observe=observe, fetch=fetch, now=now)
+
+
+def _freeze_for_plan_locked(root: int, jobs_root: int, identity: str, *, controller=None, run=collector.command,
+                    observe=None, fetch=None, now=collector.now_utc) -> dict:
+    """Maintenance stage body; caller holds job and plan locks."""
     job._root_operator()
     identity = storage._plan_id(identity)
     if controller is None:
@@ -646,59 +656,56 @@ def freeze_for_plan(identity: str, *, controller=None, run=collector.command,
     observe = collector.collect if observe is None else observe
     if fetch is None:
         fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
-    with job._locked_directory() as jobs_root, storage._directory_fd(MAINTENANCE_DIR) as root:
-        job._no_pending(jobs_root)
-        _need(not os.listdir(root), "unresolved maintenance evidence")
-        _installed_gate(run)  # No policy/stop mutation before installed gate checks.
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        started = job._timestamp(now)
-        plan.assert_same_observations(raw, identity, observed_at=started, **job._observations(original))
-        with storage.preparation_lock():
-            fresh_raw = observe(original["candidate"]["sourceSha"], cache_images=False)
-            _need(type(fresh_raw) is bytes and 0 < len(fresh_raw) <= plan.MAX_PLAN_BYTES,
-                  "invalid current observations")
-            fresh = plan.validate_plan(fresh_raw, json.loads(fresh_raw)["planId"])
-            observed_at = job._timestamp(now)
-            _need(plan._utc(started) <= plan._utc(fresh["createdAt"]) <= plan._utc(observed_at),
-                  "observation clock differs")
-            plan.assert_same_observations(raw, identity, observed_at=observed_at,
-                                          **job._observations(fresh))
-            sha = original["current"]["applicationSha"]
-            paired = release.sealed_release_for_sha(sha, fetch)
-            containers = _original_containers(controller, sha, paired, run)
-            backups = _backup(run)
-            record = {"schemaVersion": 1, "kind": "sanq-maintenance-marker", "planId": identity,
-                      "attemptId": uuid.uuid4().hex, "observedApplicationSha": sha,
-                      "originalContainers": containers, "backupUnits": backups,
-                      "phase": "ARMED", "createdAt": started, "updatedAt": observed_at,
-                      "errorCode": None, "canExecute": False}
-            _write(root, record, create=True)
-            try:
-                _need(_backup(run) == backups
-                      and _original_containers(controller, sha, paired, run) == containers,
-                      "baseline changed after maintenance arming")
-                for row in containers.values():
-                    run(["docker", "update", "--restart=no", row["containerId"]], timeout=45)
-                for row in containers.values():
-                    run(["docker", "stop", "--time", "30", row["containerId"]], timeout=45)
-                _assert_stopped(controller, record, run)
-                _need(_backup(run) == backups, "backup policy or state changed")
-                _installed_gate(run)
-            except BaseException:
-                _stop_best_effort(record, run)
-                try:
-                    _write(root, {**record, "phase": "INCIDENT", "updatedAt": job._timestamp(now),
-                                  "errorCode": "FENCE_UNCONFIRMED"})
-                except BaseException as record_error:
-                    raise release.ReleaseContractError(
-                        "FENCE_UNCONFIRMED: maintenance outcome could not be persisted"
-                    ) from record_error
-                raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained maintenance evidence")
-            frozen = {**record, "phase": "FROZEN", "updatedAt": job._timestamp(now)}
-            _write(root, frozen)  # Unknown final durability is never retried/cleared.
-            return frozen
-
+    job._no_pending(jobs_root)
+    _need(not os.listdir(root), "unresolved maintenance evidence")
+    _installed_gate(run)  # No policy/stop mutation before installed gate checks.
+    raw = storage.load_plan(identity)
+    original = plan.validate_plan(raw, identity)
+    started = job._timestamp(now)
+    plan.assert_same_observations(raw, identity, observed_at=started, **job._observations(original))
+    fresh_raw = observe(original["candidate"]["sourceSha"], cache_images=False)
+    _need(type(fresh_raw) is bytes and 0 < len(fresh_raw) <= plan.MAX_PLAN_BYTES,
+          "invalid current observations")
+    fresh = plan.validate_plan(fresh_raw, json.loads(fresh_raw)["planId"])
+    observed_at = job._timestamp(now)
+    _need(plan._utc(started) <= plan._utc(fresh["createdAt"]) <= plan._utc(observed_at),
+          "observation clock differs")
+    plan.assert_same_observations(raw, identity, observed_at=observed_at,
+                                  **job._observations(fresh))
+    sha = original["current"]["applicationSha"]
+    paired = release.sealed_release_for_sha(sha, fetch)
+    containers = _original_containers(controller, sha, paired, run)
+    backups = _backup(run)
+    record = {"schemaVersion": 1, "kind": "sanq-maintenance-marker", "planId": identity,
+              "attemptId": uuid.uuid4().hex, "observedApplicationSha": sha,
+              "originalContainers": containers, "backupUnits": backups,
+              "phase": "ARMED", "createdAt": started, "updatedAt": observed_at,
+              "errorCode": None, "canExecute": False}
+    _write(root, record, create=True)
+    try:
+        _need(_backup(run) == backups
+              and _original_containers(controller, sha, paired, run) == containers,
+              "baseline changed after maintenance arming")
+        for row in containers.values():
+            run(["docker", "update", "--restart=no", row["containerId"]], timeout=45)
+        for row in containers.values():
+            run(["docker", "stop", "--time", "30", row["containerId"]], timeout=45)
+        _assert_stopped(controller, record, run)
+        _need(_backup(run) == backups, "backup policy or state changed")
+        _installed_gate(run)
+    except BaseException:
+        _stop_best_effort(record, run)
+        try:
+            _write(root, {**record, "phase": "INCIDENT", "updatedAt": job._timestamp(now),
+                          "errorCode": "FENCE_UNCONFIRMED"})
+        except BaseException as record_error:
+            raise release.ReleaseContractError(
+                "FENCE_UNCONFIRMED: maintenance outcome could not be persisted"
+            ) from record_error
+        raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained maintenance evidence")
+    frozen = {**record, "phase": "FROZEN", "updatedAt": job._timestamp(now)}
+    _write(root, frozen)  # Unknown final durability is never retried/cleared.
+    return frozen
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)

@@ -1,7 +1,7 @@
-"""Uninstalled systemd transient maintenance-preparation task adapter.
+"""Uninstalled systemd transient no-migration release task.
 
-No application apply, migration, resume, restore or unfreeze. Submission only
-queues a task; status and logs must be queried after disconnect/unknown results.
+Only an explicitly confirmed fixed plan is queued. No SQL, replay, restore or
+recovery entry; query status/logs after disconnect or unknown results.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import inspect
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import collect_deployment_plan as collector
@@ -24,7 +25,10 @@ from release_contract import ReleaseContractError, require_sha
 
 TASK_SCRIPT = Path("/opt/sanq/runtime/ops/release/release_task.py")
 RUNTIME_ROOT = Path("/opt/sanq/runtime")
-UNIT_PREFIX = "sanq-release-prepare-"
+UNIT_PREFIX = "sanq-release-apply-"
+RUN_BUDGET_SECONDS = 1800
+START_TIMEOUT_SECONDS = 2100
+STOP_TIMEOUT_SECONDS = 900
 
 
 def _need(condition: bool, reason: str) -> None:
@@ -44,6 +48,10 @@ def _installed() -> None:
           and callable(getattr(guard, "register_created_candidates", None))
           and callable(getattr(guard, "prepare_candidate_containers", None))
           and callable(getattr(guard, "_incident_locked", None))
+          and callable(getattr(guard, "_freeze_for_plan_locked", None))
+          and callable(getattr(guard, "_prepare_candidate_containers_locked", None))
+          and callable(getattr(starter, "_start_and_verify_locked", None))
+          and callable(getattr(finalizer, "_finalize_ready_locked", None))
           and callable(getattr(starter, "start_and_verify", None))
           and callable(getattr(finalizer, "finalize_ready", None))
           and "policies" in inspect.signature(starter._running).parameters
@@ -115,12 +123,16 @@ def submit(identity: str, *, run=collector.command, now=collector.now_utc) -> di
         job._no_pending(root)
         raw = storage.load_plan(identity)
         original = plan.validate_plan(raw, identity)
+        _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+        _need(original["candidate"]["sourceSha"] != original["current"]["applicationSha"],
+              "target is already the current release")
         plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
                                       **job._observations(original))
     args = ["systemd-run", "--unit=" + _unit(identity), "--service-type=oneshot",
             "--remain-after-exit", "--no-block", "--slice=system.slice",
             "--property=User=root", "--property=Restart=no", "--property=KillMode=control-group",
-            "--property=TimeoutStartSec=900", "--property=TimeoutStopSec=900",
+            "--property=TimeoutStartSec=" + str(START_TIMEOUT_SECONDS),
+            "--property=TimeoutStopSec=" + str(STOP_TIMEOUT_SECONDS),
             "--property=WorkingDirectory=" + str(RUNTIME_ROOT),
             "--property=MemoryMax=256M", "--property=CPUQuota=50%",
             "--property=ExecStopPost=" + _command("cleanup", identity),
@@ -131,14 +143,70 @@ def submit(identity: str, *, run=collector.command, now=collector.now_utc) -> di
             "canExecute": False}
 
 
-def run_task(identity: str, *, run=collector.command) -> dict:
+def run_task(identity: str, *, run=collector.command, controller=None, fetch=None,
+             observe=None, now=collector.now_utc, clock=time.monotonic, pause=time.sleep) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
     _context(identity, "run", run)
-    result = guard.freeze_for_plan(identity, run=run)
-    _need(result["planId"] == identity and result["phase"] == "FROZEN"
-          and result["canExecute"] is False, "task did not finish maintenance preparation")
-    return {"planId": identity, "outcome": "MAINTENANCE_PREPARED", "canExecute": False}
+    if controller is None:
+        import deploy_release as controller
+    _need(all(callable(getattr(controller, name, None)) for name in (
+              "ensure_repo_location", "write_creation_pending", "atomic_write", "write_state",
+              "current_sha_from_text"))
+          and callable(getattr(getattr(controller, "RELEASE_LINE", None), "subn", None)),
+          "installed controller APIs are incomplete; do not enter maintenance")
+    if fetch is None:
+        fetch = lambda path: guard.release.github_json(
+            path, token=os.environ.get("GITHUB_TOKEN") or None)
+    deadline = clock() + RUN_BUDGET_SECONDS
+    def remaining():
+        value = deadline - clock()
+        _need(value > 0, "release task time budget exhausted; query retained evidence")
+        return value
+    def bounded(args, **kwargs):
+        kwargs["timeout"] = min(kwargs.get("timeout", 60), remaining())
+        return run(args, **kwargs)
+    original_fetch = fetch
+    def bounded_fetch(path):
+        remaining()
+        value = original_fetch(path)  # Fixed GitHub transport has its own 15s timeout.
+        remaining()
+        return value
+    if observe is None:
+        observe = lambda target, **kwargs: collector.collect(
+            target, controller=controller, run=bounded, fetch=bounded_fetch, **kwargs)
+    # One pair of original OS locks spans ALL stages, including stage handoffs.
+    # Locked implementations are the same bodies used by individual adapters.
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        job._no_pending(jobs_root)
+        storage.check_maintenance_clear(guard.MAINTENANCE_DIR)
+        original = plan.validate_plan(storage.load_plan(identity), identity)
+        _need(not original["pendingMigrations"], "SQL authorization path is not implemented")
+        _need(original["candidate"]["sourceSha"] != original["current"]["applicationSha"],
+              "target is already the current release")
+        remaining()
+        frozen = guard._freeze_for_plan_locked(root, jobs_root, identity, controller=controller,
+            run=bounded, observe=observe, fetch=bounded_fetch, now=now)
+        _need(frozen["planId"] == identity and frozen["phase"] == "FROZEN"
+              and frozen["canExecute"] is False, "freeze stage result differs")
+        attempt = job._attempt(frozen["attemptId"])
+        for stage, outcome in (
+                (guard._prepare_candidate_containers_locked, "CANDIDATES_CREATED_NOT_STARTED"),
+                (starter._start_and_verify_locked, "CANDIDATES_READY")):
+            remaining()
+            kwargs = {"controller": controller, "run": bounded, "fetch": bounded_fetch, "now": now}
+            if stage is starter._start_and_verify_locked:
+                kwargs.update(clock=clock, pause=pause)
+            result = stage(root, jobs_root, identity, attempt, **kwargs)
+            _need(result["planId"] == identity and result["attemptId"] == attempt
+                  and result["outcome"] == outcome and result["canExecute"] is False,
+                  "release stage result differs")
+        remaining()
+        # No outer exception handler rewrites a stage's unknown durability or
+        # retries final clear. ExecStopPost independently handles failure/SIGKILL.
+        return finalizer._finalize_ready_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=bounded, fetch=bounded_fetch, now=now)
+
 
 
 def cleanup_task(identity: str, *, run=collector.command) -> dict:
@@ -259,7 +327,7 @@ def main(argv=None) -> int:
         sub = commands.add_parser(name)
         sub.add_argument("plan_id")
         if name == "submit":
-            sub.add_argument("--confirm-maintenance", required=True, action="store_true")
+            sub.add_argument("--confirm-release", required=True, action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.command == "logs":
