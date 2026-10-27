@@ -8,7 +8,7 @@ import deployment_plan as plan
 import release_contract as release
 
 ENTRYPOINT = ["/bin/sh"]
-COMMAND = ["-lc", "cd /app/apps/api && exec npx prisma migrate deploy --schema=prisma/schema.prisma"]
+COMMAND = ["-lc", "cd /app/apps/api && exec npx --no-install prisma migrate deploy --schema=prisma/schema.prisma"]
 
 
 def need(condition, reason):
@@ -84,3 +84,21 @@ def assert_stopped(record, run):
     need(ids(record, run) == {row["containerId"]}, "migration container is missing or replaced")
     info = inspect_container(record, row["containerId"], run)
     need(info["Image"] == row["imageId"], "migration image identity changed")
+
+
+def creation_config(expanded, record):
+    """One fixed service; pass only the database URL via private config stdin."""
+    environment = expanded.get("services", {}).get("api", {}).get("environment")
+    need(type(environment) is dict and isinstance(environment.get("DATABASE_URL"), str)
+         and 0 < len(environment["DATABASE_URL"]) <= 16384, "database environment is missing or invalid")
+    service = {"image": collector._pinned(record["migration"]["release"]["images"]["sanq-api"]),
+        "container_name": "sanq-migrate-" + record["attemptId"], "restart": "no",
+        "entrypoint": ENTRYPOINT, "command": COMMAND, "privileged": False,
+        "environment": {"DATABASE_URL": environment["DATABASE_URL"].replace("$", "$$")},
+        "networks": ["default"], "cap_drop": ["ALL"],
+        "security_opt": ["no-new-privileges:true"], "mem_limit": "256m",
+        "cpus": 0.5, "pids_limit": 64, "healthcheck": {"disable": True},
+        "labels": {"io.sanq.release.role": "migration", "io.sanq.release.plan": record["planId"],
+                   "io.sanq.release.attempt": record["attemptId"]}}
+    return plan._canonical({"name": "sanq-app", "services": {"sanq-migration": service},
+        "networks": {"default": {"external": True, "name": "sanq-app_default"}}})
