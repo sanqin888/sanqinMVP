@@ -28,7 +28,7 @@ class SqlReviewTests(unittest.TestCase):
         self.pending = self.values["inventory"][-1]
         self.fetch = Mock(side_effect=self.blob)
 
-    def blob(self, path):
+    def blob(self, path, **kwargs):
         self.assertEqual(path, "/repos/sanqin888/sanqinMVP/git/blobs/" + self.pending["gitBlobSha"])
         return {"sha": self.pending["gitBlobSha"], "size": self.pending["bytes"],
                 "encoding": "base64", "content": base64.b64encode(SQL[self.pending["name"]]).decode()}
