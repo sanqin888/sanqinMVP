@@ -179,7 +179,8 @@ def _validate(value: dict) -> None:
     release.require_sha(value["observedApplicationSha"])
     _need(plan._utc(value["updatedAt"]) >= plan._utc(value["createdAt"]), "maintenance clock moved backwards")
     _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT", "CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
-                              "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED", "MIGRATION_CREATING", "MIGRATION_REGISTERED"), "invalid maintenance phase")
+                              "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED", "MIGRATION_CREATING", "MIGRATION_REGISTERED",
+                              "STARTING_MIGRATION", "MIGRATION_VERIFIED"), "invalid maintenance phase")
     _need(value["errorCode"] in ("FENCE_UNCONFIRMED", "TASK_FAILED_WRITERS_STOPPED")
           if value["phase"] == "INCIDENT" else value["errorCode"] is None,
           "invalid maintenance error code")
@@ -193,7 +194,8 @@ def _validate(value: dict) -> None:
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
     if version == 3:
-        _need(value["phase"] in ("MIGRATION_CREATING", "MIGRATION_REGISTERED", "INCIDENT"),
+        _need(value["phase"] in ("MIGRATION_CREATING", "MIGRATION_REGISTERED",
+                                  "STARTING_MIGRATION", "MIGRATION_VERIFIED", "INCIDENT"),
               "invalid migration phase")
         migration.validate(value["migration"], rows)
         _need(value["migration"]["release"]["sourceSha"] != value["observedApplicationSha"],
@@ -204,7 +206,8 @@ def _validate(value: dict) -> None:
     elif version == 1:
         _need(value["phase"] not in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED",
                                      "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "candidate registration is missing")
-        _need(value["phase"] not in ("MIGRATION_CREATING", "MIGRATION_REGISTERED"), "migration record missing")
+        _need(value["phase"] not in ("MIGRATION_CREATING", "MIGRATION_REGISTERED",
+                                     "STARTING_MIGRATION", "MIGRATION_VERIFIED"), "migration record missing")
     else:
         _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT",
                                  "STARTING_CANDIDATES", "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED"), "invalid candidate phase")
@@ -276,7 +279,9 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
                    "CANDIDATES_READY": ("FINALIZING", "INCIDENT"),
                    "FINALIZING": ("HANDOFF_COMMITTED", "INCIDENT"),
                    "HANDOFF_COMMITTED": ("INCIDENT",), "MIGRATION_CREATING": ("INCIDENT",),
-                   "MIGRATION_REGISTERED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
+                   "MIGRATION_REGISTERED": ("STARTING_MIGRATION", "INCIDENT"),
+                   "STARTING_MIGRATION": ("MIGRATION_VERIFIED", "INCIDENT"),
+                   "MIGRATION_VERIFIED": ("INCIDENT",), "INCIDENT": ("INCIDENT",)}
         ignored = {"phase", "updatedAt", "errorCode"}
         if migration_begin:
             ignored |= {"schemaVersion", "migration"}

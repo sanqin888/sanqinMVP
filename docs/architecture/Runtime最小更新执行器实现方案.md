@@ -1,6 +1,27 @@
 # Runtime 最小更新执行器实现方案
 
-## 迁移容器只创建与登记接线（2026-10-27，本地待审）
+## 已登记迁移执行与准确历史核对（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：MIGRATION_EXECUTE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一task新增内部execute_registered_migration及锁内主体，原job/计划锁和维护目录FD贯穿批准/时效、唯一PENDING与旧.env、Manifest/运行合同/展开配置、DB/history/备份/准确来源/缓存API digest与SQL inventory重核。只从同一v3/MIGRATION_REGISTERED进入；先耐久STARTING_MIGRATION再start已保存ID并wait，阶段monotonic预算900s（含重核与等待，start至多30s）。wait返回0还须确认同一对象exited/ExitCode=0、无OOM/Dead/Error/重启，以及数据库历史准确增加本计划有序pending对应的applied行、保留原历史含rolled-back行与重复数量，无额外SQL或失败项。复核完成写MIGRATION_VERIFIED，仍保留PENDING/维护标记/原策略禁止重启；不是ACTIVE或恢复许可。
+
+迁移只创建批已由[PR #2995](https://github.com/sanqin888/sanqinMVP/pull/2995) 最终head `b22b4ba0ad66d1eed2f798c02504048d5686e9a6` 经 [CI #7674](https://github.com/sanqin888/sanqinMVP/actions/runs/40512651573) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各315、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `49e1d65705119386b21c79c144bdf30d8c078ed8`。提交前修正Compose美元转义实现为两个美元符号，原回归用例随本head通过。其原LOCAL/未运行描述是原审阅时点，仍未安装/隔离验收。
+
+### 执行、持久化及未知边界
+
+- 仅同一plan/attempt、完整登记ID+image ID、独立准确SQL批准摘要及原目标证明匹配可进入；同一锁内核原writer停写、created迁移对象与完整inventory，无新pull/create/retry。已有starting/verified/incident记录均不可重放。普通URL/命令/SQL或任意容器ID不进入接口。
+- 执行前沿原starter的PENDING/配置核验，复核DB Id/Image/Mounts、原history/备份、门禁及备份unit；来源/镜像SQL探测后再次检查配置/DB/history，不能把原create时点观察当执行许可。固定start只用保存ID，wait仅等待该ID；原固定npx --no-install配置才会在容器内运行，未接旧tag-based迁移路径。
+- migration_container继续拥有对象完成与历史差量检查，不反向导入guard；guard只扩展未安装v3的两个阶段枚举，原持久字段不增、v1/v2仍只接受各自阶段，历史v3可读。新读取器必须与其余九helper统一安装，旧版读取器遇新阶段拒绝，不能混装或回退重放。此为未安装工具内部原子更新，业务/公开合同无变化。
+- 历史比较以name/sha256/state原始行的多重集核准确delta，不依据显示排序、不删旧rolled-back行、不把旧行“修正”为applied。固定只读查询仍规范排序；名称/摘要及数量必须与原历史+已批准pending全部一致。这是Prisma账本核对，不证明任意SQL的业务安全、结构/数据语义或外部副作用正确；人审和最终验收仍须完成。
+- STARTING写入fsync/readback未知时不start、不重写；start结果丢失、wait超时/非零、对象/DB/history结果未知或不符时，原incident收尾只停保存迁移ID及原writer，保留实际数据库和PENDING。阶段900s耗尽后收尾另用原每命令45s上限，若未来任务外层预算已耗尽仍由独立StopPost兜底；停止不能确认仍FENCE_UNCONFIRMED。无反向迁移/旧盘恢复、重试、清标记、restart恢复或删除迁移证据。
+- 最终VERIFIED写入耐久未知时仅尽力停保存对象，保留原件实际阶段，不覆盖为另一个已知结果。即使原件显示VERIFIED，调用失败也不代表操作成功或可以继续；查询/人工核对后另行处置。
+
+### 验证与下一步
+
+新增16项离线模型测试，覆盖同锁/保存ID/完整流程、准确批准与对象、历史/备份/来源/SQL漂移、初始和最终持久未知、start结果丢失、wait超时/非零、真实inspect返回的退出/OOM/Dead/Error/重启负例、部分/未知history、DB替换、预算/竞争和禁止重放；临时私有文件真实，Docker/SQL/配置/来源和时钟为替身。这里只进行Python3.10语法AST、静态名字/测试方法名/差异审阅，未运行项目测试。真实Docker wait/Prisma/package/Compose、systemd PID1、SSH断线/SIGKILL/socket/daemon/重启及恢复尚无本批证据。
+
+本批未接submit/run的SQL批准参数或完整异步SQL主线；原CLI仍拒绝pending SQL。后续须在同一批准/维护证据下接迁移后的应用create/start/finalize（实际history已变化，不能伪造原计划或删除SQL拒绝条件），再补受控回退、统一安装/Mac入口、真实隔离中断/恢复与连续双发布验收。九helper件数不变，无新执行器/批准数据库/current权威；17+Manifest/250/300旧guard保持，原controller正式Bundle交付仍待完成。业务schema/迁移/依赖/生产目录和unit不变；三组研究暂停、不取消，未执行生产Docker/systemd/SQL/AWS。
+
+## 迁移容器只创建与登记接线（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：MIGRATION_CREATE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原task新增内部prepare_migration_container，持原job/计划锁和维护目录FD贯穿重核、迁移意图、唯一PENDING、只创建、DB/history复核和准确ID登记。锁内重核准确SQL批准、计划时效/原配置/Manifest/运行合同、历史/备份/候选证明/缓存API digest及镜像SQL清单；配置只含一个迁移服务与已有external网络，DATABASE_URL通过原有界私有stdin传入并转义Compose美元符号，不转发JWT等API秘密。固定create --no-build --pull never、180s，不start/SQL/ACTIVE/改.env；未知保留意图/PENDING且禁止重跑。
 
