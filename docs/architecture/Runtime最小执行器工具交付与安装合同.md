@@ -1,8 +1,39 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D2 迁移观察接入原两锁（本地待审）
+## D2 剩余预检缺口审计（本地待审）
 
-**2026-10-27 当前进度：D2_LOCKED_MIGRATIONS_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_PREFLIGHT_GAP_AUDIT_LOCAL / DOCUMENTATION_ONLY / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+原两锁迁移接线批[PR #3020](https://github.com/sanqin888/sanqinMVP/pull/3020) head `e4d1dd8dc333832d605dc757d2db60de99d8b831` 经[CI #7727](https://github.com/sanqin888/sanqinMVP/actions/runs/40589684080)全绿（4成功/6范围跳过；Release默认Python与3.10各779项、Runtime1080、既有C1回归412），合并dev `6a1e423bcf4b0c1f74c6937d5a60cb6638ed0653`；无CI修复，未执行现场预检或安装。
+
+本批基于该dev，在docs/runtime-minimal-preflight-gap-audit-20261027完成剩余预检源码审计。结论：现有来源/17原件/私有材料/环境/挂载/网络/资源/备份gzip/systemd/迁移观察已接线，但完整有效应用配置和外部备份执行文件绑定仍未齐全，不能将hostPreflightComplete、applicationConfigurationObserved或readyToInstall改为true。审计仅静态事实，无生产故障判断。
+
+后续只读预检收敛为三批：A补端口/healthcheck/AutoRemove及保存身份漂移；B补固定外部备份脚本/helper/sudoers原件与旧封存源码绑定；C统一组合回归并逐条核对预检合同，明确真实隔离验收边界，再进入既定安装意图/临时拒绝门禁。完整表及退出条件见交付合同本节。不能仅因本地测试条目增加或多个观察flag为true而宣布预检完成。
+
+本批只更新六份文档；无代码/测试/依赖/业务schema/持久化格式/CLI变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner或项目测试。三组研究继续暂停、不取消；固定17+Manifest/250/300、九helper、私有四文件和三永久门禁不变。所有安装写入、准确原ID停写、手动快照available/恢复实物、Mac入口、统一真实隔离验收与生产交付仍OPEN。
+
+### 剩余预检审计：范围、批次与退出条件
+
+核对依据：install_minimal_executor.py的_docker_snapshot、_application_binding_snapshot、_systemd_disk_snapshot与_observe_installed_migrations；ops/backup/sanq-backup.service、backup-db.sh、sanq-backup.sudoers，以及C4路径合同runbook。此处路径来自源码/历史安装合同，未声称已观察当前VM。
+
+| 批次 | 已有证据与实际缺口 | 有限实现范围 | 退出条件 |
+| --- | --- | --- | --- |
+| A：有效容器配置 | 已核image/命令/Env/挂载/网络、Running/healthy/Privileged=false；未把端口与healthcheck绑定到已核Compose/镜像，未拒绝AutoRemove | 将固定角色端口的HostConfig.PortBindings及NetworkSettings.Ports、Config.Healthcheck、AutoRemove纳入只读核对和稳定摘要；同时列清该安装流程实际依赖的其他HostConfig字段，拒绝未经合同支持的偏差，不泛化成全Docker配置框架 | 错端口/公开绑定、伪healthcheck、AutoRemove=true、实际端点或保存身份中途变化均阻断；合法原配置通过；两锁/无写/无新CLI回归通过实际CI |
+| B：外部备份执行实物 | 已核备份unit字节/加载属性，ExecStart=/home/ubuntu/backup-db.sh；仅核Runtime内模板不证明这个外部可执行原件相同 | 对/home/ubuntu/backup-db.sh、/usr/local/sbin/sanq-backup-protected-nginx、/etc/sudoers.d/sanq-backup做固定路径nofollow/普通单链接/有界读取与前后身份核对，逐字绑定旧封存17中的对应成员；按既有安装合同核owner/mode，主脚本仍ubuntu执行，root helper/sudoers仍窄权限 | 缺失、链接、坏权限、任一字节/原路径inode变化阻断且保留原件；不执行备份、sudo或rclone，不修权限、不装文件，不将三外部对象加入17；原模型及新增回归实际CI通过 |
+| C：预检合同收口 | 当前多个局部观察成功仍缺整体资格；databaseLoginVerified/fullApplicationConfigurationProven等false不是可被静默忽略的完成证据 | 逐条对照REVIEW_INPUTS和后续阶段的责任；将A/B接入同一锁/截止/双读，添加有代表性的整体故障组合；明确DB目标/读取历史与实际登录验证的差别，必要检查以固定只读方式实现或写明仍阻断 | 所有必需项均有准确实现与失败测试；未证明项明确保持阻断，不能靠聚合flag或替身宣布通过；形成下一阶段可审阅的安装意图记录合同，真实隔离测试留D4且不得标已验收 |
+
+A的端口/healthcheck比较须采用已有Compose导出语义：美元只在对应导出值上按准确规则比较，不能改写原文件/创建配置或再次全局转义。B的/home/ubuntu脚本位于用户目录，按既有运行身份与前后路径身份核验，不擅自改为root所有；root helper/sudoers的父目录须保护。实际元数据不符只能阻断并审阅，历史runbook中的安装命令不能重跑。
+
+C还须量化一次完整观察的Git请求数、字节量与命令时间预算。当前迁移阶段内部两次、整体再两次会重复读取Git对象，是否触发速率/时限尚未实测，属于交付可用性待验，不是已经发生的生产问题。若需优化，只考虑本次受锁观察内准确不可变对象的复用；最新CI/发布状态与主机观察仍须新鲜，禁止跨调用“通过”缓存或新建版本权威。
+
+快照与恢复责任保持既定顺序：安装前先确认恢复材料的可获得性及保存方案，完整旧原件需在覆盖前耐久保存；手动快照的available确认属于保存原ID停写并抑制重启之后的RECOVERY_READY，不要求在仍营业时提前拍一份来满足只读预检。恢复实物、临时拒绝门禁、安装kind/journal、逐项安装与完成交接仍是D2后续实现，不能用预检报告代替。
+
+本审计不要求实现OS供应链/系统Python来源、自建CPython完整依赖证明、离机CAS/CA/CRL/enrollment/可信时间/跨克隆防护；这些继续暂停。也不新增timer、常驻服务、云凭据、常规helper或第二发布入口。下一批从A开始，A/B/C收口后沿现有D2安装阶段继续，不另起一轮无限预检设计。
+
+
+## D2 迁移观察接入原两锁（源码已合并）
+
+**2026-10-27 当前进度：D2_LOCKED_MIGRATIONS_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 库存/历史双读批[PR #3019](https://github.com/sanqin888/sanqinMVP/pull/3019) head `05ff70bd564a16004e9e78754a6e5d6d6a1b0919` 经[CI #7725](https://github.com/sanqin888/sanqinMVP/actions/runs/40589019392)全绿（4成功/6范围跳过；Release默认Python与3.10各771、Runtime1080、既有C1回归412），合并dev `cb42cd20cd3f16a061372456df246e9438573e02`，无CI修复；未执行生产预检或安装。旧批LOCAL/未运行描述仅为当时审阅状态。
 
