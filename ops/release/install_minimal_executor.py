@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D1 inert delivery materials and source-only review. No host installation API.
+"""Inert delivery and root-private material retention. No host installation API.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -7,6 +7,9 @@ Python from the kit. A transport manifest is not a release or root authority.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import datetime as dt
+import fcntl
 import ast
 import base64
 import gzip
@@ -14,6 +17,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import stat
 import sys
 import tarfile
@@ -358,6 +362,247 @@ def _save_new_artifact(path, payload):
     finally:
         os.close(parent)
     _need(_read_artifact(path, MAX_KIT) == payload, "artifact output readback differs")
+
+
+
+# D2-1: private, non-executing handoff only. No maintenance intent or host apply.
+STATE_PARENT = Path("/opt/sanq")
+PRIVATE_OWNER_UID = 0
+PRIVATE_GROUP_GID = 0
+MIN_PRIVATE_FREE_BYTES = 5 * 1024**3
+PRIVATE_FILES = frozenset(("retaining.json", "delivery-kit.tar.gz",
+                           "current-runtime-archive.tar.gz", "retained.json"))
+
+
+def _private_info(info, *, directory=False):
+    _need((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+          and info.st_uid == PRIVATE_OWNER_UID and info.st_gid == PRIVATE_GROUP_GID
+          and stat.S_IMODE(info.st_mode) == (0o700 if directory else 0o600)
+          and (directory or info.st_nlink == 1), "private material owner, mode, links or type differs")
+
+
+def _state_parent():
+    """Fixed trusted anchor; no caller-controlled root or root symlink traversal."""
+    _need(STATE_PARENT.is_absolute() and ".." not in STATE_PARENT.parts, "invalid fixed state parent")
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in (None, *STATE_PARENT.parts[1:]):
+            if name is not None:
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            info = os.fstat(fd)
+            _need(stat.S_ISDIR(info.st_mode) and info.st_uid == PRIVATE_OWNER_UID and info.st_gid == PRIVATE_GROUP_GID
+                  and not stat.S_IMODE(info.st_mode) & 0o022, "untrusted fixed state ancestor")
+        result, fd = fd, None
+        return result
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+@contextlib.contextmanager
+def _private_directory(parent, name, *, create=False, exclusive=False):
+    _need(name in ("deploy-state", "plans", "jobs", "maintenance", "installations")
+          or re.fullmatch(r"[a-f0-9]{64}", name) is not None, "unreviewed private directory name")
+    if create:
+        try:
+            os.mkdir(name, mode=0o700, dir_fd=parent)
+        except FileExistsError:
+            if exclusive:
+                raise
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        _private_info(os.fstat(fd), directory=True)
+        _need((os.fstat(fd).st_dev, os.fstat(fd).st_ino) ==
+              (os.stat(name, dir_fd=parent, follow_symlinks=False).st_dev,
+               os.stat(name, dir_fd=parent, follow_symlinks=False).st_ino),
+              "private directory changed during open")
+        if create:
+            # Also seal existing namespace entries after a prior interrupted provision.
+            os.fsync(fd)
+            os.fsync(parent)
+        yield fd
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def _private_lock(parent, name, *, create=False):
+    _need(name in (".release.lock", ".prepare.lock"), "unreviewed private lock")
+    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+    fd = os.open(name, flags | (os.O_CREAT if create else 0), 0o600, dir_fd=parent)
+    try:
+        _private_info(os.fstat(fd))
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise release.ReleaseContractError("another task or probe owns the original lock") from error
+        info = os.fstat(fd)
+        _private_info(info)
+        actual = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        _private_info(actual)
+        _need((info.st_dev, info.st_ino) == (actual.st_dev, actual.st_ino), "original lock was replaced")
+        if create:
+            os.fsync(fd)
+            os.fsync(parent)
+        yield
+    finally:
+        os.close(fd)  # Preserve the original lock inode.
+
+
+@contextlib.contextmanager
+def _private_session(*, create=False):
+    _need(os.geteuid() == 0, "private material handoff requires the authorized root operator")
+    with contextlib.ExitStack() as stack:
+        parent = _state_parent()
+        stack.callback(os.close, parent)
+        if create:
+            disk = os.fstatvfs(parent)
+            _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + MAX_KIT
+                  + bundle.MAX_ARCHIVE_BYTES + 16384, "insufficient private material storage reserve")
+        root = stack.enter_context(_private_directory(parent, "deploy-state", create=create))
+        folders = {name: stack.enter_context(_private_directory(root, name, create=create))
+                   for name in ("jobs", "plans", "maintenance", "installations")}
+        stack.enter_context(_private_lock(folders["jobs"], ".release.lock", create=create))
+        stack.enter_context(_private_lock(folders["plans"], ".prepare.lock", create=create))
+        yield folders
+
+
+def _private_read(root, name, maximum):
+    _need(name in PRIVATE_FILES or re.fullmatch(r"[a-f0-9]{64}\.json", name) is not None,
+          "unreviewed private material input")
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        _need(0 < before.st_size <= maximum, "private material size differs")
+        chunks, size = [], 0
+        while size <= maximum:
+            raw = os.read(fd, min(65536, maximum + 1 - size))
+            if not raw:
+                break
+            chunks.append(raw)
+            size += len(raw)
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=root, follow_symlinks=False)
+        fingerprint = lambda v: (v.st_dev, v.st_ino, v.st_size, v.st_mtime_ns, v.st_ctime_ns, v.st_nlink)
+        _private_info(after)
+        _private_info(path)
+        _need(size == before.st_size and fingerprint(before) == fingerprint(after) == fingerprint(path),
+              "private material changed during read")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _private_write(root, name, raw):
+    _need(name in PRIVATE_FILES and type(raw) is bytes and 0 < len(raw) <= MAX_KIT,
+          "unreviewed private material output")
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
+    try:
+        _private_info(os.fstat(fd))
+        remaining = memoryview(raw)
+        while remaining:
+            count = os.write(fd, remaining)
+            _need(count > 0, "short private material write")
+            remaining = remaining[count:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.fsync(root)
+    _need(_private_read(root, name, MAX_KIT) == raw, "private material readback differs")
+
+
+def _idle_for_materials(folders):
+    _need(not os.listdir(folders["maintenance"]), "maintenance evidence blocks material handoff")
+    names = os.listdir(folders["jobs"])
+    _need(len(names) <= 1024, "job observation budget exceeded")
+    for name in names:
+        if name == ".release.lock":
+            continue
+        _need(re.fullmatch(r"[a-f0-9]{64}\.json", name) is not None, "unknown or partial observation job")
+        raw = _private_read(folders["jobs"], name, 4096)
+        value = json.loads(raw, object_pairs_hook=_unique)
+        _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "planId", "attemptId", "phase",
+              "createdAt", "updatedAt", "errorCode", "canExecute"}
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-read-only-precheck" and value["planId"] == name[:-5]
+              and isinstance(value["attemptId"], str) and re.fullmatch(r"[a-f0-9]{32}", value["attemptId"])
+              and value["phase"] in ("READY", "BLOCKED") and value["canExecute"] is False,
+              "unfinished or invalid observation job")
+        _need(value["errorCode"] in ("PRECHECK_FAILED", "INTERRUPTED_OBSERVATION", "ABANDONED_OBSERVATION")
+              if value["phase"] == "BLOCKED" else value["errorCode"] is None,
+              "invalid observation job error")
+        stamps = []
+        for key in ("createdAt", "updatedAt"):
+            stamp = value[key]
+            _need(isinstance(stamp, str) and re.fullmatch(
+                r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z", stamp),
+                "invalid observation job time")
+            stamps.append(dt.datetime.fromisoformat(stamp[:-1] + "+00:00"))
+        _need(stamps[1] >= stamps[0] and raw == _json(value), "job time or canonical bytes differ")
+
+
+def _retention_record(payload, source_sha, current_runtime, current_source_sha, *, complete=False):
+    identity = {"sourceSha": release.require_sha(source_sha),
+                "currentArchiveSourceSha": release.require_sha(current_source_sha),
+                "kitSha256": _hash(payload), "currentArchiveSha256": _hash(current_runtime)}
+    retention = _hash(b"sanq-minimal-private-materials-v1\0" + _json(identity))
+    return {"schemaVersion": 1, "kind": "sanq-private-install-materials", "retentionId": retention,
+            **identity, "kitBytes": len(payload), "currentArchiveBytes": len(current_runtime),
+            "phase": "MATERIALS_RETAINED" if complete else "RETAINING",
+            "requiresHostRecheck": True, "installedBaselineObserved": False, "readyToInstall": False,
+            "canExecute": False, "authorizedToMutateProduction": False}
+
+
+def _retained_contents(root, identity):
+    _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
+    _need(set(os.listdir(root)) == PRIVATE_FILES, "private material handoff is incomplete or has leftovers")
+    kit = _private_read(root, "delivery-kit.tar.gz", MAX_KIT)
+    old = _private_read(root, "current-runtime-archive.tar.gz", bundle.MAX_ARCHIVE_BYTES)
+    intent = _private_read(root, "retaining.json", 4096)
+    complete = _private_read(root, "retained.json", 4096)
+    value = json.loads(complete, object_pairs_hook=_unique)
+    _need(type(value) is dict, "private material record differs")
+    expected = _retention_record(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], complete=True)
+    _need(expected["retentionId"] == identity and complete == _json(expected)
+          and intent == _json({**expected, "phase": "RETAINING"}), "private material records or hashes differ")
+    return kit, old, expected
+
+
+def _retain_verified_materials(payload, source_sha, current_runtime, current_source_sha, *, fetch=release.github_json):
+    """Internal D2-1 only. Never writes a maintenance marker, unit or Runtime file."""
+    _need(os.geteuid() == 0, "private material handoff requires the authorized root operator")
+    review = review_transition(payload, source_sha, current_runtime, current_source_sha, fetch=fetch)
+    _need(not review["requiresAdditionalPlatformReview"], "artifact transition exceeds tool-only scope")
+    intent = _retention_record(payload, source_sha, current_runtime, current_source_sha)
+    with _private_session(create=True) as folders:
+        _idle_for_materials(folders)
+        with _private_directory(folders["installations"], intent["retentionId"], create=True, exclusive=True) as root:
+            _private_write(root, "retaining.json", _json(intent))
+            _private_write(root, "delivery-kit.tar.gz", payload)
+            _private_write(root, "current-runtime-archive.tar.gz", current_runtime)
+            # Fresh trust reads, not saved booleans, bracket the private copies.
+            _need(review_transition(payload, source_sha, current_runtime, current_source_sha, fetch=fetch) == review,
+                  "material source review changed before completion")
+            _idle_for_materials(folders)
+            complete = {**intent, "phase": "MATERIALS_RETAINED"}
+            _private_write(root, "retained.json", _json(complete))
+            _retained_contents(root, intent["retentionId"])
+    return {**complete, "outcome": "MATERIALS_RETAINED", "hostPreflightComplete": False}
+
+
+def _inspect_private_materials(identity, *, fetch=release.github_json):
+    """Read retained bytes and refresh source evidence, never infer a right to install."""
+    _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
+    with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
+        kit, old, value = _retained_contents(root, identity)
+        review = review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
+        _need(not review["requiresAdditionalPlatformReview"], "retained transition exceeds tool-only scope")
+        _need(_retained_contents(root, identity) == (kit, old, value), "private material observation changed")
+        return {**value, "outcome": "PRIVATE_MATERIALS_OBSERVED", "operationSuccessProven": False,
+                "hostPreflightComplete": False}
 
 
 def main(argv=None):
