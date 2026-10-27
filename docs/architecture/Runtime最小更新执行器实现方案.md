@@ -1,8 +1,34 @@
 # Runtime 最小更新执行器实现方案
 
-## 回退兼容确认与锁内复核（2026-10-27，本地待审）
+## 受控回退停写（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：ROLLBACK_PREFLIGHT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原plan新增独立准确兼容确认及新旧现场审阅原件比对，collector新增show-rollback-sql，只展示当前数据库比旧镜像多出的已应用SQL。原task新增check-rollback <plan-id> --approve-compatibility <准确摘要>：持原job锁和计划锁，禁止未完结job/维护记录，缓存模式重新采集两镜像/两份SQL来源/现场基线，结束前重读原计划与门禁；只返回BASELINE_RECHECKED，不能排队或执行回退。canExecute/databaseCompatibilityProven/incidentRecoveryAuthorized始终false，executionImplemented=false。
+**2026-10-27 当前进度：ROLLBACK_FREEZE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原guard增加内部freeze_rollback_for_plan及锁内主体，持原job/计划锁和维护目录FD，核typed原件、独立准确兼容确认、缓存镜像现场重采集、时间/来源与实际三writer，再与普通更新共用同一arm/停写主体。新增未安装v5维护记录保存准确目标proof与确认摘要；先持久ARMED和原ID/image/restart策略，再仅对保存ID设restart=no并stop，重核后FROZEN。当前应用可已退出或不健康，未知/替换/额外对象仍阻断；不改唯一state/.env或执行SQL。
+
+回退复核批已由[PR #3001](https://github.com/sanqin888/sanqinMVP/pull/3001) 最终head `ed3ee4af58f827fa10d3940d581915135dcea0d5` 经 [CI #7688](https://github.com/sanqin888/sanqinMVP/actions/runs/40538401235) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各417、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `07ba60c8b470c53a8eb30fb365741056f261b48a`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 同一原件与实际对象
+
+- 内部适配器持原job锁、计划锁及维护目录FD，未完结job/任何维护残留先拒绝；核原安装门禁并只从load_rollback_review读取准确id，assert_rollback_compatibility核独立摘要。重采collect_rollback(cache_images=False)，新观测须在本次尝试开始后、最终观测前，除采集时刻外全部字段须与原计划一致；再核准确历史目标来源。无target/latest发现、健康绕过开关或另建批准/state数据库。
+- 当前镜像仍通过sealed_release_for_sha与实际image ID/digest/revision/平台核验。原_original_containers新增仅供回退的include_exited模式：只接受running/Running=true或exited/Running=false，且Restarting/Paused/Dead均false；每个role的完整对象集只能是本次准确ID。Health不作门禁，created/restarting/dead、未知或替换对象不自动归为可回退。默认前向分支的原running条件保持。
+- 准确原ID、实际image ID及原restart策略（含on-failure次数）和备份unit状态写入同一维护记录；v5额外rollback仅含已审目标release与approvalSha256，不增加current/previous权威。v5仅允许ARMED/FROZEN/INCIDENT，无candidate/migration字段；同schema普通转换继续沿原不可变字段检查，不能改目标/确认、降级或借用前向创建阶段。
+
+### 共享停写顺序和失败边界
+
+普通前向freeze的原arm→三个restart=no→三个stop→逐保存ID确认→FROZEN主体提取为_arm_and_freeze_locked；AST对照除新回退分支/核验回调外保持同一顺序、相同45s命令上限和错误语义，不复制另一发布器。回退在ARMED前、ARMED后策略变化前、停止后均重核原计划字节、安装/配置/运行pin/环境、唯一state原字节、SQL历史/备份与同一DB Id/Image/Mounts，并核时间/备份有效期；补充原两锁内未完结job检查。实际挂载和两份SQL完整来源仍由原重采collector验证，采集可启动原隔离文件探针，并非主机零写入。
+
+ARMED必须文件/目录fsync及读回已知完成才改策略；初始持久结果未知不发后续业务变更。ARMED后观察/策略/停止失败只尽力update=no并stop已保存原ID，保留INCIDENT/FENCE_UNCONFIRMED，不猜新对象或恢复服务。v5停止核验额外要求role全集仍只含原ID、Dead=false；额外对象不因发现就被采用或操作。最终FROZEN写入/同步未知保持实际原件，不改写为已知结果、不清标记或重试。原cleanup_after_task沿同一原件与保存ID收尾，保留回退scope；cold-start门禁仍见任何残留即阻断，不增加finally重开路径。
+
+### 验证、交付与结束位置
+
+新增21项离线模型测试，覆盖不健康/已退出应用、准确目标/确认/原策略先保存、前向仍拒绝退出对象、缺/错确认、fresh/proof漂移、created/paused/restarting/dead/状态不一致、额外writer前后出现、DB/历史晚期漂移、state原字节与计划读回变化、root/安装门禁/备份/残留拒绝、原两锁竞争、初始与最终fsync未知、update/stop失败、原task失败收尾、v5结构/不可变scope与阶段拒绝、旧观测/过期备份，以及前向创建/CLI不能采用回退记录。私有计划/维护文件与锁为可丢弃临时实物；Docker/GitHub/DB/PID1/现场采集为替身。仅Python3.10 AST、静态名字/重复方法/差异及共享停写主体AST等价审阅，未运行项目测试，不把前批417等结果当本批通过。
+
+本批为未安装工具内部原子增量，guard仍拥有原维护事实/转换/失败收尾，collector/plan/store和task职责不移动。原_write IO/转换主体、stop_best_effort、incident/冷启动及CLI均未变；v1–v4字段集合及普通前向判断保持。无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner；17+Manifest/250/300旧guard不变。v5须与九helper统一验真交付，旧读者遇v5拒绝，不能混装或直接覆盖现役受保护源。
+
+本批仅完成内部回退停写阶段，尚无回退任务提交、旧镜像create/register/start/readiness、唯一rolled-back交接或清标记；v5当前仅接受ARMED/FROZEN/INCIDENT，旧前向/SQL路径不能采用它。check-rollback仍只观察，不触发新停写函数；不从持久FROZEN推导重试/续跑许可，不自动恢复策略/服务、反向SQL或旧盘。下一步在同一原计划/兼容确认/维护记录下接回退候选创建与登记、启动就绪和成功交接，再接异步任务；统一九helper/三drop-in、固定17+Manifest正式Bundle过渡、Mac薄入口及真实隔离故障/恢复/连续双发布验收仍OPEN。三组研究继续暂停、不取消，无依赖/业务schema/迁移文件或生产Docker/systemd/SQL/AWS操作。
+
+## 回退兼容确认与锁内复核（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原plan新增独立准确兼容确认及新旧现场审阅原件比对，collector新增show-rollback-sql，只展示当前数据库比旧镜像多出的已应用SQL。原task新增check-rollback <plan-id> --approve-compatibility <准确摘要>：持原job锁和计划锁，禁止未完结job/维护记录，缓存模式重新采集两镜像/两份SQL来源/现场基线，结束前重读原计划与门禁；只返回BASELINE_RECHECKED，不能排队或执行回退。canExecute/databaseCompatibilityProven/incidentRecoveryAuthorized始终false，executionImplemented=false。
 
 回退采集批已由[PR #3000](https://github.com/sanqin888/sanqinMVP/pull/3000) 最终head `ee12e4f1bb69c4cdee31e97ae7e6b1763bc0fd85` 经 [CI #7686](https://github.com/sanqin888/sanqinMVP/actions/runs/40532730955) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各399、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `05c65d07f2ee059cdaf012378075e34f021ec747`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
 
