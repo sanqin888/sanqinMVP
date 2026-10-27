@@ -59,9 +59,11 @@ class TaskContextTests(unittest.TestCase):
         with patch.object(task, "__file__", str(source)), patch.object(task, "TASK_SCRIPT", source):
             self.real_installed()
             for api in ("cleanup_after_task", "begin_candidate_creation", "register_created_candidates",
-                        "prepare_candidate_containers"):
+                        "prepare_candidate_containers", "_incident_locked"):
                 with patch.object(guard, api, None), self.assertRaises(ReleaseContractError):
                     self.real_installed()
+            with patch.object(task.starter, "start_and_verify", None), self.assertRaises(ReleaseContractError):
+                self.real_installed()
             source.chmod(0o666)
             with self.assertRaises(ReleaseContractError):
                 self.real_installed()
