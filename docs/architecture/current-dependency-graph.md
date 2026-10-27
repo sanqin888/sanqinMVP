@@ -1,8 +1,24 @@
 # Current 12-context dependency graph
 
-## D2 剩余预检缺口审计（本地待审）
+## D2 预检A有效容器配置（本地待审）
 
-**2026-10-27 当前进度：D2_PREFLIGHT_GAP_AUDIT_LOCAL / DOCUMENTATION_ONLY / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_EFFECTIVE_CONFIGURATION_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+审计文档[PR #3021](https://github.com/sanqin888/sanqinMVP/pull/3021) head `8d6ea058fcfc525b832845de105c7aec645a462c` 经[CI #7729](https://github.com/sanqin888/sanqinMVP/actions/runs/40590497085)成功（仅scope成功，其余9项范围跳过，未运行项目测试），合并dev `1fa95bbc7253a3a7ca0278207b410e97e13b8898`。
+
+本批从该dev建立feat/runtime-minimal-effective-configuration-20261027，实现审计A的端口/healthcheck/AutoRemove只读核对。固定角色只允许127.0.0.1上的同号TCP端口：API4000/5555、worker4001、web3000、DB5432；Compose ports、HostConfig.PortBindings与NetworkSettings.Ports的实际发布项逐项一致，拒绝缺多/重复/公开地址/UDP或错端口。镜像暴露但未发布的Ports=null不当成对外端口，不生成端口修复。
+
+保存完整容器ID/image/config摘要重新核对，AutoRemove/PublishAllPorts/Privileged须严格false。healthcheck从已观察image默认值合并Compose准确覆盖，核Test/Interval/Timeout/Retries/StartPeriod/StartInterval及类型；禁止disable/NONE/未知字段，显式时长只接受整数ns/us/ms/s/m/h，非支持格式阻断不猜测。Compose导出test中的美元按原规则只解码一次，实际/image默认不改；不执行healthcheck命令或改容器。
+
+新严格bool include_effective_configuration要求此前直到migrations全部启用，内部_observe_installed_effective_configuration在原两锁/同截止/全局双读内调用新阶段；旧入口默认不调用。结果仅effectiveContainerConfigurationObserved=true与各角色端口/health摘要及保存ID，applicationConfigurationObserved/hostPreflightComplete/readyToInstall/canExecute等整体许可继续false。当前明确依赖的HostConfig检查为原restart策略、实际挂载/网络与解析覆盖、Privileged，加本批AutoRemove/PublishAllPorts/PortBindings；并不声称已比较所有Docker可选HostConfig字段或证明全应用配置。
+
+新增8项离线Docker模型测试：合法摘要/输入不变、自动删除/自动发布/提权、缺多/公开/不一致实际端口、Compose端口/协议/重复、health命令/时长/整数类型/disable漂移、美元一次解码与未发布端口、保存config与时长格式、旧入口/前置开关/无CLI。仅Python3.10 AST、全局名字/方法/空白审阅及准确读回，项目测试待CI。组合全阶段故障与真实Compose导出差异留C/D4，不将模型等同真实Docker验收。
+
+A源码本地完成，尚未提交；下一批B补外部备份脚本/helper/sudoers绑定，之后C统一组合及预检合同收口。安装意图、临时拒绝门禁、完整恢复实物与准确停写/快照、逐文件安装/交接、Mac入口和统一真实隔离验收仍OPEN。无新依赖包/九helper导入/持久化格式/公开CLI或业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、私有四文件及三永久门禁保持，三组研究继续暂停、不取消。未执行现场预检或生产安装。
+
+## D2 剩余预检缺口审计（已合并）
+
+**2026-10-27 当前进度：D2_PREFLIGHT_GAP_AUDIT_MERGED_DEV / DOCUMENTATION_ONLY / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 原两锁迁移接线批[PR #3020](https://github.com/sanqin888/sanqinMVP/pull/3020) head `e4d1dd8dc333832d605dc757d2db60de99d8b831` 经[CI #7727](https://github.com/sanqin888/sanqinMVP/actions/runs/40589684080)全绿（4成功/6范围跳过；Release默认Python与3.10各779项、Runtime1080、既有C1回归412），合并dev `6a1e423bcf4b0c1f74c6937d5a60cb6638ed0653`；无CI修复，未执行现场预检或安装。
 
