@@ -1,8 +1,22 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：D2迁移观察接入原两锁
+
+**2026-10-27 当前进度：D2_LOCKED_MIGRATIONS_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+库存/历史双读批[PR #3019](https://github.com/sanqin888/sanqinMVP/pull/3019) head `05ff70bd564a16004e9e78754a6e5d6d6a1b0919` 经[CI #7725](https://github.com/sanqin888/sanqinMVP/actions/runs/40589019392)全绿（4成功/6范围跳过；Release默认Python与3.10各771、Runtime1080、既有C1回归412），合并dev `cb42cd20cd3f16a061372456df246e9438573e02`，无CI修复；未执行生产预检或安装。旧批LOCAL/未运行描述仅为当时审阅状态。
+
+本批从该dev建立feat/runtime-minimal-locked-migrations-20261027。将已实现的迁移库存/历史/Git来源双读接入原_observe_installed_runtime：新增严格bool include_migrations，必须启用全部既有阶段直到application_binding；新内部_observe_installed_migrations只打开这些开关。当前SHA取自本轮原配置观察，保存容器与镜像pair取自本轮Docker，DB身份/历史摘要取自本轮prerequisites，命令沿同一monotonic deadline与原最小环境。两次全局观察均在原job/plan两锁内执行该阶段，比较完整稳定结果，并保留前后材料/来源/原文件与维护空闲复核。
+
+仅迁移分支成功时返回databaseMigrationParityProven/applicationReleaseAuthenticated=true与摘要，不改旧接口默认行为；整体hostPreflightComplete/installedBaselineObserved/applicationConfigurationObserved/readyToInstall/canExecute/authorizedToMutateProduction/operationSuccessProven继续false、requiresHostRecheck=true。迁移阶段自身双读与全局双读共同覆盖来源/库存/历史中途变化，不产生持久化批准或新应用版本权威；失败直接保留实际证据，不写marker或恢复业务。完整主机预检仍部分完成，不能据此安装。
+
+新增8项组合模型测试：两次接线/权限恒false、原两锁跨度、全局迁移摘要漂移、晚期维护marker保留、来源失败传播、旧接口不触发新阶段、前置开关/严格bool和无公开CLI。依赖已合并的独立采集模型，组合测试中的迁移阶段为替身，不能当真实Docker/DB/Node/PID1验收。仅Python3.10 AST、全局名字/方法钩子、差异及读回检查；项目测试待CI，不把771当本批通过。
+
+下一步按合同审计剩余有效配置/主机预检缺口，收口后进入安装意图与临时拒绝门禁；恢复实物/准确原ID停写/快照available、逐文件安装与交接、D3 Mac薄入口和D4统一真实隔离验收仍OPEN。无新依赖包/九helper导入/CLI/持久化格式变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner。仅原观察主体接线加一内部包装，采集/来源/命令等全部其他已有函数保持；固定17+Manifest/250/300、私有四文件/三永久门禁不变。三组研究继续暂停、不取消；无业务schema/迁移或生产操作。
+
 ## 2026-10-27 — 最小更新执行器：D2当前迁移库存与历史双读
 
-**2026-10-27 当前进度：D2_MIGRATION_SNAPSHOT_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-27 当前进度：D2_MIGRATION_SNAPSHOT_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 Git对象批[PR #3018](https://github.com/sanqin888/sanqinMVP/pull/3018) head `9a18df2983674e03e714ae8f66482e09cfea5536` 经[CI #7723](https://github.com/sanqin888/sanqinMVP/actions/runs/40587929409)全绿，合并dev `eb17c43f29ceff3622cff50451b1137433916f65`；无CI修复，未安装。原批LOCAL/未运行描述保留为当时审阅状态。
 
