@@ -140,15 +140,22 @@ def _container_id(controller, service: str, run) -> str:
     return _id(run(collector._compose(controller, "ps", "-a", "-q", service)).strip())
 
 
-def _original_containers(controller, sha: str, paired: dict, run) -> dict:
+def _original_containers(controller, sha: str, paired: dict, run, *, include_exited: bool = False) -> dict:
     result = {}
     for service in SERVICES:
         identifier = _container_id(controller, service, run)
         info = _inspect(identifier, service, sha, run)
         state = info["State"]
-        _need(state.get("Status") == "running" and state.get("Running") is True
-              and state.get("Restarting") is False and state.get("Paused") is False,
-              "current writer is not steadily running")
+        if include_exited:
+            _need(state.get("Status") in ("running", "exited")
+                  and state.get("Running") is (state["Status"] == "running")
+                  and state.get("Restarting") is False and state.get("Paused") is False
+                  and state.get("Dead") is False, "rollback writer state is unresolved")
+            _need(_role_ids(service, run) == {identifier}, "unexpected rollback writer")
+        else:
+            _need(state.get("Status") == "running" and state.get("Running") is True
+                  and state.get("Restarting") is False and state.get("Paused") is False,
+                  "current writer is not steadily running")
         name = "sanq-web" if service == "web" else "sanq-api"
         pinned = collector._pinned(paired["images"][name])
         _need(info["Config"]["Image"] in (f"ghcr.io/sanqin888/{name}:{sha}", pinned),
@@ -168,9 +175,9 @@ def _validate(value: dict) -> None:
         "errorCode", "canExecute"}
     _need(type(value) is dict, "maintenance record differs")
     version = value.get("schemaVersion")
-    _need(type(version) is int and version in (1, 2, 3, 4)
-          and set(value) == (fields if version == 1 else fields |
-              ({"candidate"} if version == 2 else {"migration"} if version == 3 else {"candidate", "migration"})),
+    extra = {1: set(), 2: {"candidate"}, 3: {"migration"},
+             4: {"candidate", "migration"}, 5: {"rollback"}}
+    _need(type(version) is int and version in extra and set(value) == fields | extra[version],
           "maintenance fields differ")
     _need(type(value["schemaVersion"]) is int
           and value["kind"] == "sanq-maintenance-marker" and value["canExecute"] is False,
@@ -194,7 +201,16 @@ def _validate(value: dict) -> None:
         release.checked_digest(row["imageId"])
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
-    if version == 3:
+    if version == 5:
+        _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT")
+              and type(value["rollback"]) is dict
+              and set(value["rollback"]) == {"release", "approvalSha256"},
+              "rollback maintenance fields or phase differ")
+        plan._candidate(value["rollback"]["release"])
+        plan._sha256(value["rollback"]["approvalSha256"])
+        _need(value["rollback"]["release"]["sourceSha"] != value["observedApplicationSha"],
+              "rollback target is unchanged")
+    elif version == 3:
         _need(value["phase"] in ("MIGRATION_CREATING", "MIGRATION_REGISTERED",
                                   "STARTING_MIGRATION", "MIGRATION_VERIFIED", "INCIDENT"),
               "invalid migration phase")
@@ -346,8 +362,12 @@ def _assert_stopped(controller, record: dict, run) -> None:
         return
     for service, row in record["originalContainers"].items():
         _need(_container_id(controller, service, run) == row["containerId"], "writer was replaced")
+        if record["schemaVersion"] == 5:
+            _need(_role_ids(service, run) == {row["containerId"]}, "unexpected rollback writer remains")
         info = _inspect(row["containerId"], service, record["observedApplicationSha"], run)
         state = info["State"]
+        if record["schemaVersion"] == 5:
+            _need(state.get("Dead") is False, "rollback writer state is unresolved")
         _need(info["Image"] == row["imageId"]
               and info["HostConfig"]["RestartPolicy"] == {"Name": "no", "MaximumRetryCount": 0}
               and state.get("Status") == "exited" and state.get("Running") is False
@@ -762,11 +782,25 @@ def _freeze_for_plan_locked(root: int, jobs_root: int, identity: str, *, control
               "originalContainers": containers, "backupUnits": backups,
               "phase": "ARMED", "createdAt": started, "updatedAt": observed_at,
               "errorCode": None, "canExecute": False}
+    return _arm_and_freeze_locked(root, record, controller, paired, run, now)
+
+
+def _arm_and_freeze_locked(root, record, controller, paired, run, now, *, verify_baseline=None):
+    """One durable arm/stop body for forward and exact-previous maintenance."""
+    rollback = record["schemaVersion"] == 5
+    _need(record["schemaVersion"] in (1, 5) and (not rollback or callable(verify_baseline)),
+          "rollback requires its locked baseline verifier")
+    sha, containers, backups = (record["observedApplicationSha"],
+                               record["originalContainers"], record["backupUnits"])
+    if verify_baseline is not None:
+        verify_baseline()
     _write(root, record, create=True)
     try:
         _need(_backup(run) == backups
-              and _original_containers(controller, sha, paired, run) == containers,
+              and _original_containers(controller, sha, paired, run, include_exited=rollback) == containers,
               "baseline changed after maintenance arming")
+        if verify_baseline is not None:
+            verify_baseline()
         for row in containers.values():
             run(["docker", "update", "--restart=no", row["containerId"]], timeout=45)
         for row in containers.values():
@@ -774,6 +808,8 @@ def _freeze_for_plan_locked(root: int, jobs_root: int, identity: str, *, control
         _assert_stopped(controller, record, run)
         _need(_backup(run) == backups, "backup policy or state changed")
         _installed_gate(run)
+        if verify_baseline is not None:
+            verify_baseline()
     except BaseException:
         _stop_best_effort(record, run)
         try:
@@ -787,6 +823,72 @@ def _freeze_for_plan_locked(root: int, jobs_root: int, identity: str, *, control
     frozen = {**record, "phase": "FROZEN", "updatedAt": job._timestamp(now)}
     _write(root, frozen)  # Unknown final durability is never retried/cleared.
     return frozen
+
+
+def freeze_rollback_for_plan(identity: str, approval: str, *, controller=None,
+                             run=collector.command, observe=None, fetch=None,
+                             now=collector.now_utc) -> dict:
+    """Internal maintenance stage, no CLI or independent execution/resume entry."""
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _freeze_rollback_for_plan_locked(root, jobs_root, identity, approval,
+            controller=controller, run=run, observe=observe, fetch=fetch, now=now)
+
+
+def _freeze_rollback_for_plan_locked(root, jobs_root, identity, approval, *, controller=None,
+                                    run=collector.command, observe=None, fetch=None,
+                                    now=collector.now_utc) -> dict:
+    job._root_operator()
+    identity = storage._plan_id(identity)
+    if controller is None:
+        import deploy_release as controller
+    if fetch is None:
+        fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
+    observe = collector.collect_rollback if observe is None else observe
+    job._no_pending(jobs_root)
+    _need(not os.listdir(root), "unresolved maintenance evidence")
+    _installed_gate(run)
+    raw = storage.load_rollback_review(identity)
+    original = plan.validate_rollback_review(raw, identity)
+    plan.assert_rollback_compatibility(raw, identity, approval)
+    started = job._timestamp(now)
+    fresh = observe(controller=controller, run=run, fetch=fetch, cache_images=False)
+    observed_at = job._timestamp(now)
+    plan.assert_same_rollback_observations(raw, identity, fresh_raw=fresh, observed_at=observed_at)
+    _need(plan._utc(started) <= plan._utc(json.loads(fresh)["createdAt"]),
+          "rollback observations predate this maintenance attempt")
+    sha, target = original["current"]["applicationSha"], original["candidate"]
+    _need(release.verify_exact_rollback(sha, target["sourceSha"], fetch) == target,
+          "rollback target proof changed")
+    paired = release.sealed_release_for_sha(sha, fetch)
+    containers = _original_containers(controller, sha, paired, run, include_exited=True)
+    backups = _backup(run)
+    database = _database_identity(controller, run)
+
+    def verify_baseline():
+        _installed_gate(run)
+        job._no_pending(jobs_root)
+        _need(storage.load_rollback_review(identity) == raw, "saved rollback review changed")
+        before, installed, environment = collector._snapshot(controller, run)
+        _need(before == original["current"] and environment == original["environment"]
+              and plan.runtime_contract(installed, installed) == original["runtimeContract"]
+              and collector._private_bytes(controller.STATE, storage.OWNER_UID, maximum=16384)
+                  == original["releaseStateRaw"].encode("utf-8")
+              and collector._history(controller, run) == original["migrationHistory"]
+              and collector._backup(controller) == original["backup"]
+              and _database_identity(controller, run) == database,
+              "rollback baseline changed during maintenance preparation")
+        plan.assert_same_rollback_observations(raw, identity, fresh_raw=fresh,
+                                               observed_at=job._timestamp(now))
+
+    record = {"schemaVersion": 5, "kind": "sanq-maintenance-marker", "planId": identity,
+              "attemptId": uuid.uuid4().hex, "observedApplicationSha": sha,
+              "originalContainers": containers, "backupUnits": backups,
+              "phase": "ARMED", "createdAt": started, "updatedAt": observed_at,
+              "errorCode": None, "canExecute": False,
+              "rollback": {"release": target, "approvalSha256": approval}}
+    return _arm_and_freeze_locked(root, record, controller, paired, run, now,
+                                  verify_baseline=verify_baseline)
 
 
 def begin_migration_creation(identity, attempt, approval, *, controller=None,
