@@ -1,4 +1,4 @@
-"""Unwired start/readiness stage for registered no-migration candidates.
+"""Task-connected start/readiness stage for registered no-migration candidates.
 
 No CLI, environment mutation, SQL apply, ACTIVE, policy restore or maintenance
 clear. Candidate startup can write business data even while PENDING is retained.
@@ -83,6 +83,14 @@ def _running(record, expanded, run, *, policies=None):
 def start_and_verify(identity: str, attempt: str, *, controller=None,
                      run=collector.command, fetch=None, now=collector.now_utc,
                      clock=time.monotonic, pause=time.sleep) -> dict:
+    job._root_operator()
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        return _start_and_verify_locked(root, jobs_root, identity, attempt, controller=controller, run=run, fetch=fetch, now=now, clock=clock, pause=pause)
+
+
+def _start_and_verify_locked(root: int, jobs_root: int, identity: str, attempt: str, *, controller=None,
+                     run=collector.command, fetch=None, now=collector.now_utc,
+                     clock=time.monotonic, pause=time.sleep) -> dict:
     """Internal stage; successful READY remains PENDING and in maintenance."""
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
@@ -93,79 +101,78 @@ def start_and_verify(identity: str, attempt: str, *, controller=None,
     def bounded(args, **kwargs):
         kwargs["timeout"] = min(kwargs.get("timeout", 15), 45)
         return run(args, **kwargs)
-    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
-        job._no_pending(jobs_root)
-        guard._need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
-        record = guard._read(root)
-        guard._need(record["planId"] == identity and record["attemptId"] == attempt
-                    and record["phase"] == "CANDIDATES_REGISTERED", "start attempt or phase differs")
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        guard._need(not original["pendingMigrations"]
-                    and record["observedApplicationSha"] == original["current"]["applicationSha"]
-                    and record["candidate"]["release"] == original["candidate"],
-                    "SQL path is unavailable or candidate proof differs")
-        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                      **job._observations(original))
+    job._no_pending(jobs_root)
+    guard._need(set(os.listdir(root)) == {guard.MARKER}, "unresolved maintenance leftovers")
+    record = guard._read(root)
+    guard._need(record["planId"] == identity and record["attemptId"] == attempt
+                and record["phase"] == "CANDIDATES_REGISTERED", "start attempt or phase differs")
+    raw = storage.load_plan(identity)
+    original = plan.validate_plan(raw, identity)
+    guard._need(not original["pendingMigrations"]
+                and record["observedApplicationSha"] == original["current"]["applicationSha"]
+                and record["candidate"]["release"] == original["candidate"],
+                "SQL path is unavailable or candidate proof differs")
+    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                  **job._observations(original))
+    guard._installed_gate(bounded)
+    expanded = _pending_and_config(original, controller, bounded)
+    guard._need(collector._backup(controller) == original["backup"]
+                and collector._history(controller, bounded) == original["migrationHistory"]
+                and release.verify_exact_candidate(original["current"]["applicationSha"],
+                    original["candidate"]["sourceSha"], fetch) == original["candidate"],
+                "backup, SQL history or candidate proof changed")
+    collector._resource_preflight(controller)
+    guard._assert_registered_stopped(record, bounded)
+    for service, row in record["candidate"]["containers"].items():
+        name = "sanq-web" if service == "web" else "sanq-api"
+        image = record["candidate"]["release"]["images"][name]
+        info = guard._inspect(row["containerId"], service, original["candidate"]["sourceSha"],
+                               bounded, reference=collector._pinned(image))
+        guard._need(info["State"].get("Status") == "created", "candidate was already started")
+        collector._inspect_image(row["imageId"], collector._pinned(image),
+                                 original["candidate"]["sourceSha"], bounded)
+        guard._created_mounts(row["containerId"], expanded["services"][service].get("volumes", []), bounded)
+    database = guard._database_identity(controller, bounded)
+    backup_units = guard._backup(bounded)
+    guard._need(backup_units == record["backupUnits"], "backup units changed")
+    starting = {**record, "phase": "STARTING_CANDIDATES", "updatedAt": job._timestamp(now)}
+    guard._write(root, starting)  # Unknown durability never reaches docker start.
+    try:
+        for service in guard.SERVICES:
+            run(["docker", "start", record["candidate"]["containers"][service]["containerId"]], timeout=30)
+        deadline = clock() + 90
+        def health_command(args, **kwargs):
+            remaining = deadline - clock()
+            guard._need(remaining > 0, "candidate startup health timeout")
+            kwargs["timeout"] = min(kwargs.get("timeout", 15), remaining)
+            return run(args, **kwargs)
+        while True:
+            guard._need(clock() < deadline, "candidate startup health timeout")
+            healthy = _running(record, expanded, health_command)
+            remaining = deadline - clock()
+            guard._need(remaining >= 0, "candidate startup health timeout")
+            if healthy:
+                break
+            guard._need(remaining > 0, "candidate startup health timeout")
+            pause(min(2, remaining))
+        run(["bash", str(controller.ROOT / "ops/verify-runtime-readiness.sh"),
+             str(controller.ENV), "https://sanq.ca"], timeout=300)
+        guard._need(_running(record, expanded, bounded)
+                    and guard._database_identity(controller, bounded) == database
+                    and guard._backup(bounded) == backup_units
+                    and collector._history(controller, bounded) == original["migrationHistory"],
+                    "post-readiness baseline changed")
+        _pending_and_config(original, controller, bounded)
         guard._installed_gate(bounded)
-        expanded = _pending_and_config(original, controller, bounded)
-        guard._need(collector._backup(controller) == original["backup"]
-                    and collector._history(controller, bounded) == original["migrationHistory"]
-                    and release.verify_exact_candidate(original["current"]["applicationSha"],
-                        original["candidate"]["sourceSha"], fetch) == original["candidate"],
-                    "backup, SQL history or candidate proof changed")
-        collector._resource_preflight(controller)
-        guard._assert_registered_stopped(record, bounded)
-        for service, row in record["candidate"]["containers"].items():
-            name = "sanq-web" if service == "web" else "sanq-api"
-            image = record["candidate"]["release"]["images"][name]
-            info = guard._inspect(row["containerId"], service, original["candidate"]["sourceSha"],
-                                   bounded, reference=collector._pinned(image))
-            guard._need(info["State"].get("Status") == "created", "candidate was already started")
-            collector._inspect_image(row["imageId"], collector._pinned(image),
-                                     original["candidate"]["sourceSha"], bounded)
-            guard._created_mounts(row["containerId"], expanded["services"][service].get("volumes", []), bounded)
-        database = guard._database_identity(controller, bounded)
-        backup_units = guard._backup(bounded)
-        guard._need(backup_units == record["backupUnits"], "backup units changed")
-        starting = {**record, "phase": "STARTING_CANDIDATES", "updatedAt": job._timestamp(now)}
-        guard._write(root, starting)  # Unknown durability never reaches docker start.
-        try:
-            for service in guard.SERVICES:
-                run(["docker", "start", record["candidate"]["containers"][service]["containerId"]], timeout=30)
-            deadline = clock() + 90
-            def health_command(args, **kwargs):
-                remaining = deadline - clock()
-                guard._need(remaining > 0, "candidate startup health timeout")
-                kwargs["timeout"] = min(kwargs.get("timeout", 15), remaining)
-                return run(args, **kwargs)
-            while True:
-                guard._need(clock() < deadline, "candidate startup health timeout")
-                healthy = _running(record, expanded, health_command)
-                remaining = deadline - clock()
-                guard._need(remaining >= 0, "candidate startup health timeout")
-                if healthy:
-                    break
-                guard._need(remaining > 0, "candidate startup health timeout")
-                pause(min(2, remaining))
-            run(["bash", str(controller.ROOT / "ops/verify-runtime-readiness.sh"),
-                 str(controller.ENV), "https://sanq.ca"], timeout=300)
-            guard._need(_running(record, expanded, bounded)
-                        and guard._database_identity(controller, bounded) == database
-                        and guard._backup(bounded) == backup_units
-                        and collector._history(controller, bounded) == original["migrationHistory"],
-                        "post-readiness baseline changed")
-            _pending_and_config(original, controller, bounded)
-            guard._installed_gate(bounded)
-        except BaseException as error:
-            guard._incident_locked(root, identity, controller, bounded, now)
-            raise release.ReleaseContractError("candidate start/readiness failed; retained PENDING and incident") from error
-        ready = {**starting, "phase": "CANDIDATES_READY", "updatedAt": job._timestamp(now)}
-        try:
-            guard._write(root, ready)
-        except BaseException as error:
-            # Do not rewrite an unknown final record. Stop only previously saved IDs.
-            guard._stop_best_effort(record, bounded)
-            raise release.ReleaseContractError("readiness record durability unknown; inspect retained evidence") from error
-        return {"planId": identity, "attemptId": attempt, "outcome": "CANDIDATES_READY",
-                "canExecute": False}
+    except BaseException as error:
+        guard._incident_locked(root, identity, controller, bounded, now)
+        raise release.ReleaseContractError("candidate start/readiness failed; retained PENDING and incident") from error
+    ready = {**starting, "phase": "CANDIDATES_READY", "updatedAt": job._timestamp(now)}
+    try:
+        guard._write(root, ready)
+    except BaseException as error:
+        # Do not rewrite an unknown final record. Stop only previously saved IDs.
+        guard._stop_best_effort(record, bounded)
+        raise release.ReleaseContractError("readiness record durability unknown; inspect retained evidence") from error
+    return {"planId": identity, "attemptId": attempt, "outcome": "CANDIDATES_READY",
+            "canExecute": False}

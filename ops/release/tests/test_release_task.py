@@ -25,6 +25,13 @@ class TaskContextTests(unittest.TestCase):
             "test_original_policies_persist_before_changes_and_all_writers_confirm_stopped")
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        values = fixtures.inputs()
+        values["pending"] = []
+        values["history"] = [{"name": row["name"], "sha256": row["sha256"], "state": "applied"}
+                             for row in values["inventory"]]
+        raw = task.plan.create_plan(created_at=fixtures.NOW, **values)
+        self.fixture.identity = task.storage.save_plan(raw)
+        self.fixture.observer.return_value = task.plan.create_plan(created_at=self.fixture.time, **values)
         self.identity = self.fixture.identity
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
@@ -59,12 +66,17 @@ class TaskContextTests(unittest.TestCase):
         with patch.object(task, "__file__", str(source)), patch.object(task, "TASK_SCRIPT", source):
             self.real_installed()
             for api in ("cleanup_after_task", "begin_candidate_creation", "register_created_candidates",
-                        "prepare_candidate_containers", "_incident_locked"):
+                        "prepare_candidate_containers", "_incident_locked",
+                        "_freeze_for_plan_locked", "_prepare_candidate_containers_locked"):
                 with patch.object(guard, api, None), self.assertRaises(ReleaseContractError):
                     self.real_installed()
             with patch.object(task.starter, "start_and_verify", None), self.assertRaises(ReleaseContractError):
                 self.real_installed()
             with patch.object(task.finalizer, "finalize_ready", None), self.assertRaises(ReleaseContractError):
+                self.real_installed()
+            with patch.object(task.starter, "_start_and_verify_locked", None), self.assertRaises(ReleaseContractError):
+                self.real_installed()
+            with patch.object(task.finalizer, "_finalize_ready_locked", None), self.assertRaises(ReleaseContractError):
                 self.real_installed()
             with patch.object(task.starter, "_running", lambda *args: None), self.assertRaises(ReleaseContractError):
                 self.real_installed()
@@ -80,7 +92,7 @@ class TaskContextTests(unittest.TestCase):
         self.assertEqual(args[0], "systemd-run")
         for option in ("--no-block", "--remain-after-exit", "--service-type=oneshot",
                        "--property=User=root", "--property=Restart=no", "--property=KillMode=control-group",
-                       "--property=TimeoutStartSec=900", "--property=TimeoutStopSec=900",
+                       "--property=TimeoutStartSec=2100", "--property=TimeoutStopSec=900",
                        "--property=MemoryMax=256M", "--property=CPUQuota=50%",
                        "--property=WorkingDirectory=" + str(task.RUNTIME_ROOT)):
             self.assertIn(option, args)
@@ -129,14 +141,9 @@ class TaskContextTests(unittest.TestCase):
         with patch.object(task, "_cgroup", return_value="/other"), self.assertRaises(ReleaseContractError):
             task._context(self.identity, "run", self.observe_command)
 
-    def test_run_only_calls_existing_preparation_adapter_after_context_verification(self):
-        with patch.object(guard, "freeze_for_plan", return_value={
-                "planId": self.identity, "phase": "FROZEN", "canExecute": False}) as freeze:
-            result = task.run_task(self.identity, run=self.observe_command)
-            self.assertEqual(result["outcome"], "MAINTENANCE_PREPARED")
-            freeze.assert_called_once_with(self.identity, run=self.observe_command)
+    def test_invalid_manager_context_never_enters_release_stages(self):
         self.fields["ControlPID"] = self.fields["MainPID"] = "0"
-        with patch.object(guard, "freeze_for_plan") as freeze, self.assertRaises(ReleaseContractError):
+        with patch.object(guard, "_freeze_for_plan_locked") as freeze, self.assertRaises(ReleaseContractError):
             task.run_task(self.identity, run=self.observe_command)
         freeze.assert_not_called()
 
@@ -173,7 +180,7 @@ class TaskContextTests(unittest.TestCase):
     def test_cli_failure_does_not_echo_arbitrary_observation_output(self):
         with patch.object(task, "submit", side_effect=ValueError("DO_NOT_PRINT")), \
              contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(task.main(["submit", self.identity, "--confirm-maintenance"]), 1)
+            self.assertEqual(task.main(["submit", self.identity, "--confirm-release"]), 1)
         self.assertNotIn("DO_NOT_PRINT", output.getvalue())
 
 
