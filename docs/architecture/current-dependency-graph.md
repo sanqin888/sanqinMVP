@@ -1,6 +1,14 @@
 # Current 12-context dependency graph
 
-**2026-10-27 当前进度：D1_MATERIALS_LOCAL / TESTS_NOT_RUN / HOST_INSTALL_NOT_IMPLEMENTED / NOT_INSTALLED。**新增独立交付工具ops/release/install_minimal_executor.py，仅pack/verify/plan。复用原17归档封存、准确main/CI/发布及固定Git对象，惰性材料含原归档、17+9+bootstrap共27份源码和三固定模板；重新核验来源后只输出材料/差异观察，所有安装/执行权限标志false。
+**2026-10-27 当前进度：D2_PRIVATE_MATERIALS_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_NOT_IMPLEMENTED / NOT_INSTALLED。**独立installer新增内部root私有材料交接与只读观察：复制前后重新核D1来源/工具差异，在固定状态树持原job/计划锁，create-only保存材料包、旧Runtime原归档及准确保留记录，逐文件同步/读回。无root交接CLI、主机安装入口、维护marker或units变更。
+
+D1材料与只读核验批已由[PR #3008](https://github.com/sanqin888/sanqinMVP/pull/3008) 最终head `3bef681194eaa49868eb20bc6190af25fbf9d973` 经 [CI #7702](https://github.com/sanqin888/sanqinMVP/actions/runs/40566184983) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各574、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `40aaf51b17eb738266990a9b8e5e230448164e90`。原LOCAL/未运行是原审阅时点；仍未安装/真实隔离验收。
+
+归Runtime/Ops独立bootstrap私有交接，沿installer→原D1来源核验和标准库FD/flock方向；不导入九辅助件，原job格式仅独立只读识别，无新版本权威/helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。固定17+Manifest/250/300、九常规helper/三永久drop-in、D1材料格式保持，新增权限面只在源码中，未现场安装或授权生产执行。
+
+新增26项模型测试未运行，仅静态与差异核对。材料私有保留不观察现役版本、不建立维护或授予安装许可；hostPreflightComplete/installedBaselineObserved/readyToInstall/canExecute均false，普通任务/原目录记录和D1 CLI保持。本批仅D2第一段私有材料交接，不代表D2安装器完成。下一步在独立bootstrap内接现役主机只读预检，再接安装意图/临时拒绝门禁、准确原ID停写/手动快照available、旧工具恢复实物及逐文件安装/成功交接；D3 Mac薄入口、D4统一真实隔离与生产材料仍OPEN。无依赖/业务schema/迁移或生产操作；三组研究继续暂停、不取消。 详见[交付合同及D2](../architecture/Runtime最小执行器工具交付与安装合同.md)。
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / HOST_INSTALL_NOT_IMPLEMENTED / NOT_INSTALLED。**新增独立交付工具ops/release/install_minimal_executor.py，仅pack/verify/plan。复用原17归档封存、准确main/CI/发布及固定Git对象，惰性材料含原归档、17+9+bootstrap共27份源码和三固定模板；重新核验来源后只输出材料/差异观察，所有安装/执行权限标志false。
 
 交付合同已由[PR #3007](https://github.com/sanqin888/sanqinMVP/pull/3007) 最终head `5a703b4b4a309731f68a913ef42a271049eadd85` 经 [CI #7700](https://github.com/sanqin888/sanqinMVP/actions/runs/40562348239) SUCCESS（仅ci-change-scope成功，其余9作业按文档范围跳过；无Release/Runtime测试重跑），无CI修复，合并dev `43d270d0e6d290a95eaa2732918edcbec040c906`。文档合并不代表installer或生产验证完成。
 

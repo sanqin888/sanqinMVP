@@ -1,8 +1,26 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D1 惰性材料与只读核验（2026-10-27，本地待审）
+## D2 私有材料交接（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：D1_MATERIALS_LOCAL / TESTS_NOT_RUN / HOST_INSTALL_NOT_IMPLEMENTED / NOT_INSTALLED。**新增独立交付工具ops/release/install_minimal_executor.py，仅pack/verify/plan。复用原17归档封存、准确main/CI/发布及固定Git对象，惰性材料含原归档、17+9+bootstrap共27份源码和三固定模板；重新核验来源后只输出材料/差异观察，所有安装/执行权限标志false。
+**2026-10-27 当前进度：D2_PRIVATE_MATERIALS_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_NOT_IMPLEMENTED / NOT_INSTALLED。**独立installer新增内部root私有材料交接与只读观察：复制前后重新核D1来源/工具差异，在固定状态树持原job/计划锁，create-only保存材料包、旧Runtime原归档及准确保留记录，逐文件同步/读回。无root交接CLI、主机安装入口、维护marker或units变更。
+
+D1材料与只读核验批已由[PR #3008](https://github.com/sanqin888/sanqinMVP/pull/3008) 最终head `3bef681194eaa49868eb20bc6190af25fbf9d973` 经 [CI #7702](https://github.com/sanqin888/sanqinMVP/actions/runs/40566184983) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各574、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `40aaf51b17eb738266990a9b8e5e230448164e90`。原LOCAL/未运行是原审阅时点；仍未安装/真实隔离验收。
+
+仅由独立审阅bootstrap的内部_retain_verified_materials调用，先重新验证准确kit/原归档/主线与工具差异，再检查固定/opt/sanq逐层owner/gid/无组其他写和nofollow目录FD。仅对缺失的deploy-state及jobs/plans/maintenance/installations建root:root 0700；已有类型/权限不符拒绝，不修复。写前按目标文件系统保留5GiB加最大32MiB材料与元数据空间，低空间不新建；只读查询不因空间不足被禁止。原jobs/.release.lock→plans/.prepare.lock非阻塞加锁、核同inode、同步并始终保留锁文件。维护任意残件、未完结/坏job或竞争阻断；已完成READY/BLOCKED原件按原格式核对保留。
+
+私有材料按内容身份存/opt/sanq/deploy-state/installations/<64位retention-id>/，固定四文件retaining.json、delivery-kit.tar.gz、current-runtime-archive.tar.gz、retained.json均root:root 0600/单链接。先耐久保留意图和两份输入，锁内再读来源、重核空维护/finished jobs，最后写MATERIALS_RETAINED；每项O_EXCL、完整写入、文件/目录fsync及准确读回，未知不删残件、不覆盖或重试。该意图仅指材料复制，不是maintenance/active.json或安装许可；只读_inspect_private_materials重读完整材料/规范hash记录并刷新来源，即使看见完成记录也只返PRIVATE_MATERIALS_OBSERVED、operationSuccessProven=false。
+
+保留记录绑定的是提供的旧Runtime原归档来源，不是主机当前应用或已安装版本；requiresHostRecheck=true，hostPreflightComplete/installedBaselineObserved/readyToInstall/canExecute/authorizedToMutateProduction均false。root私有复制不执行/import材料中代码，不观察或修改.env/state/原17/容器/DB，不宣称维护或停写生效。D1 pack/verify/plan的函数及CLI主体保持，仅增加内部材料函数；不会从用户可写staging提权执行目标代码。
+
+新增26项离线模型测试，覆盖真实临时私有目录/文件/元数据/fsync与原两个OS锁及inode、root拒绝/源失败/差异超范围、低磁盘、坏权限/owner/gid/目录或文件链接、维护/job残件、原生成器READY/BLOCKED互通、未完结/错schema/时钟/错误码job、竞争/重复不可覆盖、短写/复制未知/最终记录未知/来源晚变、规范记录或材料篡改、只读查询不清其他维护/不自动建目录及无root/apply CLI；固定真实anchor走向为系统调用模型，GitHub/容量/root身份亦为模型。实际/opt/sanq、目标VM、systemd/Docker/SSH/SIGKILL及恢复未执行。仅Python3.10 AST、静态名字/重复方法、D1原函数等价和差异/读回核对，项目测试未运行，不把前批574当本批结果。
+
+归Runtime/Ops独立bootstrap私有交接，沿installer→原D1来源核验和标准库FD/flock方向；不导入九辅助件，原job格式仅独立只读识别，无新版本权威/helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。固定17+Manifest/250/300、九常规helper/三永久drop-in、D1材料格式保持，新增权限面只在源码中，未现场安装或授权生产执行。
+
+本批仅D2第一段私有材料交接，不代表D2安装器完成。下一步在独立bootstrap内接现役主机只读预检，再接安装意图/临时拒绝门禁、准确原ID停写/手动快照available、旧工具恢复实物及逐文件安装/成功交接；D3 Mac薄入口、D4统一真实隔离与生产材料仍OPEN。无依赖/业务schema/迁移或生产操作；三组研究继续暂停、不取消。
+
+## D1 惰性材料与只读核验（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / HOST_INSTALL_NOT_IMPLEMENTED / NOT_INSTALLED。**新增独立交付工具ops/release/install_minimal_executor.py，仅pack/verify/plan。复用原17归档封存、准确main/CI/发布及固定Git对象，惰性材料含原归档、17+9+bootstrap共27份源码和三固定模板；重新核验来源后只输出材料/差异观察，所有安装/执行权限标志false。
 
 交付合同已由[PR #3007](https://github.com/sanqin888/sanqinMVP/pull/3007) 最终head `5a703b4b4a309731f68a913ef42a271049eadd85` 经 [CI #7700](https://github.com/sanqin888/sanqinMVP/actions/runs/40562348239) SUCCESS（仅ci-change-scope成功，其余9作业按文档范围跳过；无Release/Runtime测试重跑），无CI修复，合并dev `43d270d0e6d290a95eaa2732918edcbec040c906`。文档合并不代表installer或生产验证完成。
 
