@@ -1,10 +1,22 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-27 — 最小更新执行器：D2迁移一致性纯判定
+
+**2026-10-27 当前进度：D2_MIGRATION_CONSISTENCY_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+
+应用环境/网络批已由[PR #3016](https://github.com/sanqin888/sanqinMVP/pull/3016) head `03b3cb2f23cb255d66e15f7d123a2779a2c53e98` 经[CI #7719](https://github.com/sanqin888/sanqinMVP/actions/runs/40586796836)全绿（4成功/6范围跳过，Release默认Python与3.10各745项、Runtime1080、既有C1回归412），合并dev `7f67c9d3da56e3559c08dd44403bb79f7db0cfcc`；未执行生产安装。
+
+本批分支feat/runtime-minimal-migration-consistency-20261027。新增bootstrap内部纯函数_installation_migration_consistency：库存要求非空、名称唯一有序、准确四字段、严格整数大小/两种摘要、最多10000项/单项2MiB/合计64MiB；历史最多20000项，保留完整顺序和rolled-back重复尝试，拒绝failed/未知字段、缺失/修改/重复applied。所有库存迁移必须已应用，首次工具安装不接受普通发布允许的待执行前缀。rolled-back尝试只保留历史，不计为已应用，不因历史残留推断兼容性。
+
+结果只返回输入摘要/计数与inputConsistencyObserved=true，databaseMigrationParityProven=false/canExecute=false/requiresHostRecheck=true。本函数未接入现场观察，不新增命令、Docker exec、CLI或持久化记录；模型输入自洽不证明来自当前镜像、Git或数据库。下一步仍须将准确当前镜像库存、完整Git对象与已有只读历史双读绑定，再收口剩余预检及安装意图/临时拒绝门禁。
+
+新增10项测试覆盖完整输入/摘要/不变性、待执行迁移、缺失修改重复应用、rolled-back保留、坏历史/库存、排序与字段、大小/计数/总预算及历史顺序摘要。仅Python3.10 AST与静态名字审阅，项目测试待CI；未运行生产命令。原全部函数定义/安装许可保持，无新增依赖包或九helper导入、无12上下文所有权/SCC/债务/依赖图基线变化，未重跑scanner。固定17+Manifest/250/300、私有四文件及三永久门禁保持；三组研究继续暂停，不取消。安装、恢复材料、Mac入口与统一真实隔离验收仍OPEN。
+
 ## 2026-10-27 — 最小更新执行器：D2应用环境与数据库网络目标核对
 
-**2026-10-27 当前进度：D2_APPLICATION_BINDING_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增四容器有效环境与保存DB网络目标的只读比较，接原双锁、来源和主机双读；尚未提交远端。
+**2026-10-27 当前进度：D2_APPLICATION_BINDING_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**独立bootstrap新增四容器有效环境与保存DB网络目标的只读比较，接原双锁、来源和主机双读；已通过PR #3016合并dev。
 
-基于dev `11deb05597f79b736b2a3a99f5509579a886878c`，分支feat/runtime-minimal-application-binding-20261027；本批本地实现完成、未提交。
+基于dev `11deb05597f79b736b2a3a99f5509579a886878c`，分支feat/runtime-minimal-application-binding-20261027；本批已合并dev，CI证据见上文。
 
 运行环境/就绪前置批已由[PR #3015](https://github.com/sanqin888/sanqinMVP/pull/3015) 最终head `bfe2517c464c68cdbec872871636f3232d051d3b` 经 [CI #7717](https://github.com/sanqin888/sanqinMVP/actions/runs/40584486112) SUCCESS（4成功/6范围跳过；默认Python与CPython3.10的Release各725，Runtime1080，准确CPython3.12.15既有回归412），无CI修复，合并dev `11deb05597f79b736b2a3a99f5509579a886878c`。下文该批原LOCAL/未运行描述保留为原审阅时点；此证据不代表现场安装或真实隔离验收。
 
