@@ -15,6 +15,7 @@ import base64
 import gzip
 import hashlib
 import io
+import ipaddress
 import json
 import os
 import pwd
@@ -27,6 +28,7 @@ import stat
 import sys
 import tarfile
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ops/runtime"))
@@ -716,12 +718,13 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites))
+                                             include_filesystem, include_prerequisites, include_application_binding))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
-          and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem),
+          and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
+          and (not include_application_binding or include_prerequisites),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -736,7 +739,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         filesystem = _host_filesystem_snapshot(deadline=deadline) if include_filesystem else None
         prerequisites = (_runtime_prerequisite_snapshot(docker, lambda args: _runtime_command(args, deadline=deadline))
                          if include_prerequisites else None)
-        return runtime, configuration, docker, systemd, filesystem, prerequisites
+        binding = _application_binding_snapshot(docker, run) if include_application_binding else None
+        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -783,6 +787,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         if include_prerequisites:
             result.update({"runtimePrerequisitesObserved": True, "databaseHistoryObserved": True,
                            "readinessEndpointsObserved": True, "prerequisites": before[5]})
+        if include_application_binding:
+            result.update({"containerEnvironmentObserved": True, "databaseConnectionTargetObserved": True,
+                           "applicationBinding": before[6]})
         return result
 
 
@@ -891,7 +898,7 @@ def _docker_allowed(args):
     command = tuple(args)
     if command in ((*DOCKER, "info", "--format", "{{json .}}"), PROJECT_PS,
                    (*COMPOSE, "config", "--environment"), (*COMPOSE, "config", "--format", "json"),
-                   (*DOCKER, "volume", "inspect", "--format", "{{json .}}", "sanq-app_pgdata")):
+                   (*DOCKER, "volume", "inspect", "--format", "{{json .}}", "sanq-app_pgdata"), NETWORK_INSPECT):
         return True
     return ((tuple(args[:-1]) == (*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}")
              and re.fullmatch(r"[a-f0-9]{64}", args[-1]) is not None)
@@ -1491,6 +1498,158 @@ def _runtime_prerequisite_snapshot(docker, run):
 def _observe_installed_prerequisites(identity, *, fetch=release.github_json):
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True,
         include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True)
+
+
+# D2-8: compare effective environment and the saved local database route.
+NETWORK_NAME = "sanq-app_default"
+NETWORK_INSPECT = (*DOCKER, "network", "inspect", "--format", "{{json .}}", NETWORK_NAME)
+
+
+def _container_environment(values):
+    _need(type(values) is list and len(values) <= 4096, "container environment inventory differs")
+    result = {}
+    for item in values:
+        _need(isinstance(item, str) and "\0" not in item, "invalid container environment entry")
+        key, separator, value = item.partition("=")
+        _need(separator == "=" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+              and key not in result, "container environment key is missing or ambiguous")
+        result[key] = value
+    return result
+
+
+def _compose_environment(values):
+    _need(type(values) is dict and len(values) <= 4096, "expanded environment must be a bounded mapping")
+    result = {}
+    for key, value in values.items():
+        _need(isinstance(key, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+              and isinstance(value, str) and "\0" not in value,
+              "expanded environment key or value differs")
+        # Compose config JSON escapes literal dollars. Decode this export once,
+        # only for comparison; image/actual Env and retained config stay untouched.
+        _need("$" not in value.replace("$$", ""), "unpaired dollar in Compose JSON export")
+        result[key] = value.replace("$$", "$")
+    return result
+
+
+def _database_url_matches(value, database):
+    _need(isinstance(value, str) and value.startswith("postgresql://")
+          and not any(ord(char) <= 32 or ord(char) == 127 for char in value)
+          and re.search(r"%(?![a-fA-F0-9]{2})", value) is None, "application database URL is invalid")
+    try:
+        parsed = urlsplit(value)
+        valid = (parsed.scheme == "postgresql" and parsed.hostname == "db" and parsed.port == 5432
+                 and parsed.path == "/sanqin_db" and not parsed.query and not parsed.fragment
+                 and parsed.username is not None and parsed.password is not None
+                 and unquote(parsed.username, errors="strict") == database["POSTGRES_USER"]
+                 and unquote(parsed.password, errors="strict") == database["POSTGRES_PASSWORD"])
+    except (ValueError, UnicodeError):
+        valid = False
+    _need(valid, "application database URL does not match the saved local database environment")
+
+
+def _application_network_snapshot(network, containers):
+    identifiers = {info["Id"] for info in containers.values()}
+    _need(type(network) is dict and network.get("Name") == NETWORK_NAME
+          and isinstance(network.get("Id"), str) and re.fullmatch(r"[a-f0-9]{64}", network["Id"])
+          and network.get("Driver") == "bridge" and network.get("Scope") == "local"
+          and network.get("Internal") is False and network.get("EnableIPv6") is False
+          and network.get("Ingress") is False and type(network.get("Labels")) is dict
+          and network["Labels"].get("com.docker.compose.project") == "sanq-app"
+          and network["Labels"].get("com.docker.compose.network") == "default"
+          and network.get("Options") in (None, {}) and type(network.get("Containers")) is dict
+          and set(network["Containers"]) == identifiers, "project network identity or endpoint inventory differs")
+    ipam = network.get("IPAM")
+    _need(type(ipam) is dict and ipam.get("Driver") == "default" and ipam.get("Options") in (None, {})
+          and type(ipam.get("Config")) is list and len(ipam["Config"]) == 1
+          and type(ipam["Config"][0]) is dict, "project network IPAM differs")
+    try:
+        subnet = ipaddress.IPv4Network(ipam["Config"][0]["Subnet"], strict=True)
+        gateway = ipaddress.IPv4Address(ipam["Config"][0]["Gateway"])
+        _need(gateway in subnet and gateway not in (subnet.network_address, subnet.broadcast_address),
+              "project network gateway differs")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise release.ReleaseContractError("project network IPv4 identity is invalid") from exc
+    endpoints, addresses, endpoint_ids = {}, set(), set()
+    for role, info in containers.items():
+        host, settings = info.get("HostConfig"), info.get("NetworkSettings")
+        _need(type(host) is dict and host.get("NetworkMode") == NETWORK_NAME
+              and all(host.get(key) in (None, []) for key in ("ExtraHosts", "Links", "Dns", "DnsOptions", "DnsSearch"))
+              and type(settings) is dict and type(settings.get("Networks")) is dict
+              and set(settings["Networks"]) == {NETWORK_NAME}, "container network or resolver override differs")
+        attached = settings["Networks"][NETWORK_NAME]
+        endpoint = network["Containers"][info["Id"]]
+        _need(type(attached) is dict and type(endpoint) is dict
+              and attached.get("NetworkID") == network["Id"]
+              and isinstance(attached.get("EndpointID"), str) and re.fullmatch(r"[a-f0-9]{64}", attached["EndpointID"])
+              and endpoint.get("EndpointID") == attached["EndpointID"]
+              and attached.get("EndpointID") not in endpoint_ids
+              and type(attached.get("Aliases")) is list and 0 < len(attached["Aliases"]) <= 256
+              and all(isinstance(alias, str) and alias and "\0" not in alias for alias in attached["Aliases"])
+              and len(attached["Aliases"]) == len(set(attached["Aliases"]))
+              and role in attached["Aliases"]
+              and (role == "db" or "db" not in attached["Aliases"])
+              and (role == "api" or "api" not in attached["Aliases"])
+              and attached.get("GlobalIPv6Address", "") == "" and endpoint.get("IPv6Address", "") == "",
+              "saved container network endpoint or service alias differs")
+        try:
+            interface = ipaddress.IPv4Interface(endpoint["IPv4Address"])
+            address = ipaddress.IPv4Address(attached["IPAddress"])
+            _need(interface.network == subnet and interface.ip == address and address not in addresses
+                  and address not in (gateway, subnet.network_address, subnet.broadcast_address)
+                  and type(attached.get("IPPrefixLen")) is int and attached["IPPrefixLen"] == subnet.prefixlen
+                  and attached.get("Gateway") == str(gateway), "saved container IPv4 route differs")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise release.ReleaseContractError("saved container IPv4 identity is invalid") from exc
+        addresses.add(address)
+        endpoint_ids.add(attached["EndpointID"])
+        endpoints[role] = {"containerId": info["Id"], "endpointId": attached["EndpointID"],
+                           "ipv4": str(interface), "aliases": sorted(attached["Aliases"])}
+    return {"networkId": network["Id"], "subnet": str(subnet), "gateway": str(gateway), "endpoints": endpoints}
+
+
+def _application_binding_snapshot(docker, run):
+    expanded = _docker_json((*COMPOSE, "config", "--format", "json"), run)
+    _need(_hash(_json(expanded)) == docker["renderedComposeSha256"],
+          "expanded Compose changed before application binding")
+    environments, containers, images = {}, {}, {}
+    for role, saved in docker["containers"].items():
+        info = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}", saved["containerId"]), run)
+        _need(type(info) is dict and info.get("Id") == saved["containerId"] and info.get("Image") == saved["imageId"]
+              and type(info.get("Config")) is dict and _hash(_json(info["Config"])) == saved["configurationSha256"]
+              and _hash(_json(info.get("Mounts"))) == saved["mountSha256"],
+              "saved container changed before application binding")
+        image_id = saved["imageId"]
+        if image_id not in images:
+            images[image_id] = _docker_json((*DOCKER, "image", "inspect", "--format", "{{json .}}", image_id), run)
+        image = images[image_id]
+        _need(type(image) is dict and image.get("Id") == image_id and type(image.get("Config")) is dict,
+              "saved image defaults differ")
+        desired = _container_environment(image["Config"].get("Env", []))
+        desired.update(_compose_environment(expanded["services"][role].get("environment", {})))
+        actual = _container_environment(info["Config"].get("Env"))
+        _need(actual == desired, "effective container environment differs from reviewed Compose and image defaults")
+        environments[role], containers[role] = actual, info
+    database = environments["db"]
+    _need(all(isinstance(database.get(key), str) and database[key]
+              for key in ("POSTGRES_USER", "POSTGRES_PASSWORD"))
+          and database.get("POSTGRES_DB") == "sanqin_db"
+          and database.get("PGDATA") == "/var/lib/postgresql/data",
+          "saved database environment differs")
+    api, worker = environments["api"], environments["ubereats-worker"]
+    _need(api.get("DATABASE_URL") == worker.get("DATABASE_URL"), "API and worker database URLs differ")
+    _database_url_matches(api.get("DATABASE_URL"), database)
+    _need(environments["web"].get("API_UPSTREAM") == "http://api:4000", "web API upstream differs")
+    network = _application_network_snapshot(_docker_json(NETWORK_INSPECT, run), containers)
+    return {"environmentSha256": {role: _hash(_json(env)) for role, env in environments.items()},
+            "environmentEntries": {role: len(env) for role, env in environments.items()},
+            "databaseContainerId": docker["containers"]["db"]["containerId"],
+            "network": network, "databaseLoginVerified": False, "databaseMigrationParityProven": False,
+            "fullApplicationConfigurationProven": False}
+
+
+def _observe_installed_application_binding(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True)
 
 
 def main(argv=None):
