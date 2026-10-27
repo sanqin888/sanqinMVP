@@ -19,6 +19,9 @@ import release_job as job
 from release_contract import ReleaseContractError
 
 
+UNFORWARDED_API_VALUE = "DO_NOT_FORWARD"
+
+
 class MigrationCreateTests(unittest.TestCase):
     def setUp(self):
         self.case = fixtures.MigrationRegistrationTests(
@@ -50,9 +53,9 @@ class MigrationCreateTests(unittest.TestCase):
         self.inventory = self.stack.enter_context(patch.object(collector, "_probe_sql",
                                                               return_value=self.values["inventory"]))
         self.database = self.stack.enter_context(patch.object(guard, "_database_identity", return_value={"Id": "db"}))
-        self.url = "postgresql://fixture:p$word@db/database"
+        self.url = "postgresql://fixture:p$$word@db/database"  # Compose config JSON already escapes $.
         self.expanded = {"services": {"api": {"environment": {
-            "DATABASE_URL": self.url, "JWT_SECRET": "DO_NOT_FORWARD"}}}}
+            "DATABASE_URL": self.url, "JWT_SECRET": UNFORWARDED_API_VALUE}}}}
         self.calls, self.creates, self.pending = [], [], False
         self.fail_create = False
         def pending(old, new):
@@ -95,7 +98,7 @@ class MigrationCreateTests(unittest.TestCase):
         body = self.creates[0]
         self.assertEqual(set(body["services"]), {"sanq-migration"})
         service = body["services"]["sanq-migration"]
-        self.assertEqual(service["environment"], {"DATABASE_URL": self.url.replace("$", "$$")})
+        self.assertEqual(service["environment"], {"DATABASE_URL": self.url})
         self.assertEqual(service["entrypoint"], migration.ENTRYPOINT)
         self.assertEqual(service["command"], migration.COMMAND)
         self.assertEqual(service["restart"], "no")

@@ -87,14 +87,14 @@ def assert_stopped(record, run):
 
 
 def creation_config(expanded, record):
-    """One fixed service; pass only the database URL via private config stdin."""
+    """One fixed service; retain the already escaped Compose-exported URL in private stdin."""
     environment = expanded.get("services", {}).get("api", {}).get("environment")
     need(type(environment) is dict and isinstance(environment.get("DATABASE_URL"), str)
          and 0 < len(environment["DATABASE_URL"]) <= 16384, "database environment is missing or invalid")
     service = {"image": collector._pinned(record["migration"]["release"]["images"]["sanq-api"]),
         "container_name": "sanq-migrate-" + record["attemptId"], "restart": "no",
         "entrypoint": ENTRYPOINT, "command": COMMAND, "privileged": False,
-        "environment": {"DATABASE_URL": environment["DATABASE_URL"].replace("$", "$$")},
+        "environment": {"DATABASE_URL": environment["DATABASE_URL"]},
         "networks": ["default"], "cap_drop": ["ALL"],
         "security_opt": ["no-new-privileges:true"], "mem_limit": "256m",
         "cpus": 0.5, "pids_limit": 64, "healthcheck": {"disable": True},

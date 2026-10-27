@@ -176,7 +176,7 @@ def _validate(value: dict) -> None:
     _need(type(value) is dict, "maintenance record differs")
     version = value.get("schemaVersion")
     extra = {1: set(), 2: {"candidate"}, 3: {"migration"},
-             4: {"candidate", "migration"}, 5: {"rollback"}}
+             4: {"candidate", "migration"}, 5: {"rollback"}, 6: {"rollback", "candidate"}}
     _need(type(version) is int and version in extra and set(value) == fields | extra[version],
           "maintenance fields differ")
     _need(type(value["schemaVersion"]) is int
@@ -201,15 +201,19 @@ def _validate(value: dict) -> None:
         release.checked_digest(row["imageId"])
         _policy(row["restartPolicy"])
     _need(len({row["containerId"] for row in rows.values()}) == 3, "duplicate writer identity")
-    if version == 5:
-        _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT")
-              and type(value["rollback"]) is dict
+    if version in (5, 6):
+        _need(type(value["rollback"]) is dict
               and set(value["rollback"]) == {"release", "approvalSha256"},
               "rollback maintenance fields or phase differ")
         plan._candidate(value["rollback"]["release"])
         plan._sha256(value["rollback"]["approvalSha256"])
         _need(value["rollback"]["release"]["sourceSha"] != value["observedApplicationSha"],
               "rollback target is unchanged")
+        if version == 6:
+            _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "INCIDENT"),
+                  "rollback candidates differ from the reviewed target")
+    if version == 5:
+        _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT"), "rollback freeze phase differs")
     elif version == 3:
         _need(value["phase"] in ("MIGRATION_CREATING", "MIGRATION_REGISTERED",
                                   "STARTING_MIGRATION", "MIGRATION_VERIFIED", "INCIDENT"),
@@ -233,6 +237,9 @@ def _validate(value: dict) -> None:
             _need(value["candidate"]["containers"] == {}, "creation intent already has identities")
         _need(value["candidate"]["release"]["sourceSha"] != value["observedApplicationSha"],
               "candidate release is unchanged")
+    if version == 6:
+        _need(value["candidate"]["release"] == value["rollback"]["release"],
+              "rollback candidate proof differs")
     if version == 4:
         migration.validate(value["migration"], rows)
         item = value["migration"]
@@ -285,10 +292,12 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
         beginning = (((old["schemaVersion"] == 1 and old["phase"] == "FROZEN"
                        and value["schemaVersion"] == 2) or
                       (old["schemaVersion"] == 3 and old["phase"] == "MIGRATION_VERIFIED"
-                       and value["schemaVersion"] == 4))
+                       and value["schemaVersion"] == 4) or
+                      (old["schemaVersion"] == 5 and old["phase"] == "FROZEN"
+                       and value["schemaVersion"] == 6))
                      and value["phase"] == "CREATING_CANDIDATES"
                      and value["candidate"]["containers"] == {})
-        registering = (old["schemaVersion"] in (2, 4)
+        registering = (old["schemaVersion"] in (2, 4, 6)
                        and value["schemaVersion"] == old["schemaVersion"]
                        and old["phase"] == "CREATING_CANDIDATES"
                        and value["phase"] == "CANDIDATES_REGISTERED"
@@ -355,7 +364,7 @@ def status() -> dict:
 
 
 def _assert_stopped(controller, record: dict, run) -> None:
-    if record["schemaVersion"] in (2, 4):
+    if record["schemaVersion"] in (2, 4, 6):
         _need(bool(record["candidate"]["containers"]),
               "candidate creation is incomplete; no writer identity may be inferred")
         _assert_registered_stopped(record, run)
@@ -381,7 +390,7 @@ def _assert_stopped(controller, record: dict, run) -> None:
 def _stop_best_effort(record: dict, run) -> bool:
     success = True
     rows = list(record["originalContainers"].values())
-    if record["schemaVersion"] in (2, 4):
+    if record["schemaVersion"] in (2, 4, 6):
         rows = list(record["candidate"]["containers"].values()) + rows
     if record["schemaVersion"] in (3, 4) and record["migration"]["container"] is not None:
         rows.insert(0, record["migration"]["container"])
@@ -459,6 +468,20 @@ def _assert_registered_stopped(record: dict, run) -> None:
         _stopped_identity(info, row, created=True)
 
 
+def _review_for_record(record: dict, identity: str) -> dict:
+    """Select one fixed validator by the validated marker; never guess a kind."""
+    _need(record["planId"] == identity, "maintenance plan identity differs")
+    if record["schemaVersion"] in (5, 6):
+        raw = storage.load_rollback_review(identity)
+        original = plan.validate_rollback_review(raw, identity)
+        plan.assert_rollback_compatibility(raw, identity, record["rollback"]["approvalSha256"])
+        _need(original["candidate"] == record["rollback"]["release"]
+              and original["current"]["applicationSha"] == record["observedApplicationSha"],
+              "rollback review differs from maintenance")
+        return original
+    return plan.validate_plan(storage.load_plan(identity), identity)
+
+
 def begin_candidate_creation(identity: str, attempt: str, *, controller=None,
                              run=collector.command, now=collector.now_utc) -> dict:
     """Internal create-intention adapter; never create or start a container."""
@@ -466,7 +489,7 @@ def begin_candidate_creation(identity: str, attempt: str, *, controller=None,
     with job._locked_directory(), storage._directory_fd(MAINTENANCE_DIR) as root:
         return _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
 
-def _begin_candidate_creation_locked(root, identity, attempt, controller, run, now):
+def _begin_candidate_creation_locked(root, identity, attempt, controller, run, now, *, rollback_approval=None):
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
     if controller is None:
@@ -475,22 +498,27 @@ def _begin_candidate_creation_locked(root, identity, attempt, controller, run, n
     record = _read(root)
     _need(record["planId"] == identity and record["attemptId"] == attempt
           and ((record["schemaVersion"] == 1 and record["phase"] == "FROZEN")
-               or (record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED")),
+               or (record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED")
+               or (record["schemaVersion"] == 5 and record["phase"] == "FROZEN"
+                   and rollback_approval is not None)),
           "creation requires the same frozen or migrated attempt")
     _installed_gate(run)
-    original_plan = plan.validate_plan(storage.load_plan(identity), identity)
+    original_plan = _review_for_record(record, identity)
     _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
           "plan baseline differs from maintenance")
+    if record["schemaVersion"] == 5:
+        plan.assert_rollback_compatibility(storage.load_rollback_review(identity), identity, rollback_approval)
+        _need(rollback_approval == record["rollback"]["approvalSha256"], "rollback acknowledgement changed")
     if original_plan["pendingMigrations"]:
         migration.assert_application_history(original_plan, record, collector._history(controller, run), run)
     else:
-        _need(record["schemaVersion"] == 1, "no-SQL creation requires the frozen record")
+        _need(record["schemaVersion"] in (1, 5), "no-SQL creation requires the frozen record")
     _assert_stopped(controller, record, run)
     for service in SERVICES:
         _need(_role_ids(service, run) == {record["originalContainers"][service]["containerId"]},
               "unexpected writer exists before creation intent")
     _need(_backup(run) == record["backupUnits"], "backup state changed")
-    intention = {**record, "schemaVersion": 4 if record["schemaVersion"] == 3 else 2,
+    intention = {**record, "schemaVersion": 6 if record["schemaVersion"] == 5 else 4 if record["schemaVersion"] == 3 else 2,
                  "phase": "CREATING_CANDIDATES",
                  "updatedAt": job._timestamp(now),
                  "candidate": {"release": original_plan["candidate"], "containers": {}}}
@@ -515,11 +543,11 @@ def _register_created_candidates_locked(root, identity, attempt, identifiers, ru
     _need(set(os.listdir(root)) == {MARKER}, "unresolved maintenance leftovers")
     record = _read(root)
     _need(record["planId"] == identity and record["attemptId"] == attempt
-          and record["schemaVersion"] in (2, 4) and record["phase"] == "CREATING_CANDIDATES"
+          and record["schemaVersion"] in (2, 4, 6) and record["phase"] == "CREATING_CANDIDATES"
           and record["candidate"]["containers"] == {},
           "candidate registration requires the same durable creation intent")
     _installed_gate(run)
-    original_plan = plan.validate_plan(storage.load_plan(identity), identity)
+    original_plan = _review_for_record(record, identity)
     _need(original_plan["current"]["applicationSha"] == record["observedApplicationSha"],
           "plan baseline differs from maintenance")
     candidate = original_plan["candidate"]
@@ -529,7 +557,7 @@ def _register_created_candidates_locked(root, identity, attempt, identifiers, ru
             import deploy_release as controller
         migration.assert_application_history(original_plan, record, collector._history(controller, run), run)
     else:
-        _need(record["schemaVersion"] == 2, "no-SQL registration requires its original record")
+        _need(record["schemaVersion"] in (2, 6), "no-SQL registration requires its original record")
     rows = {}
     for service in SERVICES:
         name = "sanq-web" if service == "web" else "sanq-api"
@@ -616,7 +644,7 @@ def prepare_candidate_containers(identity: str, attempt: str, *, controller=None
 
 def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: str, attempt: str, *, controller=None,
                                  run=collector.command, fetch=None, now=collector.now_utc,
-                                 pending_config=None) -> dict:
+                                 pending_config=None, rollback_approval=None) -> dict:
     """Shared candidate creation stage body. No start, SQL, env update or ACTIVE.
 
     Holds both original locks through revalidation, intent, PENDING, create and
@@ -631,12 +659,27 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
     if fetch is None:
         fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
     job._no_pending(jobs_root)
-    raw = storage.load_plan(identity)
-    original = plan.validate_plan(raw, identity)
+    rollback = rollback_approval is not None
+    if rollback:
+        record = _read(root)
+        _need(record["schemaVersion"] == 5 and record["phase"] == "FROZEN"
+              and record["planId"] == identity and record["attemptId"] == attempt,
+              "rollback creation requires the same frozen attempt")
+        raw = storage.load_rollback_review(identity)
+        original = _review_for_record(record, identity)
+        plan.assert_rollback_compatibility(raw, identity, rollback_approval)
+        _need(rollback_approval == record["rollback"]["approvalSha256"], "rollback acknowledgement changed")
+    else:
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
     has_sql = bool(original["pendingMigrations"])
     _need(not has_sql or callable(pending_config), "SQL authorization path is not implemented")
-    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                  **job._observations(original))
+    if rollback:
+        # Validate the original review's clock/backup age; actual observations are checked below.
+        plan.assert_same_rollback_observations(raw, identity, fresh_raw=raw, observed_at=job._timestamp(now))
+    else:
+        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                      **job._observations(original))
     if has_sql:
         record = _read(root)
         _need(record["schemaVersion"] == 3 and record["phase"] == "MIGRATION_VERIFIED"
@@ -653,13 +696,17 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
               and collector._backup(controller) == original["backup"],
               "frozen plan observations changed")
     candidate = original["candidate"]
-    _need(release.verify_exact_candidate(original["current"]["applicationSha"],
-                                        candidate["sourceSha"], fetch) == candidate,
+    verify = release.verify_exact_rollback if rollback else release.verify_exact_candidate
+    _need(verify(original["current"]["applicationSha"], candidate["sourceSha"], fetch) == candidate,
           "candidate proof changed")
     collector._resource_preflight(controller)
     for image in candidate["images"].values():
         collector._inspect_image(collector._pinned(image), collector._pinned(image),
                                  candidate["sourceSha"], run)
+    if rollback:
+        inventory = collector._probe_sql(collector._pinned(candidate["images"]["sanq-api"]), run)
+        _need(inventory == original["targetMigrationInventory"], "cached rollback SQL differs")
+        collector._verify_sql_source(candidate["sourceSha"], inventory, fetch)
     rendered = collector._json(run(collector._compose(controller, "config", "--format", "json")))
     if has_sql:
         _need(rendered == expanded, "post-migration configuration drifted")
@@ -675,7 +722,14 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
     else:
         _need(collector._snapshot(controller, run) == (before, installed, environment),
               "configuration changed before creation")
-    _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
+    if rollback:
+        _need(collector._history(controller, run) == original["migrationHistory"]
+              and collector._backup(controller) == original["backup"]
+              and _database_identity(controller, run) == database, "rollback baseline changed before creation intent")
+        _begin_candidate_creation_locked(root, identity, attempt, controller, run, now,
+                                         rollback_approval=rollback_approval)
+    else:
+        _begin_candidate_creation_locked(root, identity, attempt, controller, run, now)
     if not has_sql:
         controller.write_creation_pending(original["current"]["applicationSha"], candidate["sourceSha"])
     # Full config includes only the three app services and no depends_on/DB volumes.
@@ -685,6 +739,9 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
             "-f", "-", "create", "--no-build", "--pull", "never", "--force-recreate", *SERVICES]
     run(args, input_bytes=body, timeout=180)
     _need(_database_identity(controller, run) == database, "database changed during creation")
+    if rollback:
+        _need(collector._history(controller, run) == original["migrationHistory"],
+              "database history changed during rollback creation")
     identifiers = {service: _container_id(controller, service, run) for service in SERVICES}
     for service, identifier in identifiers.items():
         _created_mounts(identifier, expanded["services"][service].get("volumes", []), run)
@@ -692,8 +749,22 @@ def _prepare_candidate_containers_locked(root: int, jobs_root: int, identity: st
                                                       controller=controller)
     if has_sql:
         migration.assert_application_history(original, registered, collector._history(controller, run), run)
+    if rollback:
+        _need(collector._history(controller, run) == original["migrationHistory"],
+              "database history changed during rollback registration")
     return {"planId": identity, "attemptId": registered["attemptId"],
             "outcome": "CANDIDATES_CREATED_NOT_STARTED", "canExecute": False}
+
+def prepare_rollback_candidate_containers(identity: str, attempt: str, approval: str, *, controller=None,
+                                          run=collector.command, fetch=None, now=collector.now_utc) -> dict:
+    """Internal create-only stage; same locks and candidate body, no resume CLI."""
+    job._root_operator()
+    # None must not select the forward branch by accident.
+    plan._sha256(approval)
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(MAINTENANCE_DIR) as root:
+        return _prepare_candidate_containers_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=run, fetch=fetch, now=now, rollback_approval=approval)
+
 
 def cleanup_after_task(identity: str, service_result: str, *, controller=None,
                        run=collector.command, now=collector.now_utc) -> dict:
