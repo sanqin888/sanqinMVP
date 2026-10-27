@@ -51,6 +51,13 @@ def _active(original, controller):
                 and state["reason"] == "readiness-verified", "active release differs")
 
 
+def _rolled_back(original, controller):
+    state = _state(controller)
+    guard._need(state["phase"] == "rolled-back" and state["current"] == original["candidate"]["sourceSha"]
+                and state["previous"] == original["current"]["applicationSha"]
+                and state["reason"] == "rollback-verified", "rolled-back release differs")
+
+
 def _env_metadata(controller):
     info = controller.ENV.lstat()
     return info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)
@@ -86,7 +93,7 @@ def _policy_argument(policy):
 
 
 def _clear_committed(root, identity, attempt):
-    """Only called inline after durable ACTIVE, policy readbacks and committed marker."""
+    """Only called inline after durable release, policy readbacks and committed marker."""
     record = guard._read(root)
     guard._need(record["phase"] == "HANDOFF_COMMITTED" and record["planId"] == identity
                 and record["attemptId"] == attempt and set(os.listdir(root)) == {guard.MARKER},
@@ -104,7 +111,7 @@ def finalize_ready(identity: str, attempt: str, *, controller=None,
 
 
 def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: str, *, controller=None,
-                   run=collector.command, fetch=None, now=collector.now_utc) -> dict:
+                   run=collector.command, fetch=None, now=collector.now_utc, rollback_approval=None) -> dict:
     """Internal success-only stage. Never resumes FINALIZING/INCIDENT/COMMITTED."""
     job._root_operator()
     identity, attempt = storage._plan_id(identity), job._attempt(attempt)
@@ -120,19 +127,31 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
     record = guard._read(root)
     guard._need(record["planId"] == identity and record["attemptId"] == attempt
                 and record["phase"] == "CANDIDATES_READY", "handoff requires the same ready attempt")
-    raw = storage.load_plan(identity)
-    original = plan.validate_plan(raw, identity)
-    guard._need(record["schemaVersion"] in (2, 4)
+    rollback = rollback_approval is not None
+    if rollback:
+        guard._need(record["schemaVersion"] == 6, "rollback requires its ready maintenance record")
+        raw = storage.load_rollback_review(identity)
+        original = guard._review_for_record(record, identity)
+        plan.assert_rollback_compatibility(raw, identity, rollback_approval)
+        guard._need(rollback_approval == record["rollback"]["approvalSha256"],
+                    "rollback acknowledgement changed")
+        plan.assert_same_rollback_observations(raw, identity, fresh_raw=raw, observed_at=job._timestamp(now))
+    else:
+        raw = storage.load_plan(identity)
+        original = plan.validate_plan(raw, identity)
+        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                      **job._observations(original))
+    guard._need(record["schemaVersion"] in ((6,) if rollback else (2, 4))
                 and record["observedApplicationSha"] == original["current"]["applicationSha"]
                 and record["candidate"]["release"] == original["candidate"],
                 "SQL path unavailable or handoff plan differs")
-    plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                  **job._observations(original))
+    verify = release.verify_exact_rollback if rollback else release.verify_exact_candidate
+    verify_state = _rolled_back if rollback else _active
     guard._installed_gate(bounded)
     expanded = starter._pending_and_config(original, controller, bounded)
     guard._need(collector._backup(controller) == original["backup"]
-                and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded)
-                and release.verify_exact_candidate(original["current"]["applicationSha"],
+                and starter._application_history(original, record, collector._history(controller, bounded), bounded)
+                and verify(original["current"]["applicationSha"],
                     original["candidate"]["sourceSha"], fetch) == original["candidate"]
                 and starter._running(record, expanded, bounded), "ready observations changed")
     database, units = guard._database_identity(controller, bounded), guard._backup(bounded)
@@ -152,6 +171,13 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
     for service in guard.SERVICES:
         name = "sanq-web" if service == "web" else "sanq-api"
         expected_expanded["services"][service]["image"] = original["candidate"]["images"][name]["ref"]
+    if rollback:
+        guard._need(starter._pending_and_config(original, controller, bounded) == expanded
+                    and collector._backup(controller) == original["backup"]
+                    and guard._database_identity(controller, bounded) == database
+                    and guard._backup(bounded) == units
+                    and starter._application_history(original, record, collector._history(controller, bounded), bounded),
+                    "rollback baseline changed before handoff intention")
     finalizing = {**record, "phase": "FINALIZING", "updatedAt": job._timestamp(now)}
     guard._write(root, finalizing)  # Unknown intention never mutates env/state/policy.
     sealing = False
@@ -168,12 +194,13 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
                     and pending["reason"] == "candidate-create-start"
                     and starter._running(record, expected_expanded, bounded)
                     and guard._database_identity(controller, bounded) == database
-                    and guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded),
+                    and starter._application_history(original, record, collector._history(controller, bounded), bounded),
                     "pre-commit observations changed")
-        controller.write_state("active", current=original["candidate"]["sourceSha"],
-                               previous=original["current"]["applicationSha"], reason="readiness-verified")
+        controller.write_state("rolled-back" if rollback else "active", current=original["candidate"]["sourceSha"],
+                               previous=original["current"]["applicationSha"],
+                               reason="rollback-verified" if rollback else "readiness-verified")
         _sync_runtime(controller, "state")
-        _active(original, controller)  # Never infer a lost ACTIVE write succeeded.
+        verify_state(original, controller)  # Never infer a lost release write succeeded.
         policies = {service: record["originalContainers"][service]["restartPolicy"]
                     for service in guard.SERVICES}
         for service in guard.SERVICES:
@@ -184,9 +211,9 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
                     and guard._database_identity(controller, bounded) == database
                     and guard._backup(bounded) == units, "policy or final resource readback differs")
         _target_binding(original, expected_env, expected_expanded, metadata, controller, bounded)
-        _active(original, controller)
-        if record["schemaVersion"] == 4:
-            guard.migration.assert_application_history(original, record, collector._history(controller, bounded), bounded)
+        verify_state(original, controller)
+        if record["schemaVersion"] in (4, 6):
+            starter._application_history(original, record, collector._history(controller, bounded), bounded)
         guard._installed_gate(bounded)
         committed = {**finalizing, "phase": "HANDOFF_COMMITTED", "updatedAt": job._timestamp(now)}
         sealing = True
@@ -204,5 +231,15 @@ def _finalize_ready_locked(root: int, jobs_root: int, identity: str, attempt: st
     except BaseException as error:
         raise release.ReleaseContractError(
             "release committed; maintenance clear outcome unknown; do not replay or roll back") from error
-    return {"planId": identity, "attemptId": attempt, "outcome": "ACTIVE",
+    return {"planId": identity, "attemptId": attempt, "outcome": "ROLLED_BACK" if rollback else "ACTIVE",
             "currentSha": original["candidate"]["sourceSha"], "canExecute": False}
+
+
+def finalize_rollback_ready(identity: str, attempt: str, approval: str, *, controller=None,
+                             run=collector.command, fetch=None, now=collector.now_utc) -> dict:
+    """Internal success handoff; no recovery, retry or independent execution CLI."""
+    job._root_operator()
+    plan._sha256(approval)
+    with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
+        return _finalize_ready_locked(root, jobs_root, identity, attempt,
+            controller=controller, run=run, fetch=fetch, now=now, rollback_approval=approval)

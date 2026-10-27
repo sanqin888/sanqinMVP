@@ -211,7 +211,7 @@ def _validate(value: dict) -> None:
               "rollback target is unchanged")
         if version == 6:
             _need(value["phase"] in ("CREATING_CANDIDATES", "CANDIDATES_REGISTERED", "STARTING_CANDIDATES",
-                                      "CANDIDATES_READY", "INCIDENT"),
+                                      "CANDIDATES_READY", "FINALIZING", "HANDOFF_COMMITTED", "INCIDENT"),
                   "rollback candidates differ from the reviewed target")
     if version == 5:
         _need(value["phase"] in ("ARMED", "FROZEN", "INCIDENT"), "rollback freeze phase differs")
