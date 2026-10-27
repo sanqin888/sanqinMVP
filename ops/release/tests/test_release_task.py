@@ -67,7 +67,8 @@ class TaskContextTests(unittest.TestCase):
             self.real_installed()
             for api in ("cleanup_after_task", "begin_candidate_creation", "register_created_candidates",
                         "prepare_candidate_containers", "_incident_locked",
-                        "_freeze_for_plan_locked", "_prepare_candidate_containers_locked"):
+                        "_freeze_for_plan_locked", "_prepare_candidate_containers_locked",
+                        "_begin_migration_creation_locked", "_register_created_migration_locked"):
                 with patch.object(guard, api, None), self.assertRaises(ReleaseContractError):
                     self.real_installed()
             with patch.object(task.starter, "start_and_verify", None), self.assertRaises(ReleaseContractError):
@@ -80,6 +81,9 @@ class TaskContextTests(unittest.TestCase):
                 self.real_installed()
             with patch.object(task.starter, "_running", lambda *args: None), self.assertRaises(ReleaseContractError):
                 self.real_installed()
+            for api in ("creation_config", "assert_completed", "assert_applied_history", "assert_application_history"):
+                with patch.object(guard.migration, api, None), self.assertRaises(ReleaseContractError):
+                    self.real_installed()
             source.chmod(0o666)
             with self.assertRaises(ReleaseContractError):
                 self.real_installed()

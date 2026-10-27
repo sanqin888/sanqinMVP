@@ -1,6 +1,36 @@
 # Runtime 最小更新执行器实现方案
 
-## 迁移后的应用交接（2026-10-27，本地待审）
+## 完整 SQL 异步任务接线（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：SQL_TASK_CONNECTED_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一release_task的submit/run/cleanup接收独立准确--approve-sql摘要；提交与停写前都用原计划校验，pending SQL缺失/错摘要、布尔或无迁移却附批准均拒绝。管理器ExecStart/ExecStopPost同时绑定planId与批准参数，PID/cgroup/固定unit校验保持。run持同一job锁/计划锁/维护目录FD完成freeze→迁移create/register→start/wait/history→原应用交接，仅前一阶段调用已知成功才继续；无新批准文件、发布状态或helper。
+
+迁移后应用交接批已由[PR #2997](https://github.com/sanqin888/sanqinMVP/pull/2997) 最终head `96d6a3221d6742a6dda0ee9fbe1a8872ec870ffd` 经 [CI #7679](https://github.com/sanqin888/sanqinMVP/actions/runs/40523115618) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各347、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `3cb66317b49a2cdfdd8e97e6a9b21210369e4035`。其LOCAL/未运行记录是原审阅时点，仍未安装/隔离验收。
+
+### 固定参数与同一主线
+
+- 无迁移提交仍为submit <plan-id> --confirm-release；有迁移还必须显式传--approve-sql <show-sql输出的approvalSha256>。它绑定同一planId/目标/API digest/准确待执行SQL，不是永久apply开关、数据库密码或SQL安全判定。原source/备份/兼容/停写/生产授权规则继续适用；新接口尚未安装，不据文档在现役工具上直接执行。
+- submit先校验原计划/时效与准确批准，再异步systemd-run --no-block；批准只以严格64位小写hex进入固定run/cleanup命令，原两命令与unit/PID/cgroup均须准确匹配。无SQL仍保持原命令，无摘要不存在宽松自动批准；队列结果未知不重复提交。
+- run在进入维护前再次校验同一独立批准及controller API。原job/计划锁、维护目录FD贯穿全部阶段，调用原锁内主体，不释放再获取或用重入/跳锁开关。prepare_migration_container、handoff_migrated_release提取锁内主体；AST规范化对照确认除外层持锁方式和说明文字外，原阶段主体未变，公有适配器仍加锁后委托。
+- 每个迁移阶段返回planId/attemptId/准确outcome/canExecute=false都须匹配；MIGRATION_VERIFIED函数抛出耐久未知时，即使原件看似VERIFIED，也不会进入应用交接。不会从残留phase选路径、重选latest、自动重放、撤销SQL或恢复旧盘。部分create、最终封口/清标记未知仍沿原证据边界，没有外层通用catch覆盖原件。
+- SQL路径调用原迁移创建/登记、迁移执行/准确history及共享应用create/start/finalize；无SQL继续原三应用主线。原PENDING只在创建迁移前写一次，.env保留旧SHA至成功交接，最终ACTIVE仍由原finalizer独占，之后才恢复原策略和清维护标记。
+
+### 预算、收尾与安装一致性
+
+整个任务继续使用monotonic 1800s；所有阶段外部命令timeout取局部限制与任务剩余预算较小者，GitHub调用前后检查整体剩余预算且传输保留自身15s限制。迁移阶段900s预算和start30s/wait上限、应用create180s/health90s/readiness300s等局部上限保留，不因含SQL就叠加成无限窗口；用尽后阻断下一阶段。systemd TimeoutStartSec=2100、TimeoutStopSec=900与原资源限制不变；文件/同步阻塞仍以管理器硬超时兜底，真实行为须隔离验收。
+
+StopPost同样核带批准的准确ExecStart/ExecStopPost参数和ControlPID，但不重新读取可能损坏/消失的计划或依赖批准服务；确认管理器身份后，仍由原维护记录和保存ID执行失败收尾。它不执行SQL、开业务、改版本或清标记。主任务整体预算用尽可能使其内部收尾也无法发命令，独立StopPost进程仍有原单独预算；无法确认停止保持FENCE_UNCONFIRMED。
+
+原task安装API门禁增加迁移begin/register/配置/退出/history接口、应用pending_config与登记controller参数，缺件在停写前拒绝；不能把部分新版文件装入现役九helper集合。未改记录schema、计划/批准算法、17+Manifest或生产systemd配置。
+
+### 验证和结束位置
+
+新增18项离线模型测试：5项批准/异步参数/管理器/独立StopPost/CLI门禁，13项从运行中旧writer开始的完整SQL任务，覆盖同锁12阶段、迁移仅执行一次/准确history/原计划字节不变/唯一PENDING与ACTIVE、缺批准停写前拒绝、部分create、start/wait未知/非零/部分history、VERIFIED同步未知不得继续、SQL后应用失败、整体预算与wait限额、最终clear未知不重放和锁竞争。原无SQL全任务/CLI测试保持，安装API缺件负例扩展。Docker/SQL/systemd/配置/网络/clock为替身，真实临时私有计划和维护文件不代表生产容器或Prisma验证。
+
+本地只进行Python3.10 grammar AST、静态名字/重复方法名、两个提取主体AST等价、字节读回和差异审阅；未运行项目测试。本批CI待授权交付，不把前批347等结果当本批通过。真实Prisma/Compose配置往返、镜像内本地CLI、PID1/StopPost/信号/重启、备份恢复及实际业务兼容尚无本批证据；状态查询原operationSuccessProven=false保持，不根据unit成功/记录推断发布完成。
+
+本批只完成完整SQL任务源码接线，不宣称第二批或最小执行器交付完成。下一步复审并补齐受控兼容镜像回退、统一验真打包/安装与Mac薄入口、实际系统Python/Compose/systemd及依赖验证；统一真实隔离采集、连续双发布、SSH断线/SIGKILL/socket/daemon/VM重启、工具交付中断及恢复演练后，才能申请生产过渡与准确main发布。九helper/三drop-in需统一版本交付，原controller源码仍须正式17+Manifest Bundle过渡；不覆盖现役文件、不手改hash或放宽250/300旧guard。三组研究继续暂停、不取消，无依赖/业务schema/迁移文件/生产目录、Docker/systemd/SQL/AWS操作。
+
+## 迁移后的应用交接（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：POST_MIGRATION_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**同一task新增内部handoff_migrated_release，持原job/计划锁和维护目录FD，独立核同一SQL批准后，复用原create/register→start/readiness→finalize锁内主体。原计划字节/planId不变；迁移后history按原历史+准确批准pending的applied差量验证，不清空pending或伪造无迁移计划。v3/MIGRATION_VERIFIED仅可前进到保留migration与candidate两组准确对象的v4创建意图；后续原阶段/唯一ACTIVE/准确restart策略/最终清标记继续使用同一实现，迁移容器保持退出、restart=no且不删除。
 
