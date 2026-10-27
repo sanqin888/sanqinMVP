@@ -718,13 +718,14 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
-          and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding),
+          and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
+          and (not include_effective_configuration or include_migrations),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -742,7 +743,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         binding = _application_binding_snapshot(docker, run) if include_application_binding else None
         migrations = (_installation_migration_snapshot(configuration[1]["applicationSha"], docker, prerequisites,
                           lambda args: _runtime_command(args, deadline=deadline), fetch=fetch) if include_migrations else None)
-        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations
+        effective = _effective_configuration_snapshot(docker, run) if include_effective_configuration else None
+        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations, effective
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -795,6 +797,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         if include_migrations:
             result.update({"databaseMigrationParityProven": True, "applicationReleaseAuthenticated": True,
                            "migrations": before[7]})
+        if include_effective_configuration:
+            result.update({"effectiveContainerConfigurationObserved": True, "effectiveConfiguration": before[8]})
         return result
 
 
@@ -1779,6 +1783,89 @@ def _observe_installed_migrations(identity, *, fetch=release.github_json):
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True,
         include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
         include_migrations=True)
+
+
+
+# Preflight A: effective published ports, healthcheck and container retention.
+INSTALL_PORTS = {"api": (4000, 5555), "ubereats-worker": (4001,), "web": (3000,), "db": (5432,)}
+
+
+def _health_duration(value):
+    _need(isinstance(value, str), "health duration must be an explicit string")
+    match = re.fullmatch(r"([0-9]+)(ns|us|ms|s|m|h)", value)
+    _need(match is not None, "unsupported health duration")
+    return int(match[1]) * {"ns": 1, "us": 1000, "ms": 1000000, "s": 1000000000,
+                           "m": 60000000000, "h": 3600000000000}[match[2]]
+
+
+def _effective_configuration_snapshot(docker, run):
+    expanded = _docker_json((*COMPOSE, "config", "--format", "json"), run)
+    _need(_hash(_json(expanded)) == docker["renderedComposeSha256"], "Compose changed before effective configuration")
+    result = {}
+    for role, saved in docker["containers"].items():
+        info = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}", saved["containerId"]), run)
+        _need(type(info) is dict and info.get("Id") == saved["containerId"] and info.get("Image") == saved["imageId"]
+              and _hash(_json(info.get("Config"))) == saved["configurationSha256"],
+              "saved container changed before effective configuration")
+        service, host = expanded["services"][role], info.get("HostConfig")
+        _need(type(host) is dict and host.get("AutoRemove") is False
+              and host.get("PublishAllPorts") is False and host.get("Privileged") is False,
+              "container retention or automatic publication differs")
+        expected = {str(port) + "/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}] for port in INSTALL_PORTS[role]}
+        ports = service.get("ports")
+        _need(type(ports) is list and len(ports) == len(expected), "Compose published port count differs")
+        observed = {}
+        for port in ports:
+            _need(type(port) is dict and type(port.get("target")) is int
+                  and str(port.get("published")) == str(port["target"]) and port.get("host_ip") == "127.0.0.1"
+                  and port.get("protocol", "tcp") == "tcp" and port.get("mode", "ingress") == "ingress",
+                  "Compose published endpoint differs")
+            key = str(port["target"]) + "/tcp"
+            _need(key not in observed, "duplicate Compose published endpoint")
+            observed[key] = [{"HostIp": port["host_ip"], "HostPort": str(port["published"])}]
+        _need(observed == expected and host.get("PortBindings") == expected,
+              "actual published bindings differ")
+        settings = info.get("NetworkSettings")
+        _need(type(settings) is dict and type(settings.get("Ports")) is dict
+              and {key: value for key, value in settings["Ports"].items() if value is not None} == expected,
+              "running published endpoints differ")
+        image = _docker_json((*DOCKER, "image", "inspect", "--format", "{{json .}}", saved["imageId"]), run)
+        _need(type(image) is dict and image.get("Id") == saved["imageId"] and type(image.get("Config")) is dict,
+              "saved healthcheck image differs")
+        desired = dict(image["Config"].get("Healthcheck") or {})
+        health = service.get("healthcheck")
+        _need(type(health) is dict and not health.get("disable", False)
+              and set(health) <= {"test", "interval", "timeout", "retries", "start_period", "start_interval"},
+              "Compose healthcheck fields differ")
+        for key, value in health.items():
+            field = {"test": "Test", "interval": "Interval", "timeout": "Timeout", "retries": "Retries",
+                     "start_period": "StartPeriod", "start_interval": "StartInterval"}[key]
+            if key == "test":
+                _need(type(value) is list and len(value) >= 2 and value[0] in ("CMD", "CMD-SHELL")
+                      and all(isinstance(part, str) for part in value), "healthcheck command differs")
+                value = [_compose_environment({"VALUE": part})["VALUE"] for part in value]
+            elif key == "retries":
+                _need(type(value) is int and value > 0, "healthcheck retries differ")
+            else:
+                value = _health_duration(value)
+            desired[field] = value
+        actual = info["Config"].get("Healthcheck")
+        _need(type(actual) is dict and set(actual) <= {"Test", "Interval", "Timeout", "Retries", "StartPeriod", "StartInterval"}
+              and type(actual.get("Test")) is list and len(actual["Test"]) >= 2
+              and actual["Test"][0] in ("CMD", "CMD-SHELL")
+              and all(type(actual.get(key, 0)) is int for key in ("Interval", "Timeout", "Retries", "StartPeriod", "StartInterval"))
+              and {**{key: 0 for key in ("Interval", "Timeout", "Retries", "StartPeriod", "StartInterval")}, **actual}
+              == {**{key: 0 for key in ("Interval", "Timeout", "Retries", "StartPeriod", "StartInterval")}, **desired},
+              "effective healthcheck differs from Compose and image")
+        result[role] = {"containerId": saved["containerId"], "portsSha256": _hash(_json(settings["Ports"])),
+                        "healthcheckSha256": _hash(_json(actual)), "autoRemove": False, "publishAllPorts": False}
+    return result
+
+
+def _observe_installed_effective_configuration(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True)
 
 
 def main(argv=None):
