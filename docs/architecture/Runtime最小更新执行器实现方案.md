@@ -1,6 +1,20 @@
 # Runtime 最小更新执行器实现方案
 
-## 第二批续作：联合状态查询（本地待审）
+
+
+## 连续更新修正（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：CONSECUTIVE_UPDATE_FIX_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**修正首次digest候选成功交接后，下一次维护仍只识别SHA标签的问题。原guard._inspect保留固定仓库/角色/完整ID及显式候选引用的精确检查；旧writer若声明digest，逐次以实际image ID核linux/amd64、RepoDigests和目标revision。入维护前再与准确已封存release的SHA标签或digest二选一对齐；后续停写/登记/启动/交接/事故收尾通过同一检查并核原保存image ID，无新marker字段、发布权威或恢复入口。新增7项离线测试方法未运行，其中一项从真实阶段代码完成第一次交接，再对同一digest容器进入下一计划的freeze与创建意图；Docker/采集/GitHub为替身，尚未完成真实连续两次发布验收。
+
+修复范围为Runtime/Ops内部原子改动，保持函数签名/marker v1/v2/schema及已安装状态不变。旧SHA标签仍精确匹配，digest不是任意字符串放行：固定服务仓库、合法sha256、实际image ID/平台/revision/RepoDigests均须通过，首次观察还须匹配准确current release seal；latest、错SHA、外来仓库、坏digest、未封存本地alias或错revision/平台继续拒绝。显式candidate reference分支仍只接受计划中同一个digest。既有v1停写、v2原对象验证、starter原对象验证与共享incident收尾均复用修正；没有另存原始引用或更改current/previous。新增digest观察会增加有界只读image inspect，不pull/build/start或补标签。
+
+测试包含SHA/digest混合维护、镜像平台/revision/digest负例、错误引用拒绝、未封存本地alias拒绝、原image ID替换拒绝、失败任务对digest原对象的确认停写，以及首批handoff→下一准确计划→freeze→创建意图模型。保留原策略（含重试次数）、唯一ACTIVE、维护阻断及无SQL语义。该模型只覆盖已发现的跨次边界，第二次完整create/start/finalize尚未贯通，不能宣称真实双发布已通过。
+
+仅Python3.10 grammar AST、测试方法名/差异/导入静态审阅；本地未运行项目测试，待授权提交后以最终head CI为准。源码属于原八helper之一，不增加交付件，不更改17+Manifest/250/300旧guard或现役Runtime；统一安装与前批controller正式Bundle交付仍待完成。下一步仍为同一异步任务贯通及阶段间互斥/超时预算、准确SQL/回退、Mac入口/安装、统一隔离故障与连续两次真实发布验收。三组研究继续暂停、不取消，无生产Docker/systemd/DB/AWS动作。
+
+联合状态批已由[PR #2990](https://github.com/sanqin888/sanqinMVP/pull/2990) 最终head `9737d0e338719cfbbb1017c2c3fc93615ddd6f87` 经 [CI #7662](https://github.com/sanqin888/sanqinMVP/actions/runs/40443398580) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各264、Runtime1080、准确CPython3.12.15回归412），无修复，合并dev `efc0afebe595a760471f561012ae320e431da913`。其原LOCAL/未运行为审阅时点，仍未安装或现场验收。
+
+## 第二批续作：联合状态查询（源码已合并）
 
 只扩展原task，不新增第九helper或执行入口。原unitState/maintenancePhase保留，新增releaseObservation；unit成功或消失都不能替代现场观察。锁忙、文件/安装/容器读失败与变化返回固定UNKNOWN，不回显任意异常或秘密；原维护记录损坏/残件继续报查询失败，不伪装无维护。查询只读取.env中的SHA，不返回环境正文。互斥沿用原锁设施，可能创建原.release.lock文件，不写发布/维护记录或容器策略。
 
