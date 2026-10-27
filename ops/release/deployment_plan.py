@@ -311,3 +311,29 @@ def assert_same_observations(raw: bytes, expected_plan_id: str, *,
     _require("created_at" not in observations, "cannot replace the plan timestamp")
     fresh = create_plan(created_at=plan["createdAt"], **observations)
     _require(fresh == raw, "plan baseline changed; prepare a new plan")
+
+
+def sql_review(raw: bytes, expected_plan_id: str) -> dict:
+    """Describe exact pending SQL. The digest binds review scope, not authority."""
+    value = validate_plan(raw, expected_plan_id)
+    inventory = {item["name"]: item for item in value["migrationInventory"]}
+    body = {"kind": "sanq-exact-sql-review-v1", "planId": expected_plan_id,
+            "targetSha": value["candidate"]["sourceSha"],
+            "apiImage": dict(value["candidate"]["images"]["sanq-api"]),
+            "migrations": [dict(inventory[item["name"]]) for item in value["pendingMigrations"]]}
+    return {**body,
+            "approvalSha256": hashlib.sha256(_canonical(body)).hexdigest() if body["migrations"] else None,
+            "requiresExplicitApproval": bool(body["migrations"]),
+            "sqlSafetyAssessed": False, "canExecute": False}
+
+
+def assert_sql_approval(raw: bytes, expected_plan_id: str, approved_sha256: str | None) -> None:
+    """Compare a separately supplied scope digest; never infer SQL safety or run it."""
+    review = sql_review(raw, expected_plan_id)
+    expected = review["approvalSha256"]
+    if expected is None:
+        _require(approved_sha256 is None, "no pending SQL permits no SQL approval")
+    else:
+        _require(_sha256(approved_sha256) == expected,
+                 "SQL approval differs from the exact reviewed plan")
+

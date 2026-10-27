@@ -1,6 +1,25 @@
 # Runtime 最小更新执行器实现方案
 
-## 无迁移异步任务贯通（2026-10-27，本地待审）
+## 准确 SQL 审阅与批准绑定（2026-10-27，本地待审）
+
+**2026-10-27 当前进度：SQL_REVIEW_BINDING_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**在原plan/collector补准确待执行SQL审阅与批准范围绑定，不新增helper、批准数据库或版本权威。plan.sql_review给出planId/目标/API digest/有序原始SQL元数据及域分离approvalSha256；assert_sql_approval只核独立传入的准确摘要，缺失/布尔/planId/错摘要拒绝，无pending只接受None。原prepare/show摘要新增sqlReview，show-sql按计划gitBlobSha读取固定SanQ GitHub blob，核size/base64/原字节SHA-256和Git blob SHA-1后展示UTF-8原文与准确commit来源；所有SQL核完且完整JSON不超过4MiB才输出。canExecute/sqlSafetyAssessed始终false，摘要不是授权凭证/安全判定，不写批准文件或执行SQL。
+
+### 当前范围和交付接口
+
+- 复用原canonical计划及独立planId：批准范围的域为sanq-exact-sql-review-v1，包含planId、目标SHA、准确API image ref/digest和pending原顺序的name/sha256/bytes/gitBlobSha。planId已经绑定current/配置/运行合同/备份/完整inventory/history/paired images，任一变化或重新生成计划都使摘要变化；不是永久--apply-migrations或布尔批准。摘要可公开核对，没有签名/issuer/新PKI/离机服务或额外current/previous。
+- `prepare/show`继续REVIEW_ONLY，并显示sqlReview；新只读`show-sql <plan-id>`从原私有计划读取，只GET固定仓库的准确blob SHA，不收任意URL/文件/SQL输入，不启动Docker、数据库或systemd。对SQL原字节做size/SHA-256/Git blob SHA-1三项核验，保留UTF-8/LF/CRLF，附准确目标commit文件链接；拒绝坏编码、错误大小/内容、非UTF-8或超预算，不先打印部分SQL或批准摘要。输出原文属于显式审阅操作，不进入发布任务普通日志。
+- `assert_sql_approval`是后续执行路径复用的纯校验函数；哈希相同不证明操作者已经审过SQL、不证明无破坏性，也不是生产迁移授权。人仍须审阅兼容/数据保留/锁/备份/维护范围；真正执行前还要重新验证准确计划、时效、proof、实际DB历史与pending集合，不能用过期审阅快照跳过重核。
+- 无pending时审批摘要None，show-sql不访问GitHub，不凭空执行SQL。审批/展示内容只派生自原计划，不改计划v1、维护v1/v2、job/state schema；summary字段/只读子命令为兼容新增，无已安装消费者或双写。固定17+Manifest/旧guard和八helper交付件数不变。
+
+### 验证与结束位置
+
+新增13项离线模型测试，覆盖准确范围/无执行权限、目标/image/config/runtime/history/时间/SQL原字节改变使旧批准失效、坏批准/计划原件、无pending不联网、准确pending-only blob和固定来源、坏元数据/内容/编码、UTF-8/CRLF保持、原文/JSON预算和CLI失败不输出部分SQL；Docker/DB/网络均不执行。本地仅Python3.10 AST、方法名/静态名字/差异审阅，尚无本批CI；前批284等结果不替代本批验证。
+
+**迁移执行尚未接通：**release_task及create/start/finalize仍明确拒绝pending SQL，CLI没有接受此摘要的迁移执行开关。下一步把独立批准传入管理器任务、在原停写下重核并登记准确迁移临时容器，再执行/核对准确迁移历史、将其纳入超时/SIGKILL/StopPost和未知结果阻断，最后才接回候选应用交接。不能直接套用旧tag-based migrate deploy或在运行结果未知时重试；不自动反向迁移/恢复旧盘。受控回退、安装/Mac薄入口、真实隔离故障/连续双发布/恢复和生产发布仍OPEN。三组研究继续暂停、不取消，本批无依赖/schema/迁移文件、生产目录/unit/SQL/AWS操作。
+
+无迁移任务贯通已由[PR #2992](https://github.com/sanqin888/sanqinMVP/pull/2992) 最终head `1f9b424056db494930edfa73f7ed950ba70b4607` 经 [CI #7667](https://github.com/sanqin888/sanqinMVP/actions/runs/40501959449) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各284、Runtime1080、准确CPython3.12.15回归412），合并dev `73a8a162325e1dfcba10515541a00837ed8a9937`。首次CI #7666中SQL拒绝测试重复保存原fixture计划而报错，仅把该测试createdAt改成独立时间戳，同分支追加 `1f9b4240` 修复；生产逻辑/门禁未改。原本地未运行/未提交为审阅时点，不代表隔离或生产已通过。
+
+## 无迁移异步任务贯通（2026-10-27，源码已合并）
 
 **2026-10-27 当前进度：NO_SQL_TASK_CONNECTED_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原release_task已接入同一无迁移计划的freeze→create/register→start/readiness→finalize；同一job锁/计划资源锁/维护目录FD贯穿阶段交接，四阶段主体提取为原入口与任务共同使用的内部函数，AST对照确认主体逻辑不变，不复制第二套发布器。执行/排队前拒绝pending SQL和目标等于当前版本；CLI提交确认改为--confirm-release，原--confirm-maintenance不再接受，unit前缀改为sanq-release-apply-，无已安装消费者。仅最终原finalize清标记已知完成返回ACTIVE；保留未知/事故语义。
 
