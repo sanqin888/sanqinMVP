@@ -192,6 +192,8 @@ class RollbackPreflightTests(unittest.TestCase):
         self.replace(task.job, "_locked_directory", side_effect=self.job_lock)
         self.replace(storage, "preparation_lock", side_effect=self.plan_lock)
         self.writes = [self.replace(task.guard, "_freeze_for_plan_locked"),
+                       self.replace(task.guard, "_freeze_rollback_for_plan_locked"),
+                       self.replace(task, "submit_rollback"),
                        self.replace(task, "submit"), self.replace(task, "run_task"),
                        self.replace(task.job, "_write"), self.replace(task.guard, "_write")]
         self.seconds = 0.0
@@ -228,8 +230,9 @@ class RollbackPreflightTests(unittest.TestCase):
         result = self.check()
         self.assertEqual(result["outcome"], "BASELINE_RECHECKED")
         self.assertTrue(result["compatibilityAcknowledged"])
+        self.assertTrue(result["executionImplemented"])
         for field in ("canExecute", "databaseCompatibilityProven", "incidentRecoveryAuthorized",
-                      "executionImplemented"):
+                      "executionRequested"):
             self.assertFalse(result[field])
         self.assertNotIn("releaseStateRaw", result)
         self.assertEqual(self.events, ["job-enter", "plan-enter", "plan-exit", "job-exit"])

@@ -1,7 +1,7 @@
 """Uninstalled asynchronous release task for exact plans and reviewed SQL.
 
 One locked task owns freeze through final handoff. SQL requires its independent
-scope digest. Rollback preflight is read-only for business state and cannot execute.
+scope digest. Rollback tasks require their independently reviewed compatibility digest.
 Query evidence after unknown results; never replay or restore.
 """
 
@@ -70,15 +70,27 @@ def _installed() -> None:
           and callable(getattr(collector, "collect_rollback", None))
           and callable(getattr(plan, "assert_rollback_compatibility", None))
           and callable(getattr(plan, "assert_same_rollback_observations", None))
+          and callable(getattr(guard, "_freeze_rollback_for_plan_locked", None))
+          and all("rollback_approval" in inspect.signature(stage).parameters for stage in (
+              guard._prepare_candidate_containers_locked, starter._start_and_verify_locked,
+              finalizer._finalize_ready_locked))
           and "wait_seconds" in inspect.signature(job._locked_directory).parameters,
           "installed helper APIs are incomplete; do not mix tool versions")
 
 
-def _command(role: str, identity: str, approval=None) -> str:
-    if approval is not None:
-        plan._sha256(approval)
+def _approval_arguments(approval=None, rollback_approval=None) -> list[str]:
+    _need(approval is None or rollback_approval is None, "SQL and rollback approvals cannot be combined")
+    value = rollback_approval if rollback_approval is not None else approval
+    if value is None:
+        return []
+    plan._sha256(value)
+    return ["--approve-compatibility" if rollback_approval is not None else "--approve-sql", value]
+
+
+def _command(role: str, identity: str, approval=None, *, rollback_approval=None) -> str:
+    arguments = _approval_arguments(approval, rollback_approval)
     return ("/usr/bin/python3 -B " + str(TASK_SCRIPT) + " " + role + " " + storage._plan_id(identity)
-            + ("" if approval is None else " --approve-sql " + approval))
+            + ("" if not arguments else " " + " ".join(arguments)))
 
 
 def _command_matches(value: str, expected: str) -> bool:
@@ -95,7 +107,7 @@ def _cgroup() -> str:
     return rows[0]
 
 
-def _context(identity: str, role: str, run, *, approval=None) -> None:
+def _context(identity: str, role: str, run, *, approval=None, rollback_approval=None) -> None:
     """Observed manager PID/cgroup/commands bind a call, never caller booleans."""
     _installed()
     keys = ["LoadState", "Transient", "Type", "Restart", "RemainAfterExit", "KillMode",
@@ -123,8 +135,8 @@ def _context(identity: str, role: str, run, *, approval=None) -> None:
         _need(role == "cleanup" and fields["ActiveState"] == "deactivating"
               and fields["SubState"] == "stop-post" and pid == fields["ControlPID"],
               "not the task stop-post process")
-    _need(_command_matches(fields["ExecStart"], _command("run", identity, approval))
-          and _command_matches(fields["ExecStopPost"], _command("cleanup", identity, approval)),
+    _need(_command_matches(fields["ExecStart"], _command("run", identity, approval, rollback_approval=rollback_approval))
+          and _command_matches(fields["ExecStopPost"], _command("cleanup", identity, approval, rollback_approval=rollback_approval)),
           "task executable arguments or failure handling differ")
 
 
@@ -169,25 +181,34 @@ def check_rollback(identity: str, *, approval: str, controller=None,
                                                observed_at=job._timestamp(now))
         return {**plan.rollback_review_summary(raw, identity), "outcome": "BASELINE_RECHECKED",
                 "mode": "ROLLBACK_PREFLIGHT_ONLY", "compatibilityAcknowledged": True,
-                "executionImplemented": False}
+                "executionImplemented": True, "executionRequested": False}
 
 
-def submit(identity: str, *, approval=None, run=collector.command, now=collector.now_utc) -> dict:
+def submit(identity: str, *, approval=None, rollback_approval=None,
+           run=collector.command, now=collector.now_utc) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
+    arguments = _approval_arguments(approval, rollback_approval)
+    rollback = rollback_approval is not None
     _installed()
     guard._installed_gate(run)
     # Release the inspection lock before queueing: the child acquires it itself.
     with job._locked_directory() as root:
         storage.check_maintenance_clear(guard.MAINTENANCE_DIR)
         job._no_pending(root)
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        plan.assert_sql_approval(raw, identity, approval)
+        if rollback:
+            raw = storage.load_rollback_review(identity)
+            original = plan.validate_rollback_review(raw, identity)
+            plan.assert_rollback_compatibility(raw, identity, rollback_approval)
+            plan.assert_same_rollback_observations(raw, identity, fresh_raw=raw, observed_at=job._timestamp(now))
+        else:
+            raw = storage.load_plan(identity)
+            original = plan.validate_plan(raw, identity)
+            plan.assert_sql_approval(raw, identity, approval)
+            plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
+                                          **job._observations(original))
         _need(original["candidate"]["sourceSha"] != original["current"]["applicationSha"],
               "target is already the current release")
-        plan.assert_same_observations(raw, identity, observed_at=job._timestamp(now),
-                                      **job._observations(original))
     args = ["systemd-run", "--unit=" + _unit(identity), "--service-type=oneshot",
             "--remain-after-exit", "--no-block", "--slice=system.slice",
             "--property=User=root", "--property=Restart=no", "--property=KillMode=control-group",
@@ -195,21 +216,25 @@ def submit(identity: str, *, approval=None, run=collector.command, now=collector
             "--property=TimeoutStopSec=" + str(STOP_TIMEOUT_SECONDS),
             "--property=WorkingDirectory=" + str(RUNTIME_ROOT),
             "--property=MemoryMax=256M", "--property=CPUQuota=50%",
-            "--property=ExecStopPost=" + _command("cleanup", identity, approval),
+            "--property=ExecStopPost=" + _command("cleanup", identity, approval, rollback_approval=rollback_approval),
             "--", "/usr/bin/python3", "-B", str(TASK_SCRIPT), "run", identity]
-    if approval is not None:
-        args += ["--approve-sql", approval]
+    args += arguments
     # No wait/pty/pipe/scope/replace/collect; a duplicate or unknown result is not retried.
     run(args, timeout=30)
     return {"planId": identity, "unit": _unit(identity), "outcome": "SUBMITTED",
             "canExecute": False}
 
 
-def run_task(identity: str, *, approval=None, run=collector.command, controller=None, fetch=None,
+def run_task(identity: str, *, approval=None, rollback_approval=None, run=collector.command, controller=None, fetch=None,
              observe=None, now=collector.now_utc, clock=time.monotonic, pause=time.sleep) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
-    _context(identity, "run", run, approval=approval)
+    _approval_arguments(approval, rollback_approval)
+    rollback = rollback_approval is not None
+    context = {"approval": approval}
+    if rollback:
+        context["rollback_approval"] = rollback_approval
+    _context(identity, "run", run, **context)
     if controller is None:
         import deploy_release as controller
     _need(all(callable(getattr(controller, name, None)) for name in (
@@ -234,7 +259,7 @@ def run_task(identity: str, *, approval=None, run=collector.command, controller=
         value = original_fetch(path)  # Fixed GitHub transport has its own 15s timeout.
         remaining()
         return value
-    if observe is None:
+    if observe is None and not rollback:
         observe = lambda target, **kwargs: collector.collect(
             target, controller=controller, run=bounded, fetch=bounded_fetch, **kwargs)
     # One pair of original OS locks spans ALL stages, including stage handoffs.
@@ -242,14 +267,23 @@ def run_task(identity: str, *, approval=None, run=collector.command, controller=
     with job._locked_directory() as jobs_root, storage.preparation_lock(), storage._directory_fd(guard.MAINTENANCE_DIR) as root:
         job._no_pending(jobs_root)
         storage.check_maintenance_clear(guard.MAINTENANCE_DIR)
-        raw = storage.load_plan(identity)
-        original = plan.validate_plan(raw, identity)
-        plan.assert_sql_approval(raw, identity, approval)
+        if rollback:
+            raw = storage.load_rollback_review(identity)
+            original = plan.validate_rollback_review(raw, identity)
+            plan.assert_rollback_compatibility(raw, identity, rollback_approval)
+        else:
+            raw = storage.load_plan(identity)
+            original = plan.validate_plan(raw, identity)
+            plan.assert_sql_approval(raw, identity, approval)
         _need(original["candidate"]["sourceSha"] != original["current"]["applicationSha"],
               "target is already the current release")
         remaining()
-        frozen = guard._freeze_for_plan_locked(root, jobs_root, identity, controller=controller,
-            run=bounded, observe=observe, fetch=bounded_fetch, now=now)
+        kwargs = {"controller": controller, "run": bounded, "observe": observe,
+                  "fetch": bounded_fetch, "now": now}
+        if rollback:
+            frozen = guard._freeze_rollback_for_plan_locked(root, jobs_root, identity, rollback_approval, **kwargs)
+        else:
+            frozen = guard._freeze_for_plan_locked(root, jobs_root, identity, **kwargs)
         _need(frozen["planId"] == identity and frozen["phase"] == "FROZEN"
               and frozen["canExecute"] is False, "freeze stage result differs")
         attempt = job._attempt(frozen["attemptId"])
@@ -276,6 +310,8 @@ def run_task(identity: str, *, approval=None, run=collector.command, controller=
             kwargs = {"controller": controller, "run": bounded, "fetch": bounded_fetch, "now": now}
             if stage is starter._start_and_verify_locked:
                 kwargs.update(clock=clock, pause=pause)
+            if rollback:
+                kwargs["rollback_approval"] = rollback_approval
             result = stage(root, jobs_root, identity, attempt, **kwargs)
             _need(result["planId"] == identity and result["attemptId"] == attempt
                   and result["outcome"] == outcome and result["canExecute"] is False,
@@ -283,15 +319,21 @@ def run_task(identity: str, *, approval=None, run=collector.command, controller=
         remaining()
         # No outer exception handler rewrites a stage's unknown durability or
         # retries final clear. ExecStopPost independently handles failure/SIGKILL.
-        return finalizer._finalize_ready_locked(root, jobs_root, identity, attempt,
-            controller=controller, run=bounded, fetch=bounded_fetch, now=now)
+        kwargs = {"controller": controller, "run": bounded, "fetch": bounded_fetch, "now": now}
+        if rollback:
+            kwargs["rollback_approval"] = rollback_approval
+        return finalizer._finalize_ready_locked(root, jobs_root, identity, attempt, **kwargs)
 
 
 
-def cleanup_task(identity: str, *, approval=None, run=collector.command) -> dict:
+def cleanup_task(identity: str, *, approval=None, rollback_approval=None, run=collector.command) -> dict:
     job._root_operator()
     identity = storage._plan_id(identity)
-    _context(identity, "cleanup", run, approval=approval)
+    _approval_arguments(approval, rollback_approval)
+    context = {"approval": approval}
+    if rollback_approval is not None:
+        context["rollback_approval"] = rollback_approval
+    _context(identity, "cleanup", run, **context)
     # Only trusted manager context reaches this branch. Unknown/missing result
     # is failure handling, never an instruction to reopen or clear maintenance.
     return guard.cleanup_after_task(identity, os.environ.get("SERVICE_RESULT", "unknown"), run=run)
@@ -527,7 +569,7 @@ def _observed_writers(controller, candidate, expanded, run):
     return rows
 
 
-def _release_observation(identity: str, *, controller=None, run=collector.command) -> dict:
+def _release_observation(identity: str, *, controller=None, run=collector.command, rollback=False) -> dict:
     """Bounded read-only observations, never a receipt or a replay permission."""
     unknown = {"outcome": "UNKNOWN", "canExecute": False, "operationSuccessProven": False}
     original_run = run
@@ -539,8 +581,12 @@ def _release_observation(identity: str, *, controller=None, run=collector.comman
         if controller is None:
             import deploy_release as controller
         with job._locked_directory(), storage.preparation_lock():
-            raw = storage.load_plan(identity)
-            original = plan.validate_plan(raw, identity)
+            if rollback:
+                raw = storage.load_rollback_review(identity)
+                original = plan.validate_rollback_review(raw, identity)
+            else:
+                raw = storage.load_plan(identity)
+                original = plan.validate_plan(raw, identity)
             marker = guard.status()
             controller.ensure_repo_location()
             state = finalizer._state(controller)
@@ -556,10 +602,10 @@ def _release_observation(identity: str, *, controller=None, run=collector.comman
                 return {**result, "outcome": "MAINTENANCE_RETAINED",
                         "maintenancePhase": marker["phase"] if marker["planId"] == identity
                         else "OTHER_PLAN"}
-            if (state["phase"] != "active"
+            if (state["phase"] != ("rolled-back" if rollback else "active")
                     or state["current"] != original["candidate"]["sourceSha"]
                     or state["previous"] != original["current"]["applicationSha"]
-                    or state["reason"] != "readiness-verified"):
+                    or state["reason"] != ("rollback-verified" if rollback else "readiness-verified")):
                 return {**result, "outcome": "RELEASE_INCOMPLETE"}
             before = collector._snapshot(controller, run)
             _need(before[0]["applicationSha"] == state["current"]
@@ -567,6 +613,9 @@ def _release_observation(identity: str, *, controller=None, run=collector.comman
                   and plan.runtime_contract(before[1], before[1]) == original["runtimeContract"],
                   "target runtime differs from reviewed plan")
             expanded = collector._json(run(collector._compose(controller, "config", "--format", "json")))
+            if rollback:
+                _need(collector._history(controller, run) == original["migrationHistory"],
+                      "rollback history differs from the reviewed baseline")
             rows = _observed_writers(controller, original["candidate"], expanded, run)
             database = guard._database_identity(controller, run)
             # Do not combine observations from two updater stages or changed files.
@@ -576,12 +625,15 @@ def _release_observation(identity: str, *, controller=None, run=collector.comman
                   and _observed_writers(controller, original["candidate"], expanded, run) == rows
                   and guard._database_identity(controller, run) == database,
                   "runtime changed during status observation")
+            if rollback:
+                _need(collector._history(controller, run) == original["migrationHistory"],
+                      "rollback history changed during observation")
             return {**result, "outcome": "TARGET_RUNNING_OBSERVED"}
     except (ReleaseContractError, OSError, ValueError, TypeError, KeyError, RecursionError):
         return unknown
 
 
-def status(identity: str, *, run=collector.command) -> dict:
+def status(identity: str, *, run=collector.command, rollback=False) -> dict:
     identity = storage._plan_id(identity)
     marker = guard.status()
     try:
@@ -596,12 +648,17 @@ def status(identity: str, *, run=collector.command) -> dict:
     return {"planId": identity, "unit": _unit(identity),
             "unitState": fields if fields["LoadState"] == "loaded" else {"LoadState": "unknown"},
             "maintenancePhase": phase,
-            "releaseObservation": _release_observation(identity, run=run), "canExecute": False}
+            "releaseObservation": _release_observation(identity, run=run, **({"rollback": True} if rollback else {})), "canExecute": False}
 
 
 def logs(identity: str, *, run=collector.command) -> str:
     return run(["journalctl", "--unit=" + _unit(identity), "--no-pager",
                 "--lines=80", "--output=short-iso"], timeout=30)
+
+
+def submit_rollback(identity: str, *, approval: str, run=collector.command, now=collector.now_utc) -> dict:
+    plan._sha256(approval)  # Missing approval must never select the forward branch.
+    return submit(identity, rollback_approval=approval, run=run, now=now)
 
 
 def main(argv=None) -> int:
@@ -613,7 +670,16 @@ def main(argv=None) -> int:
         if name == "submit":
             sub.add_argument("--confirm-release", required=True, action="store_true")
         if name in ("submit", "run", "cleanup"):
-            sub.add_argument("--approve-sql", help="exact SQL review SHA-256 for this plan")
+            approval = sub.add_mutually_exclusive_group()
+            approval.add_argument("--approve-sql", help="exact SQL review SHA-256 for this plan")
+            if name != "submit":
+                approval.add_argument("--approve-compatibility", help="exact rollback compatibility SHA-256")
+    submit_rb = commands.add_parser("submit-rollback", help="Queue the exact reviewed previous release")
+    submit_rb.add_argument("plan_id")
+    submit_rb.add_argument("--confirm-rollback", required=True, action="store_true")
+    submit_rb.add_argument("--approve-compatibility", required=True)
+    status_rb = commands.add_parser("status-rollback", help="Observe a rollback without resuming it")
+    status_rb.add_argument("plan_id")
     rollback = commands.add_parser("check-rollback", help="Check a reviewed rollback without executing it")
     rollback.add_argument("plan_id")
     rollback.add_argument("--approve-compatibility", required=True)
@@ -621,11 +687,17 @@ def main(argv=None) -> int:
     try:
         if args.command == "check-rollback":
             print(json.dumps(check_rollback(args.plan_id, approval=args.approve_compatibility), indent=2))
+        elif args.command == "submit-rollback":
+            print(json.dumps(submit_rollback(args.plan_id, approval=args.approve_compatibility), indent=2))
+        elif args.command == "status-rollback":
+            print(json.dumps(status(args.plan_id, rollback=True), indent=2))
         elif args.command == "logs":
             print(logs(args.plan_id), end="")
         else:
             handlers = {"submit": submit, "run": run_task, "cleanup": cleanup_task, "status": status}
             kwargs = {"approval": args.approve_sql} if args.command in ("submit", "run", "cleanup") else {}
+            if args.command in ("run", "cleanup") and args.approve_compatibility is not None:
+                kwargs = {"rollback_approval": args.approve_compatibility}
             print(json.dumps(handlers[args.command](args.plan_id, **kwargs), indent=2))
         return 0
     except (ReleaseContractError, OSError, EOFError, ValueError, TypeError, KeyError, RecursionError):
