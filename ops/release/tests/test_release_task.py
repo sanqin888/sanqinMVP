@@ -292,5 +292,142 @@ class StopPostTests(unittest.TestCase):
             guard.check_startup()
 
 
+
+class JointStatusTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        self.identity = "a" * 64
+        self.old, self.target = "b" * 40, "c" * 40
+        self.controller = SimpleNamespace(ensure_repo_location=Mock())
+        self.state = {"phase": "active", "current": self.target, "previous": self.old,
+                      "reason": "readiness-verified", "updatedAt": "2026-10-27T00:00:00Z"}
+        self.original = {"current": {"applicationSha": self.old, "manifestSha256": "d" * 64},
+                         "candidate": {"sourceSha": self.target}, "runtimeContract": {}}
+        self.snapshot = ({"applicationSha": self.target, "manifestSha256": "d" * 64}, {}, {})
+        self.rows = {name: {"containerId": str(i) * 64, "imageId": "sha256:" + "f" * 64,
+                     "restartPolicy": {"Name": "unless-stopped", "MaximumRetryCount": 0}}
+                     for i, name in enumerate(guard.SERVICES, 1)}
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+        def replace(owner, name, **kwargs):
+            return self.stack.enter_context(patch.object(owner, name, **kwargs))
+        self.lock = replace(task.job, "_locked_directory",
+                            side_effect=lambda: contextlib.nullcontext())
+        replace(task.storage, "preparation_lock", side_effect=lambda: contextlib.nullcontext())
+        replace(task.storage, "load_plan", return_value=b"fixture")
+        replace(task.plan, "validate_plan", return_value=self.original)
+        self.marker = replace(guard, "status", return_value={"maintenance": False, "canExecute": False})
+        self.read_state = replace(task.finalizer, "_state", side_effect=lambda c: self.state.copy())
+        self.snap = replace(task.collector, "_snapshot", return_value=self.snapshot)
+        replace(task.plan, "runtime_contract", return_value={})
+        replace(task.collector, "_compose", return_value=["docker", "compose", "config"])
+        self.run = Mock(return_value=json.dumps({"services": {s: {} for s in guard.SERVICES}}))
+        self.real_writers = task._observed_writers
+        self.writers = replace(task, "_observed_writers", return_value=self.rows)
+        self.roles = replace(guard, "_role_ids",
+                             side_effect=lambda s, r: {self.rows[s]["containerId"]})
+        self.info = replace(guard, "_inspect",
+                            return_value={"State": {"Health": {"Status": "healthy"}}})
+        self.mounts = replace(guard, "_created_mounts")
+        self.database = replace(guard, "_database_identity", return_value={"id": "db"})
+
+    def observe(self):
+        return task._release_observation(self.identity, controller=self.controller, run=self.run)
+
+    def test_target_running_is_an_observation_never_operation_success_or_permission(self):
+        result = self.observe()
+        self.assertEqual(result["outcome"], "TARGET_RUNNING_OBSERVED")
+        self.assertFalse(result["operationSuccessProven"])
+        self.assertFalse(result["canExecute"])
+        self.assertEqual(result["releaseState"]["current"], self.target)
+        self.assertNotIn("reason", result["releaseState"])
+        self.assertEqual(self.writers.call_count, 2)
+        self.assertEqual(self.run.call_args.args[0], ["docker", "compose", "config"])
+
+    def test_active_with_committed_or_incident_marker_remains_unresolved(self):
+        for phase in ("HANDOFF_COMMITTED", "INCIDENT", "FINALIZING"):
+            self.marker.return_value = {"planId": self.identity, "phase": phase}
+            self.assertEqual(self.observe()["outcome"], "MAINTENANCE_RETAINED")
+        self.snap.assert_not_called()
+        self.run.assert_not_called()
+
+    def test_foreign_plan_marker_is_not_claimed(self):
+        self.marker.return_value = {"planId": "f" * 64, "phase": "INCIDENT"}
+        self.assertEqual(self.observe()["maintenancePhase"], "OTHER_PLAN")
+        self.writers.assert_not_called()
+
+    def test_pending_rolled_back_other_target_previous_or_reason_is_incomplete(self):
+        for key, value in (("phase", "pending"), ("phase", "rolled-back"),
+                           ("current", "e" * 40), ("previous", "e" * 40),
+                           ("reason", "other")):
+            previous = self.state[key]
+            self.state[key] = value
+            self.assertEqual(self.observe()["outcome"], "RELEASE_INCOMPLETE")
+            self.state[key] = previous
+        self.writers.assert_not_called()
+
+    def test_invalid_state_or_read_failure_reports_fixed_unknown_without_secret(self):
+        for error in (ReleaseContractError("SECRET"), OSError("SECRET"), ValueError("SECRET")):
+            self.read_state.side_effect = error
+            result = self.observe()
+            self.assertEqual(result["outcome"], "UNKNOWN")
+            self.assertNotIn("SECRET", json.dumps(result))
+        self.read_state.side_effect = lambda c: {**self.state, "current": "bad"}
+        self.assertEqual(self.observe()["outcome"], "UNKNOWN")
+
+    def test_busy_lock_returns_unknown_without_observing_runtime(self):
+        self.lock.side_effect = ReleaseContractError("busy")
+        self.assertEqual(self.observe()["outcome"], "UNKNOWN")
+        self.read_state.assert_not_called()
+        self.run.assert_not_called()
+
+    def test_real_writer_observation_requires_pinned_refs_health_roles_and_mounts(self):
+        images = {name: {"ref": "ghcr.io/sanqin888/" + name + ":" + self.target,
+                         "digest": "sha256:" + "f" * 64}
+                  for name in ("sanq-api", "sanq-web")}
+        candidate = {"sourceSha": self.target, "images": images}
+        expanded = {"services": {s: {} for s in guard.SERVICES}}
+        self.info.return_value = {"State": {"Status": "running", "Running": True,
+            "Restarting": False, "Paused": False, "Health": {"Status": "healthy"}},
+            "Image": "sha256:" + "f" * 64, "HostConfig": {
+                "RestartPolicy": {"Name": "unless-stopped", "MaximumRetryCount": 0}}}
+        with patch.object(guard, "_container_id", side_effect=lambda c, s, r: self.rows[s]["containerId"]), \
+             patch.object(task.collector, "_inspect_image"):
+            self.assertEqual(len(self.real_writers(self.controller, candidate, expanded, self.run)), 3)
+            self.assertTrue(all("@" in call.kwargs["reference"] for call in self.info.call_args_list))
+            self.info.return_value["State"]["Health"]["Status"] = "unhealthy"
+            with self.assertRaises(ReleaseContractError):
+                self.real_writers(self.controller, candidate, expanded, self.run)
+            self.info.return_value["State"]["Health"]["Status"] = "healthy"
+            self.roles.side_effect = lambda s, r: {"e" * 64}
+            with self.assertRaises(ReleaseContractError):
+                self.real_writers(self.controller, candidate, expanded, self.run)
+            self.roles.side_effect = lambda s, r: {self.rows[s]["containerId"]}
+            self.mounts.side_effect = ReleaseContractError("mount changed")
+            with self.assertRaises(ReleaseContractError):
+                self.real_writers(self.controller, candidate, expanded, self.run)
+
+    def test_state_marker_database_or_snapshot_change_never_combines_old_evidence(self):
+        self.read_state.side_effect = [self.state.copy(), {**self.state, "phase": "pending"}]
+        self.assertEqual(self.observe()["outcome"], "UNKNOWN")
+        self.read_state.side_effect = lambda c: self.state.copy()
+        self.marker.side_effect = [{"maintenance": False}, {"planId": self.identity, "phase": "INCIDENT"}]
+        self.assertEqual(self.observe()["outcome"], "UNKNOWN")
+        self.marker.side_effect = None
+        self.database.side_effect = [{"id": "db"}, {"id": "other"}]
+        self.assertEqual(self.observe()["outcome"], "UNKNOWN")
+        self.database.side_effect = None
+        self.snap.side_effect = [self.snapshot, ({"applicationSha": self.old}, {}, {})]
+        self.assertEqual(self.observe()["outcome"], "UNKNOWN")
+
+    def test_manager_success_does_not_replace_joint_observation(self):
+        with patch.object(task, "_release_observation", return_value={"outcome": "UNKNOWN"}), \
+             patch.object(guard, "_properties", return_value={
+                 "LoadState": "loaded", "ActiveState": "active", "SubState": "exited", "Result": "success"}):
+            result = task.status(self.identity, run=self.run)
+        self.assertEqual(result["releaseObservation"]["outcome"], "UNKNOWN")
+        self.assertFalse(result["canExecute"])
+
+
 if __name__ == "__main__":
     unittest.main()

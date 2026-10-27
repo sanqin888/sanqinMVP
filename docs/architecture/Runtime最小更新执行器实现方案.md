@@ -1,8 +1,19 @@
 # Runtime 最小更新执行器实现方案
 
+## 第二批续作：联合状态查询（本地待审）
+
+只扩展原task，不新增第九helper或执行入口。原unitState/maintenancePhase保留，新增releaseObservation；unit成功或消失都不能替代现场观察。锁忙、文件/安装/容器读失败与变化返回固定UNKNOWN，不回显任意异常或秘密；原维护记录损坏/残件继续报查询失败，不伪装无维护。查询只读取.env中的SHA，不返回环境正文。互斥沿用原锁设施，可能创建原.release.lock文件，不写发布/维护记录或容器策略。
+
+有marker返回MAINTENANCE_RETAINED（外来计划标OTHER_PLAN），不据ACTIVE或COMMITTED自动清除/续跑。无marker但非准确目标ACTIVE/previous/reason返回RELEASE_INCOMPLETE。目标符合才读取实际容器/image/revision/digest/健康/角色全集/bind与DB，重读state/marker/配置快照/对象身份拒绝变化；成功仅TARGET_RUNNING_OBSERVED，固定operationSuccessProven=false。原策略记录随成功clear消失，查询不能反推出历史策略已耐久恢复，也不能证明此前clear的fsync成功；保留这种证据边界，不另造成功回执或current/previous权威。健康是有限时点观察，不是全程运行保证；不执行公网readiness、迁移、备份解压或最新发布链网络查询，过期计划仍可查询历史目标，不能因此apply。
+
+新增9项观察替身测试未执行；只做Python3.10语法/测试方法名/差异静态检查。八helper统一交付仍待安装，17+Manifest/250/300与前批正式Bundle需求不变。下一步接通同一异步任务的无迁移freeze/create/start/finalize并处理阶段间互斥；SQL授权执行、回退、Mac薄入口、隔离故障/恢复与真实发布仍OPEN，MINIMAL_EXECUTOR_COMPLETE未达成。本批不操作生产。
+
+
+**2026-10-26 当前进度：JOINT_STATUS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**成功交接已由PR #2989 / CI #7660合并dev `3391cf495dd9bbb4d56d2ae46648d75c6e2f44b1`。本批在原release_task.status内增加联合只读观察：同一job/计划锁内读取原计划、唯一发布状态与维护记录；有维护记录即保留未完结语义，无marker且准确目标ACTIVE才核安装合同、环境/状态一致、实际三writer/image digest/健康/角色列表/bind及DB，并重读关键观察拒绝漂移。返回TARGET_RUNNING_OBSERVED也固定operationSuccessProven=false/canExecute=false；它不是clear耐久回执、原策略恢复证明、最新GitHub证明、SQL兼容证明或重试/恢复许可。无新helper、常驻服务、发布状态、包依赖/业务迁移或生产操作；三组研究继续暂停。
+
 **2026-10-26 当前进度：SUCCESS_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批启动/就绪由[PR #2988](https://github.com/sanqin888/sanqinMVP/pull/2988) 最终head `6ca86a55d1aadef814f37d97d9f999212f55608f` 经 [CI #7658](https://github.com/sanqin888/sanqinMVP/actions/runs/40427556642) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各234、Runtime1080、准确CPython3.12.15回归412），合并dev `d87c98b50582fc2ff58165921926433d4710776b`。首次CI #7657发现测试controller夹具缺COMPOSE属性，同分支仅补一条路径后通过，不改生产逻辑/门禁。本批补READY候选的成功交接源码，仍未接CLI/异步任务，没有真实Docker/HTTP/SQL/AWS或生产安装。三组研究继续暂停、不取消。
 
-## 第二批续作：成功交接与受控清标记（本地待审）
+## 第二批续作：成功交接与受控清标记（源码已合并）
 
 ### 顺序、唯一权威与故障边界
 
@@ -24,7 +35,7 @@
 
 marker v2兼容扩充FINALIZING/HANDOFF_COMMITTED，完整三ID/证明/原策略不允许更换；starter只新增内部期望策略读回参数，默认no-restart行为不变。task仅检查新API/签名，没有调用finalize或新增用户命令。Runtime/Ops归属、唯一state权威、固定17成员/Manifest及旧发布guard不变；旧控制器未改，原controller atomic_write被新阶段复用，前批controller源码仍须正式Bundle验真安装。
 
-分支 `feat/runtime-minimal-success-handoff-20261026` 本地待审、未提交/推送。**普通无迁移发布的各内部阶段已有源码，不等于完整执行器已完成：**异步任务中freeze/create/start/finalize贯通、终结未知的联合status、准确SQL批准/执行、回退、八helper/单位安装及Mac入口、隔离中断/恢复与至少一次准确main真实发布仍OPEN；当前没有可生产使用的1–2次操作命令。没有新依赖包、业务schema/migration、生产权限/目录/unit或云动作，三组研究继续暂停。
+本批随后由[PR #2989](https://github.com/sanqin888/sanqinMVP/pull/2989) 最终head `22b6f0f88e5a1247320f33c6cac206654137726d` 经 [CI #7660](https://github.com/sanqin888/sanqinMVP/actions/runs/40433850020) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10下Release各255、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `3391cf495dd9bbb4d56d2ae46648d75c6e2f44b1`。前述本地未运行/未推送为原审阅时点；CI不等于隔离或生产验收。**普通无迁移发布的各内部阶段已有源码，不等于完整执行器已完成：**异步任务中freeze/create/start/finalize贯通、终结未知的联合status、准确SQL批准/执行、回退、八helper/单位安装及Mac入口、隔离中断/恢复与至少一次准确main真实发布仍OPEN；当前没有可生产使用的1–2次操作命令。没有新依赖包、业务schema/migration、生产权限/目录/unit或云动作，三组研究继续暂停。
 
 **前批启动/就绪交付：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**前批候选创建已由[PR #2987](https://github.com/sanqin888/sanqinMVP/pull/2987) 最终head `fb9949e54db8de90f7464fc43585187d1bd8b52e` 经 [CI #7655](https://github.com/sanqin888/sanqinMVP/actions/runs/40419873594) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各217、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `067521149fd9104303f09d4c057b4277a489a2cd`。本批补已登记候选的受控启动/就绪阶段源码；尚未由任务或CLI调用，没有执行真实Docker/HTTP/SQL或生产安装。三组研究继续暂停、不取消。
 

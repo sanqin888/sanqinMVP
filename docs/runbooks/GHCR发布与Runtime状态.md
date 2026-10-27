@@ -1,5 +1,7 @@
 # GHCR 发布与 Runtime 状态
 
+**2026-10-26 当前进度：JOINT_STATUS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**成功交接已由PR #2989 / CI #7660合并dev `3391cf495dd9bbb4d56d2ae46648d75c6e2f44b1`。本批在原release_task.status内增加联合只读观察：同一job/计划锁内读取原计划、唯一发布状态与维护记录；有维护记录即保留未完结语义，无marker且准确目标ACTIVE才核安装合同、环境/状态一致、实际三writer/image digest/健康/角色列表/bind及DB，并重读关键观察拒绝漂移。返回TARGET_RUNNING_OBSERVED也固定operationSuccessProven=false/canExecute=false；它不是clear耐久回执、原策略恢复证明、最新GitHub证明、SQL兼容证明或重试/恢复许可。无新helper、常驻服务、发布状态、包依赖/业务迁移或生产操作；三组研究继续暂停。
+
 > **2026-10-26 当前源码进度：SUCCESS_HANDOFF_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**前批由[PR #2988](https://github.com/sanqin888/sanqinMVP/pull/2988) 最终head `6ca86a55d1aadef814f37d97d9f999212f55608f` 经 [CI #7658](https://github.com/sanqin888/sanqinMVP/actions/runs/40427556642) SUCCESS（4成功/6范围跳过，默认Python及CPython3.10.22下Release各234、Runtime1080、准确CPython3.12.15回归412），合并dev `d87c98b50582fc2ff58165921926433d4710776b`，首次CI #7657测试夹具缺COMPOSE已最小修复。本地新增成功交接：目标.env/唯一ACTIVE/原策略逐项核验，最后HANDOFF_COMMITTED→clear；ACTIVE+维护记录仍是未完结交接/事故，末尾clear未知可能已营业，不能重跑或自动回退旧盘。新增21项离线测试未运行，八helper待统一验真安装；任务/CLI尚未贯通，SQL/回退/联合status/隔离/安装/真实发布仍OPEN，见[当前成功与未知边界](../architecture/Runtime最小更新执行器实现方案.md)。本批未推送/安装，无真实Docker/HTTP/SQL/AWS，固定17成员/现役文件不变。
 
 > **2026-10-26 当前主线：**依用户决定先完成[最小更新执行器与暂停恢复计划](../architecture/Runtime最小更新执行器与暂停恢复计划.md)，以 MacBook/SSH 上“预检一次、确认执行一次”恢复正常代码更新。C1 来源/输入固定/受保护加载、自建 CPython 3.12.15 及完整依赖证明、R2 离机 CAS/CA/CRL/Enrollment/可信时间/跨克隆防护均 **PAUSED_NOT_CANCELLED**；待最小执行器完成且真实发布成功后复审继续。下文描述现役发布器与原高保证路线，不能据此把三项暂停工作重新设为最小执行器前置；现役校验未改，新执行器/工具过渡未完成，本批无部署或生产放行。
