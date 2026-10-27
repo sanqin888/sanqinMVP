@@ -648,6 +648,12 @@ def _installed_directory(parent, name):
 def _installed_read(parent, name, maximum):
     _need(name in {Path(p).name for p in RUNTIME_MEMBERS} | {"runtime-release.json"},
           "unreviewed installed Runtime input")
+    return _root_observation_read(parent, name, maximum)
+
+
+def _root_observation_read(parent, name, maximum):
+    _need(name in {Path(p).name for p in RUNTIME_MEMBERS} | {"runtime-release.json", "sanq-backup.timer"},
+          "unreviewed root observation input")
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
     try:
         before = os.fstat(fd)
@@ -709,10 +715,10 @@ def _installed_runtime_snapshot(old, old_sha):
         return observed, identities
 
 
-def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False):
+def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
-    _need(type(include_configuration) is bool and type(include_docker) is bool
-          and (not include_docker or include_configuration), "invalid installation observation switches")
+    _need(type(include_configuration) is bool and type(include_docker) is bool and type(include_systemd) is bool
+          and (not include_docker or include_configuration) and (not include_systemd or include_docker), "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
     def snapshot():
@@ -720,7 +726,10 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         configuration = _configuration_snapshot() if include_configuration else None
         docker = (_docker_snapshot(configuration[1], runtime[0]["docker-compose.yml"][0], run, fetch)
                   if include_docker else None)
-        return runtime, configuration, docker
+        systemd = (_systemd_snapshot(runtime[0]["ops/backup/sanq-backup.service"][0],
+                                    lambda args: _systemd_command(args, deadline=deadline))
+                   if include_systemd else None)
+        return runtime, configuration, docker, systemd
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -758,6 +767,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
             result.update({"containersObserved": True, "composeExpansionObserved": True,
                            "containerMountsObserved": True, "currentImagePairBound": True,
                            "docker": before[2]})
+        if include_systemd:
+            result.update({"systemdObserved": True, "systemd": before[3],
+                           "maintenanceGatesLoaded": False, "backupIntegrityObserved": False})
         return result
 
 
@@ -875,19 +887,24 @@ def _docker_allowed(args):
 
 
 def _docker_command(args, *, deadline):
-    _need(os.geteuid() == 0 and _docker_allowed(args), "unreviewed or unprivileged Docker observation")
+    _need(_docker_allowed(args), "unreviewed Docker observation")
+    return _observation_command(args, deadline=deadline)
+
+
+def _observation_command(args, *, deadline):
+    _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)), "unreviewed or unprivileged Host observation")
     _need(not any(os.environ.get(key) for key in (
           "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
           "non-default Docker endpoint requires separate review")
     stop = min(deadline, time.monotonic() + 30)
-    _need(stop > time.monotonic(), "Docker observation deadline exhausted")
+    _need(stop > time.monotonic(), "Host observation deadline exhausted")
     try:
         process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, start_new_session=True, cwd="/opt/sanq/runtime",
             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
                  "DOCKER_HOST": "unix:///var/run/docker.sock", "DOCKER_CONTEXT": ""})
     except OSError:
-        raise release.ReleaseContractError("Docker observation client unavailable") from None
+        raise release.ReleaseContractError("Host observation client unavailable") from None
     try:
         output, total = [], 0
         with selectors.DefaultSelector() as selector:
@@ -896,24 +913,24 @@ def _docker_command(args, *, deadline):
                 selector.register(stream, selectors.EVENT_READ)
             while selector.get_map():
                 remaining = stop - time.monotonic()
-                _need(remaining > 0, "Docker observation timed out")
+                _need(remaining > 0, "Host observation timed out")
                 for key, _ in selector.select(min(remaining, 0.25)):
                     chunk = os.read(key.fileobj.fileno(), 65536)
                     if not chunk:
                         selector.unregister(key.fileobj)
                         continue
                     total += len(chunk)
-                    _need(total <= MAX_HOST_OUTPUT, "Docker observation output exceeds budget")
+                    _need(total <= MAX_HOST_OUTPUT, "Host observation output exceeds budget")
                     if key.fileobj is process.stdout:
                         output.append(chunk)
         remaining = stop - time.monotonic()
-        _need(remaining > 0, "Docker observation timed out")
+        _need(remaining > 0, "Host observation timed out")
         code = process.wait(timeout=remaining)
-        _need(code == 0, "Docker observation command failed")
+        _need(code == 0, "Host observation command failed")
         try:
             return b"".join(output).decode("utf-8")
         except UnicodeError:
-            raise release.ReleaseContractError("Docker observation output encoding invalid") from None
+            raise release.ReleaseContractError("Host observation output encoding invalid") from None
     except BaseException:
         # Only terminate this read-only CLI process group, never any container.
         try:
@@ -1053,6 +1070,153 @@ def _docker_snapshot(application, compose_source, run, fetch):
 
 def _observe_installed_docker(identity, *, fetch=release.github_json):
     return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True, include_docker=True)
+
+
+
+# D2-5: initial-install systemd observation. No reload/start/stop or gate writes.
+SYSTEMD_UNITS = ("docker.service", "docker.socket", "sanq-backup.service", "sanq-backup.timer")
+SYSTEMD_KEYS = ("LoadState", "ActiveState", "SubState", "UnitFileState", "FragmentPath",
+                "DropInPaths", "NeedDaemonReload")
+SYSTEMCTL = ("/usr/bin/systemctl", "--system")
+
+
+def _systemd_keys(unit):
+    _need(unit in SYSTEMD_UNITS, "unreviewed systemd unit")
+    return SYSTEMD_KEYS + (("ExecStart", "ExecStartPre", "ExecStartPost", "ExecStopPost") if unit.endswith(".service")
+                           else ("Triggers",)) + (("User", "Group", "UMask", "Type")
+                                                  if unit == "sanq-backup.service" else ())
+
+
+def _systemd_args(unit):
+    return [*SYSTEMCTL, "show", unit, "--no-pager", "--property=" + ",".join(_systemd_keys(unit))]
+
+
+def _systemd_allowed(args):
+    return type(args) is list and any(args == _systemd_args(unit) for unit in SYSTEMD_UNITS)
+
+
+def _systemd_command(args, *, deadline):
+    _need(_systemd_allowed(args), "unreviewed systemd observation")
+    return _observation_command(args, deadline=deadline)
+
+
+def _systemd_root():
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in (None, "etc", "systemd", "system"):
+            if name is not None:
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            _installed_info(os.fstat(fd), directory=True)
+        result, fd = fd, None
+        return result
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _systemd_disk_snapshot(backup_source):
+    root = _systemd_root()
+    try:
+        before = os.fstat(root)
+        _installed_info(before, directory=True)
+        files = {name: _root_observation_read(root, name, 65536)
+                 for name in ("sanq-backup.service", "sanq-backup.timer")}
+        _need(files["sanq-backup.service"][0] == backup_source,
+              "installed backup service differs from the old sealed Runtime member")
+        for name in ("docker.service", "docker.socket"):
+            try:
+                os.stat(name, dir_fd=root, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise release.ReleaseContractError("local Docker unit override requires separate review")
+        directories = {}
+        # Include type-wide and dashed-prefix overrides, not just our reserved filename.
+        for name in (*[unit + ".d" for unit in SYSTEMD_UNITS],
+                     "service.d", "socket.d", "timer.d", "sanq-.service.d", "sanq-.timer.d"):
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+            except FileNotFoundError:
+                directories[name] = None
+                continue
+            try:
+                info = os.fstat(fd)
+                _installed_info(info, directory=True)
+                _need(not os.listdir(fd), "systemd override or maintenance drop-in residue requires separate review")
+                actual = os.stat(name, dir_fd=root, follow_symlinks=False)
+                _installed_info(actual, directory=True)
+                _need(_installed_fingerprint(info) == _installed_fingerprint(os.fstat(fd)) ==
+                      _installed_fingerprint(actual), "systemd override directory changed during read")
+                directories[name] = _installed_fingerprint(info)
+            finally:
+                os.close(fd)
+        after = os.fstat(root)
+        _installed_info(after, directory=True)
+        _need(_installed_fingerprint(before) == _installed_fingerprint(after),
+              "systemd configuration directory changed during read")
+        return files, directories, _installed_fingerprint(before)
+    finally:
+        os.close(root)
+
+
+def _systemd_snapshot(backup_source, run):
+    disk = _systemd_disk_snapshot(backup_source)
+    units = {}
+    for unit in SYSTEMD_UNITS:
+        keys = _systemd_keys(unit)
+        raw = run(_systemd_args(unit))
+        _need(isinstance(raw, str) and len(raw.encode("utf-8")) <= 65536,
+              "systemd observation exceeds budget")
+        fields = {}
+        for line in raw.splitlines():
+            key, separator, value = line.partition("=")
+            _need(separator == "=" and key in keys and key not in fields,
+                  "invalid or duplicate systemd property")
+            fields[key] = value
+        _need(set(fields) == set(keys), "incomplete systemd properties")
+        _need(fields["LoadState"] == "loaded" and fields["NeedDaemonReload"] == "no"
+              and fields["DropInPaths"] == ""
+              and fields["UnitFileState"] in ("enabled", "disabled", "static", "indirect"),
+              "systemd unit is unloaded, stale, masked or has unreviewed overrides")
+        expected = ("/etc/systemd/system/" + unit,) if unit.startswith("sanq-") else (
+            "/lib/systemd/system/" + unit, "/usr/lib/systemd/system/" + unit)
+        _need(fields["FragmentPath"] in expected, "systemd full-unit override or unexpected source")
+        if unit == "docker.service":
+            _need((fields["ActiveState"], fields["SubState"]) == ("active", "running")
+                  and bool(fields["ExecStart"]), "Docker service is not steadily running")
+        elif unit == "docker.socket":
+            _need((fields["ActiveState"], fields["SubState"]) == ("active", "listening")
+                  and fields["Triggers"].split() == ["docker.service"], "Docker socket target or state differs")
+        elif unit == "sanq-backup.timer":
+            _need((fields["ActiveState"], fields["SubState"]) in (("active", "waiting"), ("inactive", "dead"))
+                  and fields["Triggers"].split() == ["sanq-backup.service"], "backup timer target or state differs")
+        else:
+            command = "path=/home/ubuntu/backup-db.sh ; argv[]=/home/ubuntu/backup-db.sh ; ignore_errors=no"
+            _need((fields["ActiveState"], fields["SubState"]) == ("inactive", "dead")
+                  and fields["User"] == "ubuntu" and fields["Group"] in ("", "ubuntu")
+                  and fields["UMask"] == "0077" and fields["Type"] == "oneshot"
+                  and command in fields["ExecStart"] and fields["ExecStart"].count("path=") == 1
+                  and fields["ExecStart"].count("argv[]=") == 1
+                  and all(fields[key] == "" for key in ("ExecStartPre", "ExecStartPost", "ExecStopPost")),
+                  "backup service is active, redirected or has unreviewed hooks")
+        units[unit] = fields
+    _need(_systemd_disk_snapshot(backup_source) == disk, "systemd files changed around loaded-unit observation")
+    files, directories, root = disk
+    return {"units": {unit: {**{key: fields[key] for key in SYSTEMD_KEYS},
+                             "effectivePropertiesSha256": _hash(_json(fields))}
+                      for unit, fields in units.items()},
+            "installedBackupUnits": {name: {"sha256": _hash(raw), "bytes": len(raw), "identity": list(info)}
+                                     for name, (raw, info) in files.items()},
+            "overrideDirectories": {name: list(info) if info is not None else None
+                                    for name, info in directories.items()},
+            "systemdDirectoryIdentity": list(root), "reservedMaintenanceDropinsAbsent": True,
+            "backupTimerSourceAuthenticated": False, "vendorUnitBytesAuthenticated": False}
+
+
+def _observe_installed_systemd(identity, *, fetch=release.github_json):
+    return _observe_installed_runtime(identity, fetch=fetch, include_configuration=True,
+                                      include_docker=True, include_systemd=True)
 
 
 def main(argv=None):
