@@ -1,8 +1,38 @@
 # Runtime 最小更新执行器实现方案
 
-## 受控回退停写（2026-10-27，本地待审）
+## 回退容器创建与登记（2026-10-27，本地待审）
 
-**2026-10-27 当前进度：ROLLBACK_FREEZE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原guard增加内部freeze_rollback_for_plan及锁内主体，持原job/计划锁和维护目录FD，核typed原件、独立准确兼容确认、缓存镜像现场重采集、时间/来源与实际三writer，再与普通更新共用同一arm/停写主体。新增未安装v5维护记录保存准确目标proof与确认摘要；先持久ARMED和原ID/image/restart策略，再仅对保存ID设restart=no并stop，重核后FROZEN。当前应用可已退出或不健康，未知/替换/额外对象仍阻断；不改唯一state/.env或执行SQL。
+**2026-10-27 当前进度：ROLLBACK_CREATE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**原guard新增内部prepare_rollback_candidate_containers，持原job/计划锁与维护目录FD，以原typed回退计划、独立兼容确认及同一v5/FROZEN尝试进入，共用原三服务create/register主体。重核当前完整SQL/history、准确历史目标proof、缓存旧API SQL/source和运行基线；先保留rollback scope升级v6/CREATING_CANDIDATES，再写唯一PENDING、固定--no-build/--pull never创建和登记完整三ID/image ID，不start或执行SQL。登记结束仍保留维护、PENDING和旧.env，数据库历史不删减。
+
+回退停写批已由[PR #3002](https://github.com/sanqin888/sanqinMVP/pull/3002) 最终head `c219a2d8d319ffc8d84a3e1df5a573b99e6f8d77` 经 [CI #7690](https://github.com/sanqin888/sanqinMVP/actions/runs/40541893634) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各438、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `45220d9a0ddacf8be6d108badea3025298e8bf16`。原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
+
+### 同一原计划、创建与登记
+
+- 新内部适配器严格校验确认摘要，None/布尔不得误选普通前向分支；原job/计划锁和维护目录FD贯穿重核→意图→PENDING→create→登记。只从同一v5/FROZEN、planId/attempt和rollback release/approval精确匹配进入，不选择其他SHA、不从残留阶段自动续跑。
+- 原共享创建主体新增明确rollback_approval分支，普通prepare_candidate_containers仍通过前向typed validator且不能采用回退原件。_review_for_record只按已验证维护schema选固定kind的validator，无fallback猜类型。时效/备份验证与实际snapshot/配置/Manifest/运行pin/环境/history/备份/DB复核分别执行；原当前完整inventory/history原封保留，旧API SQL必须与targetMigrationInventory一致并再次绑定完整Git source树。禁止清空history、伪造无迁移前向计划或重新执行已应用SQL。
+- 原_begin_candidate_creation_locked在准确兼容确认下仅将v5/FROZEN升级v6/CREATING_CANDIDATES，保留不可变rollback字段、目标和原三ID/image/策略。唯一版本state沿原write_creation_pending写candidate-create-start，current=旧目标、previous=原当前，.env仍是原当前；不是新版本权威，也不是成功rolled-back。
+- 共用原_creation_config和固定三服务create --no-build --pull never --force-recreate，180s上限；不包含DB服务/depends_on/新命名卷，仅原external网络与已审bind，restart=no、两个准确digest。前后DB身份/历史必须一致。只有完整三created对象、准确角色/reference/image ID/revision/digest/平台、restart=no、已审mount及不重叠ID核完才登记；API与worker须同一image ID。
+- v6保存rollback与candidate两组证据，candidate.release须等于rollback.release；目前只允许创建/登记/事故三阶段。普通v1→v2、SQL v3→v4及原v5停写条件保持，新增v5→v6必须沿原转换/不可变字段校验，不能降级、丢确认、换目标或跳到启动阶段。原failed-task收尾对v6先处理保存候选ID，再处理原ID；部分创建未登记时仍FENCE_UNCONFIRMED，不猜新对象、重放或开业务。
+
+### Compose导出边界修正
+
+Compose导出值边界已更正：已查Docker Compose的config实现会对已插值导出内容统一将$写为$$；应用创建配置原样保留该导出值，本批撤回“再转义一次”的临时改动。迁移creation_config原先额外replace会把已转义URL再次转义，本批移除该重复层，并将旧迁移测试夹具改为实际导出形态及原样保留断言。字面$需要Compose转义的原则仍成立，但应只在正确的输入边界执行一次；此前迁移美元测试只验证替身输入，不能作为真实往返证明。目标现场Compose版本的config→私有stdin→容器环境精确往返仍待隔离验收，不据上游源码或离线字符串断言宣布已通过。
+
+已核对[Docker Compose config实现](https://github.com/docker/compose/blob/main/cmd/compose/config.go)中runConfig对导出content的ReplaceAll步骤，以及[官方插值规则](https://docs.docker.com/reference/compose-file/interpolation/)。此处来源用于解释序列化边界，不替代本项目目标版本的现场证据，也不新增暂停中的来源/可信输入研究。应用_creation_config原方法保持；迁移配置仅移除对导出DATABASE_URL的额外replace，仍只通过有界私有stdin转发这一键，不转发JWT等其他API环境。
+
+### 验证、未知与交付缺口
+
+新增23项离线模型测试，覆盖准确旧digest/先意图后PENDING/两锁贯穿/三服务无DB创建与登记、保留当前完整历史和原件/rollback scope、旧对象保留或被替换、缺错确认/attempt、proof/缓存SQL/完整source树/配置/history漂移、部分create与禁止重放/不得猜ID、PENDING/创建意图/登记耐久未知、DB/history变化、错误mount/运行状态/restart策略/image/额外角色拒绝、已登记候选优先收尾、scope不可变/降级/未实现启动阶段拒绝、锁/前向误用/备份过期，以及应用与迁移保留Compose导出美元值。另修正原迁移测试的导出URL夹具与对应断言；不削弱秘密不转发断言。临时私有计划/维护文件和锁为实物，Docker/SQL/PID1/现场采集均为替身。仅Python3.10 AST、静态名字/重复方法、IO与未改方法AST、差异/读回审阅，项目测试未运行，不把前批438结果当本批通过。
+
+创建意图写入/读回未知时不写PENDING或发create；PENDING写入未知时不create；部分create或DB/mount/history/登记失败保留实际意图和PENDING。最终登记同步未知即使原件显示REGISTERED也不得据此开始下一阶段。无自动清理、rm、清标记或策略恢复。新阶段尚无CLI/任务调用，必须仅由前一调用已知成功的同一受控任务接续，不能因查询到FROZEN/REGISTERED就重试。
+
+Runtime/Ops未安装工具内部原子增量，无新helper/反向导入/12上下文owner/SCC/债务/scanner基线变化，未重跑scanner。原guard→collector/plan/store/release/job/migration方向保持，migration仍拥有单一迁移对象配置/检查。九helper须统一验真交付，v6旧读者拒绝；17+Manifest/250/300旧guard不变，受保护controller/release_contract正式Bundle过渡仍待完成。
+
+本批仅完成内部回退创建与登记，v6只允许CREATING_CANDIDATES/CANDIDATES_REGISTERED/INCIDENT；没有回退启动/readiness、唯一rolled-back成功交接、恢复原策略/清标记或异步提交/执行接线。部分创建和未知结果保持真实PENDING/维护证据，不自动采用发现的ID、重放、反向SQL或旧盘恢复；创建成功也不代表数据库/业务兼容已证明。下一步接准确已登记旧容器的启动与就绪，再接成功交接及异步任务。统一九helper/三drop-in、固定17+Manifest正式Bundle过渡、Mac薄入口和真实隔离故障/恢复/连续双发布验收仍OPEN；三组研究继续暂停、不取消，无依赖/业务schema/迁移文件或生产Docker/systemd/SQL/AWS操作。
+
+## 受控回退停写（2026-10-27，源码已合并）
+
+**2026-10-27 当前进度：MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**原guard增加内部freeze_rollback_for_plan及锁内主体，持原job/计划锁和维护目录FD，核typed原件、独立准确兼容确认、缓存镜像现场重采集、时间/来源与实际三writer，再与普通更新共用同一arm/停写主体。新增未安装v5维护记录保存准确目标proof与确认摘要；先持久ARMED和原ID/image/restart策略，再仅对保存ID设restart=no并stop，重核后FROZEN。当前应用可已退出或不健康，未知/替换/额外对象仍阻断；不改唯一state/.env或执行SQL。
 
 回退复核批已由[PR #3001](https://github.com/sanqin888/sanqinMVP/pull/3001) 最终head `ed3ee4af58f827fa10d3940d581915135dcea0d5` 经 [CI #7688](https://github.com/sanqin888/sanqinMVP/actions/runs/40538401235) SUCCESS（4成功/6范围跳过，默认Python/CPython3.10下Release各417、Runtime1080、准确CPython3.12.15回归412），无CI修复，合并dev `07ba60c8b470c53a8eb30fb365741056f261b48a`。其原LOCAL/未运行是原审阅时点，仍未安装/隔离验收。
 
