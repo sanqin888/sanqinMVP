@@ -1,8 +1,30 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 安装前恢复原件源采集（本地待审）
+## D2 同锁恢复文件包耐久保存（本地待审）
 
-**2026-10-28 当前进度：D2_RECOVERY_ORIGINAL_SOURCES_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_RECOVERY_FILE_RETENTION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批基于[PR #3033](https://github.com/sanqin888/sanqinMVP/pull/3033)合并dev `99237607adf08bb21b1e2f6e9d68f88ce30d59b6` 建立 `feat/runtime-minimal-recovery-retention-20261028`。内部 _retain_installation_recovery 续接同一次原两锁/全部预检：写意图和临时门禁前在内存保留准确原件；本轮门禁加载、writers原件耐久保存及三原ID已知停写后，才允许保存恢复文件。新增严格阶段开关，旧观察/停写入口默认不采集或写恢复文件，无安装/恢复/resume公开CLI。
+
+固定在本轮installation-runs/<installationId>/下独占创建recovery/（root:root 0700），先保存recovery.tar，再保存recovery.json，均root:root 0600、O_EXCL/nofollow/单链接。完整短写处理、文件与父目录fsync、整件读回及打开FD/路径身份核对；保留至少原5GiB余量。目录和文件原先存在、低容量、零写进展、同步未知或替换均阻断，保留空/部分/完整原件，不覆盖、截断、删除或自动重试。原四材料与intent/marker/writers读写白名单保持；只有当前调用栈的owned证明允许准确recovery目录/成员，namespace成功退出要求完整文件对。
+
+归档为有界、确定性、未压缩USTAR：固定原件放在originals/<已审绝对路径去前导根后的层级>，另有准确intent/writers及recovery-index.json；运输header一律0600、uid/gid/mtime=0，原权限/owner/原缺失事实在index中保留。固定路径全集及仅plans/jobs的64hex.json扩展、文件metadata/原字节摘要、48MiB来源预算、2100成员/56MiB归档/2MiB index预算均校验；核准确成员顺序、header/body/零padding与尾部，无链接/PAX/额外成员或路径穿越。不解压到文件系统，不执行包内Python或其他字节。
+
+index绑定准确安装ID、原意图/writers摘要及原采集摘要。回执为严格规范JSON、schemaVersion=1、独立kind=sanq-minimal-executor-recovery-receipt，准确十二字段：installationId、intentSha256、writersSha256、archiveSha256、archiveBytes、captureSha256及schemaVersion/kind、canExecute/recoveryReady/snapshotAvailable/completePrivateStateCaptured四个false；captureSha256还须对应包内index，不能仅靠自洽外部hash。只有归档已知同步/读回后才写回执，回执及成对绑定也须读回。
+
+保存前后再核本次owned记录、冻结原四容器/DB/卷、门禁及既定来源/原Runtime/配置/备份/SQL历史；私有plans/jobs原字节、metadata、目录和原锁须匹配门禁前采集。任意晚期变化或保存未知一律FENCE_UNCONFIRMED，保留真实记录/文件及现有停写状态，不恢复原策略、启动业务或据归档恢复旧盘。SIGKILL/主机掉电及真实性能/资源边界仍由D4验证。
+
+结果仅INSTALLATION_RECOVERY_FILES_RETAINED及摘要，recoveryArchiveDurable=true只指这份已知范围文件包；readyToInstall/hostPreflightComplete/operationSuccessProven/canExecute、recoveryReady和snapshotAvailable仍false。归档和回执明确completePrivateStateCaptured=false，不是完整RECOVERY_READY或续跑票据。完整私有状态/历史材料范围、容器与加载配置原件、停写后准确Lightsail手动快照available核验仍OPEN，不能据本批结果覆盖工具。
+
+新增22项完整组合/真实临时文件模型测试：同锁采集/冻结/写入先后、原停写入口无额外动作、部分归档/回执、实际短写/零写/同步未知/预算/低容量、marker/私有清单/DB漂移、同字节替换、确定性原字节/权限/缺失事实、header/链接/顺序/越界/零padding/截断、严格回执绑定/坏JSON/重复或非有限值、已有对象/权限/链接/非root/旧白名单及无CLI。Docker/systemd/GitHub/根身份为模型；仅Python3.10 AST、名字/方法/空白、差异及准确写回静态核对，项目测试待CI，不把923作为本批结果。
+
+下一步补齐恢复材料完整范围与容器/有效加载配置，再绑定停写后准确快照available的操作者核验，完成RECOVERY_READY后才进入逐文件安装。永久门禁、原应用核验/最终交接、Mac薄入口和D4统一真实隔离验收仍OPEN；17+Manifest/250/300、九helper/三永久模板、原两锁/四材料和唯一应用state权威保持。三组研究继续暂停、不取消，无依赖包/业务schema或生产/AWS/数据库写操作。
+
+## D2 安装前恢复原件源采集（源码已合并）
+
+**2026-10-28 当前进度：D2_RECOVERY_ORIGINAL_SOURCES_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3033](https://github.com/sanqin888/sanqinMVP/pull/3033) head `0ddcaaeeb3bbd7b483b268d6680450b44576b9f4` 经[CI #7754](https://github.com/sanqin888/sanqinMVP/actions/runs/40719407895)全绿（4成功/6范围跳过；Release默认Python与3.10各923、Runtime1080、既有C1回归412），合并dev `99237607adf08bb21b1e2f6e9d68f88ce30d59b6`，无需CI修复；未执行生产操作。
 
 本批基于[PR #3032](https://github.com/sanqin888/sanqinMVP/pull/3032)合并dev `178ce5b0346f2183b0dc150a5881facc06fc859b` 建立 `feat/runtime-minimal-recovery-sources-20261028`。先补RECOVERY_READY的原件采集层，未把“已有摘要”当完整恢复包，也未接收snapshotAvailable=true之类布尔输入来开放安装。新增三个内部只读函数，无公开CLI、归档写入、安装/续跑或AWS调用。
 
@@ -14,7 +36,7 @@
 
 仅结果INSTALLATION_RECOVERY_SOURCES_OBSERVED、scope=pre-install-original-files-only；completePrivateStateCaptured/recoveryArchiveDurable/snapshotAvailable/recoveryReady/readyToInstall/canExecute均false、requiresHostRecheck=true。尚未覆盖其余历史retention/安装事务与完整私有状态、当前完整容器/加载配置恢复材料、耐久恢复归档/读回及停写后准确Lightsail手动快照available证明。当前查询不是RECOVERY_READY，也不使已冻结事务可从文件resume。
 
-新增18项临时真实文件模型测试：摘要无秘密/许可恒false、完整固定原字节及元数据、无写入/同步/命令、原两锁/inode、CRLF/$/$$和0400原样、私有plan按数据保存、unit原件与缺失事实、已有临时门禁拒绝、旧字节/helper冲突、同字节替换/晚期清单/来源、未知/软硬链接/坏mode/预算、原四材料及无CLI。根锚点/账户/GitHub为模型；仅Python3.10 AST、名字/方法/空白、全部原定义不变、差异及准确读回静态核对，项目测试待CI，不把905当本批结果。
+新增18项临时真实文件模型测试：摘要无秘密/许可恒false、完整固定原字节及元数据、无写入/同步/命令、原两锁/inode、CRLF/$/$$和0400原样、私有plan按数据保存、unit原件与缺失事实、已有临时门禁拒绝、旧字节/helper冲突、同字节替换/晚期清单/来源、未知/软硬链接/坏mode/预算、原四材料及无CLI。根锚点/账户/GitHub为模型；仅Python3.10 AST、名字/方法/空白、全部原定义不变、差异及准确读回静态核对，上述18项已随本批CI在两套Release各923项中通过；真实系统验收仍OPEN。
 
 下一步将原件采集接到同一次owned安装观察中，在写临时门禁前保留准确原件，再于已停写阶段完成私有恢复归档create-only耐久保存/读回及完整范围核对；随后绑定操作者对停写后准确Lightsail手动快照available的核验，不能自动调用AWS或据本批摘要覆盖工具。逐文件安装/永久门禁/原应用核验交接、Mac薄入口及D4统一真实隔离验收仍OPEN。三组研究继续暂停、不取消，无依赖包/业务schema或生产操作。
 
