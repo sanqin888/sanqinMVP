@@ -722,7 +722,7 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
                                              include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery))
@@ -735,6 +735,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           and (not _save_writers or _load_deny_gates) and (not _freeze_writers or _save_writers)
           and (not _retain_recovery or _freeze_writers),
           "invalid installation observation switches")
+    _need(_snapshot_channel is None or _retain_recovery and type(_snapshot_channel) is tuple
+          and len(_snapshot_channel) == 2, "snapshot evidence wait requires complete recovery flow")
+    channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
     def snapshot(*, temporary_files=None):
@@ -898,14 +901,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 _need(capture is not None and callable(frozen_recheck), "recovery retention requires this owned frozen flow")
                 try:
                     frozen_recheck()
-                    private = _recovery_private_sources(folders)
-                    expected_private = {path: raw for path, raw in capture[0].items()
-                        if path.startswith(("/opt/sanq/deploy-state/jobs/", "/opt/sanq/deploy-state/plans/"))}
-                    _need(private[0] == expected_private
-                          and private[2] == capture[1]["originalLockMetadata"]
-                          and private[3] == capture[1]["privateDirectories"]
-                          and all(private[1][path] == capture[1]["files"][path]["identity"] for path in private[0]),
-                          "recovery private originals changed after capture")
+                    _recovery_private_matches(folders, capture)
                     _recovery_retention_matches(folders, capture)
                     payload = _installation_recovery_payload(capture, intent, writers, installation_id)
                     receipt = _installation_recovery_receipt(payload, intent, writers, installation_id, _hash(_json(capture[1])))
@@ -919,13 +915,48 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     return {**result, "scopeReview": scope}
                 except BaseException:
                     raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
+            def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt):
+                nonlocal deadline
+                try:
+                    def fresh_context():
+                        nonlocal deadline
+                        deadline = time.monotonic() + 300
+                        check_owned()
+                        frozen_recheck()
+                        _recovery_private_matches(folders, capture)
+                        _recovery_retention_matches(folders, capture)
+                        scope = _installation_recovery_scope(payload, receipt, intent, writers, installation_id, fetch=fetch)
+                        _need(scope["packageScopeReviewed"] is True and time.monotonic() < deadline,
+                              "snapshot review context budget expired")
+                        check_owned()
+                    _need(callable(frozen_recheck) and _snapshot_channel is not None
+                          and _installation_snapshot_fds(*_snapshot_channel) == channel_identity,
+                          "snapshot review channel or frozen context changed")
+                    fresh_context()
+                    request = _installation_snapshot_request(payload, receipt, intent, writers, installation_id)
+                    response = _installation_snapshot_exchange(request, *_snapshot_channel,
+                        deadline=time.monotonic() + MAX_SNAPSHOT_REVIEW_SECONDS)
+                    value = _installation_snapshot_reply_value(response, request)
+                    _need(_installation_snapshot_fds(*_snapshot_channel) == channel_identity,
+                          "snapshot review descriptors changed during wait")
+                    fresh_context()
+                    return {"outcome": "SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED",
+                        "requestSha256": _hash(_json(request)), "replySha256": _hash(response),
+                        "evidenceSha256": _hash(_json(value["evidence"])), "replyBytes": len(response),
+                        "unverifiedEvidenceReceived": True, "snapshotEvidenceValidated": False,
+                        "snapshotAvailable": False, "recoveryReady": False, "canExecute": False,
+                        "requiresSnapshotValidation": True, "requiresHostRecheck": True}
+                except BaseException:
+                    raise release.ReleaseContractError("FENCE_UNCONFIRMED: review snapshot input and retained installation evidence") from None
             result["installationIntent"] = _write_installation_intent_locked(
                 folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None,
                 save_writers=save_writers if _save_writers else None,
                 freeze_writers=freeze_writers if _freeze_writers else None,
                 retain_recovery=retain_recovery if _retain_recovery else None,
-                recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None)
-            result["outcome"] = ("INSTALLATION_RECOVERY_FILES_RETAINED" if _retain_recovery else
+                recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
+                snapshot_review=review_snapshot if _snapshot_channel is not None else None)
+            result["outcome"] = ("INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED" if _snapshot_channel is not None else
+                                 "INSTALLATION_RECOVERY_FILES_RETAINED" if _retain_recovery else
                                  "INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
                                  "INSTALLATION_WRITERS_SAVED" if _save_writers else
                                  "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED")
@@ -2373,16 +2404,17 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
+    _need(snapshot_review is None or retain_recovery is not None, "snapshot wait requires recovery persistence")
     _need((retain_recovery is None) == (recovery_namespace is None),
           "recovery continuation requires original private namespace facts")
     if recovery_namespace is not None:
         _need(_recovery_namespace_snapshot(folders) == recovery_namespace,
               "recovery private namespace changed before intent")
     identity = os.urandom(32).hex()
-    gate_result = saved_result = frozen_result = recovery_result = None
+    gate_result = saved_result = frozen_result = recovery_result = snapshot_result = None
     owned_records = {}
     anchor = _state_parent()
     try:
@@ -2491,6 +2523,15 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         recovery_result = retain_recovery(persist_recovery, check_owned, raw,
                                                           owned_records["writers.json"], identity)
                         check_owned()
+                    if snapshot_review is not None:
+                        _need(recovery_result is not None and recovery_result["recoveryArchiveDurable"] is True
+                              and recovery_result["scopeReview"]["packageScopeReviewed"] is True,
+                              "snapshot wait requires this durable reviewed recovery pair")
+                        check_owned()
+                        records = owned_records["recovery"][0]
+                        snapshot_result = snapshot_review(check_owned, raw, owned_records["writers.json"], identity,
+                                                          records["recovery.tar"], records["recovery.json"])
+                        check_owned()
                 state_matches()
             _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
                   "installation marker changed after namespace validation")
@@ -2499,7 +2540,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                     "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {}),
                     **({"savedWriters": saved_result} if saved_result is not None else {}),
                     **({"frozenWriters": frozen_result} if frozen_result is not None else {}),
-                    **({"recoveryFiles": recovery_result} if recovery_result is not None else {})}
+                    **({"recoveryFiles": recovery_result} if recovery_result is not None else {}),
+                    **({"snapshotReview": snapshot_result} if snapshot_result is not None else {})}
     finally:
         os.close(anchor)  # Never clean intent/marker/gates or retry an unknown result.
 
@@ -3723,6 +3765,128 @@ def _retain_installation_recovery(retention_id, *, fetch=release.github_json):
         include_filesystem=True, include_prerequisites=True, include_application_binding=True,
         include_migrations=True, include_effective_configuration=True, include_external_backup=True,
         _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True, _retain_recovery=True)
+
+
+
+MAX_SNAPSHOT_REVIEW_SECONDS = 1800
+MAX_SNAPSHOT_REPLY_BYTES = 64 * 1024
+
+
+def _recovery_private_matches(folders, capture):
+    private = _recovery_private_sources(folders)
+    expected = {path: raw for path, raw in capture[0].items()
+        if path.startswith(("/opt/sanq/deploy-state/jobs/", "/opt/sanq/deploy-state/plans/"))}
+    _need(private[0] == expected and private[2] == capture[1]["originalLockMetadata"]
+          and private[3] == capture[1]["privateDirectories"]
+          and all(private[1][path] == capture[1]["files"][path]["identity"] for path in private[0]),
+          "recovery private originals changed after capture")
+
+
+def _installation_snapshot_fds(input_fd, output_fd):
+    _need(type(input_fd) is int and type(output_fd) is int
+          and input_fd >= 0 and output_fd >= 0 and input_fd != output_fd,
+          "invalid snapshot review descriptors")
+    identities = []
+    for fd, access in ((input_fd, (os.O_RDONLY, os.O_RDWR)), (output_fd, (os.O_WRONLY, os.O_RDWR))):
+        info, flags = os.fstat(fd), fcntl.fcntl(fd, fcntl.F_GETFL)
+        _need((stat.S_ISFIFO(info.st_mode) or stat.S_ISCHR(info.st_mode) and os.isatty(fd))
+              and flags & os.O_ACCMODE in access, "snapshot review requires live pipes or terminal")
+        identities.append((info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                           info.st_rdev, flags & os.O_ACCMODE))
+    _need(identities[0][:2] != identities[1][:2] or stat.S_ISCHR(identities[0][2]),
+          "snapshot review cannot loop back through one pipe")
+    return tuple(identities)
+
+
+def _installation_snapshot_request(payload, receipt, intent, writers, identity):
+    _installation_recovery_receipt_value(receipt, payload, intent, writers, identity)
+    return {"schemaVersion": 1, "kind": "sanq-minimal-snapshot-evidence-request",
+        "installationId": identity, "intentSha256": _hash(intent), "writersSha256": _hash(writers),
+        "archiveSha256": _hash(payload), "receiptSha256": _hash(receipt), "challenge": os.urandom(32).hex(),
+        "maxWaitSeconds": MAX_SNAPSHOT_REVIEW_SECONDS, "snapshotAvailable": False, "canExecute": False}
+
+
+def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline):
+    """One bounded live frame. Borrow descriptors; never close caller IO or open a path."""
+    _installation_snapshot_fds(input_fd, output_fd)
+    now = time.monotonic()
+    _need(type(deadline) in (int, float) and now < deadline <= now + MAX_SNAPSHOT_REVIEW_SECONDS,
+          "invalid snapshot review deadline")
+    raw = _json(request)
+    _need(len(raw) <= 4096, "snapshot review request exceeds budget")
+    saved_flags = {}
+    try:
+        for fd in (input_fd, output_fd):
+            saved_flags[fd] = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, saved_flags[fd] | os.O_NONBLOCK)
+        with selectors.DefaultSelector() as selector:
+            selector.register(output_fd, selectors.EVENT_WRITE)
+            sent, reply = 0, bytearray()
+            while True:
+                remaining = deadline - time.monotonic()
+                _need(remaining > 0, "snapshot review input timed out")
+                events = selector.select(min(1, remaining))
+                for key, _ in events:
+                    if key.fd == output_fd:
+                        try:
+                            count = os.write(output_fd, raw[sent:])
+                        except BlockingIOError:
+                            continue
+                        _need(count > 0, "snapshot review output made no progress")
+                        sent += count
+                        if sent == len(raw):
+                            selector.unregister(output_fd)
+                            selector.register(input_fd, selectors.EVENT_READ)
+                    else:
+                        try:
+                            block = os.read(input_fd, min(4096, MAX_SNAPSHOT_REPLY_BYTES + 1 - len(reply)))
+                        except BlockingIOError:
+                            continue
+                        _need(block, "snapshot review channel ended without a reply")
+                        reply.extend(block)
+                        _need(len(reply) <= MAX_SNAPSHOT_REPLY_BYTES, "snapshot review reply exceeds budget")
+                        if b"\n" in reply:
+                            _need(reply.count(b"\n") == 1 and reply.endswith(b"\n")
+                                  and time.monotonic() < deadline, "invalid snapshot review frame")
+                            return bytes(reply)
+    except OSError:
+        raise release.ReleaseContractError("snapshot review channel IO failed") from None
+    finally:
+        failed = False
+        for fd, flags in saved_flags.items():
+            try:
+                fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+            except OSError:
+                failed = True
+        _need(not failed, "snapshot review channel flags restoration failed")
+
+
+def _installation_snapshot_reply_value(raw, request):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_SNAPSHOT_REPLY_BYTES,
+          "invalid snapshot evidence frame size")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid snapshot evidence JSON constant"))
+        canonical = _json(value)
+    except (ValueError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid snapshot evidence JSON") from None
+    bound = ("installationId", "intentSha256", "writersSha256", "archiveSha256", "receiptSha256", "challenge")
+    _need(type(value) is dict and set(value) == {"schemaVersion", "kind", *bound, "evidence"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == "sanq-minimal-snapshot-evidence-reply"
+          and all(value[key] == request[key] for key in bound)
+          and type(value["evidence"]) is dict and bool(value["evidence"])
+          and raw == canonical, "snapshot evidence frame binding differs")
+    return value
+
+
+def _receive_installation_snapshot_evidence(retention_id, *, input_fd, output_fd, fetch=release.github_json):
+    """Private continuation only. Receipt of unverified evidence never means snapshot available."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
+        _retain_recovery=True, _snapshot_channel=(input_fd, output_fd))
 
 
 def main(argv=None):
