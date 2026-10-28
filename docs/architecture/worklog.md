@@ -1,8 +1,26 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-28 — 最小更新执行器：原容器与重启策略耐久保存
+
+**2026-10-28 当前进度：D2_SAVED_WRITERS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批从[PR #3030](https://github.com/sanqin888/sanqinMVP/pull/3030)已合并dev `39d61bda9474b9e305bd11800f8563e323ca1313` 建立 `feat/runtime-minimal-saved-writers-20261028`，续接本轮原两锁、全套新鲜观察、独占意图/marker及临时门禁有效加载。仅内部 _save_installation_writers 开启保存阶段；原意图/门禁入口默认不写新记录，无公开CLI或旧事务resume。
+
+在本轮私有事务目录create-only耐久保存writers.json，仍为root:root 0600、nofollow/单链接、16KiB预算、完整短写、文件/目录fsync及FD/路径身份读回。准确九字段：schemaVersion=1、独立kind=sanq-minimal-executor-saved-writers、installationId、intentSha256、applicationSha、dockerEngineSha256、containers、createdAt、canExecute=false。containers准确四角色：三原写入者与db观察锚点，保存完整64位ID、imageId、原restartPolicy、restartCount、startedAt及配置/挂载摘要；原策略不被改成no。严格拒绝重复/未知字段、错时间/JSON、短ID、重ID、API/worker镜像不一致及坏策略。
+
+记录绑定原意图准确字节。本次owned记录证明只在耐久写入/读回成功后留在当前调用栈中；namespace和退出检查只接纳该准确原件，不从已有文件导入许可。保存后重新核来源、四材料、完整宿主稳定观察、准确marker/事务/原目录及有效门禁；记录未知、晚期漂移或残件均阻断并保留，不清理、覆盖、补写或自动重放。原PRIVATE_FILES四材料、普通namespace任意事务阻断及应用唯一state权威保持。
+
+新增纯argv构造器只允许三保存角色的固定update --restart=no及stop --time 30，目标只能取绑定记录里的完整原ID；db/任意名称/动作拒绝。该函数不执行命令，原只读及共同有界客户端仍拒绝这两类变更，尚未接入停写执行器。结果仅INSTALLATION_WRITERS_SAVED及摘要，writersFrozen/canExecute/readyToInstall/hostPreflightComplete/operationSuccessProven仍false、requiresHostRecheck=true，不是停写完成或恢复就绪证明。
+
+新增18项完整组合/格式模型测试，覆盖原两锁/门禁先后、四原对象与策略不变、旧入口默认不写、第二次拒绝、部分写入/同步未知、保存后主机/意图/未知成员漂移、原意图摘要绑定、严格格式/角色/ID/镜像/生命周期/策略、权限及链接、纯argv限制/既有客户端拒绝、准确owned原件证明和严格开关/无CLI。临时文件/锁为真实对象，GitHub/Docker/manager/根锚点为模型；仅Python3.10 AST、名字/方法/空白及差异/准确读回静态核对，项目测试待CI，不把865记为本批结果。
+
+下一步将已保存原件接到受限disable-restart→stop编排，逐次新鲜身份与门禁复核、故障只尽力处理保存ID并保持FENCE_UNCONFIRMED；真实停写仍OPEN。停写后手动快照available/完整旧工具恢复实物、逐文件安装/永久门禁/旧应用核验交接、Mac薄入口与D4统一真实隔离验收仍OPEN。无17+Manifest/250/300、九helper/三永久模板、依赖包或业务schema变化；三组研究继续暂停、不取消，未执行生产/数据库写操作。
+
 ## 2026-10-28 — 最小更新执行器：原两锁内临时门禁加载
 
-**2026-10-28 当前进度：D2_OWNED_GATE_LOAD_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_OWNED_GATE_LOAD_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3030](https://github.com/sanqin888/sanqinMVP/pull/3030) 最终head `7787d5f5618e06a3172c6d068e57e55b228b5fbd` 经[CI #7748](https://github.com/sanqin888/sanqinMVP/actions/runs/40702042325)全绿（4成功/6范围跳过；Release默认Python与3.10各865、Runtime1080、既有C1回归412），合并dev `39d61bda9474b9e305bd11800f8563e323ca1313`。首轮两个坏marker模型暴露的底层JSON异常已统一为脱敏安装合同错误，证据保持/阻断规则不变；未执行生产操作。
 
 基于已合并的[PR #3029](https://github.com/sanqin888/sanqinMVP/pull/3029) dev `38be9adcb89c800442badac54118a2c89b89b59e` 建立 `feat/runtime-minimal-owned-gate-load-20261028`。内部 _load_installation_deny_gates 只续接本轮完整新鲜观察和新写意图/marker，保持原job→plan两锁；无公开CLI、无旧事务resume。写门禁、reload及最终返回前核准确意图/marker原字节、唯一事务/维护全集、原目录身份和未决job；不接受导出dict或操作者布尔许可替代本轮观察。
 
@@ -12,7 +30,7 @@ reload后核准确文件/有效加载属性并重做来源、四材料与完整�
 
 仅上述内部阶段全部通过时，installationIntent.startupFenceConfirmed=true、outcome=TEMPORARY_DENY_GATES_LOADED；writersFrozen、canExecute、readyToInstall、hostPreflightComplete、operationSuccessProven仍false，requiresHostRecheck=true。尚无安装CLI或完整安装/完成交接；本批不停止容器/daemon、不改restart策略、不覆盖Runtime或写DB。准确原ID停写前仍须保存恢复依据并新鲜复核，不能由加载摘要单独授权后续动作。
 
-新增20项组合/真实pipe客户端模型测试，覆盖原两锁跨度、默认意图路径、部分写入、reload未知/不重放、marker/job/namespace晚变、未加载、Docker漂移、非本轮有效属性/override/backup原件变化、同字节门禁替换、原空目录身份、固定命令/环境及输出预算/超时/非root。文件/锁/pipe为真实临时对象，GitHub/Docker/manager/根锚点等为模型。仅Python3.10 AST、全局名字/方法/空白审阅、三段提取主体AST等价及准确写回核对，首轮CI #7747（head 92dabe00b059bf1ed281e9e19dd79a656348b8e8）执行865项，两个坏marker故障模型因底层JSONDecodeError未统一为安装合同错误而报错；已仅修正该错误边界，继续保留原件并阻断。修复后项目测试待同一PR的新head CI；845是前批结果。
+新增20项组合/真实pipe客户端模型测试，覆盖原两锁跨度、默认意图路径、部分写入、reload未知/不重放、marker/job/namespace晚变、未加载、Docker漂移、非本轮有效属性/override/backup原件变化、同字节门禁替换、原空目录身份、固定命令/环境及输出预算/超时/非root。文件/锁/pipe为真实临时对象，GitHub/Docker/manager/根锚点等为模型。仅Python3.10 AST、全局名字/方法/空白审阅、三段提取主体AST等价及准确写回核对，首轮CI #7747（head 92dabe00b059bf1ed281e9e19dd79a656348b8e8）执行865项，两个坏marker故障模型因底层JSONDecodeError未统一为安装合同错误而报错；已仅修正该错误边界，继续保留原件并阻断。修复后最终head已通过CI #7748，两套Release各865项；真实系统验收仍OPEN。
 
 下一步接准确保存三原ID/镜像/策略、耐久恢复依据与受限停写；停写后手动快照available/完整旧工具恢复实物、逐文件安装/永久门禁/旧应用核验交接、Mac薄入口与D4统一真实隔离验收仍OPEN。17+Manifest/250/300、四材料、三永久模板、九helper及唯一应用state保持，无依赖包/业务schema变化；三组研究继续暂停、不取消，未执行现场或生产操作。
 
