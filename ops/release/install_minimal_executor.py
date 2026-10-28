@@ -1959,6 +1959,131 @@ def _observe_installed_external_backup(identity, *, fetch=release.github_json):
         include_migrations=True, include_effective_configuration=True, include_external_backup=True)
 
 
+
+# Intent record primitives only. No namespace provisioning or installation CLI.
+INSTALL_INTENT_KIND = "sanq-minimal-executor-install-intent"
+MAX_INSTALL_RECORD = 16384
+
+
+def _installation_record_value(raw, identity, *, marker=False):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD
+          and isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity),
+          "invalid installation record input")
+    value = json.loads(raw, object_pairs_hook=_unique,
+                       parse_constant=lambda _: _need(False, "invalid installation JSON constant"))
+    fields = ({"schemaVersion", "kind", "installationId", "intentSha256"} if marker else
+              {"schemaVersion", "kind", "installationId", "retentionId", "targetSourceSha",
+               "installedRuntimeSourceSha", "observationSha256", "createdAt", "canExecute"})
+    _need(type(value) is dict and set(value) == fields and type(value["schemaVersion"]) is int
+          and value["schemaVersion"] == 1 and value["kind"] == INSTALL_INTENT_KIND
+          and value["installationId"] == identity, "installation record fields or identity differ")
+    for key in (("intentSha256",) if marker else ("retentionId", "observationSha256")):
+        _need(isinstance(value[key], str) and re.fullmatch(r"[a-f0-9]{64}", value[key]),
+              "invalid installation record digest")
+    if not marker:
+        release.require_sha(value["targetSourceSha"])
+        release.require_sha(value["installedRuntimeSourceSha"])
+        stamp = value["createdAt"]
+        _need(value["canExecute"] is False and isinstance(stamp, str)
+              and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z", stamp),
+              "installation intent is not an inert UTC audit record")
+        dt.datetime.fromisoformat(stamp[:-1] + "+00:00")
+    _need(_json(value) == raw, "installation record must use canonical original bytes")
+    return value
+
+
+def _installation_intent_bytes(*, installation_id, retention_id, target_source_sha,
+                               installed_runtime_source_sha, observation_sha256, created_at):
+    value = {"schemaVersion": 1, "kind": INSTALL_INTENT_KIND, "installationId": installation_id,
+             "retentionId": retention_id, "targetSourceSha": target_source_sha,
+             "installedRuntimeSourceSha": installed_runtime_source_sha,
+             "observationSha256": observation_sha256, "createdAt": created_at, "canExecute": False}
+    raw = _json(value)
+    _installation_record_value(raw, installation_id)
+    return raw
+
+
+def _installation_marker_bytes(intent, installation_id):
+    _installation_record_value(intent, installation_id)
+    raw = _json({"schemaVersion": 1, "kind": INSTALL_INTENT_KIND,
+                 "installationId": installation_id, "intentSha256": _hash(intent)})
+    _installation_record_value(raw, installation_id, marker=True)
+    return raw
+
+
+def _installation_records_match(intent, marker, installation_id):
+    _installation_record_value(intent, installation_id)
+    value = _installation_record_value(marker, installation_id, marker=True)
+    _need(value["intentSha256"] == _hash(intent), "installation marker does not bind original intent")
+
+
+def _installation_record_read(root, name, installation_id):
+    _need(name in ("intent.json", "active.json"), "unreviewed installation record name")
+    _private_info(os.fstat(root), directory=True)
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        _need(0 < before.st_size <= MAX_INSTALL_RECORD, "installation record size differs")
+        chunks, size = [], 0
+        while size <= MAX_INSTALL_RECORD:
+            block = os.read(fd, min(65536, MAX_INSTALL_RECORD + 1 - size))
+            if not block:
+                break
+            chunks.append(block)
+            size += len(block)
+        after, path = os.fstat(fd), os.stat(name, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(path)
+        _need(size == before.st_size and _installed_fingerprint(before) ==
+              _installed_fingerprint(after) == _installed_fingerprint(path),
+              "installation record changed during read")
+        raw = b"".join(chunks)
+        _installation_record_value(raw, installation_id, marker=name == "active.json")
+        return raw
+    finally:
+        os.close(fd)
+
+
+def _installation_record_write(root, name, raw, installation_id):
+    """Low-level create-only primitive; caller must own fixed namespace and original locks.
+
+    Does not authorize installation or ensure a preceding intent exists for a marker.
+    No public caller until the host orchestration is complete and reviewed.
+    """
+    _need(os.geteuid() == 0 and name in ("intent.json", "active.json"),
+          "unprivileged or unreviewed installation record write")
+    _private_info(os.fstat(root), directory=True)
+    _installation_record_value(raw, installation_id, marker=name == "active.json")
+    fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        remaining = memoryview(raw)
+        while remaining:
+            count = os.write(fd, remaining)
+            _need(count > 0, "short installation record write")
+            remaining = remaining[count:]
+        os.fsync(fd)
+        after = os.fstat(fd)
+        path = os.stat(name, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(path)
+        _need((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+              and after.st_size == len(raw) and _installed_fingerprint(after) == _installed_fingerprint(path),
+              "installation record identity changed during write")
+        os.fsync(root)
+        _need(_installation_record_read(root, name, installation_id) == raw,
+              "installation record readback differs")
+        final, path = os.fstat(fd), os.stat(name, dir_fd=root, follow_symlinks=False)
+        _private_info(final)
+        _private_info(path)
+        _need(_installed_fingerprint(after) == _installed_fingerprint(final) == _installed_fingerprint(path),
+              "installation record replaced after readback")
+    finally:
+        os.close(fd)  # Keep all partial files; never unlink, truncate, replay or clean markers.
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)

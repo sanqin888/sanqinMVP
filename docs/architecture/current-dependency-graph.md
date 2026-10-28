@@ -1,10 +1,26 @@
 # Current 12-context dependency graph
 
-## D2 安装意图记录合同（本地待审）
+## D2 意图记录格式与耐久原语（本地待审）
 
-**2026-10-28 当前进度：D2_INSTALL_INTENT_CONTRACT_LOCAL / DOCUMENTATION_ONLY / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_INTENT_RECORD_PRIMITIVES_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
 
-2026-10-28 续接：PR #3024已合并；补齐中断时未同步的运行手册并核对六份文档。首次安装不假定guard或socket条件已部署/加载，marker存在本身不证明已阻断启动；只有临时拒绝门禁确认有效加载后才能进入停写。该批仍为本地合同草案，未提交远端。
+安装意图合同[PR #3025](https://github.com/sanqin888/sanqinMVP/pull/3025) head `810a7768e81e840e0441a133f9f8073c9496525a` 经[CI #7737](https://github.com/sanqin888/sanqinMVP/actions/runs/40687640526)成功（scope成功，其余9项范围跳过，未运行项目测试），合并dev `c3cb1f8a91de32f39be4159306f364793b72176d`。
+
+本批从该dev建立feat/runtime-minimal-intent-records-20261028，实现合同的格式与底层耐久写入原语。意图准确九字段、marker准确四字段，均为sanq-minimal-executor-install-intent独立kind/严格整数schemaVersion=1、准确installationId/摘要/来源SHA，意图canExecute严格false，createdAt为有界精度UTC Z时间。拒绝未知/重复字段、非有限JSON、bool冒充整数、非规范原字节和超16KiB记录；marker摘要必须绑定原意图规范字节。
+
+新增仅内部使用的FD读写原语，只允许intent.json/active.json，不扩PRIVATE_FILES或原四材料格式。写要求root及已核0700私有目录FD，O_EXCL/nofollow/0600 create-only；完整处理短写，文件fsync、目录fsync、准确读回并保持打开FD核原路径身份/元数据，失败只关闭FD，保留空/部分/完整残件，不unlink、截断、重放或清marker。读要求普通单链接0600、大小/FD与路径完整身份稳定和严格字节格式。
+
+这只是记录原语：不创建installation-runs namespace，不核原两锁或新鲜主机事实，不保证marker之前已有耐久intent，也不把调用者数据当安装权限。当前没有任何公开CLI/主机编排调用这些写原语。后续必须用固定路径编排在原两锁内自行取得新鲜观察、完成意图耐久后才允许marker写入；不能直接将此底层函数当安装入口。整体hostPreflightComplete/readyToInstall/canExecute等原许可保持false，不写应用state或受保护工具。
+
+新增12项临时目录/FD模型测试：规范格式与相互绑定、字段/类型/身份/摘要/UTC边界、重复/非规范/超限/非有限JSON、错意图摘要、create-only/模式/inode、短写与零进展、部分写异常、文件或目录fsync失败、读回失败/晚期权限变化、软硬链接/FIFO/坏权限、非root/坏目录/任意名称拒绝及无新CLI/四材料不变。真实临时文件和fsync，root身份/属主为模型；未运行项目测试，仅Python3.10 AST、静态名字/方法钩子/空白、原所有函数定义不变和写回核对，项目结果待CI。
+
+下一批接固定installation-runs目录、未决事务扫描与原两锁下的意图→marker耐久编排，补目录创建/锁竞争/新鲜来源晚变及半记录保持；之后接临时拒绝门禁。该后续编排与主机执行就绪仍OPEN，不能据本批写原语成功宣称安装围栏已生效。无新依赖包/九helper导入/公开CLI/业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、原两锁/四材料和三永久门禁保持。三组研究继续暂停、不取消；未执行生产预检、安装、备份或数据库操作。
+
+## D2 安装意图记录合同（已合并）
+
+**2026-10-28 当前进度：D2_INSTALL_INTENT_CONTRACT_MERGED_DEV / DOCUMENTATION_ONLY / NOT_INSTALLED。**
+
+2026-10-28 续接：PR #3024已合并；补齐中断时未同步的运行手册并核对六份文档。首次安装不假定guard或socket条件已部署/加载，marker存在本身不证明已阻断启动；只有临时拒绝门禁确认有效加载后才能进入停写。该合同批已通过PR #3025合并dev。
 
 预检C组合批[PR #3024](https://github.com/sanqin888/sanqinMVP/pull/3024) head `cb1e1c38d972ed61d255333cc6191d7fb6f9ed88` 经[CI #7735](https://github.com/sanqin888/sanqinMVP/actions/runs/40595181934)全绿（4成功/6范围跳过；Release默认Python与3.10各803、Runtime1080、既有C1回归412），合并dev `8722324be77795ea5f9d0acbc4935b99cf68c0cd`，无CI修复。原批LOCAL/未运行描述仅为当时审阅状态；未执行现场预检或安装。
 
