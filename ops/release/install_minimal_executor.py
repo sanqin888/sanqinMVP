@@ -906,10 +906,12 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                           and private[3] == capture[1]["privateDirectories"]
                           and all(private[1][path] == capture[1]["files"][path]["identity"] for path in private[0]),
                           "recovery private originals changed after capture")
+                    _recovery_retention_matches(folders, capture)
                     payload = _installation_recovery_payload(capture, intent, writers, installation_id)
                     receipt = _installation_recovery_receipt(payload, intent, writers, installation_id, _hash(_json(capture[1])))
                     check_owned()
                     result = persist(payload, receipt)
+                    _recovery_retention_matches(folders, capture)
                     frozen_recheck()
                     check_owned()
                     return result
@@ -2967,6 +2969,87 @@ def _recovery_private_sources(folders):
     return files, metadata, locks, directories
 
 
+
+MAX_RECOVERY_RETENTIONS = 64
+
+
+def _recovery_retention_names(root):
+    names = []
+    with os.scandir(root) as entries:
+        for entry in entries:
+            _need(len(names) < MAX_RECOVERY_RETENTIONS
+                  and re.fullmatch(r"[a-f0-9]{64}", entry.name) is not None,
+                  "unknown or excessive recovery material directories")
+            names.append(entry.name)
+    return sorted(names)
+
+
+def _recovery_retention_sources(folders):
+    """Read every complete retention as data; no history selection or source execution."""
+    parent = folders["installations"]
+    before = os.fstat(parent)
+    _private_info(before, directory=True)
+    names = _recovery_retention_names(parent)
+    files, metadata, directories = {}, {}, {}
+    total = 0
+    for identity in names:
+        with _private_directory(parent, identity) as root:
+            directory = os.fstat(root)
+            _need(set(os.listdir(root)) == PRIVATE_FILES, "incomplete recovery material history")
+            raw_files, fingerprints = {}, {}
+            # Check sizes before reading this group, then retain the exact originals.
+            limits = {name: (bundle.MAX_ARCHIVE_BYTES if name == "current-runtime-archive.tar.gz"
+                      else MAX_KIT if name == "delivery-kit.tar.gz" else 4096) for name in PRIVATE_FILES}
+            for name in sorted(PRIVATE_FILES):
+                info = os.stat(name, dir_fd=root, follow_symlinks=False)
+                _private_info(info)
+                _need(0 < info.st_size <= limits[name], "recovery material history size differs")
+                total += info.st_size
+                _need(total <= MAX_RECOVERY_SOURCE_BYTES, "recovery material history exceeds source budget")
+                fingerprints[name] = _installed_fingerprint(info)
+            for name in sorted(PRIVATE_FILES):
+                raw = _private_read(root, name, limits[name])
+                _need(fingerprints[name] == _installed_fingerprint(
+                      os.stat(name, dir_fd=root, follow_symlinks=False)),
+                      "recovery material history changed around read")
+                raw_files[name] = raw
+            try:
+                kit, old, value = _retained_contents(root, identity)
+            except (json.JSONDecodeError, UnicodeError, KeyError, TypeError, ValueError):
+                raise release.ReleaseContractError("invalid recovery material history records") from None
+            _need(kit == raw_files["delivery-kit.tar.gz"] and old == raw_files["current-runtime-archive.tar.gz"]
+                  and raw_files["retained.json"] == _json(value)
+                  and raw_files["retaining.json"] == _json({**value, "phase": "RETAINING"}),
+                  "recovery material history bytes differ")
+            for name in sorted(PRIVATE_FILES):
+                actual = os.stat(name, dir_fd=root, follow_symlinks=False)
+                _private_info(actual)
+                _need(fingerprints[name] == _installed_fingerprint(actual),
+                      "recovery material history metadata changed")
+                path = "/opt/sanq/deploy-state/installations/" + identity + "/" + name
+                files[path], metadata[path] = raw_files[name], list(fingerprints[name])
+            path = "/opt/sanq/deploy-state/installations/" + identity
+            directories[path] = list(_installed_fingerprint(directory))
+            current = os.stat(identity, dir_fd=parent, follow_symlinks=False)
+            _private_info(current, directory=True)
+            _need(_installed_fingerprint(directory) == _installed_fingerprint(os.fstat(root))
+                  == _installed_fingerprint(current), "recovery material history directory replaced")
+    _need(_recovery_retention_names(parent) == names
+          and _installed_fingerprint(before) == _installed_fingerprint(os.fstat(parent)),
+          "recovery material history inventory changed")
+    return files, metadata, directories, list(_installed_fingerprint(before))
+
+
+def _recovery_retention_matches(folders, capture):
+    files, metadata, directories, namespace = _recovery_retention_sources(folders)
+    expected = {path: raw for path, raw in capture[0].items()
+                if path.startswith("/opt/sanq/deploy-state/installations/")}
+    _need(files == expected and directories == capture[1]["retainedMaterialDirectories"]
+          and namespace == capture[1]["retainedMaterialNamespace"]
+          and all(metadata[path] == capture[1]["files"][path]["identity"] for path in files),
+          "recovery material history changed after capture")
+
+
 def _installation_recovery_sources(folders, retention_id, kit, old, retained):
     """Capture pre-gate originals into memory; not a complete or durable recovery kit."""
     runtime, runtime_dirs = _installed_runtime_snapshot(old, retained["currentArchiveSourceSha"])
@@ -2995,17 +3078,10 @@ def _installation_recovery_sources(folders, retention_id, kit, old, retained):
         add(path, raw, private_metadata[path])
     with _private_directory(folders["installations"], retention_id) as root:
         _need(_retained_contents(root, retention_id) == (kit, old, retained), "recovery retained originals changed")
-        for name in sorted(PRIVATE_FILES):
-            before = os.stat(name, dir_fd=root, follow_symlinks=False)
-            _private_info(before)
-            maximum = (bundle.MAX_ARCHIVE_BYTES if name == "current-runtime-archive.tar.gz"
-                       else MAX_KIT if name == "delivery-kit.tar.gz" else 4096)
-            raw = _private_read(root, name, maximum)
-            after = os.stat(name, dir_fd=root, follow_symlinks=False)
-            _private_info(after)
-            _need(_installed_fingerprint(before) == _installed_fingerprint(after),
-                  "recovery retained member changed during capture")
-            add("/opt/sanq/deploy-state/installations/" + retention_id + "/" + name, raw, _installed_fingerprint(before))
+    retained_files, retained_metadata, retained_dirs, retained_namespace = _recovery_retention_sources(folders)
+    for path, raw in retained_files.items():
+        add(path, raw, retained_metadata[path])
+    with _private_directory(folders["installations"], retention_id) as root:
         _need(_retained_contents(root, retention_id) == (kit, old, retained), "recovery retained originals changed")
     absent = ["/opt/sanq/runtime/" + name for name in (*HELPERS, BOOTSTRAP)]
     absent += ["/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS]
@@ -3015,7 +3091,8 @@ def _installation_recovery_sources(folders, retention_id, kit, old, retained):
         "sourceSha": retained["sourceSha"], "currentArchiveSourceSha": retained["currentArchiveSourceSha"],
         "files": metadata, "absentFiles": sorted(absent), "originalLockMetadata": locks,
         "runtimeDirectories": {name: list(value) for name, value in runtime_dirs.items()},
-        "privateDirectories": private_dirs, "systemdDirectoryIdentity": list(systemd_root),
+        "privateDirectories": private_dirs, "retainedMaterialDirectories": retained_dirs,
+        "retainedMaterialNamespace": retained_namespace, "systemdDirectoryIdentity": list(systemd_root),
         "overrideDirectories": {name: list(value) if value is not None else None for name, value in overrides.items()},
         "externalDirectories": external["directories"], "capturedBytes": total,
         "completePrivateStateCaptured": False, "recoveryArchiveDurable": False, "snapshotAvailable": False,
@@ -3160,7 +3237,20 @@ def _installation_recovery_entries(capture, intent, writers, identity):
     fixed = {"/opt/sanq/runtime/" + name for name in (*RUNTIME_MEMBERS, "runtime-release.json", *CONFIGURATION_NAMES)}
     fixed |= {"/etc/systemd/system/" + unit for unit in ("sanq-backup.service", "sanq-backup.timer")}
     fixed |= {"/" + "/".join((*parts, name)) for parts, name, _, _, _ in EXTERNAL_BACKUP_FILES}
-    fixed |= {"/opt/sanq/deploy-state/installations/" + recorded["retentionId"] + "/" + name for name in PRIVATE_FILES}
+    retained_dirs = summary.get("retainedMaterialDirectories")
+    namespace = summary.get("retainedMaterialNamespace")
+    _need(type(retained_dirs) is dict and 0 < len(retained_dirs) <= MAX_RECOVERY_RETENTIONS
+          and "/opt/sanq/deploy-state/installations/" + recorded["retentionId"] in retained_dirs,
+          "recovery retained material directory inventory differs")
+    for path, info in retained_dirs.items():
+        _need(isinstance(path, str) and re.fullmatch(r"/opt/sanq/deploy-state/installations/[a-f0-9]{64}", path)
+              and type(info) is list and len(info) == 9 and all(type(value) is int for value in info)
+              and stat.S_ISDIR(info[7]) and stat.S_IMODE(info[7]) == 0o700,
+              "recovery retained material directory metadata differs")
+    _need(type(namespace) is list and len(namespace) == 9 and all(type(value) is int for value in namespace)
+          and stat.S_ISDIR(namespace[7]) and stat.S_IMODE(namespace[7]) == 0o700,
+          "recovery retained material namespace metadata differs")
+    fixed |= {path + "/" + name for path in retained_dirs for name in PRIVATE_FILES}
     absent = {"/opt/sanq/runtime/" + name for name in (*HELPERS, BOOTSTRAP)}
     absent |= {"/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS}
     absent |= {"/etc/systemd/system/" + unit for unit in ("docker.service", "docker.socket")}
