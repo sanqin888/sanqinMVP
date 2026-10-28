@@ -910,11 +910,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     payload = _installation_recovery_payload(capture, intent, writers, installation_id)
                     receipt = _installation_recovery_receipt(payload, intent, writers, installation_id, _hash(_json(capture[1])))
                     check_owned()
+                    scope = _installation_recovery_scope(payload, receipt, intent, writers, installation_id, fetch=fetch)
+                    check_owned()
                     result = persist(payload, receipt)
                     _recovery_retention_matches(folders, capture)
                     frozen_recheck()
                     check_owned()
-                    return result
+                    return {**result, "scopeReview": scope}
                 except BaseException:
                     raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
             result["installationIntent"] = _write_installation_intent_locked(
@@ -984,34 +986,38 @@ def _configuration_snapshot():
         stack.callback(os.close, anchor)
         root = stack.enter_context(_installed_directory(anchor, "runtime"))
         files = {name: _configuration_read(root, name, account) for name in CONFIGURATION_NAMES}
-        env = files[".env"][0]
-        _need(b"\0" not in env and b"\r" not in env.replace(b"\r\n", b""),
-              "installation environment contains ambiguous line encoding")
-        text = env.decode("utf-8")
-        assignments = re.findall(r"(?m)^[ \t]*(?:export[ \t]+)?SANQ_IMAGE_SHA[ \t]*=", text)
-        values = re.findall(r"(?m)^SANQ_IMAGE_SHA=([^\r\n]*)\r?$", text)
-        _need(len(assignments) == len(values) == 1, "installation environment SHA assignment is ambiguous")
-        application = release.require_sha(values[0])
-        raw_state = files[".sanq-release-state.json"][0]
-        state = json.loads(raw_state, object_pairs_hook=_unique)
-        _need(type(state) is dict and set(state) == {
-              "schemaVersion", "phase", "current", "previous", "updatedAt", "reason"}
-              and type(state["schemaVersion"]) is int and state["schemaVersion"] == 1
-              and state["phase"] in ("active", "rolled-back")
-              and state["current"] == application, "installation release state is unresolved or inconsistent")
-        release.require_sha(state["previous"])
-        _need(state["reason"] == ("readiness-verified" if state["phase"] == "active" else "rollback-verified"),
-              "installation release state completion reason differs")
-        stamp = state["updatedAt"]
-        _need(isinstance(stamp, str) and re.fullmatch(
-              r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|\+00:00)", stamp),
-              "installation release state timestamp is not UTC")
-        dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-        _need(files[".sanq-backup-layout-activated"][0].decode("utf-8").strip() == "SANQ_BACKUP_LAYOUT_C4_V1",
-              "installation C4 activation marker differs")
-        return files, {"applicationSha": application, "previousApplicationSha": state["previous"],
-                       "releaseStatePhase": state["phase"], "ubuntuUid": account.pw_uid,
-                       "ubuntuGid": account.pw_gid}
+        application = _installation_configuration_value({name: row[0] for name, row in files.items()})
+        return files, {**application, "ubuntuUid": account.pw_uid, "ubuntuGid": account.pw_gid}
+
+
+def _installation_configuration_value(files):
+    env = files[".env"]
+    _need(b"\0" not in env and b"\r" not in env.replace(b"\r\n", b""),
+          "installation environment contains ambiguous line encoding")
+    text = env.decode("utf-8")
+    assignments = re.findall(r"(?m)^[ \t]*(?:export[ \t]+)?SANQ_IMAGE_SHA[ \t]*=", text)
+    values = re.findall(r"(?m)^SANQ_IMAGE_SHA=([^\r\n]*)\r?$", text)
+    _need(len(assignments) == len(values) == 1, "installation environment SHA assignment is ambiguous")
+    application = release.require_sha(values[0])
+    raw_state = files[".sanq-release-state.json"]
+    state = json.loads(raw_state, object_pairs_hook=_unique)
+    _need(type(state) is dict and set(state) == {
+          "schemaVersion", "phase", "current", "previous", "updatedAt", "reason"}
+          and type(state["schemaVersion"]) is int and state["schemaVersion"] == 1
+          and state["phase"] in ("active", "rolled-back")
+          and state["current"] == application, "installation release state is unresolved or inconsistent")
+    release.require_sha(state["previous"])
+    _need(state["reason"] == ("readiness-verified" if state["phase"] == "active" else "rollback-verified"),
+          "installation release state completion reason differs")
+    stamp = state["updatedAt"]
+    _need(isinstance(stamp, str) and re.fullmatch(
+          r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|\+00:00)", stamp),
+          "installation release state timestamp is not UTC")
+    dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    _need(files[".sanq-backup-layout-activated"].decode("utf-8").strip() == "SANQ_BACKUP_LAYOUT_C4_V1",
+          "installation C4 activation marker differs")
+    return {"applicationSha": application, "previousApplicationSha": state["previous"],
+            "releaseStatePhase": state["phase"]}
 
 
 def _observe_installed_configuration(identity, *, fetch=release.github_json):
@@ -3513,6 +3519,119 @@ def _installation_recovery_receipt_value(raw, payload, intent, writers, identity
           and raw == _installation_recovery_receipt(payload, intent, writers, identity, value["captureSha256"]),
           "recovery receipt binding or canonical bytes differ")
     return value
+
+
+
+def _installation_recovery_members(payload):
+    """Bounded in-memory reading only; never unpack paths or execute archived commands."""
+    _need(type(payload) is bytes and 0 < len(payload) <= MAX_RECOVERY_ARCHIVE_BYTES,
+          "recovery scope archive exceeds budget")
+    members, total = {}, 0
+    try:
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
+            for member in archive:
+                _need(len(members) < MAX_RECOVERY_MEMBERS and member.name not in members
+                      and member.type == tarfile.REGTYPE and 0 < member.size <= MAX_RECOVERY_SOURCE_BYTES,
+                      "invalid recovery scope member")
+                total += member.size
+                _need(total <= MAX_RECOVERY_ARCHIVE_BYTES, "recovery scope bytes exceed budget")
+                stream = archive.extractfile(member)
+                _need(stream is not None, "unreadable recovery scope member")
+                raw = stream.read(member.size + 1)
+                stream.close()
+                _need(len(raw) == member.size, "truncated recovery scope member")
+                members[member.name] = raw
+    except (tarfile.TarError, ValueError, UnicodeError, OSError, EOFError):
+        raise release.ReleaseContractError("invalid recovery scope archive") from None
+    return members
+
+
+def _installation_recovery_scope(payload, receipt, intent, writers, identity, *, fetch):
+    """Audit retained bytes and replay observations as data. No host or AWS commands."""
+    try:
+        members = _installation_recovery_members(payload)
+        index = _installation_recovery_index(payload, intent, writers, identity)
+        summary = index["capture"]
+        files = {name[len("originals"):]: raw for name, raw in members.items() if name.startswith("originals/")}
+        _need(RECOVERY_HOST_MEMBER in members, "recovery scope lacks original host observations")
+        capture = files, summary, members[RECOVERY_HOST_MEMBER]
+        entries = _installation_recovery_entries(capture, intent, writers, identity)
+        _installation_recovery_verify(payload, entries)
+        _installation_recovery_receipt_value(receipt, payload, intent, writers, identity)
+        recorded = _installation_record_value(intent, identity)
+        saved = _installation_writers_match(intent, writers, identity)
+        groups = {}
+        for directory in summary["retainedMaterialDirectories"]:
+            raw = {name: files[directory + "/" + name] for name in PRIVATE_FILES}
+            value = json.loads(raw["retained.json"], object_pairs_hook=_unique)
+            _need(type(value) is dict, "invalid recovery scope material record")
+            expected = _retention_record(raw["delivery-kit.tar.gz"], value["sourceSha"],
+                raw["current-runtime-archive.tar.gz"], value["currentArchiveSourceSha"], complete=True)
+            _need(expected["retentionId"] == directory.rsplit("/", 1)[1]
+                  and raw["retained.json"] == _json(expected)
+                  and raw["retaining.json"] == _json({**expected, "phase": "RETAINING"}),
+                  "recovery scope historical material binding differs")
+            groups[expected["retentionId"]] = raw, expected
+        original, material = groups[recorded["retentionId"]]
+        _need(material["sourceSha"] == recorded["targetSourceSha"]
+              and material["currentArchiveSourceSha"] == recorded["installedRuntimeSourceSha"],
+              "recovery scope current material source differs")
+        archive_raw = original["current-runtime-archive.tar.gz"]
+        manifest, runtime = _runtime_files(archive_raw, material["currentArchiveSourceSha"])
+        with tarfile.open(fileobj=io.BytesIO(archive_raw), mode="r:gz") as archive:
+            stream = archive.extractfile(bundle.RUNTIME_PREFIX + "/" + bundle.MANIFEST)
+            _need(stream is not None, "recovery scope old Manifest missing")
+            manifest_raw = stream.read(MAX_FILE + 1)
+            stream.close()
+        _need(all(files["/opt/sanq/runtime/" + name] == raw for name, raw in runtime.items())
+              and files["/opt/sanq/runtime/runtime-release.json"] == manifest_raw,
+              "recovery scope old Runtime differs from its retained archive")
+        for parts, name, member, _, _ in EXTERNAL_BACKUP_FILES:
+            path = "/" + "/".join((*parts, name))
+            _need(files[path] == runtime[member], "recovery scope external backup original differs")
+        _need(files["/etc/systemd/system/sanq-backup.service"] == runtime["ops/backup/sanq-backup.service"],
+              "recovery scope backup service original differs")
+        application = _installation_configuration_value(
+            {name: files["/opt/sanq/runtime/" + name] for name in CONFIGURATION_NAMES})
+        _need(application["applicationSha"] == saved["applicationSha"],
+              "recovery scope application state differs")
+        host = _installation_recovery_host_value(capture[2], saved)
+        rows, position = host["commands"], 0
+        pending = {}
+        for row in rows:
+            pending.setdefault(tuple(row["argv"]), []).append(row["stdout"])
+        def replay(args):
+            nonlocal position
+            observations = pending.get(tuple(args))
+            _need(observations, "recovery scope host observation missing")
+            position += 1
+            return observations.pop(0)
+        docker = _docker_snapshot(application, runtime["docker-compose.yml"], replay, fetch)
+        _need(docker == host["docker"]
+              and _application_binding_snapshot(docker, replay) == host["applicationBinding"]
+              and _effective_configuration_snapshot(docker, replay) == host["effectiveConfiguration"],
+              "recovery scope host observation content differs")
+        units = _systemd_loaded_units(replay)
+        systemd = {"units": {unit: {**{key: fields[key] for key in SYSTEMD_KEYS},
+                    "effectivePropertiesSha256": _hash(_json(fields))} for unit, fields in units.items()},
+            "installedBackupUnits": {name: summary["files"]["/etc/systemd/system/" + name]
+                                     for name in ("sanq-backup.service", "sanq-backup.timer")},
+            "overrideDirectories": summary["overrideDirectories"],
+            "systemdDirectoryIdentity": summary["systemdDirectoryIdentity"],
+            "reservedMaintenanceDropinsAbsent": True, "backupTimerSourceAuthenticated": False,
+            "vendorUnitBytesAuthenticated": False}
+        _need(position == len(rows) and host["systemd"] == systemd,
+              "recovery scope loaded properties differ")
+        return {"outcome": "RECOVERY_PACKAGE_SCOPE_REVIEWED", "archiveSha256": _hash(payload),
+            "receiptSha256": _hash(receipt), "captureSha256": _hash(_json(summary)),
+            "originalFiles": len(files), "originalAbsentFiles": len(summary["absentFiles"]),
+            "retainedMaterialGroups": len(groups), "hostObservations": len(rows),
+            "oldRuntimeMembers": len(runtime), "applicationSha": application["applicationSha"],
+            "packageScopeReviewed": True, "snapshotAvailable": False, "recoveryReady": False,
+            "canExecute": False, "requiresHostRecheck": True}
+    except (json.JSONDecodeError, UnicodeError, KeyError, TypeError, ValueError, tarfile.TarError, OSError, EOFError,
+            bundle.BundleBlocked):
+        raise release.ReleaseContractError("invalid recovery package scope") from None
 
 
 @contextlib.contextmanager
