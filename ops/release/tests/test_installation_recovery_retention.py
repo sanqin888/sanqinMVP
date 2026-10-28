@@ -204,14 +204,15 @@ class InstallationRecoveryRetentionTests(unittest.TestCase):
         self.assertFalse((self.directory() / "recovery.json").exists())
 
     def test_private_inventory_change_after_capture_blocks_recovery_write(self):
-        capture = installer._installation_recovery_sources
         plan = self.phase.saved.materials.state / "plans" / ("a" * 64 + ".json")
-        def racing(*args):
-            value = capture(*args)
-            plan.write_bytes(b'{"inert":"late state"}\n')
-            plan.chmod(0o600)
-            return value
-        with patch.object(installer, "_installation_recovery_sources", side_effect=racing), self.assertRaisesRegex(ReleaseContractError, "FENCE_UNCONFIRMED"):
+        changed = []
+        def racing(role, action):
+            if not changed:
+                changed.append(True)
+                plan.write_bytes(b'{"inert":"late state"}\n')
+                plan.chmod(0o600)
+        self.phase.after_mutation = racing
+        with self.assertRaisesRegex(ReleaseContractError, "FENCE_UNCONFIRMED"):
             self.observe()
         self.assertTrue(plan.exists())
         self.assertFalse(self.directory().exists())
