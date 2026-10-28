@@ -523,6 +523,10 @@ def _private_write(root, name, raw):
 
 def _idle_for_materials(folders):
     _need(not os.listdir(folders["maintenance"]), "maintenance evidence blocks material handoff")
+    _material_jobs_idle(folders)
+
+
+def _material_jobs_idle(folders):
     names = os.listdir(folders["jobs"])
     _need(len(names) <= 1024, "job observation budget exceeded")
     for name in names:
@@ -718,26 +722,28 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False):
-    """Initial install source observation only. No CLI, writes or installation permit."""
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False):
+    """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
           and (not include_effective_configuration or include_migrations)
           and (not include_external_backup or include_effective_configuration)
-          and (not _record_intent or include_external_backup),
+          and (not _record_intent or include_external_backup) and (not _load_deny_gates or _record_intent),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
-    def snapshot():
+    def snapshot(*, temporary_files=None):
         runtime = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
         configuration = _configuration_snapshot() if include_configuration else None
         docker = (_docker_snapshot(configuration[1], runtime[0]["docker-compose.yml"][0], run, fetch)
                   if include_docker else None)
-        systemd = (_systemd_snapshot(runtime[0]["ops/backup/sanq-backup.service"][0],
-                                    lambda args: _systemd_command(args, deadline=deadline))
+        systemd_run = lambda args: _systemd_command(args, deadline=deadline)
+        systemd = ((_temporary_gate_systemd_parity(before[3], systemd_run, temporary_files)
+                    if temporary_files is not None else
+                    _systemd_snapshot(runtime[0]["ops/backup/sanq-backup.service"][0], systemd_run))
                    if include_systemd else None)
         filesystem = _host_filesystem_snapshot(deadline=deadline) if include_filesystem else None
         prerequisites = (_runtime_prerequisite_snapshot(docker, lambda args: _runtime_command(args, deadline=deadline))
@@ -811,8 +817,31 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 _need(snapshot() == before, "host changed before installation intent recording")
                 _need(_retained_contents(root, identity) == (kit, old, value), "installation materials changed")
                 _idle_for_materials(folders)
-            result["installationIntent"] = _write_installation_intent_locked(folders, identity, result, recheck=recheck)
-            result["outcome"] = "INSTALLATION_INTENT_RECORDED"
+            def load_gates(check_owned):
+                def source_matches():
+                    _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
+                          == review, "installation source changed during gate loading")
+                    _need(_retained_contents(root, identity) == (kit, old, value), "installation materials changed")
+                check_owned()
+                source_matches()
+                _need(snapshot() == before, "host changed before temporary gate creation")
+                check_owned()
+                files = _write_temporary_gate_files()["files"]
+                check_owned()
+                _need(_temporary_gate_files() == files, "temporary gates changed before reload")
+                _installation_daemon_reload(deadline=deadline)
+                check_owned()
+                loaded = _verify_temporary_gates(lambda args: _systemd_command(args, deadline=deadline))
+                _need(loaded["files"] == files, "loaded temporary gates differ from this write")
+                source_matches()
+                _need(snapshot(temporary_files=files) == before, "host changed around temporary gate loading")
+                check_owned()
+                _need(_temporary_gate_files() == files, "temporary gate files changed after host recheck")
+                return {**loaded, "startupFenceConfirmed": True, "writersFrozen": False,
+                        "canExecute": False, "requiresHostRecheck": True}
+            result["installationIntent"] = _write_installation_intent_locked(
+                folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None)
+            result["outcome"] = "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED"
         return result
 
 
@@ -935,8 +964,20 @@ def _docker_command(args, *, deadline):
 
 
 def _observation_command(args, *, deadline):
+    _need(_docker_allowed(args) or _systemd_allowed(args) or _runtime_observation_allowed(args),
+          "unreviewed Host observation")
+    return _bounded_host_client(args, deadline=deadline)
+
+
+def _installation_daemon_reload(*, deadline):
+    """Only this fixed manager mutation; a timeout never means reload was undone."""
+    output = _bounded_host_client([*SYSTEMCTL, "daemon-reload"], deadline=deadline)
+    _need(output == "", "unexpected installation reload output")
+
+
+def _bounded_host_client(args, *, deadline):
     _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)
-                                   or _runtime_observation_allowed(args)), "unreviewed or unprivileged Host observation")
+                                   or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"]), "unreviewed or unprivileged Host observation")
     _need(not any(os.environ.get(key) for key in (
           "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
           "non-default Docker endpoint requires separate review")
@@ -976,7 +1017,7 @@ def _observation_command(args, *, deadline):
         except UnicodeError:
             raise release.ReleaseContractError("Host observation output encoding invalid") from None
     except BaseException:
-        # Only terminate this read-only CLI process group, never any container.
+        # Only terminate this CLI client group. A manager mutation may already have taken effect.
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -1204,8 +1245,7 @@ def _systemd_disk_snapshot(backup_source):
         os.close(root)
 
 
-def _systemd_snapshot(backup_source, run):
-    disk = _systemd_disk_snapshot(backup_source)
+def _systemd_loaded_units(run):
     units = {}
     for unit in SYSTEMD_UNITS:
         keys = _systemd_keys(unit)
@@ -1245,6 +1285,12 @@ def _systemd_snapshot(backup_source, run):
                   and all(fields[key] == "" for key in ("ExecStartPre", "ExecStartPost", "ExecStopPost")),
                   "backup service is active, redirected or has unreviewed hooks")
         units[unit] = fields
+    return units
+
+
+def _systemd_snapshot(backup_source, run):
+    disk = _systemd_disk_snapshot(backup_source)
+    units = _systemd_loaded_units(run)
     _need(_systemd_disk_snapshot(backup_source) == disk, "systemd files changed around loaded-unit observation")
     files, directories, root = disk
     return {"units": {unit: {**{key: fields[key] for key in SYSTEMD_KEYS},
@@ -2199,10 +2245,11 @@ def _installation_owned_run(namespace, identity):
         return _installation_record_read(root, "intent.json", identity)
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     identity = os.urandom(32).hex()
+    gate_result = None
     anchor = _state_parent()
     try:
         with _private_directory(anchor, "deploy-state") as state:
@@ -2241,14 +2288,35 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                     _need(actual == raw and active == marker and initial == _directory_identity(os.fstat(root))
                           == _directory_identity(os.stat(identity, dir_fd=namespace, follow_symlinks=False)),
                           "installation intent path changed during recording")
+                    def check_owned():
+                        state_matches()
+                        current_state = os.stat("deploy-state", dir_fd=anchor, follow_symlinks=False)
+                        _private_info(current_state, directory=True)
+                        _need(_directory_identity(current_state) == _directory_identity(os.fstat(state)),
+                              "owned installation state directory replaced")
+                        _material_jobs_idle(folders)
+                        _need(_installation_owned_run(namespace, identity) == raw
+                              and set(os.listdir(folders["maintenance"])) == {"active.json"}
+                              and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
+                              and _directory_identity(os.fstat(root)) == initial
+                              == _directory_identity(os.stat(identity, dir_fd=namespace, follow_symlinks=False)),
+                              "owned installation intent or marker changed")
+                        current_namespace = os.stat(INSTALLATION_RUNS, dir_fd=state, follow_symlinks=False)
+                        _private_info(current_namespace, directory=True)
+                        _need(_directory_identity(current_namespace) == _directory_identity(os.fstat(namespace)),
+                              "owned installation namespace replaced")
+                    if load_gates is not None:
+                        check_owned()
+                        gate_result = load_gates(check_owned)
+                        check_owned()
                 state_matches()
             _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
                   "installation marker changed after namespace validation")
             return {"installationId": identity, "intentSha256": _hash(raw), "markerSha256": _hash(marker),
-                    "canExecute": False, "startupFenceConfirmed": False, "writersFrozen": False,
-                    "requiresHostRecheck": True}
+                    "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": False,
+                    "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {})}
     finally:
-        os.close(anchor)  # Never clean intent/marker or retry an unknown result.
+        os.close(anchor)  # Never clean intent/marker/gates or retry an unknown result.
 
 
 def _record_installation_intent(retention_id, *, fetch=release.github_json):
@@ -2338,9 +2406,9 @@ def _temporary_gate_files():
 
 
 def _write_temporary_gate_files():
-    """Low-level root primitive; future owned installer must verify marker/locks.
+    """Low-level root primitive; the owned observer verifies intent/marker/locks.
 
-    No CLI and no caller until that orchestration is reviewed. Never reloads a unit.
+    No CLI. Only the fresh observer continuation calls this; no reload here.
     """
     _need(os.geteuid() == 0, "temporary gate file creation requires root")
     root = _systemd_root()
@@ -2401,6 +2469,93 @@ def _verify_temporary_gates(run):
     _need(_temporary_gate_files() == before, "temporary gate files changed around manager observation")
     return {"files": before, "effectivePropertiesSha256": units,
             "denyGatePropertiesObserved": True, "startupFenceConfirmed": False, "canExecute": False}
+
+
+
+def _temporary_gate_systemd_parity(baseline, run, files):
+    """Compare original manager/disk facts, allowing only this write's deny gates."""
+    _need(_verify_temporary_gates(run)["files"] == files, "temporary loaded gates changed")
+    def normalized(args):
+        raw = run(args)
+        _need(isinstance(raw, str) and len(raw.encode("utf-8")) <= 65536, "manager parity output exceeds budget")
+        unit = args[3]
+        lines = []
+        for line in raw.splitlines():
+            key, sep, value = line.partition("=")
+            if unit in INSTALL_DENY_DROPINS and key == "DropInPaths":
+                expected = "/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME
+                _need(sep == "=" and value.split() == [expected], "loaded deny path changed")
+                line = "DropInPaths="
+            elif unit in ("docker.service", "sanq-backup.service") and key == "ExecStartPre":
+                _need("path=/usr/bin/false ; argv[]=/usr/bin/false ; ignore_errors=no" in value
+                      and value.count("path=") == value.count("argv[]=") == 1, "loaded denial changed")
+                line = "ExecStartPre="
+            lines.append(line)
+        return "\n".join(lines)
+    units = _systemd_loaded_units(normalized)
+    projection = {unit: {**{key: fields[key] for key in SYSTEMD_KEYS},
+                         "effectivePropertiesSha256": _hash(_json(fields))}
+                  for unit, fields in units.items()}
+    _need(projection == baseline["units"], "manager changed beyond the owned temporary gates")
+    root = _systemd_root()
+    def stable(info):
+        return [info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode]
+    def from_fingerprint(info):
+        return [info[index] for index in (0, 1, 5, 6, 7)]
+    try:
+        initial = os.fstat(root)
+        _installed_info(initial, directory=True)
+        _need(stable(initial) == from_fingerprint(baseline["systemdDirectoryIdentity"]),
+              "systemd root identity changed")
+        for name, saved in baseline["installedBackupUnits"].items():
+            raw, info = _root_observation_read(root, name, 65536)
+            _need({"sha256": _hash(raw), "bytes": len(raw), "identity": list(info)} == saved,
+                  "original backup unit changed during gate loading")
+        for name in ("docker.service", "docker.socket"):
+            try:
+                os.stat(name, dir_fd=root, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            _need(False, "local Docker unit override appeared")
+        for name, saved in baseline["overrideDirectories"].items():
+            unit = name[:-2]
+            if unit in INSTALL_DENY_DROPINS:
+                with _temporary_gate_directory(root, unit) as directory:
+                    _need(_temporary_gate_read(directory, unit) == files[unit], "temporary gate identity changed")
+                    if saved is not None:
+                        _need(stable(os.fstat(directory)) == from_fingerprint(saved),
+                              "original empty gate directory replaced")
+                continue
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+            except FileNotFoundError:
+                _need(saved is None, "original override directory disappeared")
+                continue
+            try:
+                info = os.fstat(fd)
+                _installed_info(info, directory=True)
+                path = os.stat(name, dir_fd=root, follow_symlinks=False)
+                _installed_info(path, directory=True)
+                _need(saved is not None and not os.listdir(fd) and list(_installed_fingerprint(info))
+                      == saved == list(_installed_fingerprint(os.fstat(fd))) == list(_installed_fingerprint(path)),
+                      "unowned override directory changed")
+            finally:
+                os.close(fd)
+        _need(_installed_fingerprint(initial) == _installed_fingerprint(os.fstat(root)),
+              "systemd root changed during gate parity read")
+    finally:
+        os.close(root)
+    _need(_temporary_gate_files() == files, "temporary files changed after manager parity")
+    return baseline  # Comparison projection only; actual gate proof remains separate.
+
+
+def _load_installation_deny_gates(retention_id, *, fetch=release.github_json):
+    """New owned installation only; no resume, no public CLI and no writer stop."""
+    return _observe_installed_runtime(retention_id, fetch=fetch,
+        include_configuration=True, include_docker=True, include_systemd=True,
+        include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True)
 
 
 def main(argv=None):

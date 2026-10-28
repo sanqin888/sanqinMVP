@@ -1,10 +1,28 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 临时拒绝门禁原语（本地待审）
+## D2 原两锁内临时门禁加载（本地待审）
 
-**2026-10-28 当前进度：D2_TEMPORARY_GATE_PRIMITIVES_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_OWNED_GATE_LOAD_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于已合并的[PR #3029](https://github.com/sanqin888/sanqinMVP/pull/3029) dev `38be9adcb89c800442badac54118a2c89b89b59e` 建立 `feat/runtime-minimal-owned-gate-load-20261028`。内部 _load_installation_deny_gates 只续接本轮完整新鲜观察和新写意图/marker，保持原job→plan两锁；无公开CLI、无旧事务resume。写门禁、reload及最终返回前核准确意图/marker原字节、唯一事务/维护全集、原目录身份和未决job；不接受导出dict或操作者布尔许可替代本轮观察。
+
+三门禁create-only写入、耐久读回后，只允许固定 /usr/bin/systemctl --system daemon-reload。复用原有界进程IO主体，原只读Docker/systemd/runtime入口仍拒绝reload；共享300秒截止、单次30秒、两流合计2MiB及最小环境，失败只终止自身客户端组，不能推断manager动作被撤销。未知/非零/编码或输出异常保留意图、marker及全部门禁原件，无清理、重放或恢复业务。
+
+reload后核准确文件/有效加载属性并重做来源、四材料与完整现场观察。systemd对比只扣除本轮准确三DropInPaths和两个拒绝pre命令，其他有效属性摘要须与原基线一致；旧backup unit原件完整身份、systemd根稳定身份及所有非本轮override目录仍核对。原只读systemd/未决job验证主体提取复用，默认行为保持。实际三门禁证明单独返回，不将对比投影冒充旧配置仍有效。
+
+仅上述内部阶段全部通过时，installationIntent.startupFenceConfirmed=true、outcome=TEMPORARY_DENY_GATES_LOADED；writersFrozen、canExecute、readyToInstall、hostPreflightComplete、operationSuccessProven仍false，requiresHostRecheck=true。尚无安装CLI或完整安装/完成交接；本批不停止容器/daemon、不改restart策略、不覆盖Runtime或写DB。准确原ID停写前仍须保存恢复依据并新鲜复核，不能由加载摘要单独授权后续动作。
+
+新增20项组合/真实pipe客户端模型测试，覆盖原两锁跨度、默认意图路径、部分写入、reload未知/不重放、marker/job/namespace晚变、未加载、Docker漂移、非本轮有效属性/override/backup原件变化、同字节门禁替换、原空目录身份、固定命令/环境及输出预算/超时/非root。文件/锁/pipe为真实临时对象，GitHub/Docker/manager/根锚点等为模型。仅Python3.10 AST、全局名字/方法/空白审阅、三段提取主体AST等价及准确写回核对，项目测试待CI；845是前批结果。
+
+下一步接准确保存三原ID/镜像/策略、耐久恢复依据与受限停写；停写后手动快照available/完整旧工具恢复实物、逐文件安装/永久门禁/旧应用核验交接、Mac薄入口与D4统一真实隔离验收仍OPEN。17+Manifest/250/300、四材料、三永久模板、九helper及唯一应用state保持，无依赖包/业务schema变化；三组研究继续暂停、不取消，未执行现场或生产操作。
+
+## D2 临时拒绝门禁原语（源码已合并）
+
+**2026-10-28 当前进度：D2_TEMPORARY_GATE_PRIMITIVES_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
 
 意图流程[PR #3028](https://github.com/sanqin888/sanqinMVP/pull/3028) head `11f3017e136dd40681f5aaa6b0213fa03e4c13a5` 经[CI #7743](https://github.com/sanqin888/sanqinMVP/actions/runs/40694971907)全绿（4成功/6范围跳过；Release默认Python与3.10各835、Runtime1080、既有C1回归412），合并dev `07b2275d59a2161c53adb5bdd0054c05d78b5662`，无CI修复；未执行生产操作。
+
+本批[PR #3029](https://github.com/sanqin888/sanqinMVP/pull/3029) head `19bb93b4a56bf206fe3333cf7c28145903f8497d` 经[CI #7745](https://github.com/sanqin888/sanqinMVP/actions/runs/40699162830)全绿（4成功/6范围跳过；Release默认Python与3.10各845、Runtime1080、既有C1回归412），合并dev `38be9adcb89c800442badac54118a2c89b89b59e`，无CI修复；未执行生产操作。
 
 本批从该dev建立feat/runtime-minimal-temporary-gates-20261028，新增三个固定临时拒绝模板与底层文件写入/有效加载属性校验原语。只占用/etc/systemd/system/<unit>.d/80-sanq-maintenance.conf：docker.service ExecStartPre=/usr/bin/false，sanq-backup.service ExecStartPre=+/usr/bin/false，docker.socket固定ConditionPathExists=!/opt/sanq/deploy-state/maintenance/active.json。不依赖尚未安装的目标Python，不导入九helper。
 
@@ -14,7 +32,7 @@
 
 这批写原语还没有主机编排或公开CLI调用，调用方必须另行在原两锁内确认准确安装意图/marker及全部原基线；本批不执行daemon-reload、不调用stop/start/restart、不改容器策略，也未把文件写入接到意图准备入口。下一批才接明确受限的reload、原锁内准确marker绑定、有效加载复核与失败保持，全部已知成功之前不能停业务或覆盖工具。
 
-新增10项临时目录/manager模型测试：准确三文件/加载摘要与许可恒false、umask077、本次文件不覆盖、未知成员/坏mode/目录链接、同步失败、零写进展残件、未加载/需reload/额外drop-in/错fragment、忽略失败/多命令/错socket目标、属性观察中原件变化、非root/未知unit/无CLI。真实文件与fsync，root/系统根和manager为模型；仅Python3.10 AST、全局名字/方法/空白、既有函数定义不变及准确读回，项目测试待CI，不把835作为本批结果。
+新增10项临时目录/manager模型测试：准确三文件/加载摘要与许可恒false、umask077、本次文件不覆盖、未知成员/坏mode/目录链接、同步失败、零写进展残件、未加载/需reload/额外drop-in/错fragment、忽略失败/多命令/错socket目标、属性观察中原件变化、非root/未知unit/无CLI。真实文件与fsync，root/系统根和manager为模型；仅Python3.10 AST、全局名字/方法/空白、既有函数定义不变及准确读回，上述10项已随本批CI在两套Release各845项中通过；真实系统验收仍OPEN。
 
 三永久drop-in合同保持，临时模板不得通过永久_installed_gate。原17+Manifest/250/300、两锁/四材料、唯一应用state保持；无新依赖包/持久化记录格式/业务schema/公开CLI变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner。准确保存ID停写、停写后快照available/恢复实物、逐文件安装/交接、Mac入口与统一真实隔离验收仍OPEN。三组研究继续暂停、不取消；未执行生产预检或安装。
 
