@@ -1,8 +1,28 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-28 — 最小更新执行器：快照材料有界等待与现场复核
+
+**2026-10-28 当前进度：D2_SNAPSHOT_EVIDENCE_WAIT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批从[PR #3038](https://github.com/sanqin888/sanqinMVP/pull/3038)已合并dev `921cb579e8e4f67a04e72760f8955250ea77bfa3` 建立 `feat/runtime-minimal-snapshot-review-wait-20261028`。内部_receive_installation_snapshot_evidence只续接同一次原两锁、全预检/意图/临时门禁/原ID停写、整体范围审计与恢复包成对耐久保存；最后才进入单次输入等待。旧恢复保存/停写入口不等待，新开关与完整阶段严格关联，仍无install/snapshot-review/resume公开CLI。
+
+输入/输出只借用调用者已打开的管道或真实terminal FD，预检拒绝普通文件、socket、同FD、反向FD及同一管道回环，记录稳定身份并在等待前后核对。不打开调用者路径、不启动命令/后台进程或新建恢复记录。selectors配合临时O_NONBLOCK有界短写/分块读，完成后恢复原FD状态标志，不关闭调用者FD；恢复标志失败也阻断。请求≤4096字节，回复≤64KiB且单行规范JSON；输出背压、零进展、EOF、超时、超量或多帧均不能变成无限等待/空成功。
+
+等待上限固定1800秒（运维边界，不是AWS完成时长保证）。请求绑定本次installationId、intent/writers/归档/回执SHA及新随机32字节challenge；回复必须准确对应这些字段、固定kind/schemaVersion=1和非空evidence对象，拒绝重复/额外字段、非有限值、坏编码/规范化及旧challenge。该结构只说明本次输入接收，不认证evidence里的VM、磁盘、快照、时间或available状态；即使evidence自报snapshotAvailable=true也仍未验证。原始输入只在本轮内存中处理，对外仅回请求/回复/evidence摘要与字节数，不回显输入或秘密，也不落成可供resume的磁盘票据。
+
+等待前后各重新启动300秒monotonic现场复核预算，沿同一owned调用栈重核意图/marker/目录/恢复包准确字节、来源与原Runtime/配置/备份、冻结的原三ID/DB/卷、SQL历史、plans/jobs/原锁和全部retention，再从归档复核整体范围。普通原入口仍使用原预算；不复用已过期的等待前deadline，不放宽250/300来源guard。坏通道在现场预检/安装写入前拒绝；等待阶段任何异常或晚变仍FENCE_UNCONFIRMED，保留实际门禁/停写/原件/成对恢复包，不自动开启业务、清理或重放。
+
+本阶段结果为INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED，snapshotReview.outcome=SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED，仅unverifiedEvidenceReceived=true、requiresSnapshotValidation=true；snapshotEvidenceValidated/snapshotAvailable/recoveryReady/canExecute仍false。它是后续快照内容核验的输入层，不是RECOVERY_READY。后续必须在当前调用栈中核准确VM/区域/存储覆盖、停写后创建顺序及手动快照available证据，再接耐久核验回执/工具安装；本批不调用AWS、不创建快照，不恢复可信时间/跨克隆研究。
+
+新增24项真实管道/线程及完整模型测试：部分帧/实际短写、输入超时/输出背压、EOF/零进展/超量/多帧、FD类型/方向/回环/非法截止、完整绑定/challenge/严格JSON/权限字段、同锁且耐久包之后才请求、摘要不泄露与嵌套available自报不授予许可、等待超过旧300秒后新预算、错challenge/超时/EOF的保留及禁止重放、等待中plan/DB/通道变化、坏通道提前拒绝、旧入口不等待/无CLI。主机/GitHub/根身份仍为模型，未运行项目测试；仅静态AST/名字/方法/空白、原私有比对提取等价性、差异及准确读回核对。1029项为上一批已合并CI结果，D4仍须验证真实SSH/TTY模式与帧容量、FD断连/flags、中断/重启、backup timer触发及资源/预算。
+
+原PRIVATE_FILES四材料、intent/marker/writers/恢复包与回执格式、17+Manifest/250/300、九helper/三永久模板及唯一应用state保持，无新依赖包或业务schema/迁移。快照证据内容核验、RECOVERY_READY、逐文件安装/永久门禁、旧应用核验交接、Mac薄入口及D4统一真实隔离验收仍OPEN。三组研究暂停、不取消；未执行生产预检、停写、安装、AWS或数据库写操作。
+
 ## 2026-10-28 — 最小更新执行器：恢复包整体范围审计
 
-**2026-10-28 当前进度：D2_RECOVERY_PACKAGE_SCOPE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_RECOVERY_PACKAGE_SCOPE_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3038](https://github.com/sanqin888/sanqinMVP/pull/3038) head `20f41f3e46deb88ec3d952dcad01125ab4b76bc2` 经[CI #7764](https://github.com/sanqin888/sanqinMVP/actions/runs/40763812539)全绿（4成功/6范围跳过；Release默认Python与3.10各1029、Runtime1080、既有C1回归412），合并dev `921cb579e8e4f67a04e72760f8955250ea77bfa3`，无需CI修复；未执行生产操作。
 
 本批从[PR #3037](https://github.com/sanqin888/sanqinMVP/pull/3037)已合并dev `f561319216da20fb88fc9d702f8020d35aec0dc1` 建立 `feat/runtime-minimal-recovery-scope-review-20261028`。在原同锁完整停写/恢复保存流程中，生成归档与回执后、创建recovery目录前，直接从归档重建原件/host/index，核整包清单/规范USTAR/header/body/padding/尾部与原意图/writers/回执绑定。不是仅再次相信内存capture或自洽外部摘要；所有读取有原成员数、单件/总字节限制，绝不把包解压到文件系统或执行包内字节。
 
@@ -23,7 +43,7 @@ Host观察按准确argv分组，每个命令的原stdout按出现次序使用；
 
 快照接入点明确为：本轮准确原ID停写且恢复包耐久读回/整体审计成功之后，WRITE_TOOLS之前。下一步须绑定本次installation/意图/writers/归档与准确VM、区域及存储覆盖、手动快照标识、停写后创建和available观察证据；不能把snapshotAvailable=true、裸hash或旧成功记录当确认。人工等待需单独有界，并在同一原两锁/owned调用栈中使用新的有界现场复核预算；不能复用过期命令deadline或放宽既有250/300来源guard。该等待/输入核验尚未实现，不自动调用AWS，不开放resume或提前改ready。
 
-新增21项模型测试，覆盖完整组合与独立无主机IO审计、同锁且已冻结/保存前时序、审计失败保留、全部历史组、自洽外部hash下旧源码/原Manifest/外部备份/配置/state/C4篡改、stdout内容/加载投影不符、少/多重复读、不同命令顺序不影响语义、坏JSON、历史记录不符、缺host成员、回执/截断/尾部/成员类型/重复/超大声明、来源失败及旧入口不执行。静态检查含配置解析提取等价性、AST/名字/方法/空白、差异与准确读回；项目测试待CI，1008项为上一批结果。D4仍须验证实际内存/重复读取/300秒命令预算、真实恢复及中断边界。
+新增21项模型测试，覆盖完整组合与独立无主机IO审计、同锁且已冻结/保存前时序、审计失败保留、全部历史组、自洽外部hash下旧源码/原Manifest/外部备份/配置/state/C4篡改、stdout内容/加载投影不符、少/多重复读、不同命令顺序不影响语义、坏JSON、历史记录不符、缺host成员、回执/截断/尾部/成员类型/重复/超大声明、来源失败及旧入口不执行。静态检查含配置解析提取等价性、AST/名字/方法/空白、差异与准确读回；上述21项已随本批两套Release各1029项通过CI，真实系统验收仍OPEN。D4仍须验证实际内存/重复读取/300秒命令预算、真实恢复及中断边界。
 
 completePrivateStateCaptured、snapshotAvailable、recoveryReady、readyToInstall/canExecute仍false；该表是已实现受限范围的对照，未完成整机恢复或安装交付。后续为快照核验、逐文件安装/永久门禁、旧应用核验交接、Mac薄入口及D4统一真实隔离验收。17+Manifest/250/300、九helper/三永久模板、唯一应用state、依赖包与业务schema保持。三组研究暂停、不取消；未执行生产预检、停写、安装、AWS或数据库写操作。
 
