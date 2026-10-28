@@ -1,8 +1,26 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D2 原两锁内意图与marker写入（本地待审）
+## D2 临时拒绝门禁原语（本地待审）
 
-**2026-10-28 当前进度：D2_INSTALL_INTENT_FLOW_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_TEMPORARY_GATE_PRIMITIVES_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+意图流程[PR #3028](https://github.com/sanqin888/sanqinMVP/pull/3028) head `11f3017e136dd40681f5aaa6b0213fa03e4c13a5` 经[CI #7743](https://github.com/sanqin888/sanqinMVP/actions/runs/40694971907)全绿（4成功/6范围跳过；Release默认Python与3.10各835、Runtime1080、既有C1回归412），合并dev `07b2275d59a2161c53adb5bdd0054c05d78b5662`，无CI修复；未执行生产操作。
+
+本批从该dev建立feat/runtime-minimal-temporary-gates-20261028，新增三个固定临时拒绝模板与底层文件写入/有效加载属性校验原语。只占用/etc/systemd/system/<unit>.d/80-sanq-maintenance.conf：docker.service ExecStartPre=/usr/bin/false，sanq-backup.service ExecStartPre=+/usr/bin/false，docker.socket固定ConditionPathExists=!/opt/sanq/deploy-state/maintenance/active.json。不依赖尚未安装的目标Python，不导入九helper。
+
+目录nofollow/root:root 0755，已有目录必须真实可信且为空；文件O_EXCL/nofollow/root:root 0644 create-only、完整短写处理、文件和目录fsync、准确字节/完整身份读回。仅对本次新建FD设定既定mode以兼容umask077，不修复已有对象；未知或已有成员、链接、权限不符阻断，任意失败保留已写文件/目录，不覆盖、删除或自动重试。新读原语不扩展原17成员清单或通用读取白名单。
+
+独立加载核对先读三文件、读取原白名单固定systemctl show属性，再读文件比较。须loaded、NeedDaemonReload=no、唯一准确DropInPaths和既定vendor/backup FragmentPath；服务pre命令唯一/usr/bin/false且ignore_errors=no，socket仅触发docker.service。只返回文件/属性摘要与denyGatePropertiesObserved=true；startupFenceConfirmed/canExecute仍false。固定socket条件模板与loaded路径被核对，但本原语尚未核本次安装marker/意图和全部宿主上下文，不能单独证明围栏。
+
+这批写原语还没有主机编排或公开CLI调用，调用方必须另行在原两锁内确认准确安装意图/marker及全部原基线；本批不执行daemon-reload、不调用stop/start/restart、不改容器策略，也未把文件写入接到意图准备入口。下一批才接明确受限的reload、原锁内准确marker绑定、有效加载复核与失败保持，全部已知成功之前不能停业务或覆盖工具。
+
+新增10项临时目录/manager模型测试：准确三文件/加载摘要与许可恒false、umask077、本次文件不覆盖、未知成员/坏mode/目录链接、同步失败、零写进展残件、未加载/需reload/额外drop-in/错fragment、忽略失败/多命令/错socket目标、属性观察中原件变化、非root/未知unit/无CLI。真实文件与fsync，root/系统根和manager为模型；仅Python3.10 AST、全局名字/方法/空白、既有函数定义不变及准确读回，项目测试待CI，不把835作为本批结果。
+
+三永久drop-in合同保持，临时模板不得通过永久_installed_gate。原17+Manifest/250/300、两锁/四材料、唯一应用state保持；无新依赖包/持久化记录格式/业务schema/公开CLI变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner。准确保存ID停写、停写后快照available/恢复实物、逐文件安装/交接、Mac入口与统一真实隔离验收仍OPEN。三组研究继续暂停、不取消；未执行生产预检或安装。
+
+## D2 原两锁内意图与marker写入（源码已合并）
+
+**2026-10-28 当前进度：D2_INSTALL_INTENT_FLOW_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
 
 事务目录批[PR #3027](https://github.com/sanqin888/sanqinMVP/pull/3027) head `16a4a2628695219348522bcd47cee24cf84c7d49` 经[CI #7741](https://github.com/sanqin888/sanqinMVP/actions/runs/40693801613)全绿（4成功/6范围跳过；Release默认Python与3.10各825、Runtime1080、既有C1回归412），合并dev `51d8e345f27d3bf9cbd8b0f0488b1fa772cc811d`，无CI修复；未执行生产操作。
 

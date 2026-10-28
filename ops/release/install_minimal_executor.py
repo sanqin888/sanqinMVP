@@ -2257,6 +2257,152 @@ def _record_installation_intent(retention_id, *, fetch=release.github_json):
         include_migrations=True, include_effective_configuration=True, include_external_backup=True, _record_intent=True)
 
 
+
+# Temporary deny gate file primitives and loaded-property verification only.
+INSTALL_DENY_DROPINS = {
+    "docker.service": b"[Service]\nExecStartPre=/usr/bin/false\n",
+    "docker.socket": b"[Unit]\nConditionPathExists=!/opt/sanq/deploy-state/maintenance/active.json\n",
+    "sanq-backup.service": b"[Service]\nExecStartPre=+/usr/bin/false\n",
+}
+INSTALL_GATE_NAME = "80-sanq-maintenance.conf"
+
+
+@contextlib.contextmanager
+def _temporary_gate_directory(parent, unit, *, create=False):
+    _need(unit in INSTALL_DENY_DROPINS and type(create) is bool, "unreviewed temporary gate unit")
+    name = unit + ".d"
+    created = False
+    if create:
+        try:
+            os.mkdir(name, mode=0o755, dir_fd=parent)
+            created = True
+        except FileExistsError:
+            pass
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    def check(info):
+        _installed_info(info, directory=True)
+        _need(stat.S_IMODE(info.st_mode) == 0o755, "temporary gate directory must be 0755")
+    try:
+        if created:
+            _installed_info(os.fstat(fd), directory=True)
+            os.fchmod(fd, 0o755)
+        before, path = os.fstat(fd), os.stat(name, dir_fd=parent, follow_symlinks=False)
+        check(before)
+        check(path)
+        _need(_directory_identity(before) == _directory_identity(path), "temporary gate directory changed during open")
+        if create:
+            _need(not os.listdir(fd), "existing gate directory is not empty")
+            os.fsync(fd)
+            os.fsync(parent)
+        yield fd
+        after, path = os.fstat(fd), os.stat(name, dir_fd=parent, follow_symlinks=False)
+        check(after)
+        check(path)
+        _need(_directory_identity(before) == _directory_identity(after) == _directory_identity(path),
+              "temporary gate directory changed")
+    finally:
+        os.close(fd)
+
+
+def _temporary_gate_read(root, unit):
+    _need(unit in INSTALL_DENY_DROPINS and set(os.listdir(root)) == {INSTALL_GATE_NAME},
+          "temporary gate directory inventory differs")
+    fd = os.open(INSTALL_GATE_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _installed_info(before)
+        _need(stat.S_IMODE(before.st_mode) == 0o644 and 0 < before.st_size <= 4096,
+              "temporary gate metadata differs")
+        raw = os.read(fd, 4097)
+        after, path = os.fstat(fd), os.stat(INSTALL_GATE_NAME, dir_fd=root, follow_symlinks=False)
+        _installed_info(after)
+        _installed_info(path)
+        _need(raw == INSTALL_DENY_DROPINS[unit] and len(raw) == before.st_size
+              and _installed_fingerprint(before) == _installed_fingerprint(after) == _installed_fingerprint(path),
+              "temporary gate bytes or identity differ")
+        return {"sha256": _hash(raw), "identity": list(_installed_fingerprint(before))}
+    finally:
+        os.close(fd)
+
+
+def _temporary_gate_files():
+    root = _systemd_root()
+    try:
+        result = {}
+        for unit in INSTALL_DENY_DROPINS:
+            with _temporary_gate_directory(root, unit) as directory:
+                result[unit] = _temporary_gate_read(directory, unit)
+        return result
+    finally:
+        os.close(root)
+
+
+def _write_temporary_gate_files():
+    """Low-level root primitive; future owned installer must verify marker/locks.
+
+    No CLI and no caller until that orchestration is reviewed. Never reloads a unit.
+    """
+    _need(os.geteuid() == 0, "temporary gate file creation requires root")
+    root = _systemd_root()
+    try:
+        for unit, raw in INSTALL_DENY_DROPINS.items():
+            with _temporary_gate_directory(root, unit, create=True) as directory:
+                fd = os.open(INSTALL_GATE_NAME, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o644, dir_fd=directory)
+                try:
+                    _installed_info(os.fstat(fd))
+                    os.fchmod(fd, 0o644)
+                    _need(stat.S_IMODE(os.fstat(fd).st_mode) == 0o644, "temporary gate file mode differs")
+                    remaining = memoryview(raw)
+                    while remaining:
+                        count = os.write(fd, remaining)
+                        _need(count > 0, "short temporary gate write")
+                        remaining = remaining[count:]
+                    os.fsync(fd)
+                    os.fsync(directory)
+                    _temporary_gate_read(directory, unit)
+                    _need(_installed_fingerprint(os.fstat(fd)) == _installed_fingerprint(
+                          os.stat(INSTALL_GATE_NAME, dir_fd=directory, follow_symlinks=False)),
+                          "temporary gate replaced during readback")
+                finally:
+                    os.close(fd)
+        return {"files": _temporary_gate_files(), "startupFenceConfirmed": False, "canExecute": False}
+    finally:
+        os.close(root)  # Preserve every partial file/directory; never roll back on failure.
+
+
+def _verify_temporary_gates(run):
+    before = _temporary_gate_files()
+    units = {}
+    for unit in INSTALL_DENY_DROPINS:
+        keys = _systemd_keys(unit)
+        raw = run(_systemd_args(unit))
+        _need(isinstance(raw, str) and len(raw.encode("utf-8")) <= 65536, "temporary gate properties exceed budget")
+        fields = {}
+        for line in raw.splitlines():
+            key, separator, value = line.partition("=")
+            _need(separator == "=" and key in keys and key not in fields, "invalid temporary gate properties")
+            fields[key] = value
+        path = "/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME
+        _need(set(fields) == set(keys) and fields["LoadState"] == "loaded"
+              and fields["NeedDaemonReload"] == "no" and fields["DropInPaths"].split() == [path],
+              "temporary deny gate is not accurately loaded")
+        fragments = ("/etc/systemd/system/" + unit,) if unit.startswith("sanq-") else (
+            "/lib/systemd/system/" + unit, "/usr/lib/systemd/system/" + unit)
+        _need(fields["FragmentPath"] in fragments, "temporary gate unit source differs")
+        if unit == "docker.socket":
+            _need(fields["Triggers"].split() == ["docker.service"], "temporary socket target differs")
+        else:
+            command = fields["ExecStartPre"]
+            _need("path=/usr/bin/false ; argv[]=/usr/bin/false ; ignore_errors=no" in command
+                  and command.count("path=") == command.count("argv[]=") == 1,
+                  "temporary service denial is missing, additional or ignores failure")
+        units[unit] = _hash(_json(fields))
+    _need(_temporary_gate_files() == before, "temporary gate files changed around manager observation")
+    return {"files": before, "effectivePropertiesSha256": units,
+            "denyGatePropertiesObserved": True, "startupFenceConfirmed": False, "canExecute": False}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
