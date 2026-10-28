@@ -2849,6 +2849,119 @@ def _freeze_installation_writers(retention_id, *, fetch=release.github_json):
         _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True)
 
 
+
+# In-memory recovery inputs only. Never serialize the returned raw mapping to logs/CLI.
+MAX_RECOVERY_PRIVATE_BYTES = 16 * 1024 * 1024
+MAX_RECOVERY_SOURCE_BYTES = MAX_TOTAL
+
+
+def _recovery_private_sources(folders):
+    files, metadata, locks, directories = {}, {}, {}, {}
+    total = 0
+    for name, lock in (("jobs", ".release.lock"), ("plans", ".prepare.lock")):
+        root = folders[name]
+        before = os.fstat(root)
+        _private_info(before, directory=True)
+        names = sorted(os.listdir(root))
+        _need(len(names) <= 1025 and lock in names, "recovery private inventory exceeds budget or lacks original lock")
+        directories["/opt/sanq/deploy-state/" + name] = list(_installed_fingerprint(before))
+        for entry in names:
+            info = os.stat(entry, dir_fd=root, follow_symlinks=False)
+            _private_info(info)
+            path = "/opt/sanq/deploy-state/" + name + "/" + entry
+            if entry == lock:
+                locks[path] = list(_installed_fingerprint(info))
+                continue  # Retain lock metadata; never copy/recreate lock inodes as restore files.
+            _need(re.fullmatch(r"[a-f0-9]{64}\.json", entry) is not None,
+                  "unreviewed recovery private member")
+            raw = _private_read(root, entry, MAX_FILE)
+            after = os.stat(entry, dir_fd=root, follow_symlinks=False)
+            _private_info(after)
+            _need(_installed_fingerprint(info) == _installed_fingerprint(after),
+                  "recovery private member changed around read")
+            total += len(raw)
+            _need(total <= MAX_RECOVERY_PRIVATE_BYTES, "recovery private bytes exceed budget")
+            files[path], metadata[path] = raw, list(_installed_fingerprint(info))
+        _need(sorted(os.listdir(root)) == names
+              and _installed_fingerprint(before) == _installed_fingerprint(os.fstat(root)),
+              "recovery private inventory changed")
+    return files, metadata, locks, directories
+
+
+def _installation_recovery_sources(folders, retention_id, kit, old, retained):
+    """Capture pre-gate originals into memory; not a complete or durable recovery kit."""
+    runtime, runtime_dirs = _installed_runtime_snapshot(old, retained["currentArchiveSourceSha"])
+    configuration, application = _configuration_snapshot()
+    units, overrides, systemd_root = _systemd_disk_snapshot(runtime["ops/backup/sanq-backup.service"][0])
+    external = _external_backup_snapshot(runtime)
+    private_files, private_metadata, locks, private_dirs = _recovery_private_sources(folders)
+    files, metadata = {}, {}
+    total = 0
+    def add(path, raw, identity):
+        nonlocal total
+        _need(path not in files and type(raw) is bytes and 0 < len(raw) <= MAX_RECOVERY_SOURCE_BYTES,
+              "duplicate or invalid recovery source")
+        total += len(raw)
+        _need(total <= MAX_RECOVERY_SOURCE_BYTES, "recovery source bytes exceed budget")
+        files[path] = raw
+        metadata[path] = {"sha256": _hash(raw), "bytes": len(raw), "identity": list(identity)}
+    for path, (raw, identity) in {**runtime, **configuration}.items():
+        add("/opt/sanq/runtime/" + path, raw, identity)
+    for name, (raw, identity) in units.items():
+        add("/etc/systemd/system/" + name, raw, identity)
+    for path, proof in external["files"].items():
+        # The reader proved exact equality to these sealed installed source bytes.
+        add(path, runtime[proof["source"]][0], proof["identity"])
+    for path, raw in private_files.items():
+        add(path, raw, private_metadata[path])
+    with _private_directory(folders["installations"], retention_id) as root:
+        _need(_retained_contents(root, retention_id) == (kit, old, retained), "recovery retained originals changed")
+        for name in sorted(PRIVATE_FILES):
+            before = os.stat(name, dir_fd=root, follow_symlinks=False)
+            _private_info(before)
+            maximum = (bundle.MAX_ARCHIVE_BYTES if name == "current-runtime-archive.tar.gz"
+                       else MAX_KIT if name == "delivery-kit.tar.gz" else 4096)
+            raw = _private_read(root, name, maximum)
+            after = os.stat(name, dir_fd=root, follow_symlinks=False)
+            _private_info(after)
+            _need(_installed_fingerprint(before) == _installed_fingerprint(after),
+                  "recovery retained member changed during capture")
+            add("/opt/sanq/deploy-state/installations/" + retention_id + "/" + name, raw, _installed_fingerprint(before))
+        _need(_retained_contents(root, retention_id) == (kit, old, retained), "recovery retained originals changed")
+    absent = ["/opt/sanq/runtime/" + name for name in (*HELPERS, BOOTSTRAP)]
+    absent += ["/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS]
+    absent += ["/etc/systemd/system/" + unit for unit in ("docker.service", "docker.socket")]
+    summary = {"outcome": "INSTALLATION_RECOVERY_SOURCES_OBSERVED", "retentionId": retention_id,
+        "scope": "pre-install-original-files-only", "applicationSha": application["applicationSha"],
+        "sourceSha": retained["sourceSha"], "currentArchiveSourceSha": retained["currentArchiveSourceSha"],
+        "files": metadata, "absentFiles": sorted(absent), "originalLockMetadata": locks,
+        "runtimeDirectories": {name: list(value) for name, value in runtime_dirs.items()},
+        "privateDirectories": private_dirs, "systemdDirectoryIdentity": list(systemd_root),
+        "overrideDirectories": {name: list(value) if value is not None else None for name, value in overrides.items()},
+        "externalDirectories": external["directories"], "capturedBytes": total,
+        "completePrivateStateCaptured": False, "recoveryArchiveDurable": False, "snapshotAvailable": False,
+        "recoveryReady": False, "readyToInstall": False, "canExecute": False, "requiresHostRecheck": True}
+    return files, summary
+
+
+def _observe_installation_recovery_sources(retention_id, *, fetch=release.github_json):
+    """Read-only pre-install query. Return summaries only, never original secret bytes."""
+    _need(isinstance(retention_id, str) and re.fullmatch(r"[a-f0-9]{64}", retention_id), "invalid recovery retention identity")
+    with _private_session() as folders, _private_directory(folders["installations"], retention_id) as root:
+        _idle_for_materials(folders)
+        kit, old, retained = _retained_contents(root, retention_id)
+        review = review_transition(kit, retained["sourceSha"], old, retained["currentArchiveSourceSha"], fetch=fetch)
+        _need(not review["requiresAdditionalPlatformReview"], "recovery source transition exceeds tool-only scope")
+        before = _installation_recovery_sources(folders, retention_id, kit, old, retained)
+        _need(review_transition(kit, retained["sourceSha"], old, retained["currentArchiveSourceSha"], fetch=fetch)
+              == review, "recovery source review changed")
+        _need(_installation_recovery_sources(folders, retention_id, kit, old, retained) == before,
+              "recovery source originals changed across capture")
+        _need(_retained_contents(root, retention_id) == (kit, old, retained), "recovery retained materials changed")
+        _idle_for_materials(folders)
+        return before[1]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
