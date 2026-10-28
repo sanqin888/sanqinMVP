@@ -722,16 +722,17 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
           and (not include_effective_configuration or include_migrations)
           and (not include_external_backup or include_effective_configuration)
-          and (not _record_intent or include_external_backup) and (not _load_deny_gates or _record_intent),
+          and (not _record_intent or include_external_backup) and (not _load_deny_gates or _record_intent)
+          and (not _save_writers or _load_deny_gates),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -839,9 +840,25 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 _need(_temporary_gate_files() == files, "temporary gate files changed after host recheck")
                 return {**loaded, "startupFenceConfirmed": True, "writersFrozen": False,
                         "canExecute": False, "requiresHostRecheck": True}
+            def save_writers(persist, check_owned, loaded):
+                _need(loaded is not None and loaded["startupFenceConfirmed"] is True,
+                      "saved writers require this round's loaded temporary gates")
+                check_owned()
+                saved = persist()
+                _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
+                      == review and _retained_contents(root, identity) == (kit, old, value),
+                      "installation materials changed after writer recording")
+                _need(snapshot(temporary_files=loaded["files"]) == before,
+                      "host changed after writer recording")
+                check_owned()
+                _need(_verify_temporary_gates(lambda args: _systemd_command(args, deadline=deadline))["files"]
+                      == loaded["files"], "temporary gates changed after writer recording")
+                return saved
             result["installationIntent"] = _write_installation_intent_locked(
-                folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None)
-            result["outcome"] = "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED"
+                folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None,
+                save_writers=save_writers if _save_writers else None)
+            result["outcome"] = ("INSTALLATION_WRITERS_SAVED" if _save_writers else
+                                 "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED")
         return result
 
 
@@ -2077,7 +2094,7 @@ def _installation_records_match(intent, marker, installation_id):
 
 
 def _installation_record_read(root, name, installation_id):
-    _need(name in ("intent.json", "active.json"), "unreviewed installation record name")
+    _need(name in ("intent.json", "active.json", "writers.json"), "unreviewed installation record name")
     _private_info(os.fstat(root), directory=True)
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
     try:
@@ -2098,7 +2115,7 @@ def _installation_record_read(root, name, installation_id):
               _installed_fingerprint(after) == _installed_fingerprint(path),
               "installation record changed during read")
         raw = b"".join(chunks)
-        _installation_record_value(raw, installation_id, marker=name == "active.json")
+        _installation_record_validate(name, raw, installation_id)
         return raw
     finally:
         os.close(fd)
@@ -2110,10 +2127,10 @@ def _installation_record_write(root, name, raw, installation_id):
     Does not authorize installation or ensure a preceding intent exists for a marker.
     No public caller until the host orchestration is complete and reviewed.
     """
-    _need(os.geteuid() == 0 and name in ("intent.json", "active.json"),
+    _need(os.geteuid() == 0 and name in ("intent.json", "active.json", "writers.json"),
           "unprivileged or unreviewed installation record write")
     _private_info(os.fstat(root), directory=True)
-    _installation_record_value(raw, installation_id, marker=name == "active.json")
+    _installation_record_validate(name, raw, installation_id)
     fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
     try:
         before = os.fstat(fd)
@@ -2159,9 +2176,11 @@ def _installation_runs_clear(root):
 
 
 @contextlib.contextmanager
-def _installation_namespace(parent, *, create=False, owned_identity=None):
+def _installation_namespace(parent, *, create=False, owned_identity=None, owned_records=None):
     _need(type(create) is bool and (owned_identity is None or create and isinstance(owned_identity, str)
           and re.fullmatch(r"[a-f0-9]{64}", owned_identity)), "invalid installation namespace switch")
+    _need(owned_records is None or type(owned_records) is dict and not owned_records
+          and owned_identity is not None, "installation namespace requires new owned record evidence")
     _private_info(os.fstat(parent), directory=True)
     created = False
     if create:
@@ -2200,7 +2219,9 @@ def _installation_namespace(parent, *, create=False, owned_identity=None):
             if owned_identity is None:
                 _installation_runs_clear(fd)
             else:
-                _installation_owned_run(fd, owned_identity)
+                _need(owned_records is None or set(owned_records) <= {"writers.json"},
+                      "unreviewed owned installation records")
+                _installation_owned_run(fd, owned_identity, saved_writers=(owned_records or {}).get("writers.json"))
             after = os.fstat(fd)
             path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
             _private_info(after, directory=True)
@@ -2241,18 +2262,26 @@ def _inspect_installation_runs(*, create=False):
 
 
 
-def _installation_owned_run(namespace, identity):
+def _installation_owned_run(namespace, identity, *, saved_writers=None):
+    _need(saved_writers is None or type(saved_writers) is bytes, "invalid owned writer record proof")
     _need(set(os.listdir(namespace)) == {identity}, "installation transaction inventory changed")
     with _private_directory(namespace, identity) as root:
-        _need(set(os.listdir(root)) == {"intent.json"}, "unexpected installation transaction members")
-        return _installation_record_read(root, "intent.json", identity)
+        expected = {"intent.json"} | ({"writers.json"} if saved_writers is not None else set())
+        _need(set(os.listdir(root)) == expected, "unexpected installation transaction members")
+        intent = _installation_record_read(root, "intent.json", identity)
+        if saved_writers is not None:
+            actual = _installation_record_read(root, "writers.json", identity)
+            _need(actual == saved_writers, "owned saved writer bytes changed")
+            _installation_writers_match(intent, actual, identity)
+        return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     identity = os.urandom(32).hex()
-    gate_result = None
+    gate_result = saved_result = None
+    owned_records = {}
     anchor = _state_parent()
     try:
         with _private_directory(anchor, "deploy-state") as state:
@@ -2263,7 +2292,7 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                     _need(_directory_identity(actual) == _directory_identity(os.fstat(saved)),
                           "installation intent lost original lock directories")
             state_matches()
-            with _installation_namespace(state, create=True, owned_identity=identity) as (namespace, _):
+            with _installation_namespace(state, create=True, owned_identity=identity, owned_records=owned_records) as (namespace, _):
                 with _private_directory(namespace, identity, create=True, exclusive=True) as root:
                     initial = _directory_identity(os.fstat(root))
                     recheck()
@@ -2298,7 +2327,7 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         _need(_directory_identity(current_state) == _directory_identity(os.fstat(state)),
                               "owned installation state directory replaced")
                         _material_jobs_idle(folders)
-                        _need(_installation_owned_run(namespace, identity) == raw
+                        _need(_installation_owned_run(namespace, identity, saved_writers=owned_records.get("writers.json")) == raw
                               and set(os.listdir(folders["maintenance"])) == {"active.json"}
                               and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
                               and _directory_identity(os.fstat(root)) == initial
@@ -2312,12 +2341,27 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         check_owned()
                         gate_result = load_gates(check_owned)
                         check_owned()
+                    if save_writers is not None:
+                        _need(gate_result is not None, "writer recording requires loaded gates")
+                        def persist_writers():
+                            check_owned()
+                            _need(not owned_records, "writer record already owned")
+                            saved = _installation_writers_bytes(
+                                raw, identity, observation["applicationSha"], observation["docker"],
+                                created_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"))
+                            _installation_record_write(root, "writers.json", saved, identity)
+                            owned_records["writers.json"] = saved
+                            check_owned()
+                            return {"sha256": _hash(saved), "canExecute": False, "writersFrozen": False}
+                        saved_result = save_writers(persist_writers, check_owned, gate_result)
+                        check_owned()
                 state_matches()
             _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
                   "installation marker changed after namespace validation")
             return {"installationId": identity, "intentSha256": _hash(raw), "markerSha256": _hash(marker),
                     "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": False,
-                    "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {})}
+                    "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {}),
+                    **({"savedWriters": saved_result} if saved_result is not None else {})}
     finally:
         os.close(anchor)  # Never clean intent/marker/gates or retry an unknown result.
 
@@ -2559,6 +2603,112 @@ def _load_installation_deny_gates(retention_id, *, fetch=release.github_json):
         include_filesystem=True, include_prerequisites=True, include_application_binding=True,
         include_migrations=True, include_effective_configuration=True, include_external_backup=True,
         _record_intent=True, _load_deny_gates=True)
+
+
+
+# These facts preserve original objects/policies, not application version authority.
+INSTALL_WRITERS_KIND = "sanq-minimal-executor-saved-writers"
+INSTALL_WRITER_ROLES = ("api", "ubereats-worker", "web")
+
+
+def _installation_writers_value(raw, identity):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD
+          and isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity),
+          "invalid saved writer record input")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid saved writer JSON constant"))
+    except (json.JSONDecodeError, UnicodeError):
+        raise release.ReleaseContractError("invalid saved writer JSON") from None
+    _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "installationId",
+          "intentSha256", "applicationSha", "dockerEngineSha256", "containers", "createdAt", "canExecute"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == INSTALL_WRITERS_KIND and value["installationId"] == identity
+          and value["canExecute"] is False, "saved writer fields or identity differ")
+    release.require_sha(value["applicationSha"])
+    for key in ("intentSha256", "dockerEngineSha256"):
+        _need(isinstance(value[key], str) and re.fullmatch(r"[a-f0-9]{64}", value[key]),
+              "invalid saved writer digest")
+    stamp = value["createdAt"]
+    _need(isinstance(stamp, str) and re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z", stamp),
+        "saved writer record requires UTC time")
+    try:
+        dt.datetime.fromisoformat(stamp[:-1] + "+00:00")
+    except ValueError:
+        raise release.ReleaseContractError("invalid saved writer UTC time") from None
+    rows = value["containers"]
+    _need(type(rows) is dict and set(rows) == {*INSTALL_WRITER_ROLES, "db"}, "saved container roles differ")
+    identifiers = set()
+    for row in rows.values():
+        _need(type(row) is dict and set(row) == {"containerId", "imageId", "restartPolicy",
+              "restartCount", "startedAt", "configurationSha256", "mountSha256"},
+              "saved container fields differ")
+        for key in ("containerId", "configurationSha256", "mountSha256"):
+            _need(isinstance(row[key], str) and re.fullmatch(r"[a-f0-9]{64}", row[key]),
+                  "invalid saved container identity or digest")
+        _need(row["containerId"] not in identifiers, "saved containers share an identity")
+        identifiers.add(row["containerId"])
+        release.checked_digest(row["imageId"])
+        policy = row["restartPolicy"]
+        _need(type(policy) is dict and set(policy) == {"Name", "MaximumRetryCount"}
+              and policy["Name"] in ("no", "always", "unless-stopped", "on-failure")
+              and type(policy["MaximumRetryCount"]) is int and policy["MaximumRetryCount"] >= 0
+              and (policy["Name"] == "on-failure" or policy["MaximumRetryCount"] == 0),
+              "invalid saved restart policy")
+        _need(type(row["restartCount"]) is int and row["restartCount"] >= 0
+              and isinstance(row["startedAt"], str) and re.fullmatch(
+                  r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z", row["startedAt"]),
+              "invalid saved container lifetime")
+        try:
+            dt.datetime.fromisoformat(row["startedAt"][:-1] + "+00:00")
+        except ValueError:
+            raise release.ReleaseContractError("invalid saved container lifetime") from None
+    _need(rows["api"]["imageId"] == rows["ubereats-worker"]["imageId"], "saved API/worker image pair differs")
+    _need(_json(value) == raw, "saved writer record requires canonical original bytes")
+    return value
+
+
+def _installation_record_validate(name, raw, identity):
+    _need(name in ("intent.json", "active.json", "writers.json"), "unreviewed installation record")
+    return (_installation_writers_value(raw, identity) if name == "writers.json" else
+            _installation_record_value(raw, identity, marker=name == "active.json"))
+
+
+def _installation_writers_match(intent, raw, identity):
+    _installation_record_value(intent, identity)
+    value = _installation_writers_value(raw, identity)
+    _need(value["intentSha256"] == _hash(intent), "saved writers are bound to a different intent")
+    return value
+
+
+def _installation_writers_bytes(intent, identity, application_sha, docker, *, created_at):
+    value = {"schemaVersion": 1, "kind": INSTALL_WRITERS_KIND, "installationId": identity,
+             "intentSha256": _hash(intent), "applicationSha": application_sha,
+             "dockerEngineSha256": _hash(_json(docker["dockerEngine"])),
+             "containers": docker["containers"], "createdAt": created_at, "canExecute": False}
+    raw = _json(value)
+    _installation_writers_match(intent, raw, identity)
+    return raw
+
+
+def _saved_writer_args(intent, raw, identity, role, action):
+    """Pure argv construction, never execution permission or a resumable ticket."""
+    value = _installation_writers_match(intent, raw, identity)
+    _need(role in INSTALL_WRITER_ROLES and action in ("disable-restart", "stop"),
+          "unreviewed saved writer action")
+    identifier = value["containers"][role]["containerId"]
+    return ([*DOCKER, "update", "--restart=no", identifier] if action == "disable-restart" else
+            [*DOCKER, "stop", "--time", "30", identifier])
+
+
+def _save_installation_writers(retention_id, *, fetch=release.github_json):
+    """New owned installation only: save original facts, never stop or update."""
+    return _observe_installed_runtime(retention_id, fetch=fetch,
+        include_configuration=True, include_docker=True, include_systemd=True,
+        include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True, _save_writers=True)
 
 
 def main(argv=None):
