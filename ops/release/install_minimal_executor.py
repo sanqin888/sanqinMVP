@@ -722,17 +722,17 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
           and (not include_effective_configuration or include_migrations)
           and (not include_external_backup or include_effective_configuration)
           and (not _record_intent or include_external_backup) and (not _load_deny_gates or _record_intent)
-          and (not _save_writers or _load_deny_gates),
+          and (not _save_writers or _load_deny_gates) and (not _freeze_writers or _save_writers),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -854,10 +854,37 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 _need(_verify_temporary_gates(lambda args: _systemd_command(args, deadline=deadline))["files"]
                       == loaded["files"], "temporary gates changed after writer recording")
                 return saved
+            def freeze_writers(check_owned, intent, writers, installation_id, loaded):
+                def verify_context():
+                    check_owned()
+                    _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
+                          == review and _retained_contents(root, identity) == (kit, old, value),
+                          "installation materials changed during writer freeze")
+                    _need(_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]) == before[0]
+                          and _configuration_snapshot() == before[1]
+                          and _host_filesystem_snapshot(deadline=deadline) == before[4]
+                          and _external_backup_snapshot(before[0][0]) == before[9],
+                          "installed files or recovery baseline changed during writer freeze")
+                    _temporary_gate_systemd_parity(before[3],
+                        lambda args: _systemd_command(args, deadline=deadline), loaded["files"])
+                    database = _docker_json(_installation_history_args(before[2]["containers"]["db"]["containerId"]),
+                                             lambda args: _runtime_command(args, deadline=deadline))
+                    _need(type(database) is dict and set(database) == {*before[5]["databaseIdentity"], "history"}
+                          and _json({key: val for key, val in database.items() if key != "history"}) == _json(before[5]["databaseIdentity"])
+                          and _hash(_json(database["history"])) == before[5]["migrationHistorySha256"],
+                          "database identity or migration history changed during writer freeze")
+                    check_owned()
+                return _freeze_saved_installation_writers(intent, writers, installation_id,
+                    loaded["files"], before[2], run=run, check_owned=check_owned, verify_context=verify_context,
+                    mutate=lambda role, action: _installation_writer_command(
+                        intent, writers, installation_id, role, action, deadline=deadline),
+                    systemd_run=lambda args: _systemd_command(args, deadline=deadline))
             result["installationIntent"] = _write_installation_intent_locked(
                 folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None,
-                save_writers=save_writers if _save_writers else None)
-            result["outcome"] = ("INSTALLATION_WRITERS_SAVED" if _save_writers else
+                save_writers=save_writers if _save_writers else None,
+                freeze_writers=freeze_writers if _freeze_writers else None)
+            result["outcome"] = ("INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
+                                 "INSTALLATION_WRITERS_SAVED" if _save_writers else
                                  "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED")
         return result
 
@@ -992,13 +1019,17 @@ def _installation_daemon_reload(*, deadline):
     _need(output == "", "unexpected installation reload output")
 
 
-def _bounded_host_client(args, *, deadline):
+def _bounded_host_client(args, *, deadline, _writer=None):
+    if _writer is not None:
+        _need(type(_writer) is tuple and len(_writer) == 5
+              and args == _saved_writer_args(*_writer), "unreviewed installation writer command")
     _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)
-                                   or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"]), "unreviewed or unprivileged Host observation")
+          or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"] or _writer is not None),
+          "unreviewed or unprivileged Host observation")
     _need(not any(os.environ.get(key) for key in (
           "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
           "non-default Docker endpoint requires separate review")
-    stop = min(deadline, time.monotonic() + 30)
+    stop = min(deadline, time.monotonic() + (45 if _writer is not None and _writer[4] == "stop" else 30))
     _need(stop > time.monotonic(), "Host observation deadline exhausted")
     try:
         process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -2276,11 +2307,11 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None):
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     identity = os.urandom(32).hex()
-    gate_result = saved_result = None
+    gate_result = saved_result = frozen_result = None
     owned_records = {}
     anchor = _state_parent()
     try:
@@ -2355,13 +2386,19 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                             return {"sha256": _hash(saved), "canExecute": False, "writersFrozen": False}
                         saved_result = save_writers(persist_writers, check_owned, gate_result)
                         check_owned()
+                    if freeze_writers is not None:
+                        _need(saved_result is not None and gate_result is not None, "writer freeze requires saved originals")
+                        check_owned()
+                        frozen_result = freeze_writers(check_owned, raw, owned_records["writers.json"], identity, gate_result)
+                        check_owned()
                 state_matches()
             _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
                   "installation marker changed after namespace validation")
             return {"installationId": identity, "intentSha256": _hash(raw), "markerSha256": _hash(marker),
-                    "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": False,
+                    "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": frozen_result is not None,
                     "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {}),
-                    **({"savedWriters": saved_result} if saved_result is not None else {})}
+                    **({"savedWriters": saved_result} if saved_result is not None else {}),
+                    **({"frozenWriters": frozen_result} if frozen_result is not None else {})}
     finally:
         os.close(anchor)  # Never clean intent/marker/gates or retry an unknown result.
 
@@ -2709,6 +2746,107 @@ def _save_installation_writers(retention_id, *, fetch=release.github_json):
         include_filesystem=True, include_prerequisites=True, include_application_binding=True,
         include_migrations=True, include_effective_configuration=True, include_external_backup=True,
         _record_intent=True, _load_deny_gates=True, _save_writers=True)
+
+
+
+def _installation_writer_command(intent, writers, identity, role, action, *, deadline):
+    """Fixed saved-ID mutation client. Its caller must hold and recheck the owned flow."""
+    args = _saved_writer_args(intent, writers, identity, role, action)
+    output = _bounded_host_client(args, deadline=deadline, _writer=(intent, writers, identity, role, action))
+    _need(output in (args[-1], args[-1] + "\n"), "unexpected installation writer command output")
+
+
+def _installation_writer_observation(value, docker, run, disabled, stopped):
+    _need(set(stopped) <= set(disabled) <= set(INSTALL_WRITER_ROLES), "invalid writer observation stage")
+    identifiers = run(list(PROJECT_PS)).splitlines()
+    _need(len(identifiers) == 4 and set(identifiers) == {
+        row["containerId"] for row in value["containers"].values()}, "saved project container inventory changed")
+    engine = _docker_json((*DOCKER, "info", "--format", "{{json .}}"), run)
+    _need(type(engine) is dict and engine.get("LiveRestoreEnabled") is False
+          and type(engine.get("Swarm")) is dict and engine["Swarm"].get("LocalNodeState") == "inactive"
+          and {key: engine.get(key) for key in docker["dockerEngine"]} == docker["dockerEngine"]
+          and _hash(_json(docker["dockerEngine"])) == value["dockerEngineSha256"],
+          "saved Docker engine or cold-start fence changed")
+    volume = _docker_json((*DOCKER, "volume", "inspect", "--format", "{{json .}}", "sanq-app_pgdata"), run)
+    _need(_hash(_json(volume)) == docker["databaseVolumeSha256"], "saved database volume changed")
+    for role, saved in value["containers"].items():
+        info = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}", saved["containerId"]), run)
+        _need(type(info) is dict and info.get("Id") == saved["containerId"] and info.get("Image") == saved["imageId"]
+              and _hash(_json(info.get("Config"))) == saved["configurationSha256"]
+              and _hash(_json(info.get("Mounts"))) == saved["mountSha256"]
+              and type(info.get("RestartCount")) is int and info["RestartCount"] == saved["restartCount"],
+              "saved container identity, image, configuration, mounts or lifetime changed")
+        host, state = info.get("HostConfig"), info.get("State")
+        policy = {"Name": "no", "MaximumRetryCount": 0} if role in disabled else saved["restartPolicy"]
+        ports = {str(port) + "/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}] for port in INSTALL_PORTS[role]}
+        _need(type(host) is dict and type(host.get("RestartPolicy")) is dict
+              and _json(host["RestartPolicy"]) == _json(policy) and host.get("Privileged") is False
+              and host.get("AutoRemove") is False and host.get("PublishAllPorts") is False
+              and host.get("PortBindings") == ports, "saved container host settings or restart policy changed")
+        _need(type(state) is dict and state.get("StartedAt") == saved["startedAt"]
+              and state.get("Paused") is False and state.get("Restarting") is False and state.get("Dead") is False,
+              "saved container state changed")
+        if role in stopped:
+            _need(state.get("Running") is False and state.get("Status") == "exited",
+                  "saved writer is not confirmed stopped")
+        else:
+            _need(state.get("Running") is True and state.get("Status") == "running"
+                  and type(state.get("Health")) is dict and state["Health"].get("Status") == "healthy",
+                  "saved running container is not steadily healthy")
+
+
+def _freeze_saved_installation_writers(intent, writers, identity, files, docker, *,
+                                        run, check_owned, verify_context, mutate, systemd_run):
+    """One in-memory owned continuation. A saved file alone never calls this stage."""
+    value = _installation_writers_match(intent, writers, identity)
+    _need(value["containers"] == docker["containers"], "saved original container baseline differs")
+    disabled, stopped = set(), set()
+    def observe():
+        check_owned()
+        _need(_verify_temporary_gates(systemd_run)["files"] == files, "temporary gates changed during writer freeze")
+        _installation_writer_observation(value, docker, run, disabled, stopped)
+        check_owned()
+    observe()
+    verify_context()
+    started = False
+    try:
+        for role in INSTALL_WRITER_ROLES:
+            observe()
+            started = True
+            mutate(role, "disable-restart")
+            disabled.add(role)
+            observe()
+        for role in reversed(INSTALL_WRITER_ROLES):
+            observe()
+            mutate(role, "stop")
+            stopped.add(role)
+            observe()
+        verify_context()
+        observe()
+    except BaseException:
+        if not started:
+            raise
+        # Containment only: keep the original ID set even if records or inventory drift.
+        # Use the caller's remaining bounded budget; never start, restore policy or replay the installer.
+        for action, roles in (("disable-restart", INSTALL_WRITER_ROLES),
+                              ("stop", tuple(reversed(INSTALL_WRITER_ROLES)))):
+            for role in roles:
+                try:
+                    mutate(role, action)
+                except BaseException:
+                    pass
+        raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained installation and original writer evidence") from None
+    return {"writersFrozen": True, "savedWritersSha256": _hash(writers),
+            "canExecute": False, "recoveryReady": False, "requiresHostRecheck": True}
+
+
+def _freeze_installation_writers(retention_id, *, fetch=release.github_json):
+    """New owned installation only. No resume, public CLI or recovery/installation permit."""
+    return _observe_installed_runtime(retention_id, fetch=fetch,
+        include_configuration=True, include_docker=True, include_systemd=True,
+        include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True)
 
 
 def main(argv=None):
