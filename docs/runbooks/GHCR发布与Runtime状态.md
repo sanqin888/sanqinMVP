@@ -1,8 +1,26 @@
 # GHCR 发布与 Runtime 状态
 
-## D2 恢复包保留宿主原始观察（本地待审）
+## D2 恢复包保留全部历史交付材料（本地待审）
 
-**2026-10-28 当前进度：D2_RECOVERY_HOST_OBSERVATIONS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_RECOVERY_MATERIAL_HISTORY_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批从[PR #3035](https://github.com/sanqin888/sanqinMVP/pull/3035)已合并dev `54209c55d6dfb2c7883f2d7f4d32b834c239a82a` 建立 `feat/runtime-minimal-recovery-material-history-20261028`。安装前原件采集从“本次retention四材料”扩展为installations目录中全部已完成retention，保留每组四份准确原字节、文件metadata、组目录及共同namespace完整指纹。固定PRIVATE_FILES四成员和各自格式保持；无历史版本选择、保留清理、恢复执行或新CLI。
+
+扫描至多64个严格64hex目录，root 0700、四文件0600/nofollow/单链接；四成员齐全、大小预算、原目录与文件身份、规范retaining/retained记录、内容派生retentionId及两归档摘要/长度必须一致。读取前先检查本组声明大小，所有组继续受原48MiB来源总预算，打包时原件加宿主观察仍共享48MiB，原2100成员/56MiB归档/2MiB index/300秒截止保持。超预算直接阻断，不删历史、不选“最近一份”或静默漏项。未知名称、额外/不完整成员、坏记录、链接、权限或读取中替换均保留并拒绝。
+
+历史交付包和旧Runtime归档仅按原记录核对字节/摘要，作为恢复数据保留；不执行/导入/解压其内容，也不把历史材料记录当当前安装许可、当前应用版本或历史Git来源重新证明。本次目标材料原新鲜来源审阅继续独立执行。原件清单新增retainedMaterialDirectories/retainedMaterialNamespace事实，打包固定路径集合只允许这些已审组的准确四文件，要求含本次retention；不能遗漏已声明组或任意扩展路径。
+
+同一次原两锁、门禁前内存采集完成后，已确认停写的恢复保存阶段在生成归档前及成对保存后重新采集全部历史原字节/metadata/目录/namespace并比较。晚期增删、同字节替换或篡改均FENCE_UNCONFIRMED；保留实际原意图/marker/writers、临时门禁、已停止原容器及空/部分/完整恢复包，不启动业务、清理记录或自动重试。对外仍只返回摘要；旧单独停写入口默认不扫描额外历史。
+
+新增25项模型测试，覆盖全部组原字节/摘要/目录、只读且数据不执行、摘要不泄露或授予许可、同锁完整保存/index/回执绑定、未知/缺失/额外成员、目录与文件软链接/硬链接/权限、坏JSON/缺字段/内容或身份不一致、组数/读取前字节预算、两轮采集间同字节文件替换、读取中同字节目录替换、停写后新增历史、回执后历史篡改的持久证据/禁止重放、打包缺组/未知路径及旧入口行为。仅完成静态AST/名字/方法/空白、差异和准确读回核对，项目测试待CI；960项是上一批已合并CI结果。真实系统上历史规模、内存/重复读取和300秒预算仍须D4验证。
+
+当前只关闭了已完成retention历史材料的漏采缺口，不把completePrivateStateCaptured、recoveryReady、snapshotAvailable或readyToInstall/canExecute改为true。其余私有namespace/缺失事实的完整范围审计与停写后准确Lightsail手动快照available绑定仍OPEN；随后才可达到RECOVERY_READY并进入工具安装。永久门禁、旧应用核验交接、Mac薄入口及D4统一真实隔离验收仍OPEN。原17+Manifest/250/300、九helper/三永久模板、唯一应用state权威、依赖包与业务schema保持；三组研究暂停、不取消，未执行生产预检、停写、安装、AWS或数据库写操作。
+
+## D2 恢复包保留宿主原始观察（源码已合并）
+
+**2026-10-28 当前进度：D2_RECOVERY_HOST_OBSERVATIONS_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3035](https://github.com/sanqin888/sanqinMVP/pull/3035) head `138815e7ccf4b53baba9bffde26ae0156bcb9d5c` 经[CI #7758](https://github.com/sanqin888/sanqinMVP/actions/runs/40733769666)全绿（4成功/6范围跳过；Release默认Python与3.10各960、Runtime1080、既有C1回归412），合并dev `54209c55d6dfb2c7883f2d7f4d32b834c239a82a`，无需CI修复；未执行生产操作。
 
 本批从[PR #3034](https://github.com/sanqin888/sanqinMVP/pull/3034)已合并dev `04b3e098bdeae866c3dd26ee90c43302bbda1263` 建立 `feat/runtime-minimal-recovery-host-facts-20261028`。内部恢复保存流程在原两锁、完整预检之后，写意图/marker和临时门禁之前，保存原四容器、实际镜像、Compose导出与展开配置、Docker engine/volume/network以及四unit已加载属性的固定只读命令原始stdout。复用原Docker、环境/网络绑定、有效端口/健康检查及systemd验证器，结果必须与本轮基线一致；采集失败或漂移在任何安装写入/停写前阻断。原只读观察和单独停写入口默认不额外采集。
 
@@ -12,7 +30,7 @@
 
 这只补齐当前受限预检使用的原始宿主观察，未证明全部Docker可选配置、全部manager属性/vendor文件来源、镜像离线恢复、DB应用凭据真实登录或完整私有历史。completeHostStateCaptured/completePrivateStateCaptured、recoveryReady、snapshotAvailable、readyToInstall/canExecute仍false，不形成第二应用版本权威，不允许覆盖工具或自动恢复业务/旧盘。后续补齐其他历史retention/私有材料范围及停写后准确Lightsail手动快照available核验，再达到RECOVERY_READY；工具安装、永久门禁、旧应用核验交接、Mac薄入口及D4真实隔离验收仍OPEN。
 
-新增15项模型测试，覆盖私有原输出/摘要分离、同锁且门禁前采集、原意图/writers/index/回执绑定、Docker与有效加载属性漂移、只读客户端失败、独立/共享预算、缺失原件/错metadata/扩大权限、坏JSON/重复/非有限值/非规范编码、任意对象与变更命令拒绝、Compose导出与实际环境美元原字节、旧入口不采集；既有22项恢复保存测试更新采集观察点，失败保留/读回断言保留。尚未运行项目测试；仅执行静态AST/名字/方法/空白、差异与准确读回核对。945项是上一批已合并CI结果，不是本批通过数。D4须验证新增采集在真实主机上的资源/300秒预算、Compose版本差异及崩溃/重启恢复边界。
+新增15项模型测试，覆盖私有原输出/摘要分离、同锁且门禁前采集、原意图/writers/index/回执绑定、Docker与有效加载属性漂移、只读客户端失败、独立/共享预算、缺失原件/错metadata/扩大权限、坏JSON/重复/非有限值/非规范编码、任意对象与变更命令拒绝、Compose导出与实际环境美元原字节、旧入口不采集；既有22项恢复保存测试更新采集观察点，失败保留/读回断言保留。仅执行静态AST/名字/方法/空白、差异与准确读回核对后，本批15项及更新的既有22项已随两套Release各960项通过CI；真实系统验收仍OPEN。D4须验证新增采集在真实主机上的资源/300秒预算、Compose版本差异及崩溃/重启恢复边界。
 
 无17+Manifest/250/300、九helper/三永久模板、原四材料、依赖包或业务schema变化。三组研究继续暂停、不取消；未执行生产预检、停写、安装、AWS或数据库写操作。
 
