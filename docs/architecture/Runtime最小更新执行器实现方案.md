@@ -1,8 +1,18 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 快照材料有界等待与现场复核（本地待审）
+## D2 手动快照内容核验合同（本地待审）
 
-**2026-10-28 当前进度：D2_SNAPSHOT_EVIDENCE_WAIT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**CONTENT_REVIEW_CONTRACT_LOCAL / NOT_IMPLEMENTED / NOT_INSTALLED。**
+
+已fetch核对，HEAD与最新origin/dev均为 `d6484c6d7216c32bacd9eb36a980296a25ed2152`（PR #3039）；保留分支 `docs/runtime-snapshot-content-contract-20261028` 的未提交工作。已制定并复审[手动快照内容核验合同](Runtime手动快照内容核验合同.md)：要求停写前独立绑定SSH目标/实例，观察系统盘及完整DB/WAL/表空间覆盖，再核本轮challenge关联的新手动快照；区分字段一致与人工AWS会话核验。这些能力尚未实现，未证明生产磁盘覆盖；首版仍阻断附加盘、分离/远端存储及覆盖不明，不增加多盘编排。
+
+本次续审对照最新安装器、24项等待测试、CI工作流/实际回执及AWS/PostgreSQL官方文档，补齐快照可用区all与区域分别比较、源/快照磁盘清单分开核验、DB仍运行时的一致恢复前置，以及拍照后回执须有离机索引的边界；同步发布手册与AWS owner入口。本批仍仅文档，未增加验证器、未改ready许可、源码、依赖、业务schema或既有17+Manifest/250/300；未执行项目测试或生产操作。下一步为停写前独立目标与设备/完整DB存储观察，再接内容核验及耐久交接；三组研究继续暂停、不取消。
+
+## D2 快照材料有界等待与现场复核（源码已合并）
+
+**2026-10-28 当前进度：D2_SNAPSHOT_EVIDENCE_WAIT_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3039](https://github.com/sanqin888/sanqinMVP/pull/3039) head `1a5beeb891e6e023b501f8746a602a59f5f43f96` 经[CI #7766](https://github.com/sanqin888/sanqinMVP/actions/runs/40767652506)全绿（4成功/6范围跳过；Release默认Python与3.10各1053、Runtime1080、既有C1回归412），合并dev `d6484c6d7216c32bacd9eb36a980296a25ed2152`，无需CI修复；未执行生产操作。
 
 本批从[PR #3038](https://github.com/sanqin888/sanqinMVP/pull/3038)已合并dev `921cb579e8e4f67a04e72760f8955250ea77bfa3` 建立 `feat/runtime-minimal-snapshot-review-wait-20261028`。内部_receive_installation_snapshot_evidence只续接同一次原两锁、全预检/意图/临时门禁/原ID停写、整体范围审计与恢复包成对耐久保存；最后才进入单次输入等待。旧恢复保存/停写入口不等待，新开关与完整阶段严格关联，仍无install/snapshot-review/resume公开CLI。
 
@@ -14,7 +24,7 @@
 
 本阶段结果为INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED，snapshotReview.outcome=SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED，仅unverifiedEvidenceReceived=true、requiresSnapshotValidation=true；snapshotEvidenceValidated/snapshotAvailable/recoveryReady/canExecute仍false。它是后续快照内容核验的输入层，不是RECOVERY_READY。后续必须在当前调用栈中核准确VM/区域/存储覆盖、停写后创建顺序及手动快照available证据，再接耐久核验回执/工具安装；本批不调用AWS、不创建快照，不恢复可信时间/跨克隆研究。
 
-新增24项真实管道/线程及完整模型测试：部分帧/实际短写、输入超时/输出背压、EOF/零进展/超量/多帧、FD类型/方向/回环/非法截止、完整绑定/challenge/严格JSON/权限字段、同锁且耐久包之后才请求、摘要不泄露与嵌套available自报不授予许可、等待超过旧300秒后新预算、错challenge/超时/EOF的保留及禁止重放、等待中plan/DB/通道变化、坏通道提前拒绝、旧入口不等待/无CLI。主机/GitHub/根身份仍为模型，未运行项目测试；仅静态AST/名字/方法/空白、原私有比对提取等价性、差异及准确读回核对。1029项为上一批已合并CI结果，D4仍须验证真实SSH/TTY模式与帧容量、FD断连/flags、中断/重启、backup timer触发及资源/预算。
+新增24项真实管道/线程及完整模型测试：部分帧/实际短写、输入超时/输出背压、EOF/零进展/超量/多帧、FD类型/方向/回环/非法截止、完整绑定/challenge/严格JSON/权限字段、同锁且耐久包之后才请求、摘要不泄露与嵌套available自报不授予许可、等待超过旧300秒后新预算、错challenge/超时/EOF的保留及禁止重放、等待中plan/DB/通道变化、坏通道提前拒绝、旧入口不等待/无CLI。主机/GitHub/根身份仍为模型；完成静态核对后，上述24项已随本批两套Release各1053项通过CI。D4仍须验证真实SSH/TTY模式与帧容量、FD断连/flags、中断/重启、backup timer触发及资源/预算。
 
 原PRIVATE_FILES四材料、intent/marker/writers/恢复包与回执格式、17+Manifest/250/300、九helper/三永久模板及唯一应用state保持，无新依赖包或业务schema/迁移。快照证据内容核验、RECOVERY_READY、逐文件安装/永久门禁、旧应用核验交接、Mac薄入口及D4统一真实隔离验收仍OPEN。三组研究暂停、不取消；未执行生产预检、停写、安装、AWS或数据库写操作。
 
