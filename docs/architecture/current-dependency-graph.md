@@ -1,8 +1,28 @@
 # Current 12-context dependency graph
 
-## D2 恢复包保留全部历史交付材料（本地待审）
+## D2 私有目录清单与原缺失事实（本地待审）
 
-**2026-10-28 当前进度：D2_RECOVERY_MATERIAL_HISTORY_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_RECOVERY_PRIVATE_NAMESPACE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批从[PR #3036](https://github.com/sanqin888/sanqinMVP/pull/3036)已合并dev `39bc6a5dee82b2a638c3494d7022e68ac9f84d84` 建立 `feat/runtime-minimal-recovery-private-namespace-20261028`。恢复原件采集在原两锁内增加deploy-state完整根清单、四固定目录路径/FD身份与完整指纹、maintenance原本为空、installation-runs原本缺失或为空的事实；开始/结束采集再次核对。不把本轮随后生成的marker、事务或临时门禁当旧原件。
+
+根清单有界至多5项，仅jobs/plans/maintenance/installations及可选installation-runs；未知/重复/缺失项直接阻断。目录均nofollow、root 0700，路径与原持有FD必须匹配；原事务目录只能缺失或严格为空，任何残件继续阻断且不清理。规范privateNamespace事实只含固定目录原identity/fingerprint、originalEntries、空maintenanceEntries及可空installationNamespace，不保存新秘密字节，不增加磁盘记录或公开CLI。index打包须验证准确字段、原owner/mode、原生整数、identity投影及准确清单，不能漏掉或扩大原缺失事实。
+
+恢复保存续接必须携带本轮采集的原namespace事实，并在写意图前重读完整事实一致。创建事务namespace时保留真实created结果：原本缺失必须由本次调用真正创建，不能收养中途出现的空目录；原本存在则必须保持原inode。之后在本轮state_matches/owned检查中只容许自身已知的根清单变化，持续核根/四原目录/事务namespace稳定身份；原有准确意图/marker/writers/recovery目录与成员证明继续检查，未用mtime例外放过未知目录或记录。
+
+采集/写意图前漂移不产生停写动作；已开始变更后的异常继续按原保存ID尽力围堵并FENCE_UNCONFIRMED。归档/回执期间出现未知根或维护成员、事务namespace替换，都保留实际原件与空/部分/完整恢复包，不返回成功、不恢复策略/启动业务/删除证据或自动重放。新检查仅用于本轮完整恢复保存；单独意图/停写入口保持原范围，不接纳导入的事实作为执行许可。
+
+新增23项模型测试：准确缺失/空事实、既有空目录inode、同锁只读无write/fsync/spawn、完整归档原事实、未知根文件/目录及旧事务残件、软链接/权限、采集后未知条目/空目录出现、创建竞态拒绝收养、原空目录替换、写意图前plan漂移、首个停写动作后未知根及保存后根/maintenance/namespace晚变、严格事实解析/打包、缺原事实的续接拒绝、旧停写入口不启用新采集。既有恢复保存的晚期plan漂移测试改为首个writer动作后注入，继续断言FENCE_UNCONFIRMED及保留停写证据；新测试另证明采集后、意图前plan变化提前阻断。仅完成静态AST/名字/方法/空白、差异与准确读回核对，项目测试待CI；985项为上一批结果。真实inode/权限、SIGKILL/重启及大材料资源/300秒预算仍属D4。
+
+本批补齐固定私有根清单及原缺失事实，completePrivateStateCaptured、recoveryReady、snapshotAvailable、readyToInstall/canExecute仍false。下一步统一对照恢复范围并接停写后准确Lightsail手动快照available核验，再进入RECOVERY_READY与工具安装；永久门禁、旧应用核验交接、Mac薄入口和D4真实隔离验收仍OPEN。17+Manifest/250/300、九helper/三永久模板、原四材料及唯一应用state权威保持，无依赖包/业务schema变化。三组研究暂停、不取消；未执行生产预检、停写、安装、AWS或数据库写操作。
+
+已审阅Runtime/Ops内部目录观察与owned检查，无新依赖、业务上下文公共边界、导入债务、SCC或12-context基线变化；未重跑架构扫描，计数沿用已合并基线。
+
+## D2 恢复包保留全部历史交付材料（源码已合并）
+
+**2026-10-28 当前进度：D2_RECOVERY_MATERIAL_HISTORY_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3036](https://github.com/sanqin888/sanqinMVP/pull/3036) head `0ecc13c5bdc5bf8b9bdfc277417142a042ca0f6e` 经[CI #7760](https://github.com/sanqin888/sanqinMVP/actions/runs/40759140082)全绿（4成功/6范围跳过；Release默认Python与3.10各985、Runtime1080、既有C1回归412），合并dev `39bc6a5dee82b2a638c3494d7022e68ac9f84d84`，无需CI修复；未执行生产操作。
 
 本批从[PR #3035](https://github.com/sanqin888/sanqinMVP/pull/3035)已合并dev `54209c55d6dfb2c7883f2d7f4d32b834c239a82a` 建立 `feat/runtime-minimal-recovery-material-history-20261028`。安装前原件采集从“本次retention四材料”扩展为installations目录中全部已完成retention，保留每组四份准确原字节、文件metadata、组目录及共同namespace完整指纹。固定PRIVATE_FILES四成员和各自格式保持；无历史版本选择、保留清理、恢复执行或新CLI。
 
@@ -12,7 +32,7 @@
 
 同一次原两锁、门禁前内存采集完成后，已确认停写的恢复保存阶段在生成归档前及成对保存后重新采集全部历史原字节/metadata/目录/namespace并比较。晚期增删、同字节替换或篡改均FENCE_UNCONFIRMED；保留实际原意图/marker/writers、临时门禁、已停止原容器及空/部分/完整恢复包，不启动业务、清理记录或自动重试。对外仍只返回摘要；旧单独停写入口默认不扫描额外历史。
 
-新增25项模型测试，覆盖全部组原字节/摘要/目录、只读且数据不执行、摘要不泄露或授予许可、同锁完整保存/index/回执绑定、未知/缺失/额外成员、目录与文件软链接/硬链接/权限、坏JSON/缺字段/内容或身份不一致、组数/读取前字节预算、两轮采集间同字节文件替换、读取中同字节目录替换、停写后新增历史、回执后历史篡改的持久证据/禁止重放、打包缺组/未知路径及旧入口行为。仅完成静态AST/名字/方法/空白、差异和准确读回核对，项目测试待CI；960项是上一批已合并CI结果。真实系统上历史规模、内存/重复读取和300秒预算仍须D4验证。
+新增25项模型测试，覆盖全部组原字节/摘要/目录、只读且数据不执行、摘要不泄露或授予许可、同锁完整保存/index/回执绑定、未知/缺失/额外成员、目录与文件软链接/硬链接/权限、坏JSON/缺字段/内容或身份不一致、组数/读取前字节预算、两轮采集间同字节文件替换、读取中同字节目录替换、停写后新增历史、回执后历史篡改的持久证据/禁止重放、打包缺组/未知路径及旧入口行为。完成静态AST/名字/方法/空白、差异和准确读回核对后，上述25项已随本批两套Release各985项通过CI；真实系统验收仍OPEN。真实系统上历史规模、内存/重复读取和300秒预算仍须D4验证。
 
 当前只关闭了已完成retention历史材料的漏采缺口，不把completePrivateStateCaptured、recoveryReady、snapshotAvailable或readyToInstall/canExecute改为true。其余私有namespace/缺失事实的完整范围审计与停写后准确Lightsail手动快照available绑定仍OPEN；随后才可达到RECOVERY_READY并进入工具安装。永久门禁、旧应用核验交接、Mac薄入口及D4统一真实隔离验收仍OPEN。原17+Manifest/250/300、九helper/三永久模板、唯一应用state权威、依赖包与业务schema保持；三组研究暂停、不取消，未执行生产预检、停写、安装、AWS或数据库写操作。
 

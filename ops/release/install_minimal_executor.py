@@ -921,7 +921,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None,
                 save_writers=save_writers if _save_writers else None,
                 freeze_writers=freeze_writers if _freeze_writers else None,
-                retain_recovery=retain_recovery if _retain_recovery else None)
+                retain_recovery=retain_recovery if _retain_recovery else None,
+                recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None)
             result["outcome"] = ("INSTALLATION_RECOVERY_FILES_RETAINED" if _retain_recovery else
                                  "INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
                                  "INSTALLATION_WRITERS_SAVED" if _save_writers else
@@ -2366,23 +2367,36 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
+    _need((retain_recovery is None) == (recovery_namespace is None),
+          "recovery continuation requires original private namespace facts")
+    if recovery_namespace is not None:
+        _need(_recovery_namespace_snapshot(folders) == recovery_namespace,
+              "recovery private namespace changed before intent")
     identity = os.urandom(32).hex()
     gate_result = saved_result = frozen_result = recovery_result = None
     owned_records = {}
     anchor = _state_parent()
     try:
         with _private_directory(anchor, "deploy-state") as state:
+            owned_namespace = None
             def state_matches():
                 for name, saved in folders.items():
                     actual = os.stat(name, dir_fd=state, follow_symlinks=False)
                     _private_info(actual, directory=True)
                     _need(_directory_identity(actual) == _directory_identity(os.fstat(saved)),
                           "installation intent lost original lock directories")
+                if recovery_namespace is not None:
+                    _recovery_namespace_owned(state, folders, owned_namespace, recovery_namespace)
             state_matches()
-            with _installation_namespace(state, create=True, owned_identity=identity, owned_records=owned_records) as (namespace, _):
+            with _installation_namespace(state, create=True, owned_identity=identity, owned_records=owned_records) as (namespace, created):
+                owned_namespace = namespace
+                if recovery_namespace is not None:
+                    _need(created == (recovery_namespace["installationNamespace"] is None),
+                          "installation namespace creation differs from captured absence")
+                    state_matches()
                 with _private_directory(namespace, identity, create=True, exclusive=True) as root:
                     initial = _directory_identity(os.fstat(root))
                     recheck()
@@ -3050,8 +3064,116 @@ def _recovery_retention_matches(folders, capture):
           "recovery material history changed after capture")
 
 
+
+RECOVERY_STATE_DIRECTORIES = frozenset(("jobs", "plans", "maintenance", "installations"))
+
+
+def _recovery_namespace_names(state):
+    names = set()
+    with os.scandir(state) as entries:
+        for entry in entries:
+            _need(entry.name in RECOVERY_STATE_DIRECTORIES | {INSTALLATION_RUNS}
+                  and entry.name not in names and len(names) < 5, "unknown recovery private root member")
+            names.add(entry.name)
+    _need(RECOVERY_STATE_DIRECTORIES <= names, "incomplete recovery private root")
+    return names
+
+
+def _recovery_namespace_directory(info):
+    _private_info(info, directory=True)
+    return {"identity": list(_directory_identity(info)), "fingerprint": list(_installed_fingerprint(info))}
+
+
+def _recovery_namespace_value(value):
+    _need(type(value) is dict and set(value) == {"state", "directories", "installationNamespace",
+          "originalEntries", "maintenanceEntries"} and type(value["directories"]) is dict
+          and set(value["directories"]) == RECOVERY_STATE_DIRECTORIES
+          and type(value["maintenanceEntries"]) is list and not value["maintenanceEntries"],
+          "invalid recovery private namespace facts")
+    rows = [value["state"], *value["directories"].values()]
+    namespace = value["installationNamespace"]
+    if namespace is not None:
+        rows.append(namespace)
+    for row in rows:
+        _need(type(row) is dict and set(row) == {"identity", "fingerprint"}
+              and type(row["identity"]) is list and len(row["identity"]) == 5
+              and type(row["fingerprint"]) is list and len(row["fingerprint"]) == 9
+              and all(type(part) is int for part in (*row["identity"], *row["fingerprint"])),
+              "invalid recovery namespace directory metadata")
+        info = row["fingerprint"]
+        _need(row["identity"] == [info[index] for index in (0, 1, 5, 6, 7)]
+              and info[5] == PRIVATE_OWNER_UID and info[6] == PRIVATE_GROUP_GID
+              and stat.S_ISDIR(info[7]) and stat.S_IMODE(info[7]) == 0o700,
+              "recovery namespace directory identity differs")
+    _need(value["originalEntries"] == sorted(RECOVERY_STATE_DIRECTORIES
+          | ({INSTALLATION_RUNS} if namespace is not None else set())),
+          "recovery private root inventory differs")
+    return value
+
+
+def _recovery_namespace_snapshot(folders):
+    """Record empty/absent namespaces before any owned transaction or maintenance write."""
+    _need(set(folders) == RECOVERY_STATE_DIRECTORIES, "recovery private folder set differs")
+    anchor = _state_parent()
+    try:
+        with _private_directory(anchor, "deploy-state") as state:
+            before = _recovery_namespace_directory(os.fstat(state))
+            names = _recovery_namespace_names(state)
+            _need(RECOVERY_STATE_DIRECTORIES <= names <= RECOVERY_STATE_DIRECTORIES | {INSTALLATION_RUNS},
+                  "unknown recovery private root member")
+            directories = {}
+            for name in sorted(RECOVERY_STATE_DIRECTORIES):
+                row = _recovery_namespace_directory(os.stat(name, dir_fd=state, follow_symlinks=False))
+                _need(row == _recovery_namespace_directory(os.fstat(folders[name])),
+                      "recovery private path lost original lock directories")
+                directories[name] = row
+            _need(not os.listdir(folders["maintenance"]), "recovery maintenance originals are not empty")
+            with _installation_namespace(state) as (namespace, _):
+                original = None if namespace is None else _recovery_namespace_directory(os.fstat(namespace))
+            if original is not None:
+                _need(original == _recovery_namespace_directory(
+                      os.stat(INSTALLATION_RUNS, dir_fd=state, follow_symlinks=False)),
+                      "recovery empty installation namespace changed")
+            _need(names == _recovery_namespace_names(state)
+                  and before == _recovery_namespace_directory(os.fstat(state))
+                  and all(row == _recovery_namespace_directory(os.fstat(folders[name]))
+                          == _recovery_namespace_directory(os.stat(name, dir_fd=state, follow_symlinks=False))
+                          for name, row in directories.items())
+                  and not os.listdir(folders["maintenance"]),
+                  "recovery private namespace changed during capture")
+            current = os.stat("deploy-state", dir_fd=anchor, follow_symlinks=False)
+            _need(before == _recovery_namespace_directory(current), "recovery private root replaced")
+            return _recovery_namespace_value({"state": before, "directories": directories,
+                "installationNamespace": original, "originalEntries": sorted(names), "maintenanceEntries": []})
+    finally:
+        os.close(anchor)
+
+
+def _recovery_namespace_owned(state, folders, namespace, original):
+    """Check only this stack's known namespace changes; existing owned-record checks still apply."""
+    value = _recovery_namespace_value(original)
+    expected = (set(value["originalEntries"]) if namespace is None
+                else RECOVERY_STATE_DIRECTORIES | {INSTALLATION_RUNS})
+    _need(_recovery_namespace_names(state) == expected
+          and list(_directory_identity(os.fstat(state))) == value["state"]["identity"],
+          "owned recovery private root changed")
+    for name, saved in value["directories"].items():
+        actual = _recovery_namespace_directory(os.stat(name, dir_fd=state, follow_symlinks=False))
+        held = _recovery_namespace_directory(os.fstat(folders[name]))
+        _need(actual["identity"] == held["identity"] == saved["identity"],
+              "owned recovery private directory replaced")
+    previous = value["installationNamespace"]
+    if namespace is not None or previous is not None:
+        actual = _recovery_namespace_directory(os.stat(INSTALLATION_RUNS, dir_fd=state, follow_symlinks=False))
+        _need((namespace is None or actual["identity"] ==
+               _recovery_namespace_directory(os.fstat(namespace))["identity"])
+              and (previous is None or actual["identity"] == previous["identity"]),
+              "owned recovery installation namespace replaced")
+
+
 def _installation_recovery_sources(folders, retention_id, kit, old, retained):
     """Capture pre-gate originals into memory; not a complete or durable recovery kit."""
+    private_namespace = _recovery_namespace_snapshot(folders)
     runtime, runtime_dirs = _installed_runtime_snapshot(old, retained["currentArchiveSourceSha"])
     configuration, application = _configuration_snapshot()
     units, overrides, systemd_root = _systemd_disk_snapshot(runtime["ops/backup/sanq-backup.service"][0])
@@ -3086,7 +3208,10 @@ def _installation_recovery_sources(folders, retention_id, kit, old, retained):
     absent = ["/opt/sanq/runtime/" + name for name in (*HELPERS, BOOTSTRAP)]
     absent += ["/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS]
     absent += ["/etc/systemd/system/" + unit for unit in ("docker.service", "docker.socket")]
+    _need(_recovery_namespace_snapshot(folders) == private_namespace,
+          "recovery private namespace changed around original file capture")
     summary = {"outcome": "INSTALLATION_RECOVERY_SOURCES_OBSERVED", "retentionId": retention_id,
+        "privateNamespace": private_namespace,
         "scope": "pre-install-original-files-only", "applicationSha": application["applicationSha"],
         "sourceSha": retained["sourceSha"], "currentArchiveSourceSha": retained["currentArchiveSourceSha"],
         "files": metadata, "absentFiles": sorted(absent), "originalLockMetadata": locks,
@@ -3223,6 +3348,7 @@ def _installation_recovery_entries(capture, intent, writers, identity):
     files, summary = capture[:2]
     recorded = _installation_record_value(intent, identity)
     saved = _installation_writers_match(intent, writers, identity)
+    _recovery_namespace_value(summary.get("privateNamespace"))
     _need(summary.get("scope") == ("pre-install-files-and-host-observations" if len(capture) == 3
                                       else "pre-install-original-files-only")
           and summary.get("retentionId") == recorded["retentionId"]
