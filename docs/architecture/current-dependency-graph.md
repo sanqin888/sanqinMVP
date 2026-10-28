@@ -1,8 +1,32 @@
 # Current 12-context dependency graph
 
-## D2 原容器与重启策略耐久保存（本地待审）
+## D2 原保存ID受限停写（本地待审）
 
-**2026-10-28 当前进度：D2_SAVED_WRITERS_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_SAVED_WRITER_FREEZE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批基于[PR #3031](https://github.com/sanqin888/sanqinMVP/pull/3031)合并dev `c1bbff97a3c28a867ec16ca29afa2053ba2f71cd`，分支 `feat/runtime-minimal-freeze-writers-20261028`。内部 _freeze_installation_writers 续接同一次原两锁、全部新鲜观察、新意图/marker、准确临时门禁加载及writers.json耐久保存；严格阶段开关，不从已存在记录resume，不新增CLI或完成记录格式。
+
+首次变更前核准确owned记录/marker/目录、门禁、原四容器及宿主恢复基线。先对三原ID逐一update --restart=no，再按Web→worker→API逐个stop --time 30；DB不进入动作集合。每步前后核记录与有效门禁、项目准确四ID、Docker身份/live-restore=false/swarm inactive、DB volume摘要、原image/config/mount/startedAt/restartCount、受限HostConfig与本阶段准确策略/运行状态。只容许预期策略变化及已处理原对象退出，不推断新ID或按角色名停止容器。
+
+阶段前后另核来源/四材料、旧Runtime与.env/唯一state/C4、宿主目录/备份实物、外部备份原件、systemd基线及DB本地只读身份/迁移历史。停写后不再要求已停止API执行Node库存或HTTP就绪；沿用停止前准确Git/镜像/库存证明并核DB历史未变。尚未扩大为完整Docker可选配置证明、真实DB应用凭据登录或停写后的恢复实物/快照available验收。
+
+专用客户端只接受绑定原意图的准确writers字节及三角色/两动作，交给共同有界客户端时仍核准确argv；默认只读和共同客户端调用仍拒绝update/stop。单次普通命令30秒，只有此受限stop客户端45秒以容纳30秒Docker宽限；继续共享原300秒截止、两流合计2MiB、最小环境、准确原ID输出及仅结束自身CLI组。超时/输出未知不推断动作已撤销，无任意shell、名称、远端或DB变更入口。
+
+首次变更前失败不发停写/围堵命令；变更已开始后的任意异常，只在剩余有界预算内尽力对原保存三ID禁重启并停止，随后一律FENCE_UNCONFIRMED，不因围堵看似成功改报成功。保留原意图、marker、writers及实际门禁/策略/退出状态；不恢复策略、启动业务、清理记录或重放安装。SIGKILL/主机掉电不会执行Python异常围堵，须依耐久原件和实际状态人工审阅，真实中断验收仍属D4。
+
+仅同锁编排及最终复核成功返回INSTALLATION_WRITERS_FROZEN，内存结果writersFrozen=true；原writers.json不可变，仍canExecute=false。readyToInstall/hostPreflightComplete/operationSuccessProven/canExecute仍false，recoveryReady=false、requiresHostRecheck=true。无额外FROZEN文件或续跑票据，现有意图和原对象记录保留未知边界。
+
+新增22项组合/真实pipe客户端模型测试：准确序列及DB/原件不变、旧入口默认不动作、首次及临近首动作前漂移、update/stop响应丢失、围堵全失败/不重放、marker/记录/门禁/额外容器/DB重启/策略/运行状态/lifetime/mount漂移、停写后DB历史/backup原件变化、完整阶段与无CLI、专用客户端精确参数/默认拒绝、45/30秒边界及坏证明/输出/预算。文件/锁/pipe为真实临时对象，Docker/systemd/GitHub/根锚点为模型；仅Python3.10 AST、全局名字/方法/空白、过程IO主体等价、差异及准确读回静态核对，项目测试待CI，不把883作为本批结果。
+
+已审阅Runtime内部接线/客户端边界：12上下文owner/SCC/直接导入债务和依赖图基线无变化；未重跑scanner。
+
+下一步核此阶段CI及未知边界，接停写后手动快照available/完整旧工具恢复实物的RECOVERY_READY。逐文件工具安装、永久门禁、原应用核验/最终交接、Mac薄入口和D4统一真实隔离验收仍OPEN。17+Manifest/250/300、原四材料、九helper/三永久模板、依赖包、业务schema及唯一应用state权威保持；三组研究继续暂停、不取消，未执行生产预检、停写、安装、AWS或数据库写操作。
+
+## D2 原容器与重启策略耐久保存（源码已合并）
+
+**2026-10-28 当前进度：D2_SAVED_WRITERS_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3031](https://github.com/sanqin888/sanqinMVP/pull/3031) head `afb7a2132318aee338fa0fb6b5a5872f42b6bc49` 经[CI #7750](https://github.com/sanqin888/sanqinMVP/actions/runs/40709444423)全绿（4成功/6范围跳过；Release默认Python与3.10各883、Runtime1080、既有C1回归412），合并dev `c1bbff97a3c28a867ec16ca29afa2053ba2f71cd`，无需CI修复；未执行生产操作。
 
 本批从[PR #3030](https://github.com/sanqin888/sanqinMVP/pull/3030)已合并dev `39d61bda9474b9e305bd11800f8563e323ca1313` 建立 `feat/runtime-minimal-saved-writers-20261028`，续接本轮原两锁、全套新鲜观察、独占意图/marker及临时门禁有效加载。仅内部 _save_installation_writers 开启保存阶段；原意图/门禁入口默认不写新记录，无公开CLI或旧事务resume。
 
@@ -12,7 +36,7 @@
 
 新增纯argv构造器只允许三保存角色的固定update --restart=no及stop --time 30，目标只能取绑定记录里的完整原ID；db/任意名称/动作拒绝。该函数不执行命令，原只读及共同有界客户端仍拒绝这两类变更，尚未接入停写执行器。结果仅INSTALLATION_WRITERS_SAVED及摘要，writersFrozen/canExecute/readyToInstall/hostPreflightComplete/operationSuccessProven仍false、requiresHostRecheck=true，不是停写完成或恢复就绪证明。
 
-新增18项完整组合/格式模型测试，覆盖原两锁/门禁先后、四原对象与策略不变、旧入口默认不写、第二次拒绝、部分写入/同步未知、保存后主机/意图/未知成员漂移、原意图摘要绑定、严格格式/角色/ID/镜像/生命周期/策略、权限及链接、纯argv限制/既有客户端拒绝、准确owned原件证明和严格开关/无CLI。临时文件/锁为真实对象，GitHub/Docker/manager/根锚点为模型；仅Python3.10 AST、名字/方法/空白及差异/准确读回静态核对，项目测试待CI，不把865记为本批结果。
+新增18项完整组合/格式模型测试，覆盖原两锁/门禁先后、四原对象与策略不变、旧入口默认不写、第二次拒绝、部分写入/同步未知、保存后主机/意图/未知成员漂移、原意图摘要绑定、严格格式/角色/ID/镜像/生命周期/策略、权限及链接、纯argv限制/既有客户端拒绝、准确owned原件证明和严格开关/无CLI。临时文件/锁为真实对象，GitHub/Docker/manager/根锚点为模型；仅Python3.10 AST、名字/方法/空白及差异/准确读回静态核对，上述18项已随本批CI在两套Release各883项中通过；真实系统验收仍OPEN。
 
 已审阅本轮Runtime内部格式/接线；12上下文owner/SCC/直接导入债务与依赖图基线无变化，未重跑scanner。
 
