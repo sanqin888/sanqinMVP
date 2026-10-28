@@ -1,8 +1,55 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D2 预检C组合回归（本地待审）
+## D2 安装意图记录合同（本地待审）
 
-**2026-10-27 当前进度：D2_COMBINED_PREFLIGHT_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_INSTALL_INTENT_CONTRACT_LOCAL / DOCUMENTATION_ONLY / NOT_INSTALLED。**
+
+2026-10-28 续接：PR #3024已合并；补齐中断时未同步的运行手册并核对六份文档。首次安装不假定guard或socket条件已部署/加载，marker存在本身不证明已阻断启动；只有临时拒绝门禁确认有效加载后才能进入停写。该批仍为本地合同草案，未提交远端。
+
+预检C组合批[PR #3024](https://github.com/sanqin888/sanqinMVP/pull/3024) head `cb1e1c38d972ed61d255333cc6191d7fb6f9ed88` 经[CI #7735](https://github.com/sanqin888/sanqinMVP/actions/runs/40595181934)全绿（4成功/6范围跳过；Release默认Python与3.10各803、Runtime1080、既有C1回归412），合并dev `8722324be77795ea5f9d0acbc4935b99cf68c0cd`，无CI修复。原批LOCAL/未运行描述仅为当时审阅状态；未执行现场预检或安装。
+
+本批基于该dev建立docs/runtime-minimal-install-intent-contract-20261027，完成下一阶段安装意图记录合同。A/B/组合C的模型与CI证据已齐，但现场解释器/Node/Compose/DB连接、真实美元往返、完整运行耗时/限流、恢复实物与D4系统中断验证仍OPEN；hostPreflightComplete/readyToInstall不翻转。可继续实现安装执行器源码及故障模型，不等于允许生产写入。
+
+选择独立/opt/sanq/deploy-state/installation-runs/<installationId>/保存安装事务记录，不扩展installations/<retentionId>/原四份不可变材料。意图先以create-only耐久保存并读回，再以独立kind的maintenance/active.json绑定准确意图摘要；临时拒绝门禁有效加载前不停止业务、不改策略、不覆盖工具。完整字段、顺序和中断规则见交付合同新节。
+
+本批只更新六份文档，无代码/测试/依赖/CLI/持久化实现变化；新namespace/意图格式均为待实现合同。下一批实现意图与marker的严格格式、受限耐久写入及每个中断边界的模型，随后接临时拒绝门禁。调用者不能用导出的观察dict或布尔值授权写入，既有假值不被改成真值来绕过就绪。恢复实物、准确保存ID停写、停写后手动快照available、逐文件安装/完成交接、Mac薄入口及统一真实隔离验收仍OPEN。
+
+无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner或项目测试；固定17+Manifest/250/300、九helper、原私有四文件/两锁及三永久门禁保持，三组研究继续暂停、不取消。仅作源码/合同审阅，未执行生产操作。
+
+### 安装意图记录合同（2026-10-27，待实现）
+
+本节将既有RECORD_INSTALL_INTENT细化，不新增发布控制器或恢复研究。安装仅处理工具，唯一应用current/previous仍来自原.sanq-release-state.json。
+
+| 对象 | 固定格式与用途 |
+| --- | --- |
+| 独立根 | /opt/sanq/deploy-state/installation-runs，root:root 0700真实目录；仅在固定可信父目录下不存在时创建，已有坏权限/链接拒绝，不修复。现有installations材料目录与PRIVATE_FILES四项保持 |
+| 本次目录 | installation-runs/<installationId>/，installationId为本次独立生成的64位小写hex身份，root:root 0700，拒绝覆盖/复用已有同名目录；不以应用SHA或retentionId作为可重跑身份 |
+| intent.json | root:root 0600普通单链接、UTF-8规范JSON加单LF、≤16KiB，create-only；准确九字段见下文。只记录意图与观察摘要，不保存秘密、不充当执行许可 |
+| maintenance/active.json | root:root 0600普通单链接、create-only；准确四字段schemaVersion、kind、installationId、intentSha256。kind为sanq-minimal-executor-install-intent，schemaVersion严格整数1，两个摘要/身份为64位小写hex；不是sanq-maintenance-marker v1–v6 |
+| 阶段/恢复记录 | 后续按原安装阶段增加独立记录和实际恢复原件，不改intent.json，不把阶段事实塞回不可变四材料；本节不提供自动resume/replay或“当前应用”索引 |
+
+intent.json准确字段：schemaVersion（严格整数1）、kind（sanq-minimal-executor-install-intent）、installationId、retentionId、targetSourceSha、installedRuntimeSourceSha、observationSha256、createdAt、canExecute（严格false）。两个source为准确40位小写Git SHA；installedRuntimeSourceSha是已核旧Runtime归档来源，不是应用current的替代值；retentionId/observationSha256为64位hex。createdAt使用严格UTC时间格式，仅审计时间，不证明可信时间。禁止未知/重复字段、bool冒充整数、非规范字节及缺失值；intentSha256绑定规范intent原字节。
+
+观察摘要绑定同一锁内完整观察的稳定结果，包括原配置/唯一state原件摘要、当前保存容器/image/策略/挂载、有效unit及外部原件、部署材料/来源等。不得从用户可写文件导入观察dict，或接受caller-supplied preflightPassed/authorized=true。未来写入口应自行在原两锁内完成新鲜核验，且写入前重核材料、未决job、维护为空及目录身份；公开观察输出保持无执行权。
+
+| 顺序 | 耐久要求 | 中断/未知结果 |
+| --- | --- | --- |
+| 1. 核验和持锁 | 原job锁→plan锁顺序；核新namespace内是否有未决/未知事务，固定目录/容量预算，重核现场与材料 | 任一失败只阻断；不清旧记录，不从旧观察恢复资格 |
+| 2. 创建本次目录 | 只创建新0700目录，同步目录及父目录、核读回身份 | 空/半目录也作为本次残件保留；不自动删后重试 |
+| 3. 写intent.json | O_EXCL/nofollow，完整写、fsync文件/目录、准确读回及原路径身份核对 | 写/同步/读回未知保留实际字节；不得补造成功或继续写marker |
+| 4. 写安装marker | intent已知耐久后，重新核maintenance为空，准确create-only写四字段marker，同步文件/目录并读回身份 | 空文件/部分JSON/未知marker仍保留；若源码guard被调用应拒绝非空维护目录，但首次安装不假定它已部署/加载，不从marker存在宣称已阻断启动、已停写或临时门禁已加载 |
+| 5. 进入LOAD_DENY_GATES | 仅marker与意图准确互绑且原两锁仍持有时，才安装三固定临时拒绝文件并核有效加载 | 门禁未知时不能改restart策略、停止原容器或覆盖Runtime；不清marker来重开 |
+
+只有intent目录/文件存在、marker尚不存在时，意图不是维护围栏：旧业务/启动路径尚未被本事务冻结，也未被本事务修改。新installer必须因未决事务阻断新安装并重新审阅，不能自动补marker或继续；本节不让日常发布从installation-runs读取第二份应用权威。未来installer读取新namespace是新增实现要求，目前_idle_for_materials尚未扫描它，不能仅建目录就声称已封堵并发。
+
+源码中的startup guard对非空maintenance目录拒绝，普通应用guard不能接受安装kind；socket仅在包含固定ConditionPathExists的unit配置已有效加载时按active.json存在性阻断。首次安装不假定这些辅助件或unit配置已经部署/加载，因此必须先确认独立/usr/bin/false临时门禁及socket条件有效，不能把marker刚落盘当作启动围栏。保留三固定路径，不新增sudoers、timer或常驻service。完成安装后仍按原合同最后清准确本次marker，未知结果人工审阅，不自动恢复/重放。
+
+后续首个实现批次须覆盖格式/大小/权限/链接/命名、原锁竞争、新鲜观察与来源晚变、每次create/write/fsync/readback失败、半意图/半marker及已有残件保留，并验证旧四材料未被改写、无容器/系统操作发生；再接临时拒绝门禁。真实写入口开放、隔离验收和生产执行仍分别受原门禁控制，本合同不授权本次执行。
+
+
+## D2 预检C组合回归（源码已合并）
+
+**2026-10-27 当前进度：D2_COMBINED_PREFLIGHT_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 预检B[PR #3023](https://github.com/sanqin888/sanqinMVP/pull/3023) head `802e6610927b042917ebf80f96afd625a2a2c403` 经[CI #7733](https://github.com/sanqin888/sanqinMVP/actions/runs/40592294258)全绿（4成功/6范围跳过；Release默认Python与3.10各795、Runtime1080、既有C1回归412），合并dev `741448bc9c039ed553c67e5b7e68d793a83b5f9e`，无CI修复；未执行现场预检或安装。
 

@@ -1,8 +1,24 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 预检C组合回归（本地待审）
+## D2 安装意图记录合同（本地待审）
 
-**2026-10-27 当前进度：D2_COMBINED_PREFLIGHT_LOCAL / TESTS_NOT_RUN / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_INSTALL_INTENT_CONTRACT_LOCAL / DOCUMENTATION_ONLY / NOT_INSTALLED。**
+
+2026-10-28 续接：PR #3024已合并；补齐中断时未同步的运行手册并核对六份文档。首次安装不假定guard或socket条件已部署/加载，marker存在本身不证明已阻断启动；只有临时拒绝门禁确认有效加载后才能进入停写。该批仍为本地合同草案，未提交远端。
+
+预检C组合批[PR #3024](https://github.com/sanqin888/sanqinMVP/pull/3024) head `cb1e1c38d972ed61d255333cc6191d7fb6f9ed88` 经[CI #7735](https://github.com/sanqin888/sanqinMVP/actions/runs/40595181934)全绿（4成功/6范围跳过；Release默认Python与3.10各803、Runtime1080、既有C1回归412），合并dev `8722324be77795ea5f9d0acbc4935b99cf68c0cd`，无CI修复。原批LOCAL/未运行描述仅为当时审阅状态；未执行现场预检或安装。
+
+本批基于该dev建立docs/runtime-minimal-install-intent-contract-20261027，完成下一阶段安装意图记录合同。A/B/组合C的模型与CI证据已齐，但现场解释器/Node/Compose/DB连接、真实美元往返、完整运行耗时/限流、恢复实物与D4系统中断验证仍OPEN；hostPreflightComplete/readyToInstall不翻转。可继续实现安装执行器源码及故障模型，不等于允许生产写入。
+
+选择独立/opt/sanq/deploy-state/installation-runs/<installationId>/保存安装事务记录，不扩展installations/<retentionId>/原四份不可变材料。意图先以create-only耐久保存并读回，再以独立kind的maintenance/active.json绑定准确意图摘要；临时拒绝门禁有效加载前不停止业务、不改策略、不覆盖工具。完整字段、顺序和中断规则见交付合同新节。
+
+本批只更新六份文档，无代码/测试/依赖/CLI/持久化实现变化；新namespace/意图格式均为待实现合同。下一批实现意图与marker的严格格式、受限耐久写入及每个中断边界的模型，随后接临时拒绝门禁。调用者不能用导出的观察dict或布尔值授权写入，既有假值不被改成真值来绕过就绪。恢复实物、准确保存ID停写、停写后手动快照available、逐文件安装/完成交接、Mac薄入口及统一真实隔离验收仍OPEN。
+
+无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner或项目测试；固定17+Manifest/250/300、九helper、原私有四文件/两锁及三永久门禁保持，三组研究继续暂停、不取消。仅作源码/合同审阅，未执行生产操作。
+
+## D2 预检C组合回归（源码已合并）
+
+**2026-10-27 当前进度：D2_COMBINED_PREFLIGHT_MERGED_DEV / SOURCE_CI_VERIFIED / HOST_PREFLIGHT_PARTIAL / NOT_INSTALLED。**
 
 预检B[PR #3023](https://github.com/sanqin888/sanqinMVP/pull/3023) head `802e6610927b042917ebf80f96afd625a2a2c403` 经[CI #7733](https://github.com/sanqin888/sanqinMVP/actions/runs/40592294258)全绿（4成功/6范围跳过；Release默认Python与3.10各795、Runtime1080、既有C1回归412），合并dev `741448bc9c039ed553c67e5b7e68d793a83b5f9e`，无CI修复；未执行现场预检或安装。
 
