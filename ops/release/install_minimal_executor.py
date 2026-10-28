@@ -718,15 +718,16 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False):
     """Initial install source observation only. No CLI, writes or installation permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
           and (not include_effective_configuration or include_migrations)
-          and (not include_external_backup or include_effective_configuration),
+          and (not include_external_backup or include_effective_configuration)
+          and (not _record_intent or include_external_backup),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -803,6 +804,15 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
             result.update({"effectiveContainerConfigurationObserved": True, "effectiveConfiguration": before[8]})
         if include_external_backup:
             result.update({"externalBackupExecutablesObserved": True, "externalBackup": before[9]})
+        if _record_intent:
+            def recheck():
+                _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch) == review,
+                      "installation material source changed before intent recording")
+                _need(snapshot() == before, "host changed before installation intent recording")
+                _need(_retained_contents(root, identity) == (kit, old, value), "installation materials changed")
+                _idle_for_materials(folders)
+            result["installationIntent"] = _write_installation_intent_locked(folders, identity, result, recheck=recheck)
+            result["outcome"] = "INSTALLATION_INTENT_RECORDED"
         return result
 
 
@@ -2100,8 +2110,9 @@ def _installation_runs_clear(root):
 
 
 @contextlib.contextmanager
-def _installation_namespace(parent, *, create=False):
-    _need(type(create) is bool, "invalid installation namespace switch")
+def _installation_namespace(parent, *, create=False, owned_identity=None):
+    _need(type(create) is bool and (owned_identity is None or create and isinstance(owned_identity, str)
+          and re.fullmatch(r"[a-f0-9]{64}", owned_identity)), "invalid installation namespace switch")
     _private_info(os.fstat(parent), directory=True)
     created = False
     if create:
@@ -2137,7 +2148,10 @@ def _installation_namespace(parent, *, create=False):
                 os.fsync(fd)
                 os.fsync(parent)
             yield fd, created
-            _installation_runs_clear(fd)
+            if owned_identity is None:
+                _installation_runs_clear(fd)
+            else:
+                _installation_owned_run(fd, owned_identity)
             after = os.fstat(fd)
             path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
             _private_info(after, directory=True)
@@ -2175,6 +2189,72 @@ def _inspect_installation_runs(*, create=False):
                 return result
         finally:
             os.close(anchor)
+
+
+
+def _installation_owned_run(namespace, identity):
+    _need(set(os.listdir(namespace)) == {identity}, "installation transaction inventory changed")
+    with _private_directory(namespace, identity) as root:
+        _need(set(os.listdir(root)) == {"intent.json"}, "unexpected installation transaction members")
+        return _installation_record_read(root, "intent.json", identity)
+
+
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck):
+    """Private observer continuation only; no CLI or externally imported approval."""
+    _need(os.geteuid() == 0, "installation intent requires root")
+    identity = os.urandom(32).hex()
+    anchor = _state_parent()
+    try:
+        with _private_directory(anchor, "deploy-state") as state:
+            def state_matches():
+                for name, saved in folders.items():
+                    actual = os.stat(name, dir_fd=state, follow_symlinks=False)
+                    _private_info(actual, directory=True)
+                    _need(_directory_identity(actual) == _directory_identity(os.fstat(saved)),
+                          "installation intent lost original lock directories")
+            state_matches()
+            with _installation_namespace(state, create=True, owned_identity=identity) as (namespace, _):
+                with _private_directory(namespace, identity, create=True, exclusive=True) as root:
+                    initial = _directory_identity(os.fstat(root))
+                    recheck()
+                    _need(set(os.listdir(namespace)) == {identity} and not os.listdir(root),
+                          "installation intent directory is not new and empty")
+                    raw = _installation_intent_bytes(
+                        installation_id=identity, retention_id=retention_id,
+                        target_source_sha=observation["sourceSha"],
+                        installed_runtime_source_sha=observation["currentArchiveSourceSha"],
+                        observation_sha256=_hash(_json(observation)),
+                        created_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"))
+                    _installation_record_write(root, "intent.json", raw, identity)
+                    recheck()
+                    _need(set(os.listdir(root)) == {"intent.json"} and not os.listdir(folders["maintenance"]),
+                          "installation intent or maintenance changed before marker")
+                    _need(_installation_owned_run(namespace, identity) == raw, "installation intent changed before marker")
+                    state_matches()
+                    marker = _installation_marker_bytes(raw, identity)
+                    _installation_record_write(folders["maintenance"], "active.json", marker, identity)
+                    _need(set(os.listdir(folders["maintenance"])) == {"active.json"},
+                          "unexpected maintenance evidence after intent marker")
+                    actual = _installation_record_read(root, "intent.json", identity)
+                    active = _installation_record_read(folders["maintenance"], "active.json", identity)
+                    _installation_records_match(actual, active, identity)
+                    _need(actual == raw and active == marker and initial == _directory_identity(os.fstat(root))
+                          == _directory_identity(os.stat(identity, dir_fd=namespace, follow_symlinks=False)),
+                          "installation intent path changed during recording")
+                state_matches()
+            _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
+                  "installation marker changed after namespace validation")
+            return {"installationId": identity, "intentSha256": _hash(raw), "markerSha256": _hash(marker),
+                    "canExecute": False, "startupFenceConfirmed": False, "writersFrozen": False,
+                    "requiresHostRecheck": True}
+    finally:
+        os.close(anchor)  # Never clean intent/marker or retry an unknown result.
+
+
+def _record_installation_intent(retention_id, *, fetch=release.github_json):
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True, _record_intent=True)
 
 
 def main(argv=None):
