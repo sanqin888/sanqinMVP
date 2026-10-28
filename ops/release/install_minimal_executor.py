@@ -2025,8 +2025,11 @@ def _installation_record_value(raw, identity, *, marker=False):
     _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD
           and isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity),
           "invalid installation record input")
-    value = json.loads(raw, object_pairs_hook=_unique,
-                       parse_constant=lambda _: _need(False, "invalid installation JSON constant"))
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid installation JSON constant"))
+    except (json.JSONDecodeError, UnicodeError):
+        raise release.ReleaseContractError("invalid installation record JSON") from None
     fields = ({"schemaVersion", "kind", "installationId", "intentSha256"} if marker else
               {"schemaVersion", "kind", "installationId", "retentionId", "targetSourceSha",
                "installedRuntimeSourceSha", "observationSha256", "createdAt", "canExecute"})

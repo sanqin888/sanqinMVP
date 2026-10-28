@@ -12,7 +12,7 @@ reload后核准确文件/有效加载属性并重做来源、四材料与完整�
 
 仅上述内部阶段全部通过时，installationIntent.startupFenceConfirmed=true、outcome=TEMPORARY_DENY_GATES_LOADED；writersFrozen、canExecute、readyToInstall、hostPreflightComplete、operationSuccessProven仍false，requiresHostRecheck=true。尚无安装CLI或完整安装/完成交接；本批不停止容器/daemon、不改restart策略、不覆盖Runtime或写DB。准确原ID停写前仍须保存恢复依据并新鲜复核，不能由加载摘要单独授权后续动作。
 
-新增20项组合/真实pipe客户端模型测试，覆盖原两锁跨度、默认意图路径、部分写入、reload未知/不重放、marker/job/namespace晚变、未加载、Docker漂移、非本轮有效属性/override/backup原件变化、同字节门禁替换、原空目录身份、固定命令/环境及输出预算/超时/非root。文件/锁/pipe为真实临时对象，GitHub/Docker/manager/根锚点等为模型。仅Python3.10 AST、全局名字/方法/空白审阅、三段提取主体AST等价及准确写回核对，项目测试待CI；845是前批结果。
+新增20项组合/真实pipe客户端模型测试，覆盖原两锁跨度、默认意图路径、部分写入、reload未知/不重放、marker/job/namespace晚变、未加载、Docker漂移、非本轮有效属性/override/backup原件变化、同字节门禁替换、原空目录身份、固定命令/环境及输出预算/超时/非root。文件/锁/pipe为真实临时对象，GitHub/Docker/manager/根锚点等为模型。仅Python3.10 AST、全局名字/方法/空白审阅、三段提取主体AST等价及准确写回核对，首轮CI #7747（head 92dabe00b059bf1ed281e9e19dd79a656348b8e8）执行865项，两个坏marker故障模型因底层JSONDecodeError未统一为安装合同错误而报错；已仅修正该错误边界，继续保留原件并阻断。修复后项目测试待同一PR的新head CI；845是前批结果。
 
 下一步接准确保存三原ID/镜像/策略、耐久恢复依据与受限停写；停写后手动快照available/完整旧工具恢复实物、逐文件安装/永久门禁/旧应用核验交接、Mac薄入口与D4统一真实隔离验收仍OPEN。17+Manifest/250/300、四材料、三永久模板、九helper及唯一应用state保持，无依赖包/业务schema变化；三组研究继续暂停、不取消，未执行现场或生产操作。
 
