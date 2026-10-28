@@ -1,8 +1,28 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D2 原保存ID受限停写（本地待审）
+## D2 安装前恢复原件源采集（本地待审）
 
-**2026-10-28 当前进度：D2_SAVED_WRITER_FREEZE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_RECOVERY_ORIGINAL_SOURCES_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+本批基于[PR #3032](https://github.com/sanqin888/sanqinMVP/pull/3032)合并dev `178ce5b0346f2183b0dc150a5881facc06fc859b` 建立 `feat/runtime-minimal-recovery-sources-20261028`。先补RECOVERY_READY的原件采集层，未把“已有摘要”当完整恢复包，也未接收snapshotAvailable=true之类布尔输入来开放安装。新增三个内部只读函数，无公开CLI、归档写入、安装/续跑或AWS调用。
+
+固定采集旧17+原Manifest、.env/唯一state/C4原字节、两备份unit及三外部备份文件、plans/jobs中既有64hex.json原字节，以及本次retention四份不可变材料。Runtime仍匹配旧封存归档；外部原件经原reader证明与封存源码准确相等后，使用该准确字节与外部元数据，不把单独hash当文件内容。保存九helper/独立bootstrap、三预留drop-in及两Docker完整unit原本不存在的事实。systemd原件reader拒绝任何已有drop-in，临时拒绝模板不会被当作安装前原件；采集必须发生在安装门禁写入前。
+
+公开内部查询自行持原job→plan两锁，进入/退出核维护与未决job，刷新既定来源/工具范围，并对全组原字节、元数据、目录/清单与retention做两次稳定比较。仅返回摘要和元数据；原秘密字节仅在内部内存mapping中使用，不能直接输出/记录该mapping。原有读白名单/四材料、17及旧protected_config_snapshot固定17+5清单均未扩展，不导入九helper或目标Python。
+
+私有plans/jobs目录固定且权限/文件单链接/nofollow严格核对；每目录最多1025项（含原锁），每文件沿MAX_FILE预算、私有内容合计16MiB、全组原件48MiB独立预算（默认与MAX_TOTAL一致）。原锁只记录元数据，不把锁当普通恢复payload复制/重建，保留原inode。任意坏权限、链接、未知成员、超限、清单/同字节换inode/晚期来源变化阻断，保留实际原件，不修复、清理或fsync。该查询不执行Docker/systemd命令、不停写或恢复业务。
+
+仅结果INSTALLATION_RECOVERY_SOURCES_OBSERVED、scope=pre-install-original-files-only；completePrivateStateCaptured/recoveryArchiveDurable/snapshotAvailable/recoveryReady/readyToInstall/canExecute均false、requiresHostRecheck=true。尚未覆盖其余历史retention/安装事务与完整私有状态、当前完整容器/加载配置恢复材料、耐久恢复归档/读回及停写后准确Lightsail手动快照available证明。当前查询不是RECOVERY_READY，也不使已冻结事务可从文件resume。
+
+新增18项临时真实文件模型测试：摘要无秘密/许可恒false、完整固定原字节及元数据、无写入/同步/命令、原两锁/inode、CRLF/$/$$和0400原样、私有plan按数据保存、unit原件与缺失事实、已有临时门禁拒绝、旧字节/helper冲突、同字节替换/晚期清单/来源、未知/软硬链接/坏mode/预算、原四材料及无CLI。根锚点/账户/GitHub为模型；仅Python3.10 AST、名字/方法/空白、全部原定义不变、差异及准确读回静态核对，项目测试待CI，不把905当本批结果。
+
+下一步将原件采集接到同一次owned安装观察中，在写临时门禁前保留准确原件，再于已停写阶段完成私有恢复归档create-only耐久保存/读回及完整范围核对；随后绑定操作者对停写后准确Lightsail手动快照available的核验，不能自动调用AWS或据本批摘要覆盖工具。逐文件安装/永久门禁/原应用核验交接、Mac薄入口及D4统一真实隔离验收仍OPEN。三组研究继续暂停、不取消，无依赖包/业务schema或生产操作。
+
+## D2 原保存ID受限停写（源码已合并）
+
+**2026-10-28 当前进度：D2_SAVED_WRITER_FREEZE_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3032](https://github.com/sanqin888/sanqinMVP/pull/3032) head `986fcc8dfdb7e4d4145998efc735366ee2f099f3` 经[CI #7752](https://github.com/sanqin888/sanqinMVP/actions/runs/40711925725)全绿（4成功/6范围跳过；Release默认Python与3.10各905、Runtime1080、既有C1回归412），合并dev `178ce5b0346f2183b0dc150a5881facc06fc859b`，无需CI修复；未执行生产操作。
 
 本批基于[PR #3031](https://github.com/sanqin888/sanqinMVP/pull/3031)合并dev `c1bbff97a3c28a867ec16ca29afa2053ba2f71cd`，分支 `feat/runtime-minimal-freeze-writers-20261028`。内部 _freeze_installation_writers 续接同一次原两锁、全部新鲜观察、新意图/marker、准确临时门禁加载及writers.json耐久保存；严格阶段开关，不从已存在记录resume，不新增CLI或完成记录格式。
 
@@ -16,7 +36,7 @@
 
 仅同锁编排及最终复核成功返回INSTALLATION_WRITERS_FROZEN，内存结果writersFrozen=true；原writers.json不可变，仍canExecute=false。readyToInstall/hostPreflightComplete/operationSuccessProven/canExecute仍false，recoveryReady=false、requiresHostRecheck=true。无额外FROZEN文件或续跑票据，现有意图和原对象记录保留未知边界。
 
-新增22项组合/真实pipe客户端模型测试：准确序列及DB/原件不变、旧入口默认不动作、首次及临近首动作前漂移、update/stop响应丢失、围堵全失败/不重放、marker/记录/门禁/额外容器/DB重启/策略/运行状态/lifetime/mount漂移、停写后DB历史/backup原件变化、完整阶段与无CLI、专用客户端精确参数/默认拒绝、45/30秒边界及坏证明/输出/预算。文件/锁/pipe为真实临时对象，Docker/systemd/GitHub/根锚点为模型；仅Python3.10 AST、全局名字/方法/空白、过程IO主体等价、差异及准确读回静态核对，项目测试待CI，不把883作为本批结果。
+新增22项组合/真实pipe客户端模型测试：准确序列及DB/原件不变、旧入口默认不动作、首次及临近首动作前漂移、update/stop响应丢失、围堵全失败/不重放、marker/记录/门禁/额外容器/DB重启/策略/运行状态/lifetime/mount漂移、停写后DB历史/backup原件变化、完整阶段与无CLI、专用客户端精确参数/默认拒绝、45/30秒边界及坏证明/输出/预算。文件/锁/pipe为真实临时对象，Docker/systemd/GitHub/根锚点为模型；仅Python3.10 AST、全局名字/方法/空白、过程IO主体等价、差异及准确读回静态核对，上述22项已随本批CI在两套Release各905项中通过；真实系统验收仍OPEN。
 
 下一步核此阶段CI及未知边界，接停写后手动快照available/完整旧工具恢复实物的RECOVERY_READY。逐文件工具安装、永久门禁、原应用核验/最终交接、Mac薄入口和D4统一真实隔离验收仍OPEN。17+Manifest/250/300、原四材料、九helper/三永久模板、依赖包、业务schema及唯一应用state权威保持；三组研究继续暂停、不取消，未执行生产预检、停写、安装、AWS或数据库写操作。
 
