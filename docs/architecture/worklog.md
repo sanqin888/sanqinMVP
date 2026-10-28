@@ -1,8 +1,26 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-28 — 最小更新执行器：原两锁内意图与marker写入
+
+**2026-10-28 当前进度：D2_INSTALL_INTENT_FLOW_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+事务目录批[PR #3027](https://github.com/sanqin888/sanqinMVP/pull/3027) head `16a4a2628695219348522bcd47cee24cf84c7d49` 经[CI #7741](https://github.com/sanqin888/sanqinMVP/actions/runs/40693801613)全绿（4成功/6范围跳过；Release默认Python与3.10各825、Runtime1080、既有C1回归412），合并dev `51d8e345f27d3bf9cbd8b0f0488b1fa772cc811d`，无CI修复；未执行生产操作。
+
+本批从该dev建立feat/runtime-minimal-intent-flow-20261028，新增内部_record_installation_intent续接完整主机观察。必须启用全部原预检阶段且保持原job→plan两锁，不从文件导入观察dict，不以caller授权布尔值替代观察；普通只读入口默认不写记录。记录入口无公开CLI，仅源码/模型中的内部安装准备阶段，完整安装就绪及实际执行仍待后续门禁。
+
+完整双读通过后，固定state重开FD必须与原锁目录身份一致，显式建立/核对空installation-runs根；本次ID由内部32随机字节生成，不由调用者指定。exclusive建立0700事务目录、同步及读回；自行重做原来源、现场稳定结果、四材料及维护空闲复核后，构造绑定retention/准确新旧Runtime来源与本轮观察摘要的无执行权意图，create-only耐久保存。意图已知耐久后再做同一组新鲜复核，核准确原意图/空维护，再create-only写独立kind marker；两原件摘要互绑、原目录身份和维护全集均读回，未知结果保留，不删除、重试、补造或续跑。
+
+namespace原查询默认仍拒绝任何条目；仅本次新建的owned事务分支在退出时允许准确一个ID目录及其中唯一intent.json，并严格重读原件，其他事务/成员仍阻断。marker写入成功后不再调用要求maintenance为空的普通材料检查，而是核唯一active.json与意图互绑；同锁流程结束前再次读marker，保留原锁inode。
+
+结果为INSTALLATION_INTENT_RECORDED及摘要，canExecute/readyToInstall/hostPreflightComplete/operationSuccessProven仍false，startupFenceConfirmed/writersFrozen=false、requiresHostRecheck=true。意图与marker落盘不证明临时拒绝门禁有效，更不证明已停写；尚不安装drop-in、不reload/停启服务、不改restart策略或工具/state/DB。源码具备这个内部写阶段不代表本次已在生产执行，也不授权从其他入口绕过未决事务。
+
+新增10项完整组合模型测试：同锁新鲜观察后准确成对记录/许可恒false、第二次尝试保留原件、两次写持原两锁、部分意图不写marker、部分marker保留耐久意图、意图后AutoRemove漂移阻断marker、晚期维护保留、namespace同步失败保留、未知事务阻断及旧只读入口/严格前置/无CLI。临时文件/目录/锁为真实对象，外部Docker/SQL/Node/HTTP/GitHub/根身份等仍为模型；仅Python3.10 AST、静态名字/方法/空白、改动定义范围与写回检查，项目测试待CI，不把825当本批结果。
+
+下一步核该内部写流程的CI与剩余故障边界，再接三固定临时拒绝门禁的受限安装/有效加载核对。真实解释器/Compose/DB连接、美元往返、完整耗时/限流与系统中断验收仍OPEN；准确保存ID停写、手动快照available/恢复实物、逐文件工具安装/交接、Mac薄入口仍按原D2–D4继续。无新依赖包/九helper导入/公开CLI/业务schema变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、原两锁/四材料及三永久门禁保持。三组研究继续暂停、不取消；未执行生产预检或安装。
+
 ## 2026-10-28 — 最小更新执行器：固定安装事务namespace
 
-**2026-10-28 当前进度：D2_INSTALLATION_NAMESPACE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_INSTALLATION_NAMESPACE_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
 
 意图原语[PR #3026](https://github.com/sanqin888/sanqinMVP/pull/3026) head `261d4f2305d6d89f8e45c982baf323ea98a5cbf7` 经[CI #7739](https://github.com/sanqin888/sanqinMVP/actions/runs/40689597233)全绿（4成功/6范围跳过；Release默认Python与3.10各815、Runtime1080、既有C1回归412），合并dev `db4e29d6b55fd5905c00b46d81fcf3dded042e9f`，无CI修复；未执行生产操作。
 
