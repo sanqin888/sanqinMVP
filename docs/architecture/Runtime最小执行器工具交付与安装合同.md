@@ -1,8 +1,24 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D2 意图记录格式与耐久原语（本地待审）
+## D2 固定安装事务namespace（本地待审）
 
-**2026-10-28 当前进度：D2_INTENT_RECORD_PRIMITIVES_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**2026-10-28 当前进度：D2_INSTALLATION_NAMESPACE_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+意图原语[PR #3026](https://github.com/sanqin888/sanqinMVP/pull/3026) head `261d4f2305d6d89f8e45c982baf323ea98a5cbf7` 经[CI #7739](https://github.com/sanqin888/sanqinMVP/actions/runs/40689597233)全绿（4成功/6范围跳过；Release默认Python与3.10各815、Runtime1080、既有C1回归412），合并dev `db4e29d6b55fd5905c00b46d81fcf3dded042e9f`，无CI修复；未执行生产操作。
+
+本批从该dev建立feat/runtime-minimal-installation-namespace-20261028，新增内部固定installation-runs目录检查/创建。入口自行获取原job→plan两锁，进入前后核原未决job/维护空闲，再经固定可信锚点打开deploy-state；不接受用户路径或已导出的观察dict。默认只读查询缺失目录，严格bool create才允许在原目录父FD下mkdir 0700；创建前核5GiB加记录预算，目录与父目录fsync、读前后owner/group/mode与FD/路径身份核对。已有坏权限、链接、替换或同步未知不修复/删除。
+
+在原锁内两次扫描事务目录，有界最多1024项；任意条目（准确hex名空目录也包括在内）都视为未决/未知而阻断，不解析成成功或自动补意图。目录缺失查询中晚出现、原目录被替换、晚期条目或维护残件都阻断并保留。只有空的固定namespace允许观察成功，结果仍canExecute/readyToInstall/operationSuccessProven=false、requiresHostRecheck=true；namespaceCreated不等于安装事务或门禁成功。
+
+本批仅创建/核对事务根目录，不创建每次installationId目录、不写intent/marker、不开放CLI，也未将新namespace扫描接到既有所有材料/主机入口；不能声称已阻断所有其他操作。意图→marker仍须在后续固定写入编排中取得同锁新鲜主机观察并明确就绪条件，不能从本批namespace结果推导写入许可。保留原记录原语/全部既有函数定义及PRIVATE_FILES四项。
+
+新增10项临时目录/原OS锁模型测试：缺失查询无写同步、新建与已有空目录权限/inode及许可恒false、坏mode/链接不修、任意事务残件保留、原两锁跨度/inode保持、晚期条目、目录fsync失败保留、低容量与晚期维护、目录替换、旧四材料不变/严格开关/无CLI。固定锚点/root/容量为模型；仅Python3.10 AST、静态名字/方法/空白、既有函数不变和准确读回，项目测试待CI，不把815当本批结果。
+
+下一步继续每次事务目录与未决事务门禁的接入，再完成原两锁下新鲜预检→意图耐久→marker耐久编排及故障测试，之后接临时拒绝门禁。当前完整安装就绪、恢复实物、准确原ID停写/停写后快照available、逐文件安装/完成交接、Mac入口与统一真实隔离验收仍OPEN。无新依赖包/九helper导入/业务schema/公开CLI变化，无12上下文owner/SCC/债务/依赖图基线变化，未重跑scanner；固定17+Manifest/250/300、原两锁/四材料与三永久门禁保持。三组研究继续暂停、不取消；未执行生产预检或安装。
+
+## D2 意图记录格式与耐久原语（源码已合并）
+
+**2026-10-28 当前进度：D2_INTENT_RECORD_PRIMITIVES_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
 
 安装意图合同[PR #3025](https://github.com/sanqin888/sanqinMVP/pull/3025) head `810a7768e81e840e0441a133f9f8073c9496525a` 经[CI #7737](https://github.com/sanqin888/sanqinMVP/actions/runs/40687640526)成功（scope成功，其余9项范围跳过，未运行项目测试），合并dev `c3cb1f8a91de32f39be4159306f364793b72176d`。
 
