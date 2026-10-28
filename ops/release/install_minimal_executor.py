@@ -722,17 +722,18 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
           and (not include_effective_configuration or include_migrations)
           and (not include_external_backup or include_effective_configuration)
           and (not _record_intent or include_external_backup) and (not _load_deny_gates or _record_intent)
-          and (not _save_writers or _load_deny_gates) and (not _freeze_writers or _save_writers),
+          and (not _save_writers or _load_deny_gates) and (not _freeze_writers or _save_writers)
+          and (not _retain_recovery or _freeze_writers),
           "invalid installation observation switches")
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -812,6 +813,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         if include_external_backup:
             result.update({"externalBackupExecutablesObserved": True, "externalBackup": before[9]})
         if _record_intent:
+            frozen_recheck = None
             def recheck():
                 _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch) == review,
                       "installation material source changed before intent recording")
@@ -855,6 +857,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                       == loaded["files"], "temporary gates changed after writer recording")
                 return saved
             def freeze_writers(check_owned, intent, writers, installation_id, loaded):
+                nonlocal frozen_recheck
                 def verify_context():
                     check_owned()
                     _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
@@ -874,16 +877,47 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                           and _hash(_json(database["history"])) == before[5]["migrationHistorySha256"],
                           "database identity or migration history changed during writer freeze")
                     check_owned()
-                return _freeze_saved_installation_writers(intent, writers, installation_id,
+                frozen = _freeze_saved_installation_writers(intent, writers, installation_id,
                     loaded["files"], before[2], run=run, check_owned=check_owned, verify_context=verify_context,
                     mutate=lambda role, action: _installation_writer_command(
                         intent, writers, installation_id, role, action, deadline=deadline),
                     systemd_run=lambda args: _systemd_command(args, deadline=deadline))
+                def recheck_frozen():
+                    verify_context()
+                    _installation_writer_observation(_installation_writers_match(intent, writers, installation_id),
+                        before[2], run, set(INSTALL_WRITER_ROLES), set(INSTALL_WRITER_ROLES))
+                    check_owned()
+                frozen_recheck = recheck_frozen
+                return frozen
+            capture = _installation_recovery_sources(folders, identity, kit, old, value) if _retain_recovery else None
+            def retain_recovery(persist, check_owned, intent, writers, installation_id):
+                _need(capture is not None and callable(frozen_recheck), "recovery retention requires this owned frozen flow")
+                try:
+                    frozen_recheck()
+                    private = _recovery_private_sources(folders)
+                    expected_private = {path: raw for path, raw in capture[0].items()
+                        if path.startswith(("/opt/sanq/deploy-state/jobs/", "/opt/sanq/deploy-state/plans/"))}
+                    _need(private[0] == expected_private
+                          and private[2] == capture[1]["originalLockMetadata"]
+                          and private[3] == capture[1]["privateDirectories"]
+                          and all(private[1][path] == capture[1]["files"][path]["identity"] for path in private[0]),
+                          "recovery private originals changed after capture")
+                    payload = _installation_recovery_payload(capture, intent, writers, installation_id)
+                    receipt = _installation_recovery_receipt(payload, intent, writers, installation_id, _hash(_json(capture[1])))
+                    check_owned()
+                    result = persist(payload, receipt)
+                    frozen_recheck()
+                    check_owned()
+                    return result
+                except BaseException:
+                    raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
             result["installationIntent"] = _write_installation_intent_locked(
                 folders, identity, result, recheck=recheck, load_gates=load_gates if _load_deny_gates else None,
                 save_writers=save_writers if _save_writers else None,
-                freeze_writers=freeze_writers if _freeze_writers else None)
-            result["outcome"] = ("INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
+                freeze_writers=freeze_writers if _freeze_writers else None,
+                retain_recovery=retain_recovery if _retain_recovery else None)
+            result["outcome"] = ("INSTALLATION_RECOVERY_FILES_RETAINED" if _retain_recovery else
+                                 "INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
                                  "INSTALLATION_WRITERS_SAVED" if _save_writers else
                                  "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED")
         return result
@@ -2250,9 +2284,12 @@ def _installation_namespace(parent, *, create=False, owned_identity=None, owned_
             if owned_identity is None:
                 _installation_runs_clear(fd)
             else:
-                _need(owned_records is None or set(owned_records) <= {"writers.json"},
+                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery"},
                       "unreviewed owned installation records")
-                _installation_owned_run(fd, owned_identity, saved_writers=(owned_records or {}).get("writers.json"))
+                recovery = (owned_records or {}).get("recovery")
+                _need(recovery is None or set(recovery[0]) == RECOVERY_FILES, "incomplete owned recovery pair")
+                _installation_owned_run(fd, owned_identity, saved_writers=(owned_records or {}).get("writers.json"),
+                                        recovery=recovery)
             after = os.fstat(fd)
             path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
             _private_info(after, directory=True)
@@ -2293,25 +2330,41 @@ def _inspect_installation_runs(*, create=False):
 
 
 
-def _installation_owned_run(namespace, identity, *, saved_writers=None):
+def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None):
     _need(saved_writers is None or type(saved_writers) is bytes, "invalid owned writer record proof")
     _need(set(os.listdir(namespace)) == {identity}, "installation transaction inventory changed")
     with _private_directory(namespace, identity) as root:
         expected = {"intent.json"} | ({"writers.json"} if saved_writers is not None else set())
+        _need(recovery is None or saved_writers is not None and type(recovery) is tuple and len(recovery) == 2,
+              "invalid owned recovery proof")
+        if recovery is not None:
+            expected.add("recovery")
         _need(set(os.listdir(root)) == expected, "unexpected installation transaction members")
         intent = _installation_record_read(root, "intent.json", identity)
         if saved_writers is not None:
             actual = _installation_record_read(root, "writers.json", identity)
             _need(actual == saved_writers, "owned saved writer bytes changed")
             _installation_writers_match(intent, actual, identity)
+        if recovery is not None:
+            files, directory_identity = recovery
+            _need(type(files) is dict and set(files) <= RECOVERY_FILES
+                  and ("recovery.json" not in files or "recovery.tar" in files), "invalid owned recovery members")
+            with _installation_recovery_directory(root) as directory:
+                _need(_directory_identity(os.fstat(directory)) == directory_identity, "owned recovery directory replaced")
+                _need(set(os.listdir(directory)) == set(files), "owned recovery inventory changed")
+                for name, raw in files.items():
+                    _need(_installation_recovery_read(directory, name) == raw, "owned recovery bytes changed")
+                if "recovery.json" in files:
+                    _installation_recovery_receipt_value(files["recovery.json"], files["recovery.tar"],
+                                                         intent, saved_writers, identity)
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     identity = os.urandom(32).hex()
-    gate_result = saved_result = frozen_result = None
+    gate_result = saved_result = frozen_result = recovery_result = None
     owned_records = {}
     anchor = _state_parent()
     try:
@@ -2358,7 +2411,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         _need(_directory_identity(current_state) == _directory_identity(os.fstat(state)),
                               "owned installation state directory replaced")
                         _material_jobs_idle(folders)
-                        _need(_installation_owned_run(namespace, identity, saved_writers=owned_records.get("writers.json")) == raw
+                        _need(_installation_owned_run(namespace, identity, saved_writers=owned_records.get("writers.json"),
+                                                       recovery=owned_records.get("recovery")) == raw
                               and set(os.listdir(folders["maintenance"])) == {"active.json"}
                               and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
                               and _directory_identity(os.fstat(root)) == initial
@@ -2391,6 +2445,26 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         check_owned()
                         frozen_result = freeze_writers(check_owned, raw, owned_records["writers.json"], identity, gate_result)
                         check_owned()
+                    if retain_recovery is not None:
+                        _need(frozen_result is not None and frozen_result["writersFrozen"] is True,
+                              "recovery persistence requires confirmed frozen writers")
+                        def persist_recovery(payload, receipt):
+                            check_owned()
+                            _installation_recovery_receipt_value(receipt, payload, raw, owned_records["writers.json"], identity)
+                            with _installation_recovery_directory(root, create=True) as directory:
+                                records = {}
+                                owned_records["recovery"] = (records, _directory_identity(os.fstat(directory)))
+                                check_owned()
+                                for name, content in (("recovery.tar", payload), ("recovery.json", receipt)):
+                                    _installation_recovery_write(directory, name, content)
+                                    records[name] = content
+                                    check_owned()
+                            return {"archiveSha256": _hash(payload), "archiveBytes": len(payload),
+                                    "receiptSha256": _hash(receipt), "recoveryArchiveDurable": True,
+                                    "recoveryReady": False, "snapshotAvailable": False, "canExecute": False}
+                        recovery_result = retain_recovery(persist_recovery, check_owned, raw,
+                                                          owned_records["writers.json"], identity)
+                        check_owned()
                 state_matches()
             _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
                   "installation marker changed after namespace validation")
@@ -2398,7 +2472,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                     "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": frozen_result is not None,
                     "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {}),
                     **({"savedWriters": saved_result} if saved_result is not None else {}),
-                    **({"frozenWriters": frozen_result} if frozen_result is not None else {})}
+                    **({"frozenWriters": frozen_result} if frozen_result is not None else {}),
+                    **({"recoveryFiles": recovery_result} if recovery_result is not None else {})}
     finally:
         os.close(anchor)  # Never clean intent/marker/gates or retry an unknown result.
 
@@ -2960,6 +3035,247 @@ def _observe_installation_recovery_sources(retention_id, *, fetch=release.github
         _need(_retained_contents(root, retention_id) == (kit, old, retained), "recovery retained materials changed")
         _idle_for_materials(folders)
         return before[1]
+
+
+
+RECOVERY_FILES = frozenset(("recovery.tar", "recovery.json"))
+MAX_RECOVERY_ARCHIVE_BYTES = MAX_RECOVERY_SOURCE_BYTES + 8 * 1024 * 1024
+MAX_RECOVERY_MEMBERS = 2100
+
+
+def _installation_recovery_entries(capture, intent, writers, identity):
+    _need(type(capture) is tuple and len(capture) == 2
+          and type(capture[0]) is dict and type(capture[1]) is dict, "invalid recovery source capture")
+    files, summary = capture
+    recorded = _installation_record_value(intent, identity)
+    saved = _installation_writers_match(intent, writers, identity)
+    _need(summary.get("scope") == "pre-install-original-files-only"
+          and summary.get("retentionId") == recorded["retentionId"]
+          and summary.get("sourceSha") == recorded["targetSourceSha"]
+          and summary.get("currentArchiveSourceSha") == recorded["installedRuntimeSourceSha"]
+          and summary.get("applicationSha") == saved["applicationSha"]
+          and type(summary.get("files")) is dict and set(summary["files"]) == set(files),
+          "recovery capture is not bound to this installation")
+    _need(all(summary.get(key) is False for key in ("canExecute", "readyToInstall", "recoveryReady",
+          "snapshotAvailable", "recoveryArchiveDurable", "completePrivateStateCaptured")),
+          "recovery source capture cannot authorize installation")
+    fixed = {"/opt/sanq/runtime/" + name for name in (*RUNTIME_MEMBERS, "runtime-release.json", *CONFIGURATION_NAMES)}
+    fixed |= {"/etc/systemd/system/" + unit for unit in ("sanq-backup.service", "sanq-backup.timer")}
+    fixed |= {"/" + "/".join((*parts, name)) for parts, name, _, _, _ in EXTERNAL_BACKUP_FILES}
+    fixed |= {"/opt/sanq/deploy-state/installations/" + recorded["retentionId"] + "/" + name for name in PRIVATE_FILES}
+    absent = {"/opt/sanq/runtime/" + name for name in (*HELPERS, BOOTSTRAP)}
+    absent |= {"/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS}
+    absent |= {"/etc/systemd/system/" + unit for unit in ("docker.service", "docker.socket")}
+    _need(fixed <= set(files) and summary.get("absentFiles") == sorted(absent)
+          and len(files) + 3 <= MAX_RECOVERY_MEMBERS, "recovery fixed inventory differs")
+    total = 0
+    for path, raw in files.items():
+        _need(isinstance(path, str) and (path in fixed or re.fullmatch(
+              r"/opt/sanq/deploy-state/(jobs|plans)/[a-f0-9]{64}\.json", path) is not None),
+              "unreviewed recovery payload path")
+        proof = summary["files"][path]
+        _need(type(raw) is bytes and 0 < len(raw) <= MAX_RECOVERY_SOURCE_BYTES and type(proof) is dict
+              and set(proof) == {"sha256", "bytes", "identity"} and proof["sha256"] == _hash(raw)
+              and type(proof["bytes"]) is int and proof["bytes"] == len(raw), "recovery source bytes differ")
+        info = proof["identity"]
+        _need(type(info) is list and len(info) == 9 and all(type(value) is int for value in info)
+              and info[2] == len(raw) and info[8] == 1 and stat.S_ISREG(info[7]), "recovery source metadata differs")
+        total += len(raw)
+    _need(total <= MAX_RECOVERY_SOURCE_BYTES and type(summary.get("capturedBytes")) is int
+          and summary["capturedBytes"] == total,
+          "recovery total bytes differ")
+    index = _json({"schemaVersion": 1, "kind": "sanq-minimal-executor-recovery-files",
+                   "installationId": identity, "intentSha256": _hash(intent), "writersSha256": _hash(writers),
+                   "capture": summary, "canExecute": False, "recoveryReady": False})
+    _need(len(index) <= 2 * 1024 * 1024, "recovery index exceeds budget")
+    return {"originals" + path: raw for path, raw in files.items()} | {
+        "recovery-index.json": index, "installation/intent.json": intent, "installation/writers.json": writers}
+
+
+def _installation_recovery_verify(payload, entries):
+    _need(type(payload) is bytes and 0 < len(payload) <= MAX_RECOVERY_ARCHIVE_BYTES
+          and len(entries) <= MAX_RECOVERY_MEMBERS, "recovery archive exceeds budget")
+    seen, end = set(), 0
+    names = iter(sorted(entries))
+    try:
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
+            for member in archive:
+                _need(member.name in entries and member.name not in seen and member.name == next(names, None)
+                      and member.type == tarfile.REGTYPE and member.mode == 0o600
+                      and member.uid == member.gid == member.mtime == 0
+                      and member.uname == member.gname == member.linkname == "" and not member.pax_headers,
+                      "unreviewed recovery archive member")
+                expected = entries[member.name]
+                _need(member.size == len(expected)
+                      and payload[member.offset:member.offset + 512] == member.tobuf(format=tarfile.USTAR_FORMAT),
+                      "recovery archive header differs")
+                stream = archive.extractfile(member)
+                _need(stream is not None and stream.read(len(expected) + 1) == expected, "recovery archive bytes differ")
+                stream.close()
+                seen.add(member.name)
+                end = member.offset_data + ((member.size + 511) // 512) * 512
+                _need(not any(payload[member.offset_data + member.size:end]), "recovery member padding differs")
+        canonical_size = ((end + 1024 + 10239) // 10240) * 10240
+        _need(seen == set(entries) and len(payload) == canonical_size and not any(payload[end:]),
+              "recovery archive inventory or trailer differs")
+    except (tarfile.TarError, ValueError, UnicodeError, OSError, EOFError):
+        raise release.ReleaseContractError("invalid recovery archive") from None
+
+
+def _installation_recovery_payload(capture, intent, writers, identity):
+    entries = _installation_recovery_entries(capture, intent, writers, identity)
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        for name, raw in sorted(entries.items()):
+            member = tarfile.TarInfo(name)
+            member.size, member.mode = len(raw), 0o600
+            member.uid = member.gid = member.mtime = 0
+            archive.addfile(member, io.BytesIO(raw))
+    payload = output.getvalue()
+    _installation_recovery_verify(payload, entries)
+    return payload
+
+
+
+def _installation_recovery_index(payload, intent, writers, identity):
+    try:
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
+            member = archive.getmember("recovery-index.json")
+            _need(member.type == tarfile.REGTYPE and 0 < member.size <= 2 * 1024 * 1024,
+                  "invalid recovery index member")
+            stream = archive.extractfile(member)
+            _need(stream is not None, "recovery index missing")
+            raw = stream.read(member.size + 1)
+            stream.close()
+            value = json.loads(raw, object_pairs_hook=_unique,
+                               parse_constant=lambda _: _need(False, "invalid recovery index JSON constant"))
+    except (tarfile.TarError, KeyError, ValueError, UnicodeError, OSError, EOFError):
+        raise release.ReleaseContractError("invalid recovery index") from None
+    _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "installationId", "intentSha256",
+          "writersSha256", "capture", "canExecute", "recoveryReady"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == "sanq-minimal-executor-recovery-files" and value["installationId"] == identity
+          and value["intentSha256"] == _hash(intent) and value["writersSha256"] == _hash(writers)
+          and type(value["capture"]) is dict and value["canExecute"] is False and value["recoveryReady"] is False
+          and raw == _json(value), "recovery index binding differs")
+    return value
+
+
+def _installation_recovery_receipt(payload, intent, writers, identity, capture_sha):
+    _installation_writers_match(intent, writers, identity)
+    _need(type(payload) is bytes and 0 < len(payload) <= MAX_RECOVERY_ARCHIVE_BYTES
+          and isinstance(capture_sha, str) and re.fullmatch(r"[a-f0-9]{64}", capture_sha),
+          "invalid recovery receipt input")
+    _need(capture_sha == _hash(_json(_installation_recovery_index(payload, intent, writers, identity)["capture"])),
+          "recovery receipt capture digest differs from its payload")
+    return _json({"schemaVersion": 1, "kind": "sanq-minimal-executor-recovery-receipt",
+        "installationId": identity, "intentSha256": _hash(intent), "writersSha256": _hash(writers),
+        "archiveSha256": _hash(payload), "archiveBytes": len(payload), "captureSha256": capture_sha,
+        "canExecute": False, "recoveryReady": False, "snapshotAvailable": False, "completePrivateStateCaptured": False})
+
+
+def _installation_recovery_receipt_value(raw, payload, intent, writers, identity):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD, "recovery receipt exceeds budget")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid recovery JSON constant"))
+    except (json.JSONDecodeError, UnicodeError):
+        raise release.ReleaseContractError("invalid recovery receipt JSON") from None
+    _need(type(value) is dict and isinstance(value.get("captureSha256"), str)
+          and raw == _installation_recovery_receipt(payload, intent, writers, identity, value["captureSha256"]),
+          "recovery receipt binding or canonical bytes differ")
+    return value
+
+
+@contextlib.contextmanager
+def _installation_recovery_directory(parent, *, create=False):
+    _need(type(create) is bool and (not create or os.geteuid() == 0), "unprivileged recovery directory creation")
+    _private_info(os.fstat(parent), directory=True)
+    if create:
+        os.mkdir("recovery", mode=0o700, dir_fd=parent)  # Exclusive; never adopt a previous directory.
+    fd = os.open("recovery", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        before = os.fstat(fd)
+        _private_info(before, directory=True)
+        path = os.stat("recovery", dir_fd=parent, follow_symlinks=False)
+        _private_info(path, directory=True)
+        _need(_directory_identity(before) == _directory_identity(path), "recovery directory changed during open")
+        if create:
+            _need(not os.listdir(fd), "new recovery directory is not empty")
+            os.fsync(fd)
+            os.fsync(parent)
+        yield fd
+        after, path = os.fstat(fd), os.stat("recovery", dir_fd=parent, follow_symlinks=False)
+        _private_info(after, directory=True)
+        _private_info(path, directory=True)
+        _need(_directory_identity(before) == _directory_identity(after) == _directory_identity(path),
+              "recovery directory changed")
+    finally:
+        os.close(fd)
+
+
+def _installation_recovery_read(root, name):
+    _need(name in RECOVERY_FILES, "unreviewed recovery file")
+    _private_info(os.fstat(root), directory=True)
+    maximum = MAX_RECOVERY_ARCHIVE_BYTES if name == "recovery.tar" else MAX_INSTALL_RECORD
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        _need(0 < before.st_size <= maximum, "recovery file size differs")
+        chunks, size = [], 0
+        while size <= maximum:
+            block = os.read(fd, min(65536, maximum + 1 - size))
+            if not block:
+                break
+            chunks.append(block)
+            size += len(block)
+        after, path = os.fstat(fd), os.stat(name, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(path)
+        _need(size == before.st_size and _installed_fingerprint(before) == _installed_fingerprint(after)
+              == _installed_fingerprint(path), "recovery file changed around read")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _installation_recovery_write(root, name, raw):
+    """Low-level create-only primitive. No caller path or standalone execution permit."""
+    _need(os.geteuid() == 0 and name in RECOVERY_FILES and type(raw) is bytes, "unreviewed recovery write")
+    _private_info(os.fstat(root), directory=True)
+    maximum = MAX_RECOVERY_ARCHIVE_BYTES if name == "recovery.tar" else MAX_INSTALL_RECORD
+    _need(0 < len(raw) <= maximum, "recovery output exceeds budget")
+    disk = os.fstatvfs(root)
+    _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + len(raw), "insufficient recovery storage reserve")
+    fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        remaining = memoryview(raw)
+        while remaining:
+            count = os.write(fd, remaining)
+            _need(count > 0, "short recovery write")
+            remaining = remaining[count:]
+        os.fsync(fd)
+        os.fsync(root)
+        _need(_installation_recovery_read(root, name) == raw, "recovery write readback differs")
+        after, path = os.fstat(fd), os.stat(name, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(path)
+        _need((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+              and _installed_fingerprint(after) == _installed_fingerprint(path), "recovery output replaced")
+    finally:
+        os.close(fd)  # Preserve empty, partial or complete files on every unknown result.
+
+
+def _retain_installation_recovery(retention_id, *, fetch=release.github_json):
+    """New owned installation only. Retain partial recovery files, never install/restore."""
+    return _observe_installed_runtime(retention_id, fetch=fetch,
+        include_configuration=True, include_docker=True, include_systemd=True,
+        include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True, _retain_recovery=True)
 
 
 def main(argv=None):
