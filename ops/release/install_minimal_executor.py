@@ -2084,6 +2084,99 @@ def _installation_record_write(root, name, raw, installation_id):
         os.close(fd)  # Keep all partial files; never unlink, truncate, replay or clean markers.
 
 
+
+# Fixed transaction namespace only. No intent/marker write orchestration yet.
+INSTALLATION_RUNS = "installation-runs"
+
+
+def _installation_runs_clear(root):
+    _private_info(os.fstat(root), directory=True)
+    with os.scandir(root) as entries:
+        names = []
+        for entry in entries:
+            _need(len(names) < 1024, "installation transaction inventory exceeds budget")
+            names.append(entry.name)
+    _need(not names, "unresolved or unknown installation transaction requires review")
+
+
+@contextlib.contextmanager
+def _installation_namespace(parent, *, create=False):
+    _need(type(create) is bool, "invalid installation namespace switch")
+    _private_info(os.fstat(parent), directory=True)
+    created = False
+    if create:
+        disk = os.fstatvfs(parent)
+        _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + MAX_INSTALL_RECORD,
+              "insufficient installation transaction reserve")
+        try:
+            os.mkdir(INSTALLATION_RUNS, mode=0o700, dir_fd=parent)
+            created = True
+        except FileExistsError:
+            pass
+    try:
+        fd = os.open(INSTALLATION_RUNS, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    except FileNotFoundError:
+        _need(not create, "created installation namespace disappeared")
+        yield None, False
+        # A namespace appearing during an absent observation is unresolved.
+        try:
+            os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        _need(False, "installation namespace appeared during observation")
+    else:
+        try:
+            before = os.fstat(fd)
+            path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
+            _private_info(before, directory=True)
+            _private_info(path, directory=True)
+            _need(_directory_identity(before) == _directory_identity(path),
+                  "installation namespace changed during open")
+            _installation_runs_clear(fd)
+            if create:
+                os.fsync(fd)
+                os.fsync(parent)
+            yield fd, created
+            _installation_runs_clear(fd)
+            after = os.fstat(fd)
+            path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
+            _private_info(after, directory=True)
+            _private_info(path, directory=True)
+            _private_info(os.fstat(parent), directory=True)
+            _need(_directory_identity(before) == _directory_identity(after) == _directory_identity(path),
+                  "installation namespace replaced during observation")
+        finally:
+            os.close(fd)  # Preserve empty/partial namespace on every failure.
+
+
+def _inspect_installation_runs(*, create=False):
+    """Internal namespace preparation/query under original locks, not installation approval."""
+    _need(type(create) is bool, "invalid installation namespace switch")
+    with _private_session() as folders:
+        _idle_for_materials(folders)
+        anchor = _state_parent()
+        try:
+            with _private_directory(anchor, "deploy-state") as state:
+                def check_state():
+                    for name, saved in folders.items():
+                        actual = os.stat(name, dir_fd=state, follow_symlinks=False)
+                        _private_info(actual, directory=True)
+                        _need(_directory_identity(actual) == _directory_identity(os.fstat(saved)),
+                              "installation namespace no longer shares the original lock directories")
+                check_state()
+                with _installation_namespace(state, create=create) as (root, created):
+                    _idle_for_materials(folders)
+                    result = {"outcome": "INSTALLATION_NAMESPACE_OBSERVED", "namespacePresent": root is not None,
+                              "namespaceCreated": created, "noInstallationTransactionsObserved": True,
+                              "canExecute": False, "readyToInstall": False, "operationSuccessProven": False,
+                              "requiresHostRecheck": True}
+                    _idle_for_materials(folders)
+                check_state()
+                return result
+        finally:
+            os.close(anchor)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
