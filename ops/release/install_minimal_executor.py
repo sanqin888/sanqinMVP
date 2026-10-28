@@ -889,7 +889,11 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     check_owned()
                 frozen_recheck = recheck_frozen
                 return frozen
-            capture = _installation_recovery_sources(folders, identity, kit, old, value) if _retain_recovery else None
+            capture = None
+            if _retain_recovery:
+                capture = _installation_recovery_sources(folders, identity, kit, old, value)
+                capture = _installation_recovery_host_capture(capture, before, run,
+                    lambda args: _systemd_command(args, deadline=deadline), fetch=fetch)
             def retain_recovery(persist, check_owned, intent, writers, installation_id):
                 _need(capture is not None and callable(frozen_recheck), "recovery retention requires this owned frozen flow")
                 try:
@@ -3042,14 +3046,108 @@ RECOVERY_FILES = frozenset(("recovery.tar", "recovery.json"))
 MAX_RECOVERY_ARCHIVE_BYTES = MAX_RECOVERY_SOURCE_BYTES + 8 * 1024 * 1024
 MAX_RECOVERY_MEMBERS = 2100
 
+MAX_RECOVERY_HOST_BYTES = 8 * 1024 * 1024
+RECOVERY_HOST_MEMBER = "observations/pre-install-host.json"
+
+
+def _installation_recovery_host_commands(docker):
+    """Exact read-only observations for these saved objects, never an executor."""
+    commands = {(*DOCKER, "info", "--format", "{{json .}}"), PROJECT_PS,
+                (*COMPOSE, "config", "--environment"), (*COMPOSE, "config", "--format", "json"),
+                (*DOCKER, "volume", "inspect", "--format", "{{json .}}", "sanq-app_pgdata"),
+                NETWORK_INSPECT}
+    for row in docker["containers"].values():
+        commands.add((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}", row["containerId"]))
+        commands.add((*DOCKER, "image", "inspect", "--format", "{{json .}}", row["imageId"]))
+    commands.update(tuple(_systemd_args(unit)) for unit in SYSTEMD_UNITS)
+    return commands
+
+
+def _installation_recovery_host_capture(capture, baseline, run, systemd_run, *, fetch):
+    """Keep exact pre-gate command outputs private; rerun existing baseline validators."""
+    commands, total = [], 0
+    allowed = _installation_recovery_host_commands(baseline[2])
+    def observe(client, args):
+        nonlocal total
+        _need(type(args) is list and tuple(args) in allowed,
+              "unreviewed recovery host observation")
+        raw = client(args)
+        _need(type(raw) is str and 0 < len(raw.encode("utf-8")) <= MAX_HOST_OUTPUT,
+              "invalid recovery host output")
+        total += len(raw.encode("utf-8"))
+        _need(total <= MAX_RECOVERY_HOST_BYTES and len(commands) < 128,
+              "recovery host observation exceeds budget")
+        commands.append({"argv": list(args), "stdout": raw})
+        return raw
+    docker_run = lambda args: observe(run, args)
+    manager_run = lambda args: observe(systemd_run, args)
+    _need(_docker_snapshot(baseline[1][1], baseline[0][0]["docker-compose.yml"][0], docker_run, fetch) == baseline[2]
+          and _application_binding_snapshot(baseline[2], docker_run) == baseline[6]
+          and _effective_configuration_snapshot(baseline[2], docker_run) == baseline[8],
+          "recovery host baseline changed during raw capture")
+    units = _systemd_loaded_units(manager_run)
+    _need(all(_hash(_json(fields)) == baseline[3]["units"][unit]["effectivePropertiesSha256"]
+              for unit, fields in units.items()), "recovery loaded units changed during raw capture")
+    _need({tuple(row["argv"]) for row in commands} == allowed,
+          "recovery host observation inventory differs")
+    raw = _json({"schemaVersion": 1, "kind": "sanq-minimal-executor-recovery-host",
+                 "applicationSha": baseline[1][1]["applicationSha"], "docker": baseline[2],
+                 "systemd": baseline[3], "applicationBinding": baseline[6],
+                 "effectiveConfiguration": baseline[8], "commands": commands,
+                 "canExecute": False, "recoveryReady": False})
+    _need(len(raw) <= MAX_RECOVERY_HOST_BYTES, "recovery host envelope exceeds budget")
+    files, summary = capture
+    summary = {**summary, "scope": "pre-install-files-and-host-observations", "hostObservations": {"member": RECOVERY_HOST_MEMBER,
+               "sha256": _hash(raw), "bytes": len(raw), "preGate": True, "completeHostStateCaptured": False}}
+    _need(summary["capturedBytes"] + len(raw) <= MAX_RECOVERY_SOURCE_BYTES,
+          "recovery source and host bytes exceed shared budget")
+    return files, summary, raw
+
+
+def _installation_recovery_host_value(raw, saved):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_RECOVERY_HOST_BYTES,
+          "invalid recovery host bytes")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid recovery host JSON constant"))
+    except (json.JSONDecodeError, UnicodeError):
+        raise release.ReleaseContractError("invalid recovery host JSON") from None
+    _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "applicationSha", "docker",
+          "systemd", "applicationBinding", "effectiveConfiguration", "commands", "canExecute", "recoveryReady"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == "sanq-minimal-executor-recovery-host"
+          and value["applicationSha"] == saved["applicationSha"]
+          and value["canExecute"] is False and value["recoveryReady"] is False
+          and all(type(value[key]) is dict for key in ("docker", "systemd", "applicationBinding", "effectiveConfiguration")),
+          "recovery host fields or permissions differ")
+    docker = value["docker"]
+    _need(set(docker) == {"containers", "currentImageSeal", "renderedComposeSha256", "dockerEngine", "databaseVolumeSha256"}
+          and _json(docker["containers"]) == _json(saved["containers"])
+          and _hash(_json(docker["dockerEngine"])) == saved["dockerEngineSha256"],
+          "recovery host saved objects differ")
+    allowed = _installation_recovery_host_commands(docker)
+    rows = value["commands"]
+    _need(type(rows) is list and 0 < len(rows) <= 128, "invalid recovery host command count")
+    observed = set()
+    for row in rows:
+        _need(type(row) is dict and set(row) == {"argv", "stdout"} and type(row["argv"]) is list
+              and all(type(part) is str for part in row["argv"]) and tuple(row["argv"]) in allowed
+              and type(row["stdout"]) is str and 0 < len(row["stdout"].encode("utf-8")) <= MAX_HOST_OUTPUT,
+              "invalid recovery host command or output")
+        observed.add(tuple(row["argv"]))
+    _need(observed == allowed and _json(value) == raw, "incomplete or noncanonical recovery host observations")
+    return value
+
+
 
 def _installation_recovery_entries(capture, intent, writers, identity):
-    _need(type(capture) is tuple and len(capture) == 2
+    _need(type(capture) is tuple and len(capture) in (2, 3)
           and type(capture[0]) is dict and type(capture[1]) is dict, "invalid recovery source capture")
-    files, summary = capture
+    files, summary = capture[:2]
     recorded = _installation_record_value(intent, identity)
     saved = _installation_writers_match(intent, writers, identity)
-    _need(summary.get("scope") == "pre-install-original-files-only"
+    _need(summary.get("scope") == ("pre-install-files-and-host-observations" if len(capture) == 3
+                                      else "pre-install-original-files-only")
           and summary.get("retentionId") == recorded["retentionId"]
           and summary.get("sourceSha") == recorded["targetSourceSha"]
           and summary.get("currentArchiveSourceSha") == recorded["installedRuntimeSourceSha"]
@@ -3067,7 +3165,7 @@ def _installation_recovery_entries(capture, intent, writers, identity):
     absent |= {"/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS}
     absent |= {"/etc/systemd/system/" + unit for unit in ("docker.service", "docker.socket")}
     _need(fixed <= set(files) and summary.get("absentFiles") == sorted(absent)
-          and len(files) + 3 <= MAX_RECOVERY_MEMBERS, "recovery fixed inventory differs")
+          and len(files) + 3 + (len(capture) == 3) <= MAX_RECOVERY_MEMBERS, "recovery fixed inventory differs")
     total = 0
     for path, raw in files.items():
         _need(isinstance(path, str) and (path in fixed or re.fullmatch(
@@ -3084,11 +3182,25 @@ def _installation_recovery_entries(capture, intent, writers, identity):
     _need(total <= MAX_RECOVERY_SOURCE_BYTES and type(summary.get("capturedBytes")) is int
           and summary["capturedBytes"] == total,
           "recovery total bytes differ")
+    host_entries = {}
+    if len(capture) == 3:
+        raw = capture[2]
+        _installation_recovery_host_value(raw, saved)
+        _need(summary.get("hostObservations") == {"member": RECOVERY_HOST_MEMBER,
+              "sha256": _hash(raw), "bytes": len(raw), "preGate": True, "completeHostStateCaptured": False}
+              and type(summary["hostObservations"]["bytes"]) is int
+              and summary["hostObservations"]["preGate"] is True
+              and summary["hostObservations"]["completeHostStateCaptured"] is False
+              and total + len(raw) <= MAX_RECOVERY_SOURCE_BYTES,
+              "recovery host metadata or shared budget differs")
+        host_entries[RECOVERY_HOST_MEMBER] = raw
+    else:
+        _need("hostObservations" not in summary, "recovery host originals are missing")
     index = _json({"schemaVersion": 1, "kind": "sanq-minimal-executor-recovery-files",
                    "installationId": identity, "intentSha256": _hash(intent), "writersSha256": _hash(writers),
                    "capture": summary, "canExecute": False, "recoveryReady": False})
     _need(len(index) <= 2 * 1024 * 1024, "recovery index exceeds budget")
-    return {"originals" + path: raw for path, raw in files.items()} | {
+    return {"originals" + path: raw for path, raw in files.items()} | host_entries | {
         "recovery-index.json": index, "installation/intent.json": intent, "installation/writers.json": writers}
 
 
