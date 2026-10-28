@@ -25,16 +25,16 @@ class InstallationRecoveryRetentionTests(unittest.TestCase):
         self.captures = []
 
     def observe(self):
-        original = installer._installation_recovery_sources
-        def captured(*args):
+        original = installer._installation_recovery_host_capture
+        def captured(*args, **kwargs):
             self.assertFalse(self.phase.gate.marker.exists())
             self.assertFalse((self.phase.gate.manager.directory / "docker.service.d" / installer.INSTALL_GATE_NAME).exists())
-            value = original(*args)
+            value = original(*args, **kwargs)
             self.capture = value
             self.captures.append(value)
             return value
         with patch.object(installer, "_freeze_installation_writers", side_effect=installer._retain_installation_recovery), \
-             patch.object(installer, "_installation_recovery_sources", side_effect=captured):
+             patch.object(installer, "_installation_recovery_host_capture", side_effect=captured):
             return self.phase.observe()
 
     def directory(self):
