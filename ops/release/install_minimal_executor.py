@@ -4689,7 +4689,7 @@ def _snapshot_offhost_index(raw, payload, receipt, intent, writers, identity):
         "trustedTimeProven": False, "restoreProven": False,
         "snapshotAvailable": False, "recoveryReady": False, "canExecute": False}
     _need(len(_json(index)) <= MAX_INSTALL_RECORD, "snapshot off-host index exceeds budget")
-    return index
+    return _snapshot_offhost_index_value(_json(index))
 
 
 def _snapshot_review_read(root):
@@ -4757,6 +4757,224 @@ def _retain_installation_snapshot_review(retention_id, target, *, input_fd, outp
         _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
         _retain_recovery=True, _snapshot_target=target, _snapshot_channel=(input_fd, output_fd),
         _retain_snapshot_review=True)
+
+
+# Client-side preparation only; no VM continuation consumes this acknowledgement yet.
+MAX_SNAPSHOT_INDEX_TRANSFER = 32 * 1024
+
+
+def _snapshot_offhost_index_value(raw):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD, "invalid off-host index size")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid off-host index JSON constant"))
+        hashes = ("intentSha256", "writersSha256", "archiveSha256", "receiptSha256", "requestSha256",
+                  "replySha256", "evidenceSha256", "targetInputSha256", "targetStorageSha256", "snapshotReviewSha256")
+        identities = ("installationId", "retentionId", "challenge")
+        false_flags = ("offHostRetentionConfirmed", "snapshotContainsFinalReview", "awsOriginAuthenticated",
+                       "trustedTimeProven", "restoreProven", "snapshotAvailable", "recoveryReady", "canExecute")
+        fields = {"schemaVersion", "kind", *hashes, *identities, *false_flags, "requiresOffHostRetention",
+                  "targetSourceSha", "installedRuntimeSourceSha", "snapshotReviewBytes", "snapshotArn", "snapshotName",
+                  "fromInstanceArn", "fromInstanceName", "accountId", "region", "sourceAvailabilityZone",
+                  "snapshotAvailabilityZone", "createdAt", "availableObservedAt", "transactionPath", "retentionPath",
+                  "snapshotReviewFile", "recoveryFiles"}
+        _need(type(value) is dict and set(value) == fields and _json(value) == raw
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-minimal-snapshot-offhost-index"
+              and all(type(value[key]) is str and re.fullmatch(r"[a-f0-9]{64}", value[key]) for key in (*hashes, *identities))
+              and all(type(value[key]) is str and re.fullmatch(r"[a-f0-9]{40}", value[key])
+                      for key in ("targetSourceSha", "installedRuntimeSourceSha"))
+              and all(value[key] is False for key in false_flags) and value["requiresOffHostRetention"] is True
+              and type(value["snapshotReviewBytes"]) is int and 0 < value["snapshotReviewBytes"] <= MAX_SNAPSHOT_REVIEW_RECORD,
+              "off-host index fields, bindings or authority flags differ")
+        _need(type(value["accountId"]) is str and re.fullmatch(r"[0-9]{12}", value["accountId"])
+              and type(value["region"]) is str and re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+", value["region"])
+              and type(value["fromInstanceName"]) is str
+              and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,254}", value["fromInstanceName"]),
+              "off-host index target identity differs")
+        prefix = "arn:aws:lightsail:" + value["region"] + ":" + value["accountId"] + ":"
+        for key, resource in (("fromInstanceArn", "Instance/"), ("snapshotArn", "InstanceSnapshot/")):
+            full = prefix + resource
+            _need(type(value[key]) is str and value[key].startswith(full)
+                  and re.fullmatch(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", value[key][len(full):]),
+                  "off-host index ARN differs")
+        _need(value["snapshotName"] == "sanq-runtime-" + value["challenge"]
+              and type(value["sourceAvailabilityZone"]) is str
+              and re.fullmatch(re.escape(value["region"]) + r"[a-z]", value["sourceAvailabilityZone"])
+              and value["snapshotAvailabilityZone"] in ("all", value["sourceAvailabilityZone"])
+              and value["transactionPath"] == "/opt/sanq/deploy-state/installation-runs/" + value["installationId"]
+              and value["retentionPath"] == "/opt/sanq/deploy-state/installations/" + value["retentionId"]
+              and value["snapshotReviewFile"] == SNAPSHOT_REVIEW_FILE
+              and type(value["recoveryFiles"]) is list and value["recoveryFiles"] == sorted(RECOVERY_FILES),
+              "off-host index names, paths or location differ")
+        times = [_snapshot_timestamp(value[key]) for key in ("createdAt", "availableObservedAt")]
+        _need(times[0] <= times[1] and all(parsed.strftime("%Y-%m-%dT%H:%M:%S.%fZ") == value[key]
+              for parsed, key in zip(times, ("createdAt", "availableObservedAt"))), "off-host index time differs")
+        return value
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid off-host index") from None
+
+
+def _snapshot_index_transfer(index):
+    index = _snapshot_offhost_index_value(_json(index))
+    raw = _json({"schemaVersion": 1, "kind": "sanq-minimal-snapshot-index-transfer",
+        "transferChallenge": os.urandom(32).hex(), "indexSha256": _hash(_json(index)),
+        "indexBytes": len(_json(index)), "index": index})
+    _need(len(raw) <= MAX_SNAPSHOT_INDEX_TRANSFER, "snapshot index transfer exceeds budget")
+    return raw
+
+
+def _snapshot_index_transfer_value(raw):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_SNAPSHOT_INDEX_TRANSFER, "invalid snapshot index transfer size")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid snapshot index transfer constant"))
+        _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "transferChallenge", "indexSha256", "indexBytes", "index"}
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-minimal-snapshot-index-transfer" and _json(value) == raw
+              and type(value["transferChallenge"]) is str and re.fullmatch(r"[a-f0-9]{64}", value["transferChallenge"]),
+              "snapshot index transfer fields differ")
+        index = _snapshot_offhost_index_value(_json(value["index"]))
+        _need(value["indexSha256"] == _hash(_json(index)) and type(value["indexBytes"]) is int
+              and value["indexBytes"] == len(_json(index)), "snapshot index transfer digest differs")
+        return value
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid snapshot index transfer") from None
+
+
+def _snapshot_index_ack_value(raw, transfer):
+    request = _snapshot_index_transfer_value(transfer)
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD, "invalid snapshot index acknowledgement size")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid snapshot index acknowledgement constant"))
+        index = request["index"]
+        _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "installationId", "snapshotReviewSha256",
+                  "indexSha256", "indexBytes", "transferChallenge", "operatorConfirmedOffHost", "clientIndexDurable",
+                  "syncMethod", "canExecute", "recoveryReady"}
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-minimal-snapshot-index-ack" and _json(value) == raw
+              and value["installationId"] == index["installationId"]
+              and value["snapshotReviewSha256"] == index["snapshotReviewSha256"]
+              and all(value[key] == request[key] for key in ("indexSha256", "transferChallenge"))
+              and type(value["indexBytes"]) is int and value["indexBytes"] == request["indexBytes"]
+              and value["operatorConfirmedOffHost"] is True and value["clientIndexDurable"] is True
+              and value["syncMethod"] in ("posix-fsync", "darwin-fullfsync")
+              and value["canExecute"] is False and value["recoveryReady"] is False,
+              "snapshot index acknowledgement binding differs")
+        return value
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid snapshot index acknowledgement") from None
+
+
+@contextlib.contextmanager
+def _offhost_index_directory(directory, uid):
+    _need(type(directory) is str and 0 < len(directory) <= 4096 and all(ord(c) >= 32 for c in directory),
+          "invalid client index directory")
+    path = Path(directory)
+    _need(path.is_absolute() and str(path) == directory and ".." not in path.parts and len(path.parts) <= 128,
+          "ambiguous client index directory")
+    _need(not any(path == root or root in path.parents for root in map(Path,
+          ("/opt", "/srv", "/etc", "/proc", "/sys", "/dev", "/run", "/home/ubuntu/sanq-app"))),
+          "client index destination is a system or production path")
+    with contextlib.ExitStack() as stack:
+        root = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        stack.callback(os.close, root)
+        opened = []
+        for name in path.parts[1:]:
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+            stack.callback(os.close, child)
+            info = os.fstat(child)
+            _need(stat.S_ISDIR(info.st_mode) and info.st_uid in (0, uid)
+                  and (not stat.S_IMODE(info.st_mode) & 0o022
+                       or info.st_uid == 0 and bool(info.st_mode & stat.S_ISVTX)),
+                  "untrusted client index ancestor")
+            opened.append((root, name, child, _directory_identity(info)))
+            root = child
+        final = os.fstat(root)
+        _need(final.st_uid == uid and stat.S_IMODE(final.st_mode) == 0o700, "client index directory must be private and owned")
+        yield root
+        for parent, name, child, identity in reversed(opened):
+            _need(_directory_identity(os.fstat(child)) == identity
+                  == _directory_identity(os.stat(name, dir_fd=parent, follow_symlinks=False)),
+                  "client index directory changed during retention")
+
+
+def _offhost_index_read(root, name, uid):
+    _need(type(name) is str and re.fullmatch(r"snapshot-index-[a-f0-9]{64}\.json", name), "invalid client index leaf")
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _need(stat.S_ISREG(before.st_mode) and before.st_uid == uid and before.st_nlink == 1
+              and stat.S_IMODE(before.st_mode) == 0o600 and 0 < before.st_size <= MAX_INSTALL_RECORD,
+              "client index metadata differs")
+        chunks, size = [], 0
+        while size <= MAX_INSTALL_RECORD:
+            block = os.read(fd, min(4096, MAX_INSTALL_RECORD + 1 - size))
+            if not block:
+                break
+            chunks.append(block)
+            size += len(block)
+        after, path = os.fstat(fd), os.stat(name, dir_fd=root, follow_symlinks=False)
+        _need(size == before.st_size and _installed_fingerprint(before) == _installed_fingerprint(after)
+              == _installed_fingerprint(path), "client index changed around read")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _retain_snapshot_index_offhost(transfer, directory, *, expected, operator_confirmed_off_host=False):
+    """Unprivileged client only. The caller supplies independently known SSH/round context."""
+    uid = os.geteuid()
+    _need(uid > 0 and sys.platform in ("linux", "darwin") and operator_confirmed_off_host is True,
+          "client retention requires an unprivileged confirmed off-host operator")
+    request = _snapshot_index_transfer_value(transfer)
+    index = request["index"]
+    context = {key: index[source] for key, source in (
+        ("accountId", "accountId"), ("region", "region"), ("instanceArn", "fromInstanceArn"),
+        ("instanceName", "fromInstanceName"), ("installationId", "installationId"),
+        ("snapshotReviewSha256", "snapshotReviewSha256"))}
+    _need(type(expected) is dict and set(expected) == set(context)
+          and all(type(expected[key]) is str for key in context) and _json(expected) == _json(context),
+          "client retention differs from the independently known target and round")
+    fullsync = getattr(fcntl, "F_FULLFSYNC", None) if sys.platform == "darwin" else None
+    _need(sys.platform != "darwin" or type(fullsync) is int, "Darwin full-sync capability is unavailable")
+    raw = _json(index)
+    name = "snapshot-index-" + index["installationId"] + ".json"
+    with _offhost_index_directory(directory, uid) as root:
+        disk = os.fstatvfs(root)
+        _need(disk.f_bavail * disk.f_frsize >= 1024 * 1024 + len(raw), "insufficient client index reserve")
+        fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
+        try:
+            before = os.fstat(fd)
+            _need(stat.S_ISREG(before.st_mode) and before.st_uid == uid and before.st_nlink == 1
+                  and stat.S_IMODE(before.st_mode) == 0o600, "client index output metadata differs")
+            remaining = memoryview(raw)
+            while remaining:
+                count = os.write(fd, remaining)
+                _need(count > 0, "short client index write")
+                remaining = remaining[count:]
+            os.fsync(fd)
+            os.fsync(root)
+            if fullsync is not None:
+                fcntl.fcntl(fd, fullsync)
+            written = os.fstat(fd)
+            _need(written.st_size == len(raw), "client index output size differs")
+            _need(_offhost_index_read(root, name, uid) == raw, "client index readback differs")
+            final, path = os.fstat(fd), os.stat(name, dir_fd=root, follow_symlinks=False)
+            _need((before.st_dev, before.st_ino) == (final.st_dev, final.st_ino)
+                  and _installed_fingerprint(written) == _installed_fingerprint(final)
+                  == _installed_fingerprint(path), "client index replaced after readback")
+        finally:
+            os.close(fd)  # Never remove or overwrite partial/complete evidence after an unknown result.
+    ack = _json({"schemaVersion": 1, "kind": "sanq-minimal-snapshot-index-ack",
+        "installationId": index["installationId"], "snapshotReviewSha256": index["snapshotReviewSha256"],
+        **{key: request[key] for key in ("indexSha256", "indexBytes", "transferChallenge")},
+        "operatorConfirmedOffHost": True, "clientIndexDurable": True,
+        "syncMethod": "darwin-fullfsync" if fullsync is not None else "posix-fsync",
+        "canExecute": False, "recoveryReady": False})
+    _snapshot_index_ack_value(ack, transfer)
+    return ack
 
 
 def main(argv=None):
