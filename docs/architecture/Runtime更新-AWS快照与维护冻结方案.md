@@ -1,8 +1,22 @@
 # Runtime 更新：AWS 整机快照与维护冻结方案
 
-## 最小执行器手动快照路线（2026-10-28 本地合同待审）
+## D2 停写前目标与系统盘只读观察（本地待审）
 
-**CONTENT_REVIEW_CONTRACT_LOCAL / NOT_IMPLEMENTED / NOT_INSTALLED。**续接最新 `origin/dev@d6484c6d7216c32bacd9eb36a980296a25ed2152`，当前独立合同见[手动快照内容核验](Runtime手动快照内容核验合同.md)。沿2026-10-26最小执行器方案，首次工具过渡允许操作者在自己的已认证AWS会话手动创建/观察准确快照；VM不持有AWS凭据、不调用云写API。下文2026-10-18完整协调器路线及原验收记录保留，不以其“自动创建”要求替代本次已选人工路线，也不据此恢复暂停的C1/R2研究或宣称旧验收通过。
+**D2_PRE_SNAPSHOT_STORAGE_OBSERVATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于[PR #3040](https://github.com/sanqin888/sanqinMVP/pull/3040)合并dev `d7b27fe0e573a32dd637f8c03a0baeb70efc0368` 建立 `feat/runtime-minimal-pre-snapshot-storage-20261028`。在现有安装器内新增私有只读 `_observe_installed_snapshot_storage`：沿原两锁/全预检双次观察，将停写前操作者AWS实例/SSH目标材料与本机固定Ed25519公钥指纹、系统盘/固定宿主路径、PG15默认数据/WAL/表空间及配置位置绑定；只返回观察与摘要，不创建意图/门禁、不停写。
+
+新增固定lsblk argv与原DB完整ID上的固定只读SQL，复用原300秒/单命令/输出预算；不接受调用者命令、设备路径或SQL。原始目标材料≤64KiB规范JSON且严格字段/原生类型/人工确认；源实例须唯一已附系统盘，区域/ARN/名称与既定目标一致。Linux只接受ext4/xfs根、单一普通disk/part及标准DockerRootDir；固定目录逐级nofollow并核路径/FD，拒绝分盘、同设备bind/子挂载、WAL/默认PG目录重定向、自定义/残留表空间及迁出PGDATA的主配置位置。设备名差异由明确的人工Linux系统盘绑定承载，不凭云盘名字或容量猜身份；awsOriginAuthenticated仍false。
+
+新增23项一次性文件/主机模型测试，覆盖完整同锁只读组合、原入口隔离、严格目标/同名错ARN/错SSH key、磁盘/挂载/PG目录/表空间/配置重定向、采集中及两轮间漂移、准确命令allowlist/预算和无公开CLI。完成静态AST/符号、差异和读回审阅；MCP-workspace未开放lint/build/test，未运行新测试或该分支CI，不复用文档PR的CI作源码通过证据。
+
+新观察明确requiresIntentBinding/requiresHostRecheck=true；snapshotAvailable/recoveryReady/canExecute/restoreProven均false，原写意图/停写/恢复包/等待入口不调用新观察。本批按内部原子新增的只读观察能力交付，未改变持久schema、PRIVATE_FILES四材料、17+Manifest/250/300、九helper/三永久模板、唯一应用state、依赖或业务迁移；无生产/AWS操作。下一步在同一owned流程把目标/存储原始事实接入意图与恢复包审计，再接内容核验/耐久回执；D4真实设备/SSH/lsblk版本、实际完整DB恢复和中断验收仍OPEN。三组研究继续暂停、不取消。
+
+## 最小执行器手动快照路线（2026-10-28 文档已合并）
+
+原合同已由PR #3040经最终head文档CI #7769成功合并dev `d7b27fe0e573a32dd637f8c03a0baeb70efc0368`；下文状态为该文档交付范围，新只读源码状态以上节为准。
+
+**CONTENT_REVIEW_CONTRACT_MERGED_DEV / DOCUMENTATION_CI_VERIFIED / NOT_IMPLEMENTED / NOT_INSTALLED。**原合同基线为 `origin/dev@d6484c6d7216c32bacd9eb36a980296a25ed2152`，当前独立合同见[手动快照内容核验](Runtime手动快照内容核验合同.md)。沿2026-10-26最小执行器方案，首次工具过渡允许操作者在自己的已认证AWS会话手动创建/观察准确快照；VM不持有AWS凭据、不调用云写API。下文2026-10-18完整协调器路线及原验收记录保留，不以其“自动创建”要求替代本次已选人工路线，也不据此恢复暂停的C1/R2研究或宣称旧验收通过。
 
 本批复审补明：独立SSH目标绑定与完整系统盘/DB/WAL/表空间覆盖须先核；快照与实例的区域严格一致，可用区分别保留，不能错误要求实例可用区等于快照的all。源实例hardware.disks与快照fromAttachedDisks分别核验，缺失不当空清单。当前代码仅停止原三应用写入者，DB仍运行；不能从available、停应用或SQL gzip完整性推断可恢复。须沿本文件原一致恢复点要求补齐所选路线的实际恢复证据；需要改变DB停写范围时先审阅对应方案/授权。
 

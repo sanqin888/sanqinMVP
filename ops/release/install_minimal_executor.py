@@ -722,7 +722,7 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
                                              include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery))
@@ -737,6 +737,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           "invalid installation observation switches")
     _need(_snapshot_channel is None or _retain_recovery and type(_snapshot_channel) is tuple
           and len(_snapshot_channel) == 2, "snapshot evidence wait requires complete recovery flow")
+    _need(_snapshot_target is None or include_external_backup and not _record_intent and _snapshot_channel is None,
+          "pre-snapshot storage observation is read-only and cannot record an intent")
+    target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
@@ -758,7 +761,12 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                           lambda args: _runtime_command(args, deadline=deadline), fetch=fetch) if include_migrations else None)
         effective = _effective_configuration_snapshot(docker, run) if include_effective_configuration else None
         external_backup = _external_backup_snapshot(runtime[0]) if include_external_backup else None
-        return runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations, effective, external_backup
+        baseline = (runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations, effective, external_backup)
+        if target is not None:
+            storage = _installation_storage_snapshot(target, docker, prerequisites,
+                lambda args: _runtime_command(args, deadline=deadline), deadline=deadline)
+            return (*baseline, storage)
+        return baseline
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
     with _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
@@ -815,6 +823,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
             result.update({"effectiveContainerConfigurationObserved": True, "effectiveConfiguration": before[8]})
         if include_external_backup:
             result.update({"externalBackupExecutablesObserved": True, "externalBackup": before[9]})
+        if target is not None:
+            result.update({"outcome": "PRE_SNAPSHOT_STORAGE_OBSERVED",
+                           "snapshotTargetAndStorageObserved": True, "snapshotStorage": before[10]})
         if _record_intent:
             frozen_recheck = None
             def recheck():
@@ -1623,13 +1634,13 @@ def _installation_history_args(identifier):
 def _runtime_observation_allowed(args):
     if type(args) is not list or not all(isinstance(value, str) for value in args):
         return False
-    if tuple(args) == PYTHON_ARGS or any(tuple(args) == (*CURL_ARGS, url) for url in READINESS_URLS):
+    if tuple(args) in (PYTHON_ARGS, INSTALL_BLOCK_ARGS) or any(tuple(args) == (*CURL_ARGS, url) for url in READINESS_URLS):
         return True
     position = len(DOCKER) + 1
     if len(args) == len(DOCKER) + 8 and re.fullmatch(r"[a-f0-9]{64}", args[position]):
         return args == _installation_inventory_args(args[position])
     return (len(args) == len(DOCKER) + 7 and re.fullmatch(r"[a-f0-9]{64}", args[position]) is not None
-            and args == _installation_history_args(args[position]))
+            and args in (_installation_history_args(args[position]), _installation_storage_args(args[position])))
 
 
 def _runtime_command(args, *, deadline):
@@ -3887,6 +3898,317 @@ def _receive_installation_snapshot_evidence(retention_id, *, input_fd, output_fd
         include_migrations=True, include_effective_configuration=True, include_external_backup=True,
         _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
         _retain_recovery=True, _snapshot_channel=(input_fd, output_fd))
+
+
+# D2 snapshot prerequisites: read-only, before any installation intent or writer mutation.
+INSTALL_BLOCK_ARGS = ("/usr/bin/lsblk", "--json", "--bytes", "--paths", "--list",
+                      "--output", "NAME,TYPE,MAJ:MIN,PKNAME,SIZE")
+INSTALL_DB_DATA = "/var/lib/docker/volumes/sanq-app_pgdata/_data"
+INSTALL_DB_DIRECTORIES = ("base", "global", "pg_commit_ts", "pg_dynshmem", "pg_logical", "pg_multixact",
+    "pg_notify", "pg_replslot", "pg_serial", "pg_snapshots", "pg_stat", "pg_stat_tmp", "pg_subtrans",
+    "pg_tblspc", "pg_twophase", "pg_wal", "pg_xact")
+INSTALL_DB_CONFIG = ("postgresql.conf", "pg_hba.conf", "pg_ident.conf", "postgresql.auto.conf")
+INSTALL_STORAGE_DIRECTORIES = (
+    "/opt/sanq/runtime", "/opt/sanq/deploy-state", "/srv/sanq/uploads", "/srv/sanq/backups",
+    "/home/ubuntu/sanq-assets/sounds", "/home/ubuntu", "/etc/systemd/system",
+    "/etc/sudoers.d", "/usr/local/sbin", INSTALL_DB_DATA,
+    *(INSTALL_DB_DATA + "/" + name for name in INSTALL_DB_DIRECTORIES),
+)
+INSTALL_STORAGE_SQL = """BEGIN READ ONLY;
+SET LOCAL statement_timeout='5s';
+SET LOCAL lock_timeout='2s';
+SELECT pg_catalog.json_build_object(
+ 'database',pg_catalog.current_database(),'port',pg_catalog.current_setting('port'),
+ 'dataDirectory',pg_catalog.current_setting('data_directory'),
+ 'transactionReadOnly',pg_catalog.current_setting('transaction_read_only'),
+ 'inRecovery',pg_catalog.pg_is_in_recovery(),
+ 'configFile',pg_catalog.current_setting('config_file'),'hbaFile',pg_catalog.current_setting('hba_file'),
+ 'identFile',pg_catalog.current_setting('ident_file'),
+ 'tablespaces',(SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object(
+   'oid',oid::text,'name',spcname,'location',pg_catalog.pg_tablespace_location(oid))
+   ORDER BY oid),'[]'::json) FROM
+   (SELECT oid,spcname FROM pg_catalog.pg_tablespace ORDER BY oid LIMIT 1025) AS t));
+COMMIT;"""
+
+
+def _installation_storage_args(identifier):
+    args = _installation_history_args(identifier)
+    return [*args[:-2], "sanq-install-storage", INSTALL_STORAGE_SQL]
+
+
+def _installation_snapshot_target(raw):
+    """Operator-reviewed pre-stop input, never an AWS signature or an execution permit."""
+    _need(type(raw) is bytes and 0 < len(raw) <= 65536, "invalid pre-snapshot target size")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid target JSON constant"))
+        _need(_json(value) == raw, "pre-snapshot target must use canonical original bytes")
+    except (ValueError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid pre-snapshot target JSON") from None
+    fields = {"schemaVersion", "kind", "accountId", "region", "instanceArn", "instanceName",
+              "sshTarget", "sshHostKeySha256", "linuxSystemDisk", "operatorConfirmed", "instance"}
+    _need(type(value) is dict and set(value) == fields
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == "sanq-minimal-pre-snapshot-target"
+          and value["operatorConfirmed"] is True, "pre-snapshot target fields or confirmation differ")
+    for key in ("accountId", "region", "instanceArn", "instanceName", "sshTarget",
+                "sshHostKeySha256", "linuxSystemDisk"):
+        _need(type(value[key]) is str, "invalid pre-snapshot target field type")
+    _need(re.fullmatch(r"[0-9]{12}", value["accountId"])
+          and re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+", value["region"])
+          and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,254}", value["instanceName"])
+          and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:-]{0,253}", value["sshTarget"])
+          and re.fullmatch(r"SHA256:[A-Za-z0-9+/]{43}", value["sshHostKeySha256"])
+          and re.fullmatch(r"/dev/[A-Za-z0-9_.-]{1,100}", value["linuxSystemDisk"]),
+          "invalid pre-snapshot target identity")
+    prefix = "arn:aws:lightsail:" + value["region"] + ":" + value["accountId"] + ":Instance/"
+    _need(value["instanceArn"].startswith(prefix)
+          and re.fullmatch(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}",
+                           value["instanceArn"][len(prefix):]), "target instance ARN differs")
+    instance = value["instance"]
+    _need(type(instance) is dict and instance.get("arn") == value["instanceArn"]
+          and instance.get("name") == value["instanceName"] and instance.get("resourceType") == "Instance"
+          and type(instance.get("location")) is dict
+          and instance["location"].get("regionName") == value["region"]
+          and type(instance["location"].get("availabilityZone")) is str
+          and re.fullmatch(re.escape(value["region"]) + r"[a-z]", instance["location"]["availabilityZone"])
+          and type(instance.get("hardware")) is dict
+          and type(instance["hardware"].get("disks")) is list and len(instance["hardware"]["disks"]) == 1,
+          "operator instance or single-system-disk inventory differs")
+    disk = instance["hardware"]["disks"][0]
+    _need(type(disk) is dict and disk.get("isSystemDisk") is True and disk.get("isAttached") is True
+          and type(disk.get("sizeInGb")) is int and 0 < disk["sizeInGb"] <= 65536
+          and type(disk.get("path")) is str and re.fullmatch(r"/dev/[A-Za-z0-9_.-]{1,100}", disk["path"]),
+          "operator system disk identity differs")
+    _need(("attachedTo" not in disk or disk["attachedTo"] in ("", value["instanceName"]))
+          and ("resourceType" not in disk or disk["resourceType"] == "Disk")
+          and ("location" not in disk or type(disk["location"]) is dict
+               and disk["location"].get("regionName") == value["region"]
+               and disk["location"].get("availabilityZone") == instance["location"]["availabilityZone"]),
+          "operator disk attachment or location contradicts the instance")
+    return {key: value[key] for key in fields - {"instance"}} | {
+        "targetInputSha256": _hash(raw), "availabilityZone": instance["location"]["availabilityZone"],
+        "cloudSystemDiskPath": disk["path"], "cloudSystemDiskSizeInGb": disk["sizeInGb"],
+        "verificationMethod": "operator-aws-session-and-verified-ssh",
+        "awsOriginAuthenticated": False}
+
+
+@contextlib.contextmanager
+def _snapshot_directory(root, parts):
+    """Only internally fixed components; retain and recheck every traversed directory FD."""
+    _need(type(parts) is tuple and bool(parts) and all(
+        type(part) is str and part not in ("", ".", "..") and "/" not in part for part in parts),
+        "invalid snapshot directory components")
+    anchor = os.dup(root)
+    current, opened = anchor, []
+    try:
+        for name in parts:
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+            opened.append((current, name, child, _directory_identity(os.fstat(child))))
+            info = os.fstat(child)
+            _need(stat.S_ISDIR(info.st_mode) and not stat.S_IMODE(info.st_mode) & 0o7022,
+                  "snapshot directory type or write permissions differ")
+            current = child
+        yield current
+        for parent, name, fd, identity in reversed(opened):
+            _need(_directory_identity(os.fstat(fd)) == identity
+                  == _directory_identity(os.stat(name, dir_fd=parent, follow_symlinks=False)),
+                  "snapshot directory changed during observation")
+    finally:
+        for _, _, fd, _ in reversed(opened):
+            os.close(fd)
+        os.close(anchor)
+
+
+def _snapshot_hostkey(root):
+    with _snapshot_directory(root, ("etc", "ssh")) as parent:
+        _installed_info(os.fstat(parent), directory=True)
+        fd = os.open("ssh_host_ed25519_key.pub", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            _installed_info(before)
+            _need(0 < before.st_size <= 4096, "SSH public host key size differs")
+            raw = os.read(fd, 4097)
+            _need(len(raw) == before.st_size
+                  and _installed_fingerprint(before) == _installed_fingerprint(os.fstat(fd))
+                  == _installed_fingerprint(os.stat("ssh_host_ed25519_key.pub", dir_fd=parent, follow_symlinks=False)),
+                  "SSH public host key changed")
+        finally:
+            os.close(fd)
+    try:
+        text = raw.decode("ascii").strip()
+        _need(len(text.splitlines()) == 1, "SSH public host key must contain one line")
+        fields = text.split()
+        _need(len(fields) >= 2 and fields[0] == "ssh-ed25519", "fixed SSH host key algorithm differs")
+        blob = base64.b64decode(fields[1], validate=True)
+        _need(len(blob) == 51 and blob[:19] == b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20",
+              "SSH public host key encoding differs")
+    except (ValueError, UnicodeError):
+        raise release.ReleaseContractError("invalid SSH public host key") from None
+    return {"sha256": "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("="),
+            "identity": list(_installed_fingerprint(before))}
+
+
+def _snapshot_mountinfo(*, deadline):
+    fd = os.open("/proc/self/mountinfo", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        _installed_info(os.fstat(fd))
+        chunks, size = [], 0
+        while size <= MAX_HOST_OUTPUT:
+            _need(time.monotonic() < deadline, "snapshot mount observation timed out")
+            raw = os.read(fd, min(65536, MAX_HOST_OUTPUT + 1 - size))
+            if not raw:
+                break
+            chunks.append(raw)
+            size += len(raw)
+        _need(0 < size <= MAX_HOST_OUTPUT, "snapshot mount inventory exceeds budget")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _snapshot_mounts(raw):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_HOST_OUTPUT, "invalid mount inventory size")
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeError:
+        raise release.ReleaseContractError("invalid mount inventory encoding") from None
+    _need(0 < len(lines) <= 8192, "mount inventory count exceeds budget")
+    result = {}
+    def unescape(value):
+        _need(re.search(r"\\(?!040|011|012|134)", value) is None, "invalid mount path escape")
+        return re.sub(r"\\(040|011|012|134)", lambda m: chr(int(m[1], 8)), value)
+    for line in lines:
+        fields = line.split(" ")
+        _need(fields.count("-") == 1, "mount separator is missing or ambiguous")
+        separator = fields.index("-")
+        _need(separator >= 6 and len(fields) == separator + 4
+              and all(fields) and re.fullmatch(r"[1-9][0-9]*", fields[0])
+              and re.fullmatch(r"[0-9]+", fields[1])
+              and re.fullmatch(r"[0-9]+:[0-9]+", fields[2])
+              and fields[0] not in result, "invalid or duplicate mount identity")
+        result[fields[0]] = {"id": fields[0], "device": fields[2], "root": unescape(fields[3]),
+            "mountpoint": unescape(fields[4]), "options": fields[5], "filesystem": fields[separator + 1],
+            "source": unescape(fields[separator + 2]), "superOptions": fields[separator + 3]}
+        _need(result[fields[0]]["mountpoint"].startswith("/"), "mountpoint must be absolute")
+    return result
+
+
+def _snapshot_coverage(mounts, paths):
+    roots = [entry for entry in mounts.values() if entry["mountpoint"] == "/"]
+    _need(len(roots) == 1 and roots[0]["root"] == "/" and roots[0]["filesystem"] in ("ext4", "xfs")
+          and "rw" in roots[0]["options"].split(","), "root filesystem needs platform review")
+    root = roots[0]
+    for path, identity in paths.items():
+        _need(root["device"] == str(os.major(identity[0])) + ":" + str(os.minor(identity[0])),
+              "snapshot path filesystem differs from root")
+        for entry in mounts.values():
+            point = entry["mountpoint"]
+            _need(point == "/" or not (path == point or path.startswith(point.rstrip("/") + "/")
+                  or point.startswith(path.rstrip("/") + "/")),
+                  "snapshot path has a separate, nested or bind mount")
+    return root
+
+
+def _snapshot_block_root(value, root, target):
+    _need(type(value) is dict and set(value) == {"blockdevices"}
+          and type(value["blockdevices"]) is list and 0 < len(value["blockdevices"]) <= 1024,
+          "invalid block inventory")
+    rows, names = {}, set()
+    for item in value["blockdevices"]:
+        _need(type(item) is dict and set(item) == {"name", "type", "maj:min", "pkname", "size"}
+              and type(item["name"]) is str and re.fullmatch(r"/dev/[A-Za-z0-9_.-]{1,100}", item["name"])
+              and type(item["type"]) is str and bool(item["type"])
+              and type(item["maj:min"]) is str and re.fullmatch(r"[0-9]+:[0-9]+", item["maj:min"])
+              and item["maj:min"] not in rows and item["name"] not in names
+              and type(item["size"]) is int and item["size"] >= 0
+              and (item["pkname"] is None or type(item["pkname"]) is str
+                   and re.fullmatch(r"/dev/[A-Za-z0-9_.-]{1,100}", item["pkname"])),
+              "block device fields or identities differ")
+        rows[item["maj:min"]] = item
+        names.add(item["name"])
+    disks = [row for row in rows.values() if row["type"] == "disk"]
+    _need(len(disks) == 1 and disks[0]["name"] == target["linuxSystemDisk"]
+          and disks[0]["pkname"] is None and disks[0]["size"] > 0, "local system disk inventory differs")
+    disk = disks[0]
+    partition = rows.get(root["device"])
+    _need(partition is not None and partition["size"] > 0
+          and (partition == disk or partition["type"] == "part" and partition["pkname"] == disk["name"]
+               and partition["size"] <= disk["size"]),
+          "root filesystem is not on the operator-bound plain system disk")
+    return {"disk": disk, "rootDevice": partition}
+
+
+def _snapshot_database_configuration(root):
+    result = {}
+    with _snapshot_directory(root, tuple(INSTALL_DB_DATA.strip("/").split("/"))) as parent:
+        for name in INSTALL_DB_CONFIG:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            try:
+                before = os.fstat(fd)
+                _need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                      and not stat.S_IMODE(before.st_mode) & 0o7022 and before.st_size <= MAX_FILE
+                      and _installed_fingerprint(before) == _installed_fingerprint(os.fstat(fd))
+                      == _installed_fingerprint(os.stat(name, dir_fd=parent, follow_symlinks=False)),
+                      "database configuration file identity or permissions differ")
+                result[name] = list(_installed_fingerprint(before))
+            finally:
+                os.close(fd)
+    return result
+
+
+def _installation_storage_snapshot(target, docker, prerequisites, run, *, deadline):
+    """Return local observations + explicit operator binding. Never write, freeze or authorize."""
+    _need(docker["dockerEngine"]["DockerRootDir"] == "/var/lib/docker",
+          "nonstandard Docker storage needs platform review")
+    before_mounts = _snapshot_mounts(_snapshot_mountinfo(deadline=deadline))
+    blocks = _docker_json(INSTALL_BLOCK_ARGS, run)
+    identifier = docker["containers"]["db"]["containerId"]
+    database = _docker_json(_installation_storage_args(identifier), run)
+    expected = {key: prerequisites["databaseIdentity"][key] for key in (
+        "database", "port", "dataDirectory", "transactionReadOnly", "inRecovery")}
+    expected.update({"configFile": "/var/lib/postgresql/data/postgresql.conf",
+                     "hbaFile": "/var/lib/postgresql/data/pg_hba.conf",
+                     "identFile": "/var/lib/postgresql/data/pg_ident.conf"})
+    expected["tablespaces"] = [{"oid": "1663", "name": "pg_default", "location": ""},
+                               {"oid": "1664", "name": "pg_global", "location": ""}]
+    _need(_json(database) == _json(expected), "database storage identity or default tablespaces differ")
+    paths = {}
+    root_fd = _host_storage_root()
+    try:
+        hostkey = _snapshot_hostkey(root_fd)
+        _need(hostkey["sha256"] == target["sshHostKeySha256"], "operator SSH host key differs from this host")
+        for path in INSTALL_STORAGE_DIRECTORIES:
+            with _snapshot_directory(root_fd, tuple(path.strip("/").split("/"))) as directory:
+                paths[path] = list(_directory_identity(os.fstat(directory)))
+                if path == INSTALL_DB_DATA + "/pg_tblspc":
+                    _need(not os.listdir(directory), "custom or unregistered tablespace needs platform review")
+        configuration = _snapshot_database_configuration(root_fd)
+        root = _snapshot_coverage(before_mounts, paths)
+        block_root = _snapshot_block_root(blocks, root, target)
+        _need(_snapshot_hostkey(root_fd) == hostkey and _snapshot_database_configuration(root_fd) == configuration,
+              "SSH host key or database configuration changed around storage observation")
+    finally:
+        os.close(root_fd)
+    _need(_snapshot_coverage(_snapshot_mounts(_snapshot_mountinfo(deadline=deadline)), paths) == root
+          and _snapshot_block_root(_docker_json(INSTALL_BLOCK_ARGS, run), root, target) == block_root
+          and _json(_docker_json(_installation_storage_args(identifier), run)) == _json(database)
+          and time.monotonic() < deadline, "snapshot storage baseline changed during observation")
+    facts = {"target": target, "sshHostKey": hostkey, "directories": paths, "rootMount": root,
+             "blockStorage": block_root, "databaseConfiguration": configuration,
+             "databaseStorageSha256": _hash(_json(database)),
+             "databaseContainerId": identifier, "defaultTablespacesOnly": True,
+             "localSystemDiskCoverageObserved": True, "awsOriginAuthenticated": False,
+             "snapshotAvailable": False, "recoveryReady": False, "canExecute": False,
+             "requiresIntentBinding": True, "requiresHostRecheck": True, "restoreProven": False}
+    return {**facts, "observationSha256": _hash(_json(facts))}
+
+
+def _observe_installed_snapshot_storage(retention_id, target, *, fetch=release.github_json):
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _snapshot_target=target)
 
 
 def main(argv=None):
