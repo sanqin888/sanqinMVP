@@ -1,10 +1,24 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-28 — 最小更新执行器：停写前目标与系统盘只读观察
+
+**D2_PRE_SNAPSHOT_STORAGE_OBSERVATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于[PR #3040](https://github.com/sanqin888/sanqinMVP/pull/3040)合并dev `d7b27fe0e573a32dd637f8c03a0baeb70efc0368` 建立 `feat/runtime-minimal-pre-snapshot-storage-20261028`。在现有安装器内新增私有只读 `_observe_installed_snapshot_storage`：沿原两锁/全预检双次观察，将停写前操作者AWS实例/SSH目标材料与本机固定Ed25519公钥指纹、系统盘/固定宿主路径、PG15默认数据/WAL/表空间及配置位置绑定；只返回观察与摘要，不创建意图/门禁、不停写。
+
+新增固定lsblk argv与原DB完整ID上的固定只读SQL，复用原300秒/单命令/输出预算；不接受调用者命令、设备路径或SQL。原始目标材料≤64KiB规范JSON且严格字段/原生类型/人工确认；源实例须唯一已附系统盘，区域/ARN/名称与既定目标一致。Linux只接受ext4/xfs根、单一普通disk/part及标准DockerRootDir；固定目录逐级nofollow并核路径/FD，拒绝分盘、同设备bind/子挂载、WAL/默认PG目录重定向、自定义/残留表空间及迁出PGDATA的主配置位置。设备名差异由明确的人工Linux系统盘绑定承载，不凭云盘名字或容量猜身份；awsOriginAuthenticated仍false。
+
+新增23项一次性文件/主机模型测试，覆盖完整同锁只读组合、原入口隔离、严格目标/同名错ARN/错SSH key、磁盘/挂载/PG目录/表空间/配置重定向、采集中及两轮间漂移、准确命令allowlist/预算和无公开CLI。完成静态AST/符号、差异和读回审阅；MCP-workspace未开放lint/build/test，未运行新测试或该分支CI，不复用文档PR的CI作源码通过证据。
+
+新观察明确requiresIntentBinding/requiresHostRecheck=true；snapshotAvailable/recoveryReady/canExecute/restoreProven均false，原写意图/停写/恢复包/等待入口不调用新观察。本批按内部原子新增的只读观察能力交付，未改变持久schema、PRIVATE_FILES四材料、17+Manifest/250/300、九helper/三永久模板、唯一应用state、依赖或业务迁移；无生产/AWS操作。下一步在同一owned流程把目标/存储原始事实接入意图与恢复包审计，再接内容核验/耐久回执；D4真实设备/SSH/lsblk版本、实际完整DB恢复和中断验收仍OPEN。三组研究继续暂停、不取消。
+
 ## 2026-10-28 — 最小更新执行器：手动快照内容核验合同
 
-**CONTENT_REVIEW_CONTRACT_LOCAL / NOT_IMPLEMENTED / NOT_INSTALLED。**
+**CONTENT_REVIEW_CONTRACT_MERGED_DEV / DOCUMENTATION_CI_VERIFIED / NOT_IMPLEMENTED / NOT_INSTALLED。**
 
-已fetch核对，HEAD与最新origin/dev均为 `d6484c6d7216c32bacd9eb36a980296a25ed2152`（PR #3039）；保留分支 `docs/runtime-snapshot-content-contract-20261028` 的未提交工作。已制定并复审[手动快照内容核验合同](Runtime手动快照内容核验合同.md)：要求停写前独立绑定SSH目标/实例，观察系统盘及完整DB/WAL/表空间覆盖，再核本轮challenge关联的新手动快照；区分字段一致与人工AWS会话核验。这些能力尚未实现，未证明生产磁盘覆盖；首版仍阻断附加盘、分离/远端存储及覆盖不明，不增加多盘编排。
+本批[PR #3040](https://github.com/sanqin888/sanqinMVP/pull/3040)最终head `96396fc494fb2a7a43bc7997dbcca51af4c76051` 经[CI #7769](https://github.com/sanqin888/sanqinMVP/actions/runs/40777661283)SUCCESS（1成功/9文档范围跳过），已合并dev `d7b27fe0e573a32dd637f8c03a0baeb70efc0368`；两次提交包含完整8份文档，无源码CI修复或生产操作。
+
+原文档批次基线为 `d6484c6d7216c32bacd9eb36a980296a25ed2152`（PR #3039），原分支为 `docs/runtime-snapshot-content-contract-20261028`；文档改动已按上述回执合并。已制定并复审[手动快照内容核验合同](Runtime手动快照内容核验合同.md)：要求停写前独立绑定SSH目标/实例，观察系统盘及完整DB/WAL/表空间覆盖，再核本轮challenge关联的新手动快照；区分字段一致与人工AWS会话核验。这些能力尚未实现，未证明生产磁盘覆盖；首版仍阻断附加盘、分离/远端存储及覆盖不明，不增加多盘编排。
 
 本次续审对照最新安装器、24项等待测试、CI工作流/实际回执及AWS/PostgreSQL官方文档，补齐快照可用区all与区域分别比较、源/快照磁盘清单分开核验、DB仍运行时的一致恢复前置，以及拍照后回执须有离机索引的边界；同步发布手册与AWS owner入口。本批仍仅文档，未增加验证器、未改ready许可、源码、依赖、业务schema或既有17+Manifest/250/300；未执行项目测试或生产操作。下一步为停写前独立目标与设备/完整DB存储观察，再接内容核验及耐久交接；三组研究继续暂停、不取消。
 
