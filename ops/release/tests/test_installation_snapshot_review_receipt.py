@@ -23,10 +23,10 @@ class SnapshotReviewRetentionTests(unittest.TestCase):
         self.addCleanup(self.flow.doCleanups)
         self.base = self.flow.binding.base
 
-    def observe(self):
+    def observe(self, *, exchange=None):
         with patch.object(installer, "_review_installation_snapshot_content",
                 side_effect=installer._retain_installation_snapshot_review):
-            return self.flow.observe()[0]
+            return self.flow.observe(exchange=exchange)[0]
 
     def record_path(self):
         return self.base.directory().parent / installer.SNAPSHOT_REVIEW_FILE
@@ -189,7 +189,7 @@ class SnapshotReviewRetentionTests(unittest.TestCase):
         self.assert_preserved()
         with patch.object(installer, "_snapshot_review_write", side_effect=AssertionError("replay")), \
              self.assertRaises(ReleaseContractError):
-            self.observe()
+            self.observe(exchange=lambda *args, **kwargs: self.fail("replayed wait"))
         self.assertEqual(len(self.base.phase.actions), 6)
 
     def test_storage_drift_after_record_write_preserves_complete_record_but_never_returns_success(self):

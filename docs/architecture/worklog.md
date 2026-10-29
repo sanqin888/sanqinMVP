@@ -2,7 +2,9 @@
 
 ## 2026-10-29 — 最小更新执行器：快照核验耐久回执与离机索引
 
-**D2_SNAPSHOT_REVIEW_RECEIPT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**D2_SNAPSHOT_REVIEW_RECEIPT_PR_CI_REPAIR / NOT_INSTALLED。**
+
+[PR #3044](https://github.com/sanqin888/sanqinMVP/pull/3044)初次head `fd0c14c13e03c104ab403e52727ee89adcf51d56` 的CI #7778在默认Release1141项中仅一项失败：重放已被维护证据正确拒绝，但测试启动的等待线程未结束，finally断言遮住预期异常。仅给复用fixture透传exchange参数，重放分支明确禁止进入等待；保留拒绝/禁止重写及六项原停写动作断言，不改源码行为或CI门禁。修复后同PR复跑尚待结果。
 
 基于[PR #3043](https://github.com/sanqin888/sanqinMVP/pull/3043)已合并dev `11d733b240d1af1a27bcec5c57a8d1f034e2f1a2` 创建 `feat/runtime-minimal-snapshot-review-receipt-20261029`。新增私有 `_retain_installation_snapshot_review`，只在原两锁、完整目标/存储预检、意图/临时门禁/原ID停写、恢复包耐久保存、活跃challenge内容核验之后保存本轮回执；原内存核验入口仍不写新文件。
 
@@ -12,7 +14,7 @@
 
 生成≤16KiB固定字段离机索引，包含准确账户/区域/源实例/快照对象、本轮challenge、意图/writers/归档/回执/目标/核验原件摘要、source/retention身份和固定材料路径；任意AWS metadata、完整回复、配置/主机原件不回显。索引只是待Mac保存的内存投影，offHostRetentionConfirmed=false、requiresOffHostRetention=true；快照先于最终回执，snapshotContainsFinalReview=false。保存回执不证明已存机外、云来源认证、可信时间或DB恢复，snapshotAvailable/recoveryReady/canExecute/restoreProven仍false。
 
-新增20项一次性文件/主机模型及纯数据/IO测试，覆盖准确同锁/停写/耐久顺序、原件重算、字段/绑定/规范格式篡改、只投影索引、显式owned证据、实际短写/同步/读回、权限/链接/容量、失败原样保留与禁止重放、保存后存储漂移、旧入口隔离和无公开CLI。Python3.10 AST/符号/差异静态核对完成；MCP-workspace未开放lint/build/test，本批测试未执行，未提交或推送。下一步补离机索引的耐久接收确认与真实恢复前置证据门禁，再接RECOVERY_READY/安装，D4真实恢复/中断验收仍OPEN。
+新增20项一次性文件/主机模型及纯数据/IO测试，覆盖准确同锁/停写/耐久顺序、原件重算、字段/绑定/规范格式篡改、只投影索引、显式owned证据、实际短写/同步/读回、权限/链接/容量、失败原样保留与禁止重放、保存后存储漂移、旧入口隔离和无公开CLI。Python3.10 AST/符号/差异静态核对完成；已提交PR #3044并按上述实际CI失败完成最小测试修复，等待最终head检查。MCP-workspace未运行lint/build/test。下一步补离机索引的耐久接收确认与真实恢复前置证据门禁，再接RECOVERY_READY/安装，D4真实恢复/中断验收仍OPEN。
 
 本批为私有工具事务的兼容增量：生产者/读者在同一bootstrap同步发布，只新增固定回执，不改写历史意图/marker/writers/恢复包或创建业务双控制路径；无依赖、业务schema/迁移、17+Manifest/250/300、九helper/三永久模板或唯一应用state变化。三组研究保持暂停，无生产/AWS操作。
 
