@@ -722,10 +722,10 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
@@ -742,6 +742,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           "target storage requires a read-only observation or the complete owned recovery flow")
     _need(not _retain_snapshot_review or _snapshot_channel is not None and _snapshot_target is not None
           and _retain_recovery, "snapshot review retention requires the complete bound live flow")
+    _need(not _confirm_offhost_index or _retain_snapshot_review,
+          "off-host confirmation requires this bound live durable review")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
@@ -945,7 +947,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     return {**result, "scopeReview": scope}
                 except BaseException:
                     raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
-            def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt, *, persist_snapshot=None):
+            def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt, *, persist_snapshot=None, persist_offhost=None):
                 nonlocal deadline
                 try:
                     def fresh_context():
@@ -960,6 +962,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                         _need(scope["packageScopeReviewed"] is True and time.monotonic() < deadline,
                               "snapshot review context budget expired")
                         check_owned()
+                    _need((persist_offhost is not None) == _confirm_offhost_index
+                          and (persist_offhost is None or callable(persist_offhost)),
+                          "off-host confirmation is outside this owned flow")
                     _need((persist_snapshot is not None) == _retain_snapshot_review
                           and (persist_snapshot is None or callable(persist_snapshot)),
                           "snapshot review persistence is outside this owned flow")
@@ -995,6 +1000,27 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                             fresh_context()
                             saved = persist_snapshot(record)
                             fresh_context()
+                            if persist_offhost is not None:
+                                index = _snapshot_offhost_index(record, payload, receipt, intent, writers, installation_id)
+                                _need(_json(index) == _json(saved["offHostIndex"]), "off-host index changed after durable review")
+                                transfer = _snapshot_index_transfer(index)
+                                _need(_installation_snapshot_fds(*_snapshot_channel) == channel_identity,
+                                      "off-host confirmation channel changed")
+                                sent_times = []
+                                ack = _installation_snapshot_index_exchange(transfer, *_snapshot_channel,
+                                    deadline=time.monotonic() + MAX_SNAPSHOT_REVIEW_SECONDS,
+                                    _request_sent=lambda: sent_times.append(_snapshot_utc_now()))
+                                ack_received = _snapshot_utc_now()
+                                _need(len(sent_times) == 1
+                                      and _installation_snapshot_fds(*_snapshot_channel) == channel_identity,
+                                      "off-host output or channel ownership changed")
+                                _snapshot_index_ack_value(ack, transfer)
+                                fresh_context()
+                                offhost_raw = _snapshot_offhost_record_bytes(transfer, ack, record, payload, receipt,
+                                    intent, writers, installation_id, request_sent_at=sent_times[0], reply_received_at=ack_received)
+                                confirmed = persist_offhost(offhost_raw)
+                                fresh_context()
+                                return {**reviewed, **saved, **confirmed, "outcome": "OFFHOST_INDEX_CONFIRMED"}
                             return {**reviewed, **saved, "outcome": "SNAPSHOT_REVIEW_RETAINED"}
                         return reviewed
                     return {"outcome": "SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED",
@@ -1012,8 +1038,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 retain_recovery=retain_recovery if _retain_recovery else None,
                 recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                 snapshot_review=review_snapshot if _snapshot_channel is not None else None,
-                retain_snapshot_review=_retain_snapshot_review)
-            result["outcome"] = ("INSTALLATION_SNAPSHOT_REVIEW_RETAINED" if _retain_snapshot_review else
+                retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index)
+            result["outcome"] = ("INSTALLATION_OFFHOST_INDEX_CONFIRMED" if _confirm_offhost_index else
+                                 "INSTALLATION_SNAPSHOT_REVIEW_RETAINED" if _retain_snapshot_review else
                                  "INSTALLATION_SNAPSHOT_CONTENT_VALIDATED" if target is not None and _snapshot_channel is not None else
                                  "INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED" if _snapshot_channel is not None else
                                  "INSTALLATION_TARGET_STORAGE_RETAINED" if target is not None and _retain_recovery else
@@ -2391,12 +2418,13 @@ def _installation_namespace(parent, *, create=False, owned_identity=None, owned_
             if owned_identity is None:
                 _installation_runs_clear(fd)
             else:
-                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery", SNAPSHOT_REVIEW_FILE},
+                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery", SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE},
                       "unreviewed owned installation records")
                 recovery = (owned_records or {}).get("recovery")
                 _need(recovery is None or set(recovery[0]) == RECOVERY_FILES, "incomplete owned recovery pair")
                 _installation_owned_run(fd, owned_identity, saved_writers=(owned_records or {}).get("writers.json"),
-                                        recovery=recovery, snapshot_review=(owned_records or {}).get(SNAPSHOT_REVIEW_FILE))
+                                        recovery=recovery, snapshot_review=(owned_records or {}).get(SNAPSHOT_REVIEW_FILE),
+                                        snapshot_offhost=(owned_records or {}).get(SNAPSHOT_OFFHOST_FILE))
             after = os.fstat(fd)
             path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
             _private_info(after, directory=True)
@@ -2437,7 +2465,7 @@ def _inspect_installation_runs(*, create=False):
 
 
 
-def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None, snapshot_review=None):
+def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None, snapshot_review=None, snapshot_offhost=None):
     _need(saved_writers is None or type(saved_writers) is bytes, "invalid owned writer record proof")
     _need(set(os.listdir(namespace)) == {identity}, "installation transaction inventory changed")
     with _private_directory(namespace, identity) as root:
@@ -2450,6 +2478,10 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
               and set(recovery[0]) == RECOVERY_FILES, "snapshot review requires the original complete recovery pair")
         if snapshot_review is not None:
             expected.add(SNAPSHOT_REVIEW_FILE)
+        _need(snapshot_offhost is None or type(snapshot_offhost) is bytes and snapshot_review is not None,
+              "off-host confirmation requires the original snapshot review")
+        if snapshot_offhost is not None:
+            expected.add(SNAPSHOT_OFFHOST_FILE)
         _need(set(os.listdir(root)) == expected, "unexpected installation transaction members")
         intent = _installation_record_read(root, "intent.json", identity)
         if saved_writers is not None:
@@ -2472,15 +2504,21 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
             _need(_snapshot_review_read(root) == snapshot_review, "owned snapshot review bytes changed")
             _snapshot_review_value(snapshot_review, recovery[0]["recovery.tar"], recovery[0]["recovery.json"],
                                    intent, saved_writers, identity)
+        if snapshot_offhost is not None:
+            _need(_snapshot_offhost_record_read(root) == snapshot_offhost, "owned off-host confirmation bytes changed")
+            _snapshot_offhost_record_value(snapshot_offhost, snapshot_review, recovery[0]["recovery.tar"],
+                recovery[0]["recovery.json"], intent, saved_writers, identity)
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     _need(snapshot_review is None or retain_recovery is not None, "snapshot wait requires recovery persistence")
     _need(type(retain_snapshot_review) is bool and (not retain_snapshot_review or snapshot_review is not None),
           "snapshot review retention requires the live owned continuation")
+    _need(type(confirm_offhost_index) is bool and (not confirm_offhost_index or retain_snapshot_review),
+          "off-host confirmation requires this live snapshot review")
     _need((retain_recovery is None) == (recovery_namespace is None),
           "recovery continuation requires original private namespace facts")
     if recovery_namespace is not None:
@@ -2544,7 +2582,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         _material_jobs_idle(folders)
                         _need(_installation_owned_run(namespace, identity, saved_writers=owned_records.get("writers.json"),
                                                        recovery=owned_records.get("recovery"),
-                                                       snapshot_review=owned_records.get(SNAPSHOT_REVIEW_FILE)) == raw
+                                                       snapshot_review=owned_records.get(SNAPSHOT_REVIEW_FILE),
+                                                       snapshot_offhost=owned_records.get(SNAPSHOT_OFFHOST_FILE)) == raw
                               and set(os.listdir(folders["maintenance"])) == {"active.json"}
                               and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
                               and _directory_identity(os.fstat(root)) == initial
@@ -2620,8 +2659,27 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                                     "offHostIndexSha256": _hash(_json(index)), "offHostIndexBytes": len(_json(index)),
                                     "offHostRetentionConfirmed": False, "requiresOffHostRetention": True,
                                     "snapshotAvailable": False, "recoveryReady": False, "canExecute": False}
+                            def persist_offhost(offhost_raw):
+                                check_owned()
+                                _need(SNAPSHOT_REVIEW_FILE in owned_records and SNAPSHOT_OFFHOST_FILE not in owned_records,
+                                      "off-host confirmation requires this round's unique durable review")
+                                _snapshot_offhost_record_value(offhost_raw, owned_records[SNAPSHOT_REVIEW_FILE],
+                                    records["recovery.tar"], records["recovery.json"], raw, owned_records["writers.json"], identity)
+                                _snapshot_offhost_record_write(root, offhost_raw)
+                                owned_records[SNAPSHOT_OFFHOST_FILE] = offhost_raw
+                                check_owned()
+                                return {"offHostReceiptDurable": True, "offHostReceiptSha256": _hash(offhost_raw),
+                                    "offHostReceiptBytes": len(offhost_raw), "offHostRetentionConfirmed": True,
+                                    "requiresOffHostRetention": False,
+                                    "offHostVerificationMethod": "operator-ssh-peer-durable-receipt",
+                                    "offHostLocationIndependentlyAuthenticated": False,
+                                    "snapshotAvailable": False, "recoveryReady": False, "canExecute": False,
+                                    "requiresRecoveryValidation": True, "requiresHostRecheck": True}
+                            continuation = {"persist_snapshot": persist_snapshot}
+                            if confirm_offhost_index:
+                                continuation["persist_offhost"] = persist_offhost
                             snapshot_result = snapshot_review(check_owned, raw, owned_records["writers.json"], identity,
-                                records["recovery.tar"], records["recovery.json"], persist_snapshot=persist_snapshot)
+                                records["recovery.tar"], records["recovery.json"], **continuation)
                         else:
                             snapshot_result = snapshot_review(check_owned, raw, owned_records["writers.json"], identity,
                                 records["recovery.tar"], records["recovery.json"])
@@ -3922,7 +3980,7 @@ def _installation_snapshot_request(payload, receipt, intent, writers, identity):
         "maxWaitSeconds": MAX_SNAPSHOT_REVIEW_SECONDS, "snapshotAvailable": False, "canExecute": False}
 
 
-def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline, _request_sent=None):
+def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline, _request_sent=None, _request_limit=4096):
     """One bounded live frame. Borrow descriptors; never close caller IO or open a path."""
     _installation_snapshot_fds(input_fd, output_fd)
     _need(_request_sent is None or callable(_request_sent), "invalid snapshot output observer")
@@ -3930,7 +3988,8 @@ def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline, _
     _need(type(deadline) in (int, float) and now < deadline <= now + MAX_SNAPSHOT_REVIEW_SECONDS,
           "invalid snapshot review deadline")
     raw = _json(request)
-    _need(len(raw) <= 4096, "snapshot review request exceeds budget")
+    _need(type(_request_limit) is int and _request_limit in (4096, MAX_SNAPSHOT_INDEX_TRANSFER)
+          and len(raw) <= _request_limit, "snapshot review request exceeds budget")
     saved_flags = {}
     try:
         for fd in (input_fd, output_fd):
@@ -4759,7 +4818,7 @@ def _retain_installation_snapshot_review(retention_id, target, *, input_fd, outp
         _retain_snapshot_review=True)
 
 
-# Client-side preparation only; no VM continuation consumes this acknowledgement yet.
+# Shared strict data for the client receiver and this round's owned VM continuation.
 MAX_SNAPSHOT_INDEX_TRANSFER = 32 * 1024
 
 
@@ -4975,6 +5034,132 @@ def _retain_snapshot_index_offhost(transfer, directory, *, expected, operator_co
         "canExecute": False, "recoveryReady": False})
     _snapshot_index_ack_value(ack, transfer)
     return ack
+
+
+# Acknowledgements are data in this operator/SSH trust scope, never a recovery permit.
+SNAPSHOT_OFFHOST_FILE = "snapshot-offhost.json"
+MAX_SNAPSHOT_OFFHOST_RECORD = 128 * 1024
+
+
+def _installation_snapshot_index_exchange(transfer, input_fd, output_fd, *, deadline, _request_sent=None):
+    request = _snapshot_index_transfer_value(transfer)
+    raw = _installation_snapshot_exchange(request, input_fd, output_fd, deadline=deadline,
+        _request_sent=_request_sent, _request_limit=MAX_SNAPSHOT_INDEX_TRANSFER)
+    _snapshot_index_ack_value(raw, transfer)
+    return raw
+
+
+def _snapshot_offhost_record_bytes(transfer, ack, review, payload, receipt, intent, writers, identity, *,
+                                  request_sent_at, reply_received_at):
+    raw = _json({"schemaVersion": 1, "kind": "sanq-minimal-snapshot-offhost-receipt",
+        "installationId": identity, "snapshotReviewSha256": _hash(review),
+        "transferOriginal": transfer.decode("ascii"), "ackOriginal": ack.decode("ascii"),
+        "requestSentAt": request_sent_at, "replyReceivedAt": reply_received_at,
+        "verificationMethod": "operator-ssh-peer-durable-receipt",
+        "offHostLocationIndependentlyAuthenticated": False, "canExecute": False, "recoveryReady": False})
+    _snapshot_offhost_record_value(raw, review, payload, receipt, intent, writers, identity)
+    return raw
+
+
+def _snapshot_offhost_record_value(raw, review, payload, receipt, intent, writers, identity):
+    """Data-only binding to the original durable review and recovery materials; no host replay."""
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_SNAPSHOT_OFFHOST_RECORD,
+          "invalid snapshot off-host record size")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid snapshot off-host record constant"))
+        _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "installationId", "snapshotReviewSha256",
+                  "transferOriginal", "ackOriginal", "requestSentAt", "replyReceivedAt", "verificationMethod",
+                  "offHostLocationIndependentlyAuthenticated", "canExecute", "recoveryReady"}
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-minimal-snapshot-offhost-receipt" and _json(value) == raw
+              and value["installationId"] == identity and value["snapshotReviewSha256"] == _hash(review)
+              and type(value["transferOriginal"]) is str and type(value["ackOriginal"]) is str
+              and value["verificationMethod"] == "operator-ssh-peer-durable-receipt"
+              and all(value[key] is False for key in ("offHostLocationIndependentlyAuthenticated", "canExecute", "recoveryReady")),
+              "snapshot off-host record fields or authority flags differ")
+        transfer = value["transferOriginal"].encode("ascii")
+        request = _snapshot_index_transfer_value(transfer)
+        expected = _snapshot_offhost_index(review, payload, receipt, intent, writers, identity)
+        _need(_json(request["index"]) == _json(expected),
+              "snapshot off-host transfer differs from the original durable review")
+        _snapshot_index_ack_value(value["ackOriginal"].encode("ascii"), transfer)
+        times = [_snapshot_timestamp(value[key]) for key in ("requestSentAt", "replyReceivedAt")]
+        reviewed = _snapshot_review_value(review, payload, receipt, intent, writers, identity)
+        _need(_snapshot_timestamp(reviewed["replyReceivedAt"]) <= times[0] <= times[1]
+              and all(parsed.strftime("%Y-%m-%dT%H:%M:%S.%fZ") == value[key]
+                      for parsed, key in zip(times, ("requestSentAt", "replyReceivedAt"))),
+              "snapshot off-host confirmation time contradicts the original review")
+        return value
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid snapshot off-host record") from None
+
+
+def _snapshot_offhost_record_read(root):
+    _private_info(os.fstat(root), directory=True)
+    fd = os.open(SNAPSHOT_OFFHOST_FILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        _need(0 < before.st_size <= MAX_SNAPSHOT_OFFHOST_RECORD, "snapshot off-host file size differs")
+        chunks, size = [], 0
+        while size <= MAX_SNAPSHOT_OFFHOST_RECORD:
+            block = os.read(fd, min(65536, MAX_SNAPSHOT_OFFHOST_RECORD + 1 - size))
+            if not block:
+                break
+            chunks.append(block)
+            size += len(block)
+        after, path = os.fstat(fd), os.stat(SNAPSHOT_OFFHOST_FILE, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(path)
+        _need(size == before.st_size and _installed_fingerprint(before) == _installed_fingerprint(after)
+              == _installed_fingerprint(path), "snapshot off-host record changed around read")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def _snapshot_offhost_record_write(root, raw):
+    """Owned caller validates all original bindings; never accept a caller-controlled leaf."""
+    _need(os.geteuid() == 0 and type(raw) is bytes and 0 < len(raw) <= MAX_SNAPSHOT_OFFHOST_RECORD,
+          "invalid snapshot off-host write")
+    _private_info(os.fstat(root), directory=True)
+    disk = os.fstatvfs(root)
+    _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + len(raw),
+          "insufficient snapshot off-host storage reserve")
+    fd = os.open(SNAPSHOT_OFFHOST_FILE, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        remaining = memoryview(raw)
+        while remaining:
+            count = os.write(fd, remaining)
+            _need(count > 0, "short snapshot off-host write")
+            remaining = remaining[count:]
+        os.fsync(fd)
+        written = os.fstat(fd)
+        _private_info(written)
+        _need(written.st_size == len(raw), "snapshot off-host output size differs")
+        os.fsync(root)
+        _need(_snapshot_offhost_record_read(root) == raw, "snapshot off-host readback differs")
+        after, path = os.fstat(fd), os.stat(SNAPSHOT_OFFHOST_FILE, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(path)
+        _need((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+              and _installed_fingerprint(written) == _installed_fingerprint(after)
+              == _installed_fingerprint(path), "snapshot off-host record replaced after readback")
+    finally:
+        os.close(fd)  # Keep partial/complete evidence; no cleanup or replay after an unknown result.
+
+
+def _confirm_installation_offhost_index(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh owned flow, live matching peer and durable VM receipt; no installation or resume."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
+        _retain_recovery=True, _snapshot_target=target, _snapshot_channel=(input_fd, output_fd),
+        _retain_snapshot_review=True, _confirm_offhost_index=True)
 
 
 def main(argv=None):

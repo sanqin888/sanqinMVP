@@ -1,8 +1,42 @@
 # Runtime 手动快照内容核验合同
 
-## D2 离机索引客户端耐久接收器（本地待审）
+## D2 VM持锁离机索引确认与耐久回执（本地待审）
 
-**D2_OFFHOST_INDEX_RECEIVER_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**D2_OFFHOST_CONFIRMATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于[PR #3045](https://github.com/sanqin888/sanqinMVP/pull/3045)已合并dev `b241d21e1aa4fd906ccacf2a138d1c729be6c80d` 创建 `feat/runtime-minimal-offhost-confirmation-20261029`。新增私有 `_confirm_installation_offhost_index`：原两锁/完整目标与存储预检、意图/临时门禁/原ID停写、恢复包与snapshot-review耐久保存及现场复核后，从原件重算索引并生成本轮新transfer nonce，沿原活跃FD等待准确ack。旧回执入口不自动等待第二次输入；新原生bool开关要求完整前置，不接受导入ack/磁盘成功票据或resume。
+
+复用原有界selectors/FD flags恢复/短写/单帧接收；普通快照请求默认仍≤4096字节，只有私有索引交接使用既定≤32KiB请求。底层原64KiB接收上限不变，严格ack解析再限≤16KiB；两次等待各自最多1800秒，不代表总维护时间承诺。每阶段前后重新启动300秒现场预算，核原件/来源/原意图、门禁/停写对象、DB/存储和恢复包；FD替换、超时、EOF、错nonce/hash/字节数或漂移沿FENCE_UNCONFIRMED保留，不自动重试或开启业务。
+
+固定新增 `installation-runs/<installationId>/snapshot-offhost.json`，schemaVersion=1、kind=sanq-minimal-snapshot-offhost-receipt，精确12字段/≤128KiB，保存准确transfer/ack ASCII原字节、原review摘要、本轮ID、完整写出/收到时间及明确的信任/false许可。纯数据复核从原review+intent/writers/恢复二件重算索引，拒绝自洽改hash替换原件；时间必须在原review收到回复之后且本次写出≤收到ack。固定root:root/0600、父0700、5GiB余量、O_EXCL/nofollow、文件/目录fsync和完整读回/metadata重核。仅本调用栈持有准确原字节时owned/退出清单允许该成员；半写、读回失败或晚变均保留。
+
+只有活跃ack比对、VM回执实际耐久保存及最终现场复核后，才返回OFFHOST_INDEX_CONFIRMED、offHostReceiptDurable/offHostRetentionConfirmed=true与requiresOffHostRetention=false；该确认明确限定operator-ssh-peer-durable-receipt，offHostLocationIndependentlyAuthenticated=false。既有不可变索引中的offHostRetentionConfirmed仍false，表示索引生成时状态，不回写其字节。AWS来源/可信时间/restore/snapshotAvailable/recoveryReady/canExecute仍false，requiresRecoveryValidation/requiresHostRecheck仍true；客户端持久化声明不代替准确拓扑的一致性/实际恢复证据。最终两份VM核验/确认回执均晚于快照，不能要求它们出现在该快照中。
+
+新增22项真实双帧管道、一次性文件和主机模型测试，覆盖同锁且review/恢复包后交接、客户端实际写入、FD flags、完整写出回调、数据重算/原件与自洽hash篡改、错nonce/EOF/超时模型、通道替换、保存前后原件/存储漂移、等待超过旧预算、owned原字节/严格成员、短写/同步/读回/权限/链接/大小、部分保留、禁止重放与旧入口隔离。完成Python3.10 AST/符号/差异静态核对；MCP-workspace无lint/build/test权限，本批测试未运行，未提交或推送。下一步为真实恢复前置证据门禁/RECOVERY_READY，再接工具安装、永久门禁交接、Mac薄入口和D4统一隔离验收；不宣称已在实际Mac/SSH/生产完成交接。
+
+本批为私有工具事务/协议的兼容增量，生产者与读者同bootstrap同步更新，仅新增固定确认回执；不改写历史intent/marker/writers、review或恢复包，不创建第二应用state/并行业务路径。PRIVATE_FILES四材料/RECOVERY_FILES二件、17+Manifest/250/300、九helper/三永久模板、依赖/业务schema与迁移保持；三组研究继续暂停，无生产/AWS操作。
+
+### 本地VM确认与回执合同
+
+| 对象 | 本批固定规则 |
+| --- | --- |
+| 唯一新入口 | 私有_confirm_installation_offhost_index，_confirm_offhost_index原生bool要求_retain_snapshot_review及原完整阶段；没有导入ack/回执、自动resume或公开CLI。普通回执入口仍只完成原一轮等待 |
+| 交接顺序 | 原review文件耐久保存→完整现场/原件核对→从原review重算准确index→新transfer nonce→原FD完整输出→单帧ack→原件/现场重核→VM确认回执独占保存→再复核→返回内存确认 |
+| 传输预算 | 普通请求默认4096，私有索引请求≤32KiB；底层接收沿原64KiB上限，ack严格解析≤16KiB。每轮独立≤1800秒；两轮前后各刷新300秒现场预算，完整输出回调必须恰好一次。借用FD原身份/flags前后核对，不开路径/进程或关闭调用者FD |
+| 新固定文件 | /opt/sanq/deploy-state/installation-runs/<installationId>/snapshot-offhost.json；schemaVersion=1、kind=sanq-minimal-snapshot-offhost-receipt，≤128KiB，root:root/0600/nlink1，父0700。不是PRIVATE_FILES/recovery二件或原review文件，不回写历史字节 |
+| 精确12字段 | schemaVersion/kind/installationId/snapshotReviewSha256/transferOriginal/ackOriginal/requestSentAt/replyReceivedAt/verificationMethod/offHostLocationIndependentlyAuthenticated/canExecute/recoveryReady。原transfer/ack以准确ASCII字符串保留；后四项为固定方法与明确false许可 |
+| 数据复核 | 对照原intent/writers/tar/recovery回执及原review，重新生成index字节并与transfer精确比较，复核client ack的nonce/ID/review/index hash/大小/声明；换index后重算外层hash不能替代原review。原review收到回复≤本次完整写出≤收到ack，时间规范UTC微秒，不宣称独立可信时间 |
+| IO/owned | 5GiB余量、固定叶名O_EXCL/nofollow、短写/文件与目录fsync、准确整件读回、写后metadata稳定；只接受本调用栈持有的原review和确认原字节。所有owned/退出清单重核，缺件/多件/半写/替换或晚变阻断，保留实际文件及停写 |
+| 成功语义 | 顶层INSTALLATION_OFFHOST_INDEX_CONFIRMED，内层OFFHOST_INDEX_CONFIRMED；活跃匹配ack+实际VM耐久回执+最终重核后，外层offHostRetentionConfirmed/offHostReceiptDurable=true、requiresOffHostRetention=false。此结论限定operator-ssh-peer-durable-receipt，独立机外位置认证false；不可变index原false字段继续表示生成时状态 |
+| 剩余门禁 | clientIndexDurable是对端程序的实际保存声明，未证明AWS认证、存储硬件或真实恢复；snapshotAvailable/recoveryReady/canExecute/restoreProven仍false，requiresRecoveryValidation/requiresHostRecheck仍true。仍须恢复前置证据门禁、Mac薄入口和D4真实Mac/SSH/拓扑恢复及中断验收 |
+
+新VM确认回执晚于客户端索引写入，不把该回执摘要反向写进原index形成循环绑定；两份VM最终回执也均晚于原快照。灾难恢复时仍按准确机外对象索引与快照内原意图/writers/恢复包比对，不要求快照中存在晚生成材料，不凭已保存确认自动恢复或开启业务。
+
+## D2 离机索引客户端耐久接收器（源码已合并）
+
+**D2_OFFHOST_INDEX_RECEIVER_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3045](https://github.com/sanqin888/sanqinMVP/pull/3045)最终head `168699d42cbc27033e66961732e99d3993ee7c59` 经[CI #7781](https://github.com/sanqin888/sanqinMVP/actions/runs/40882535335)SUCCESS（4成功/6范围跳过；两条Release各1163、Runtime1080、既有C1回归412），已合并dev `b241d21e1aa4fd906ccacf2a138d1c729be6c80d`，无需CI修复；无生产/AWS操作。
 
 基于[PR #3044](https://github.com/sanqin888/sanqinMVP/pull/3044)合并dev `cf99b573334eb6e1104c6ae73254748e2baf1d8f` 创建 `feat/runtime-minimal-offhost-index-receiver-20261029`。本批实现客户端索引交接的准备能力：既有索引生成器复用新增严格41字段解析器；私有transfer工厂生成独立随机32字节challenge并绑定准确索引hash/大小；客户端只在完成保存后生成确认帧。尚未把该协议接入VM原持锁等待/确认落盘链，不提升任何VM许可。
 
@@ -12,7 +46,7 @@
 
 只有全部IO和目录退出核对成功后，才返回绑定transferChallenge、installationId、review/index摘要及准确字节数的ack，clientIndexDurable/operatorConfirmedOffHost为true，canExecute/recoveryReady仍false。clientIndexDurable仅描述该进程实际系统调用/读回成功；机外位置依赖操作者及既有SSH上下文，不构成独立机器认证、AWS认证或存储硬件/真实恢复证明。索引原offHostRetentionConfirmed=false和全部false许可保持；VM尚未消费ack。断连/丢ack/部分文件均保留并阻断自动重放，未声明真正生产机外保存已完成。
 
-新增22项纯数据、真实一次性文件与模型测试，覆盖所有必需字段/null、hash/ARN/名称/类型/权限/路径、独立上下文、实际短写与同步顺序、已有文件/链接/祖先替换、容量/读回/晚变/部分失败、Darwin能力/失败不回退、旧nonce确认拒绝、既有真实owned投影接新解析器及无VM命令/公开CLI。Python3.10 AST/符号与差异静态核对完成；MCP-workspace无lint/build/test执行权限，本批测试未运行，未提交或推送。下一步把transfer/ack接入原持锁维护流，核准确VM回执并耐久保存确认，再落实恢复前置证据门禁和Mac薄入口/D4统一验收。
+新增22项纯数据、真实一次性文件与模型测试，覆盖所有必需字段/null、hash/ARN/名称/类型/权限/路径、独立上下文、实际短写与同步顺序、已有文件/链接/祖先替换、容量/读回/晚变/部分失败、Darwin能力/失败不回退、旧nonce确认拒绝、既有真实owned投影接新解析器及无VM命令/公开CLI。上述22项已随最终head两条Release各1163项通过CI；完成Python3.10 AST/符号和差异静态核对，MCP-workspace未运行lint/build/test，实际Mac/文件系统/SSH仍未验收。下一步把transfer/ack接入原持锁维护流，核准确VM回执并耐久保存确认，再落实恢复前置证据门禁和Mac薄入口/D4统一验收。
 
 本批仅同bootstrap私有工具协议/用户侧索引文件的新增能力，旧索引41字段字节及既有VM入口行为保持，无旧数据回填、业务双读路径、依赖或业务schema/迁移；未改变PRIVATE_FILES/RECOVERY_FILES、17+Manifest/250/300、九helper/三永久模板或唯一应用state。三组研究继续暂停，无生产/AWS操作。
 
@@ -242,7 +276,7 @@
 
 1. 停写前目标/存储观察及原件接入意图/恢复包已分别随PR #3041/#3042通过最终CI；当前新入口只在同次owned流程组合，不接受独立摘要重放。
 2. 单次输入的字段/challenge/人工声明/顺序校验已随PR #3043最终CI验证；当前新增耐久回执20项测试未运行，准确范围见本文首节，所有恢复/安装许可仍false。
-3. 本轮核验回执独占保存/读回及索引生成已随PR #3044最终CI通过；客户端接收/确认帧的22项测试尚待本批CI。接下来在原VM持锁调用栈接线、耐久保存确认并落实真实恢复前置证据门禁，再接 RECOVERY_READY。失败不补写、不重放、不自动开启业务。不得改变原 PRIVATE_FILES 四材料或手改 Manifest；不把“回执已保存”单独当成整套恢复验收完成。
+3. 核验回执及客户端接收器已随PR #3044/#3045最终CI通过；本地VM持锁确认/耐久回执的22项测试尚待本批CI。接下来落实真实恢复前置证据门禁，再接RECOVERY_READY、工具安装与Mac/D4验收。失败不补写、不重放、不自动开启业务。不得改变原 PRIVATE_FILES 四材料或手改 Manifest；不把“回执已保存”单独当成整套恢复验收完成。
 4. 通过 CI 后，在 D4 统一真实隔离验收中验证准确 AWS 对象、真实根盘/挂载、完整集群恢复、SSH/TTY、超时、中断和恢复。未完成这些步骤前，不能标记为生产可用。
 
-原文档批次只完成合同。目标/存储绑定、内容校验及核验回执已随PR #3042/#3043/#3044最终CI通过；本地客户端接收器22项测试尚待CI，VM活跃确认接线/持久化、恢复前置门禁、Mac薄入口、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
+原文档批次只完成合同。目标/存储绑定、内容校验、核验回执及客户端接收已随PR #3042/#3043/#3044/#3045最终CI通过；本地VM活跃确认/持久化22项测试尚待CI，恢复前置门禁、Mac薄入口、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
