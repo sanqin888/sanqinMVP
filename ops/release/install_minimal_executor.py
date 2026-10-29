@@ -1020,7 +1020,11 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                     intent, writers, installation_id, request_sent_at=sent_times[0], reply_received_at=ack_received)
                                 confirmed = persist_offhost(offhost_raw)
                                 fresh_context()
-                                return {**reviewed, **saved, **confirmed, "outcome": "OFFHOST_INDEX_CONFIRMED"}
+                                materials = _snapshot_recovery_material_review(_json(index), payload, receipt,
+                                    intent, writers, installation_id, fetch=fetch)
+                                fresh_context()
+                                return {**reviewed, **saved, **confirmed, "recoveryMaterialReview": materials,
+                                    "outcome": "OFFHOST_INDEX_CONFIRMED"}
                             return {**reviewed, **saved, "outcome": "SNAPSHOT_REVIEW_RETAINED"}
                         return reviewed
                     return {"outcome": "SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED",
@@ -5160,6 +5164,85 @@ def _confirm_installation_offhost_index(retention_id, target, *, input_fd, outpu
         _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
         _retain_recovery=True, _snapshot_target=target, _snapshot_channel=(input_fd, output_fd),
         _retain_snapshot_review=True, _confirm_offhost_index=True)
+
+
+# Restore prerequisites: material association only; physical recovery evidence is still required.
+RECOVERY_REQUIRED_EVIDENCE = (
+    "PLATFORM_AND_SNAPSHOT_CONSISTENCY",
+    "ISOLATED_REPLACEMENT_FENCING",
+    "COMPLETE_CLUSTER_RESTORE",
+    "PERSISTENT_CONTENT_AND_RUNTIME_RESTORE",
+    "OFFHOST_ONLY_RETRIEVAL",
+)
+
+
+def _snapshot_recovery_material_review(index_raw, payload, receipt, intent, writers, identity, *, fetch):
+    """Bind an operator-retained index to pre-snapshot originals, without later VM receipts."""
+    _need(type(identity) is str and re.fullmatch(r"[a-f0-9]{64}", identity) and callable(fetch)
+          and all(type(raw) is bytes and 0 < len(raw) <= maximum for raw, maximum in (
+              (intent, MAX_INSTALL_RECORD), (writers, MAX_INSTALL_RECORD), (receipt, MAX_INSTALL_RECORD),
+              (payload, MAX_RECOVERY_ARCHIVE_BYTES))), "invalid recovery material inputs")
+    index = _snapshot_offhost_index_value(index_raw)
+    _need(index["installationId"] == identity
+          and index["intentSha256"] == _hash(intent) and index["writersSha256"] == _hash(writers)
+          and index["archiveSha256"] == _hash(payload) and index["receiptSha256"] == _hash(receipt),
+          "recovery material digests differ from the off-host index")
+    recorded = _installation_record_value(intent, identity)
+    _installation_writers_match(intent, writers, identity)
+    _need(index["retentionId"] == recorded["retentionId"]
+          and index["targetSourceSha"] == recorded["targetSourceSha"]
+          and index["installedRuntimeSourceSha"] == recorded["installedRuntimeSourceSha"],
+          "recovery material source or retention differs from the original intent")
+    scope = _installation_recovery_scope(payload, receipt, intent, writers, identity,
+        fetch=fetch, require_target_storage=True)
+    _need(scope["packageScopeReviewed"] is True and scope.get("snapshotTargetStorageReviewed") is True,
+          "recovery material scope lacks original target storage")
+    members = _installation_recovery_members(payload)
+    try:
+        raw = members[RECOVERY_STORAGE_MEMBER]
+        value = json.loads(raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid recovery material storage constant"))
+        observation = value["originalObservation"]
+        reviewed = _installation_recovery_storage_value(raw, observation["docker"], recorded)
+        storage, target = reviewed["facts"], reviewed["facts"]["target"]
+        _need(all(index[key] == target[source] for key, source in (
+                  ("accountId", "accountId"), ("region", "region"), ("fromInstanceArn", "instanceArn"),
+                  ("fromInstanceName", "instanceName"), ("sourceAvailabilityZone", "availabilityZone"),
+                  ("targetInputSha256", "targetInputSha256")))
+              and index["targetStorageSha256"] == storage["observationSha256"]
+              and observation["applicationSha"] == scope["applicationSha"],
+              "recovery index target differs from pre-snapshot originals")
+        prerequisites, docker = observation["prerequisites"], observation["docker"]
+        basis = {"installationId": identity, "retentionId": recorded["retentionId"],
+            "targetSourceSha": recorded["targetSourceSha"], "installedRuntimeSourceSha": recorded["installedRuntimeSourceSha"],
+            "applicationSha": scope["applicationSha"], "indexSha256": _hash(index_raw),
+            **{key: index[key] for key in ("intentSha256", "writersSha256", "archiveSha256", "receiptSha256",
+                "targetInputSha256", "targetStorageSha256", "accountId", "region", "fromInstanceArn", "fromInstanceName",
+                "snapshotArn", "snapshotName", "challenge")},
+            "originalObservationSha256": reviewed["observationSha256"],
+            "storageOriginalsSha256": _hash(raw), "packageCaptureSha256": scope["captureSha256"],
+            "sourceDockerPlatform": {key: docker["dockerEngine"][key] for key in ("OSType", "Architecture", "ServerVersion")},
+            "sourceSystemPython": prerequisites["systemPython"],
+            "sourceDatabaseImageId": docker["containers"]["db"]["imageId"],
+            "sourceDatabaseIdentity": prerequisites["databaseIdentity"],
+            "sourceMigrationHistorySha256": prerequisites["migrationHistorySha256"],
+            "sourceMigrationHistoryRows": prerequisites["migrationHistoryRows"],
+            "sourceSystemDiskSizeInGb": target["cloudSystemDiskSizeInGb"],
+            "sourceStorageLayoutSha256": _hash(_json({"rootMount": storage["rootMount"], "blockStorage": storage["blockStorage"]})),
+            "persistentPaths": list(INSTALL_STORAGE_DIRECTORIES),
+            "oldRuntimeMembers": scope["oldRuntimeMembers"]}
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid recovery material association") from None
+    _need(len(_json(basis)) <= MAX_INSTALL_RECORD, "recovery material basis exceeds budget")
+    return {"outcome": "RECOVERY_MATERIALS_BOUND_EVIDENCE_REQUIRED",
+        "schemaVersion": 1, "kind": "sanq-minimal-recovery-material-review",
+        "basis": basis, "basisSha256": _hash(_json(basis)), "materialBindingsReviewed": True,
+        "postSnapshotReceiptsRequired": False, "postSnapshotReviewDigestRecomputed": False,
+        "snapshotLocatorSource": "operator-retained-offhost-index", "sourceReviewUsesFetchPort": True,
+        "requiredEvidence": list(RECOVERY_REQUIRED_EVIDENCE), "requiresIsolatedRestoreEvidence": True,
+        "awsOriginAuthenticated": False, "trustedTimeProven": False, "restoreProven": False,
+        "snapshotAvailable": False, "recoveryReady": False, "readyToInstall": False,
+        "canExecute": False, "authorizedToMutateProduction": False, "requiresHostRecheck": True}
 
 
 def main(argv=None):
