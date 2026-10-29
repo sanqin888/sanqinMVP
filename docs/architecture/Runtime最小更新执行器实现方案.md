@@ -1,8 +1,26 @@
 # Runtime 最小更新执行器实现方案
 
-## D2 恢复数据库只读原始采集与比对（源码已提交远端）
+## D2 工具写入清单与耐久文件原语（本地待审）
 
-**D2_RECOVERY_DATABASE_PROBE_REMOTE / REAL_RESTORE_EVIDENCE_OPEN / NOT_INSTALLED。**
+**D2_TOOL_FILE_WRITE_LOCAL / TESTS_NOT_RUN / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+2026-10-29用户明确要求“恢复验证等交付之后抽空再做”。据此将新Lightsail完整快照恢复、PG/WAL/业务内容对照、仅机外取得和恢复适用范围验收移入交付后待办；不再阻断本项目源码推进或作为首版完成条件，也不记为PASS。恢复研究/已合并材料保留，restoreProven保持false。更新前准确手动快照available核验、旧工具/配置恢复材料保存及机外索引确认仍属于安装前置；安装/正常发布/失败冻结自身的验收继续按原交付范围执行。历史章节中“真实恢复通过后才能交付/RECOVERY_READY”的前置关系由本节调整，以SNAPSHOT_MATERIALS_READY表示安装材料就绪，与实际恢复证明分开。
+
+基线为[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)合并dev `d7798ab48726574f47b04529a8ddcdf3c30c8e00`；其最终head `7062c657ed79c93f9fe1a3759204df23c166e5b2` 经[CI #7790](https://github.com/sanqin888/sanqinMVP/actions/runs/40909418492)SUCCESS（4成功/6范围跳过，两条Release各1244、Runtime1080、既有C1回归412）。本地分支 `feat/runtime-minimal-install-write-plan-20261029`。
+
+私有_installation_tool_write_set复用exact main/归档/Git来源和原工具差异审计，再核完整18项旧观察的原字节/metadata；返回固定27项顺序清单及单独私有目标字节：先九helper独占创建，原17按批准范围替换或只核对，最后写原目标归档的准确Manifest。只允许deploy_release.py/release_contract.py两项Runtime内容变化，保留旧文件模式；helper为0644。bootstrap不落入Runtime，永久三门禁另属后续阶段。清单只绑定来源/顺序/摘要/原身份，不是现场观察或授权，readyToInstall/canExecute仍false。
+
+私有_write_installation_tool_member使用调用方已固定的父目录FD、原字节/完整身份及现场复核回调；固定允许路径、root身份、owner/mode/单链接、≤300秒预算和5GiB余量。未变成员只读核对；写入先独占固定pending文件，短写循环、权限/文件fsync与整件读回，重新核原文件及pending后发布。替换用单文件rename并同步父目录；helper用不覆盖的硬链接发布、同步目录、移除pending后再同步目录，最终核内容/模式/身份。每个目录/文件原语不是整个安装原子事务。失败保留实际旧/新/pending，不清理或自动回滚；pending存在时连“未变核对”也拒绝。未修改现有读取白名单，也不以该底层原语独立认证来源/路径、锁或门禁。
+
+新增28项原件/真实临时文件与故障模型测试，覆盖固定清单/源变更、原Manifest字节及权限、独占创建、同步/rename/读回顺序、短写/零进展、残件/竞态、链接/晚变、容量/截止、失败保留及无目标代码执行。Python3.10 AST/符号/差异/读回静态审阅完成；MCP-workspace未运行lint/build/test，本批未提交或推送。
+
+本批仍为未接入现场事务的私有写入能力，现有安装入口不调用它。下一步在原两锁/同一owned流程、快照及机外确认后接逐项进度核验，再完成永久门禁、旧应用核验/完成交接和Mac入口；不能用导出的清单或随意回调发起生产安装。无新helper/永久unit、公开CLI、业务持久schema或第二应用state；仅新增固定pending中间件命名，后续owned清单须明确跟踪。已审阅，依赖图/基线无变化；17+Manifest/250/300、九helper/三永久模板及三组暂停研究保持，无依赖/业务迁移或生产/AWS/root安装/DB操作。
+
+## D2 恢复数据库只读原始采集与比对（源码已合并）
+
+**D2_RECOVERY_DATABASE_PROBE_MERGED_DEV / SOURCE_CI_VERIFIED / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+最终[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)已由head `7062c657ed79c93f9fe1a3759204df23c166e5b2` 经[CI #7790](https://github.com/sanqin888/sanqinMVP/actions/runs/40909418492)全绿后合并dev `d7798ab48726574f47b04529a8ddcdf3c30c8e00`；两条Release各1244、Runtime1080、既有C1回归412通过。下文初次失败记录保留为历史。
 
 本批已提交[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)。初次[CI #7789](https://github.com/sanqin888/sanqinMVP/actions/runs/40908506575)运行1244项Release测试，仅1项fixture失败：单行历史reverse不产生变化；同PR改为明确变更历史状态，保留原拒绝断言，未修改运行源码或CI门禁。修复后最终head的验证结果以该PR实际GitHub Actions记录为准。
 
@@ -1480,7 +1498,7 @@ apply 在锁内再次核对计划原件与摘要、当前版本/状态、运行�
 
 平台重大维护延用已批准的停写→准确 Lightsail 手动快照→available 核对路线。Mac 侧受限 AWS 协调可减少生产 VM 长期云凭据；不把实现完整 AWS SDK/新 CA 服务作为普通发布前置。首次过渡可由用户与有限 installer 按准确清单完成受控操作，自动化只覆盖已审阅范围，不自动执行恢复/切流。
 
-如安装失败，保持维护并人工选择经核验的工具恢复或准确快照新实例；旧机必须确认停止写入，新机默认不营业、不运行后台外部写入者。存在新订单/付款或 UNKNOWN 时先对账/向前修复，不直接恢复旧整盘。一次可复用的真实恢复验证是第三/四批交付的一部分，不重演无关旧实验。
+如安装失败，保持维护并人工选择经核验的工具恢复或准确快照新实例；旧机必须确认停止写入，新机默认不营业、不运行后台外部写入者。存在新订单/付款或 UNKNOWN 时先对账/向前修复，不直接恢复旧整盘。2026-10-29用户调整：完整VM/数据库真实恢复演练列为交付后待办，首版按RESTORE_VALIDATION_DEFERRED记录；准确快照available、恢复材料和机外保存前置保留，不把未验证恢复写成PASS。
 
 ## 8. 四个实施批次
 
@@ -1488,7 +1506,7 @@ apply 在锁内再次核对计划原件与摘要、当前版本/状态、运行�
 | --- | --- | --- |
 | **第一批：准确计划与兼容检查** | 复用两个 release 文件，实现 exact 目标、计划字段/SQL 清单、受信逐对象运行合同检查；明确系统 Python、平台辅助件固定清单和最小持久 schema。不创建生产目录或安装 unit | Release/Runtime 对最终 head 的实际 CI 通过；计划能显示准确版本、变化与拒绝原因，300+ 无关文件不再导致误判；错 digest/配置/SQL/状态拒绝；单独通过所选系统 Python 的聚焦回归。此时仍不能生产部署 |
 | **第二批：受控执行与失败保护** | 单一控制器接计划；release_job、本机锁/持久阶段、SQL 授权绑定、短停写/镜像切换/验证、状态查询、失败收尾与本机重启门禁 | 模拟 + 隔离 VM 覆盖并发、SIGKILL、SSH 断线、socket/daemon/VM 重启、健康失败、迁移前后未知与 ACTIVE 交接中断；没有 finally 重开业务；外置守卫未部署生产。不能只以单元测试冒充现场保证 |
-| **第三批：安装、Mac 入口与一次性过渡准备** | installer、薄 SSH 入口、辅助件交付清单、权限/目录/units 的精确安装与撤回计划、一页 runbook；验证工具与现有应用向后兼容 | 隔离环境真实完成旧→新工具安装、成功发布和中断/恢复；Mac 可在两次操作内完成普通发布并重连查询；准确快照/备份恢复验证及所需生产安装材料可审阅。生产执行仍另批授权 |
+| **第三批：安装、Mac 入口与一次性过渡准备** | installer、薄 SSH 入口、辅助件交付清单、权限/目录/units 的精确安装与撤回计划、一页 runbook；验证工具与现有应用向后兼容 | 隔离环境真实完成旧→新工具安装、成功发布和中断/恢复；Mac 可在两次操作内完成普通发布并重连查询；准确快照available核验、恢复材料/机外索引及所需生产安装材料可审阅；完整快照恢复演练延后。生产执行仍另批授权 |
 | **第四批：现场过渡与最终验收** | 经批准核对真实 VM、完成一次性工具过渡；核对积压变更/环境/迁移及用户控制的 main 晋级，执行准确候选的真实应用发布 | 满足下文全部完结条件；保留准确操作/版本/结果；只在实际通过后标最小执行器完成，再返回三组暂停研究复审 |
 
 每批只建自己的实现/测试和必要 owner 文档；不为“以后可能需要”扩新身份系统或通用框架。固定四批是交付边界，遇实证缺陷在原批次修复，不无限添加小编号或新的完结目标。第一批优先把合同和可运行校验做实，不先重新开启 C1/R2。
@@ -1504,7 +1522,7 @@ apply 在锁内再次核对计划原件与摘要、当前版本/状态、运行�
 | 资源不变量 | DB volume/project/Uploads 不变；只更新三应用容器；API/worker 同镜像，.env 权限和秘密不泄露 |
 | 断线与并发 | Mac 断开后原任务可查询且不重复执行；第二个发布被拒绝；锁释放不等于清除未明状态 |
 | 故障与维护 | SIGKILL、daemon/VM 重启、socket 激活、health/迁移失败、状态写入中断均有真实隔离结果；不自报未证实停写 |
-| 回退与恢复 | 真实验证过的兼容镜像回退；一次性工具中断恢复；与所选快照/备份路线相符的可复用恢复证据 |
+| 回退与恢复 | 真实验证过的兼容镜像回退；一次性工具中断失败保持及人工处置材料；完整快照/备份恢复演练按2026-10-29决定列交付后待办 |
 | 单人操作 | Mac 普通发布 1–2 次操作，命令不会悄悄换版本；status/logs 和一页事故手册可用；现场无未处置 PENDING/INCIDENT |
 
 **以上全部达到才能标 MINIMAL_EXECUTOR_COMPLETE。**代码合并或 CI 全绿只能标 SOURCE/CI_VERIFIED；隔离试验、生产安装、真实应用更新分别记录。两步发布不包含首次安装、破坏性迁移或事故处置，也不承诺免费/零停机/自动云灾备。

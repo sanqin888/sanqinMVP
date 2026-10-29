@@ -1,8 +1,26 @@
 # Runtime 最小执行器恢复前置证据合同
 
-## D2 恢复数据库只读原始采集与比对（源码已提交远端）
+## D2 工具写入清单与耐久文件原语（本地待审）
 
-**D2_RECOVERY_DATABASE_PROBE_REMOTE / REAL_RESTORE_EVIDENCE_OPEN / NOT_INSTALLED。**
+**D2_TOOL_FILE_WRITE_LOCAL / TESTS_NOT_RUN / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+2026-10-29用户明确要求“恢复验证等交付之后抽空再做”。据此将新Lightsail完整快照恢复、PG/WAL/业务内容对照、仅机外取得和恢复适用范围验收移入交付后待办；不再阻断本项目源码推进或作为首版完成条件，也不记为PASS。恢复研究/已合并材料保留，restoreProven保持false。更新前准确手动快照available核验、旧工具/配置恢复材料保存及机外索引确认仍属于安装前置；安装/正常发布/失败冻结自身的验收继续按原交付范围执行。历史章节中“真实恢复通过后才能交付/RECOVERY_READY”的前置关系由本节调整，以SNAPSHOT_MATERIALS_READY表示安装材料就绪，与实际恢复证明分开。
+
+基线为[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)合并dev `d7798ab48726574f47b04529a8ddcdf3c30c8e00`；其最终head `7062c657ed79c93f9fe1a3759204df23c166e5b2` 经[CI #7790](https://github.com/sanqin888/sanqinMVP/actions/runs/40909418492)SUCCESS（4成功/6范围跳过，两条Release各1244、Runtime1080、既有C1回归412）。本地分支 `feat/runtime-minimal-install-write-plan-20261029`。
+
+私有_installation_tool_write_set复用exact main/归档/Git来源和原工具差异审计，再核完整18项旧观察的原字节/metadata；返回固定27项顺序清单及单独私有目标字节：先九helper独占创建，原17按批准范围替换或只核对，最后写原目标归档的准确Manifest。只允许deploy_release.py/release_contract.py两项Runtime内容变化，保留旧文件模式；helper为0644。bootstrap不落入Runtime，永久三门禁另属后续阶段。清单只绑定来源/顺序/摘要/原身份，不是现场观察或授权，readyToInstall/canExecute仍false。
+
+私有_write_installation_tool_member使用调用方已固定的父目录FD、原字节/完整身份及现场复核回调；固定允许路径、root身份、owner/mode/单链接、≤300秒预算和5GiB余量。未变成员只读核对；写入先独占固定pending文件，短写循环、权限/文件fsync与整件读回，重新核原文件及pending后发布。替换用单文件rename并同步父目录；helper用不覆盖的硬链接发布、同步目录、移除pending后再同步目录，最终核内容/模式/身份。每个目录/文件原语不是整个安装原子事务。失败保留实际旧/新/pending，不清理或自动回滚；pending存在时连“未变核对”也拒绝。未修改现有读取白名单，也不以该底层原语独立认证来源/路径、锁或门禁。
+
+新增28项原件/真实临时文件与故障模型测试，覆盖固定清单/源变更、原Manifest字节及权限、独占创建、同步/rename/读回顺序、短写/零进展、残件/竞态、链接/晚变、容量/截止、失败保留及无目标代码执行。Python3.10 AST/符号/差异/读回静态审阅完成；MCP-workspace未运行lint/build/test，本批未提交或推送。
+
+本批仍为未接入现场事务的私有写入能力，现有安装入口不调用它。下一步在原两锁/同一owned流程、快照及机外确认后接逐项进度核验，再完成永久门禁、旧应用核验/完成交接和Mac入口；不能用导出的清单或随意回调发起生产安装。无新helper/永久unit、公开CLI、业务持久schema或第二应用state；仅新增固定pending中间件命名，后续owned清单须明确跟踪。已审阅，依赖图/基线无变化；17+Manifest/250/300、九helper/三永久模板及三组暂停研究保持，无依赖/业务迁移或生产/AWS/root安装/DB操作。
+
+## D2 恢复数据库只读原始采集与比对（源码已合并）
+
+**D2_RECOVERY_DATABASE_PROBE_MERGED_DEV / SOURCE_CI_VERIFIED / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+最终[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)已由head `7062c657ed79c93f9fe1a3759204df23c166e5b2` 经[CI #7790](https://github.com/sanqin888/sanqinMVP/actions/runs/40909418492)全绿后合并dev `d7798ab48726574f47b04529a8ddcdf3c30c8e00`；两条Release各1244、Runtime1080、既有C1回归412通过。下文初次失败记录保留为历史。
 
 本批已提交[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)。初次[CI #7789](https://github.com/sanqin888/sanqinMVP/actions/runs/40908506575)运行1244项Release测试，仅1项fixture失败：单行历史reverse不产生变化；同PR改为明确变更历史状态，保留原拒绝断言，未修改运行源码或CI门禁。修复后最终head的验证结果以该PR实际GitHub Actions记录为准。
 
@@ -28,7 +46,7 @@
 
 成功返回事实摘要和私有raw二元组；摘要只含固定身份/hash/数量，不回显stdout、stderr、SQL历史明细或秘密。raw可能包含私密诊断，须由未来授权适配器在私有证据通道保存，不能直接print/写公共日志。当前没有新增文件写入或失败回执；命令异常/退出失败/截止或预算失败时立即阻断后续查询，端口所有者须先保留失败/中断原件，不能依赖函数抛错之后还返回完整包。
 
-databaseTranscriptReviewed=true表示提供的四项原件通过范围比对；commandPortTargetAuthenticated、databaseContainerBindingProven、databaseImageIdentityProven、fullClusterContentProven、replacementHostObserved、cloudIsolationProven、snapshotLineageProven、restoreProven/recoveryReady/canExecute均false。transactionReadOnly=on只表示查询事务只读，不能证明DB全局冻结；迁移历史一致不能证明全部业务内容、WAL恢复、哨兵/数量、uploads/sounds、旧Runtime或启动门禁正确。五组实际证据和严格RECOVERY_READY晋级仍未满足，真实端口/目标与最终D4验收不得用CI模型替代。
+databaseTranscriptReviewed=true表示提供的四项原件通过范围比对；commandPortTargetAuthenticated、databaseContainerBindingProven、databaseImageIdentityProven、fullClusterContentProven、replacementHostObserved、cloudIsolationProven、snapshotLineageProven、restoreProven/recoveryReady/canExecute均false。transactionReadOnly=on只表示查询事务只读，不能证明DB全局冻结；迁移历史一致不能证明全部业务内容、WAL恢复、哨兵/数量、uploads/sounds、旧Runtime或启动门禁正确。五组实际恢复证据列交付后待办，当前只做DB原件比对；未来真实恢复验收不能用CI模型替代。
 
 ## D2 独立恢复实例目标绑定（源码已合并）
 
@@ -98,9 +116,9 @@ databaseTranscriptReviewed=true表示提供的四项原件通过范围比对；c
 
 机外index不是第二发布权威；其中“原源实例”只定位快照来源，不能直接作为恢复后SSH执行目标。新恢复实例必须由独立已批准的恢复计划固定ARN/名称/SSH主机密钥，且与旧源实例明确不同。未确定新目标前不得执行恢复主机命令。
 
-## 五组真实恢复前置证据
+## 五组真实恢复证据（交付后待办）
 
-下列ID对应当前源码requiredEvidence，均OPEN。它们是证据要求，不是可以导入自报PASS的接口。
+下列ID对应已有恢复审计源码的requiredEvidence，均为DEFERRED/未验证。2026-10-29用户决定将该实际恢复验收整体移到交付后，首版安装/交付不消费这些flag作为阻断条件；它们仍是未来声称真实恢复通过所需证据，不是可以导入自报PASS的接口。
 
 | ID | 必须保留的实际原件与结果 | 不足以通过的材料 |
 | --- | --- | --- |
@@ -112,7 +130,7 @@ databaseTranscriptReviewed=true表示提供的四项原件通过范围比对；c
 
 PG15官方[文件系统备份说明](https://www.postgresql.org/docs/15/backup-file.html)（2026-10-29复核）区分普通文件复制与完整、一致快照；运行中一致快照的恢复会涉及WAL重放，完整集群和相关存储覆盖不可省略。本项目保持DB运行的既定范围，不能顺手增加DB stop/CHECKPOINT/数据写入；若选定现场路线需要改变操作范围，须先审阅准确对象和授权。这里未对实际Lightsail平台的一致性或恢复作通过结论。
 
-## D4统一隔离验收的执行前置与证据包
+## 交付后完整恢复演练的执行前置与证据包
 
 实际执行前，先将最终代码/工具交付状态、独立新目标、可丢弃数据集、网络/业务隔离、操作范围和回收/失败保持方式做成准确计划供用户授权。仓库源码授权和CI不包含AWS创建/恢复、生产停写、root安装或DB写入；本批仅明确计划所需材料，没有要求用户现在执行未准备好的命令。
 
@@ -127,4 +145,4 @@ PG15官方[文件系统备份说明](https://www.postgresql.org/docs/15/backup-f
 
 新实例的设备名、st_dev/inode、云实例身份、容器生命周期可能与源机不同。不能把sourceStorageLayoutSha256或原目录inode机械地当作新机相等条件；应在准确新目标重新核完整物理映射与逻辑不变量。DB镜像/版本、应用与迁移历史、持久路径覆盖、旧Runtime/config/state及维护不变量必须按准确范围核；变化需要明确兼容审阅，不能只以“同主版本”继承恢复证明。
 
-只有上述真实证据经严格、可重复核验并被绑定到适用平台/拓扑/代码范围，才能再实现/启用RECOVERY_READY晋级；达到恢复前置不等于授权工具安装或完成整个最小执行器。Mac薄入口、真实工具过渡/故障与生产应用更新仍按[实现方案](Runtime最小更新执行器实现方案.md)及[暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)执行。C1/自建CPython/R2研究继续暂停、不取消。
+上述真实证据仅约束未来恢复能力的验收结论，已不作为首版工具安装/交付的前置。安装材料阶段改用SNAPSHOT_MATERIALS_READY，核准确快照available、原件/机外索引及现场不变量；restoreProven保持false，完整恢复演练完成前不宣称恢复已验证。该范围调整不自动授权root安装或生产发布。Mac薄入口、真实工具过渡/故障与生产应用更新仍按[实现方案](Runtime最小更新执行器实现方案.md)及[暂停恢复计划](Runtime最小更新执行器与暂停恢复计划.md)执行。C1/自建CPython/R2研究继续暂停、不取消。

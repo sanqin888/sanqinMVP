@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inert delivery, private materials and installed source observation. No host apply.
+"""Delivery, private observations and fixed file primitives. No host apply entry point.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -5421,6 +5421,202 @@ def _capture_recovery_database_probe(index_raw, payload, receipt, intent, writer
         identity, replacement_raw, expected=expected, database_container_id=database_container_id, fetch=fetch)
     _need(time.monotonic() < deadline, "recovery database probe deadline expired")
     return facts, raw
+
+
+# First-install tool files only. Permanent gates are handed over in a later owned stage.
+INSTALL_TOOL_PATHS = (*HELPERS, *RUNTIME_MEMBERS, "runtime-release.json")
+
+
+def _installation_tool_write_set(payload, source_sha, old, old_sha, observed, *, fetch):
+    """Return a source-derived ordered plan and private target bytes, never installation authority."""
+    _need(callable(fetch), "invalid installation tool source port")
+    transition = review_transition(payload, source_sha, old, old_sha, fetch=fetch)
+    _need(not transition["requiresAdditionalPlatformReview"], "tool write set exceeds reviewed platform scope")
+    contents, _, _ = _review(payload, source_sha, fetch)
+    old_manifest, old_files = _runtime_files(old, old_sha)
+    _, target_files = _runtime_files(contents[RUNTIME_ARCHIVE], source_sha)
+    with tarfile.open(fileobj=io.BytesIO(contents[RUNTIME_ARCHIVE]), mode="r:gz") as archive:
+        target_files["runtime-release.json"] = archive.extractfile(
+            bundle.RUNTIME_PREFIX + "/runtime-release.json").read(65537)
+    _need(0 < len(target_files["runtime-release.json"]) <= 65536, "target Manifest exceeds write budget")
+    _need(type(observed) is dict and set(observed) == {*RUNTIME_MEMBERS, "runtime-release.json"},
+          "tool write set requires the complete original Runtime observation")
+    for path, value in observed.items():
+        _need(type(value) is tuple and len(value) == 2 and type(value[0]) is bytes
+              and type(value[1]) is tuple and len(value[1]) == 9,
+              "tool write set original fields differ")
+        raw, identity = value
+        _storage_metadata(list(identity))
+        _need(0 < len(raw) <= (65536 if path == "runtime-release.json" else MAX_FILE)
+              and identity[2] == len(raw) and identity[5:7] == (PRIVATE_OWNER_UID, PRIVATE_GROUP_GID),
+              "tool write set original metadata differs")
+        if path == "runtime-release.json":
+            _need(_json(json.loads(raw, object_pairs_hook=_unique)) == _json(old_manifest),
+                  "tool write set original Manifest differs")
+        else:
+            _need(raw == old_files[path], "tool write set original Runtime bytes differ")
+    targets = {**{path: contents["sources/" + path] for path in HELPERS}, **target_files}
+    operations = []
+    for index, path in enumerate(INSTALL_TOOL_PATHS):
+        previous = observed.get(path)
+        raw, identity = previous if previous is not None else (None, None)
+        after = targets[path]
+        operations.append({"sequence": index, "path": path,
+            "stage": "HELPERS" if path in HELPERS else "MANIFEST" if path == "runtime-release.json" else "RUNTIME",
+            "action": "create" if raw is None else "verify" if raw == after else "replace",
+            "beforeSha256": _hash(raw) if raw is not None else None,
+            "expectedIdentity": list(identity) if identity is not None else None,
+            "afterSha256": _hash(after), "bytes": len(after),
+            "mode": stat.S_IMODE(identity[7]) if identity is not None else 0o644})
+    body = {"schemaVersion": 1, "kind": "sanq-minimal-install-tool-write-set",
+        "sourceSha": source_sha, "currentRuntimeSourceSha": old_sha, "kitSha256": _hash(payload),
+        "oldArchiveSha256": _hash(old), "targetArchiveSha256": _hash(contents[RUNTIME_ARCHIVE]),
+        "runtimeRoot": "/opt/sanq/runtime", "operations": operations}
+    return {**body, "writeSetSha256": _hash(_json(body)), "outcome": "TOOL_WRITE_SET_REVIEWED",
+        "sourceAuthenticated": True, "installedBaselineObserved": False,
+        "restoreValidationDeferred": True, "restoreProven": False,
+        "requiresSnapshotAndOffhostConfirmation": True, "requiresOwnedInstallationFlow": True,
+        "requiresHostRecheck": True, "readyToInstall": False, "canExecute": False,
+        "authorizedToMutateProduction": False}, targets
+
+
+def _installation_tool_member_read(parent, path):
+    _need(type(path) is str and path in INSTALL_TOOL_PATHS, "unreviewed installation tool path")
+    name = Path(path).name
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    try:
+        before = os.fstat(fd)
+        _installed_info(before)
+        maximum = 65536 if path == "runtime-release.json" else MAX_FILE
+        _need(0 < before.st_size <= maximum, "installation tool size differs")
+        chunks, size = [], 0
+        while size <= maximum:
+            raw = os.read(fd, min(65536, maximum + 1 - size))
+            if not raw:
+                break
+            chunks.append(raw)
+            size += len(raw)
+        _need(size == before.st_size and _installed_fingerprint(before) ==
+              _installed_fingerprint(os.fstat(fd)) ==
+              _installed_fingerprint(os.stat(name, dir_fd=parent, follow_symlinks=False)),
+              "installation tool changed during read")
+        return b"".join(chunks), _installed_fingerprint(before)
+    finally:
+        os.close(fd)
+
+
+def _write_installation_tool_member(parent, path, before, after, *, expected_identity,
+                                    parent_identity, check_context, deadline):
+    """Private pinned-FD primitive. The future owned caller must authenticate source and hold both locks."""
+    _need(os.geteuid() == 0 and type(parent) is int and parent >= 0
+          and type(path) is str and path in INSTALL_TOOL_PATHS and callable(check_context)
+          and type(after) is bytes and 0 < len(after) <= (65536 if path == "runtime-release.json" else MAX_FILE),
+          "invalid installation tool write input")
+    _need(type(parent_identity) is tuple and len(parent_identity) == 5
+          and all(type(item) is int for item in parent_identity)
+          and type(deadline) in (int, float) and time.monotonic() < deadline <= time.monotonic() + 300,
+          "invalid installation tool parent or deadline")
+    if path in HELPERS:
+        _need(before is None and expected_identity is None, "first installation cannot replace an existing helper")
+        mode = 0o644
+    else:
+        _need(type(before) is bytes and 0 < len(before) <= MAX_FILE
+              and type(expected_identity) is tuple and len(expected_identity) == 9,
+              "installation tool replacement needs original bytes and identity")
+        _storage_metadata(list(expected_identity))
+        _need(expected_identity[2] == len(before), "installation tool original size differs")
+        _need(before == after or path in ALLOWED_CHANGES or path == "runtime-release.json",
+              "installation tool replacement exceeds fixed platform scope")
+        mode = stat.S_IMODE(expected_identity[7])
+    name, temporary = Path(path).name, ".sanq-install-" + Path(path).name + ".pending"
+    def context():
+        _need(time.monotonic() < deadline, "installation tool write deadline expired")
+        check_context()
+        info = os.fstat(parent)
+        _installed_info(info, directory=True)
+        _need(_directory_identity(info) == parent_identity, "installation tool parent changed")
+        _need(time.monotonic() < deadline, "installation tool write deadline expired")
+    def original_matches():
+        if before is None:
+            try:
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                return
+            raise release.ReleaseContractError("first installation tool destination already exists")
+        _need(_installation_tool_member_read(parent, path) == (before, expected_identity),
+              "installation tool original changed")
+    context()
+    original_matches()
+    try:
+        os.stat(temporary, dir_fd=parent, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:
+        raise release.ReleaseContractError("installation tool pending file requires review")
+    if before == after:
+        context()
+        original_matches()
+        return {"path": path, "outcome": "TOOL_FILE_UNCHANGED_VERIFIED", "changed": False,
+                "sha256": _hash(after), "canExecute": False}
+    disk = os.fstatvfs(parent)
+    _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + len(after),
+          "installation tool write lacks disk reserve")
+    fd = None
+    try:
+        _need(time.monotonic() < deadline, "installation tool write deadline expired")
+        fd = os.open(temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     0o600, dir_fd=parent)
+        os.fchown(fd, PRIVATE_OWNER_UID, PRIVATE_GROUP_GID)
+        offset = 0
+        while offset < len(after):
+            _need(time.monotonic() < deadline, "installation tool write deadline expired")
+            count = os.write(fd, after[offset:offset + 65536])
+            _need(type(count) is int and 0 < count <= min(65536, len(after) - offset),
+                  "installation tool write made no progress")
+            offset += count
+        os.fchmod(fd, mode)
+        os.fsync(fd)
+        info = os.fstat(fd)
+        _installed_info(info)
+        expected = _installed_fingerprint(info)
+        _need(info.st_size == len(after), "installation tool temporary size differs")
+        os.lseek(fd, 0, os.SEEK_SET)
+        chunks, size = [], 0
+        while size <= len(after):
+            chunk = os.read(fd, min(65536, len(after) + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        _need(b"".join(chunks) == after and expected == _installed_fingerprint(os.fstat(fd))
+              == _installed_fingerprint(os.stat(temporary, dir_fd=parent, follow_symlinks=False)),
+              "installation tool temporary readback differs")
+        context()
+        original_matches()
+        _need(expected == _installed_fingerprint(os.fstat(fd))
+              == _installed_fingerprint(os.stat(temporary, dir_fd=parent, follow_symlinks=False)),
+              "installation tool temporary changed before publication")
+        if before is None:
+            os.link(temporary, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+            os.fsync(parent)
+            os.unlink(temporary, dir_fd=parent)
+        else:
+            os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
+        os.fsync(parent)
+        current, identity = _installation_tool_member_read(parent, path)
+        _need(current == after and identity == _installed_fingerprint(os.fstat(fd))
+              and stat.S_IMODE(identity[7]) == mode, "installation tool published readback differs")
+        context()
+        _need(_installation_tool_member_read(parent, path) == (after, identity),
+              "installation tool changed after context recheck")
+        return {"path": path, "outcome": "TOOL_FILE_DURABLE", "changed": True,
+                "sha256": _hash(after), "bytes": len(after), "identity": list(identity),
+                "fileDurable": True, "canExecute": False}
+    except BaseException:
+        raise release.ReleaseContractError("TOOL_WRITE_UNCONFIRMED: preserve files and installation fence") from None
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def main(argv=None):
