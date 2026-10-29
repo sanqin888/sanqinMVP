@@ -1,8 +1,42 @@
 # Runtime 手动快照内容核验合同
 
-## D2 快照核验耐久回执与离机索引（本地待审）
+## D2 离机索引客户端耐久接收器（本地待审）
 
-**D2_SNAPSHOT_REVIEW_RECEIPT_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**D2_OFFHOST_INDEX_RECEIVER_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于[PR #3044](https://github.com/sanqin888/sanqinMVP/pull/3044)合并dev `cf99b573334eb6e1104c6ae73254748e2baf1d8f` 创建 `feat/runtime-minimal-offhost-index-receiver-20261029`。本批实现客户端索引交接的准备能力：既有索引生成器复用新增严格41字段解析器；私有transfer工厂生成独立随机32字节challenge并绑定准确索引hash/大小；客户端只在完成保存后生成确认帧。尚未把该协议接入VM原持锁等待/确认落盘链，不提升任何VM许可。
+
+索引≤16KiB、transfer≤32KiB、ack≤16KiB，均规范JSON/严格字段/原生类型；逐项核摘要、source/安装/retention身份、账户/区域/实例/快照ARN、完整challenge名、可用区、规范UTC时间及固定材料路径，拒绝任意metadata或权限字段。客户端必须独立传入已验证SSH/本轮上下文六项：accountId、region、instanceArn、instanceName、installationId、snapshotReviewSha256；与输入不符即在IO前拒绝，不能从transfer自行建立“预期”目标。
+
+私有 `_retain_snapshot_index_offhost` 只允许非root Linux/Darwin进程和原生true的机外操作员确认。调用者选已存在的绝对0700私有目录，逐级nofollow打开并保留/复核祖先FD身份；路径不来自VM帧，拒绝系统/生产路径、符号链接、歧义或不可信可写祖先。仅独占创建固定 `snapshot-index-<installationId>.json`、0600/单链接，短写循环、文件/目录fsync、完整读回及metadata/路径重核；不自动建目录、覆盖、删除或重试。Darwin还要求可用F_FULLFSYNC，文件/目录fsync之后执行，缺失或失败不降级；实际APFS/设备/SSH行为仍待D4。
+
+只有全部IO和目录退出核对成功后，才返回绑定transferChallenge、installationId、review/index摘要及准确字节数的ack，clientIndexDurable/operatorConfirmedOffHost为true，canExecute/recoveryReady仍false。clientIndexDurable仅描述该进程实际系统调用/读回成功；机外位置依赖操作者及既有SSH上下文，不构成独立机器认证、AWS认证或存储硬件/真实恢复证明。索引原offHostRetentionConfirmed=false和全部false许可保持；VM尚未消费ack。断连/丢ack/部分文件均保留并阻断自动重放，未声明真正生产机外保存已完成。
+
+新增22项纯数据、真实一次性文件与模型测试，覆盖所有必需字段/null、hash/ARN/名称/类型/权限/路径、独立上下文、实际短写与同步顺序、已有文件/链接/祖先替换、容量/读回/晚变/部分失败、Darwin能力/失败不回退、旧nonce确认拒绝、既有真实owned投影接新解析器及无VM命令/公开CLI。Python3.10 AST/符号与差异静态核对完成；MCP-workspace无lint/build/test执行权限，本批测试未运行，未提交或推送。下一步把transfer/ack接入原持锁维护流，核准确VM回执并耐久保存确认，再落实恢复前置证据门禁和Mac薄入口/D4统一验收。
+
+本批仅同bootstrap私有工具协议/用户侧索引文件的新增能力，旧索引41字段字节及既有VM入口行为保持，无旧数据回填、业务双读路径、依赖或业务schema/迁移；未改变PRIVATE_FILES/RECOVERY_FILES、17+Manifest/250/300、九helper/三永久模板或唯一应用state。三组研究继续暂停，无生产/AWS操作。
+
+### 本地客户端交接协议
+
+| 对象 | 当前私有合同 |
+| --- | --- |
+| index | 原schemaVersion=1、kind=sanq-minimal-snapshot-offhost-index，精确41字段/≤16KiB。新解析器与原生成器共用，不改原规范字节；本地解析只说明字段一致，不认证VM/AWS来源 |
+| transfer | ≤32KiB规范JSON，精确六字段schemaVersion=1、kind=sanq-minimal-snapshot-index-transfer、transferChallenge（新32字节随机数的64位hex）、indexSha256、indexBytes（原生int）、index（严格对象）；与原快照challenge分开 |
+| 独立上下文 | 客户端required expected精确六字段accountId/region/instanceArn/instanceName/installationId/snapshotReviewSha256，从既有已验证SSH会话及前段本轮信息固定；不得从待核transfer自行构造expected。另须原生true的operator_confirmed_off_host，不认证其物理机器声明 |
+| 保存入口 | 私有_retain_snapshot_index_offhost，不是公开Mac CLI或root launcher。非root，仅Linux/Darwin；directory为调用者选定的已存在绝对0700目录，不取transfer路径作本地输出，不自动建目录或覆盖原文件 |
+| 祖先/叶子 | 每段ODIR/nofollow且持FD，祖先仅root/当前UID持有、非组/其他可写（root sticky目录例外）；最终UID必须当前用户。固定snapshot-index-<installationId>.json，O_EXCL/nofollow、0600/nlink=1，≤16KiB；目录及FD/路径身份前后重核 |
+| IO/同步 | 短写循环，1MiB+实际index大小余量，文件fsync→目录fsync；Darwin再F_FULLFSYNC(file)，缺能力/失败不回退。完整读回准确原规范index字节，晚变或路径替换不返回ack；保留所有部分/完整文件，不自动重试 |
+| ack | ≤16KiB规范JSON，精确12字段schemaVersion=1、kind=sanq-minimal-snapshot-index-ack、installationId、snapshotReviewSha256、indexSha256、indexBytes、transferChallenge、operatorConfirmedOffHost=true、clientIndexDurable=true、syncMethod、canExecute=false、recoveryReady=false；syncMethod仅posix-fsync/darwin-fullfsync |
+| 比对边界 | _snapshot_index_ack_value仅纯数据比对原transfer的nonce/本轮/准确hash/字节数；确认帧不是VM执行票据。VM尚不发送transfer、等待/消费ack、写确认记录或改变offHostRetentionConfirmed；不得用离线导入ack继续安装 |
+| 中断/恢复 | 同installationId的已有文件（含半写、symlink、同字节重试）均拒绝覆盖；lost ack不是成功，也不自动重新保存/重放。机外位置依赖现有操作者/SSH信任，不扩大到PKI、Enrollment、可信时间或跨克隆研究 |
+
+同步策略依据[Apple fsync存档](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html)、[fcntl存档](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fcntl.2.html)及[CPython fcntl常量源码](https://github.com/python/cpython/blob/main/Modules/fcntlmodule.c)核对（2026-10-29）；它们不证明所选Mac解释器、APFS、设备或断电恢复行为。实际F_FULLFSYNC可用性/目录同步/断连/磁盘读回必须在D4对准确Mac环境验收，不据Linux模型标Mac通过。
+
+## D2 快照核验耐久回执与离机索引（源码已合并）
+
+**D2_SNAPSHOT_REVIEW_RECEIPT_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3044](https://github.com/sanqin888/sanqinMVP/pull/3044)最终head `c5947522d852ba6356e2cad393f4da362a15eeab` 经[CI #7779](https://github.com/sanqin888/sanqinMVP/actions/runs/40879127073)SUCCESS（4成功/6范围跳过；两条Release各1141、Runtime1080、既有C1回归412），已合并dev `cf99b573334eb6e1104c6ae73254748e2baf1d8f`。初次CI #7778重放测试的等待线程断言遮住预期维护拒绝；同PR仅给fixture透传exchange，重放分支禁止进入等待，未改源码行为或CI门禁。
 
 基于[PR #3043](https://github.com/sanqin888/sanqinMVP/pull/3043)已合并dev `11d733b240d1af1a27bcec5c57a8d1f034e2f1a2` 创建 `feat/runtime-minimal-snapshot-review-receipt-20261029`。新增私有 `_retain_installation_snapshot_review`，只在原两锁、完整目标/存储预检、意图/临时门禁/原ID停写、恢复包耐久保存、活跃challenge内容核验之后保存本轮回执；原内存核验入口仍不写新文件。
 
@@ -12,7 +46,7 @@
 
 生成≤16KiB固定字段离机索引，包含准确账户/区域/源实例/快照对象、本轮challenge、意图/writers/归档/回执/目标/核验原件摘要、source/retention身份和固定材料路径；任意AWS metadata、完整回复、配置/主机原件不回显。索引只是待Mac保存的内存投影，offHostRetentionConfirmed=false、requiresOffHostRetention=true；快照先于最终回执，snapshotContainsFinalReview=false。保存回执不证明已存机外、云来源认证、可信时间或DB恢复，snapshotAvailable/recoveryReady/canExecute/restoreProven仍false。
 
-新增20项一次性文件/主机模型及纯数据/IO测试，覆盖准确同锁/停写/耐久顺序、原件重算、字段/绑定/规范格式篡改、只投影索引、显式owned证据、实际短写/同步/读回、权限/链接/容量、失败原样保留与禁止重放、保存后存储漂移、旧入口隔离和无公开CLI。Python3.10 AST/符号/差异静态核对完成；MCP-workspace未开放lint/build/test，本批测试未执行，未提交或推送。下一步补离机索引的耐久接收确认与真实恢复前置证据门禁，再接RECOVERY_READY/安装，D4真实恢复/中断验收仍OPEN。
+新增20项一次性文件/主机模型及纯数据/IO测试，覆盖准确同锁/停写/耐久顺序、原件重算、字段/绑定/规范格式篡改、只投影索引、显式owned证据、实际短写/同步/读回、权限/链接/容量、失败原样保留与禁止重放、保存后存储漂移、旧入口隔离和无公开CLI。上述20项已随最终head两条Release各1141项通过CI；完成Python3.10 AST/符号/差异静态核对，MCP-workspace未运行lint/build/test，真实平台/恢复仍未验证。下一步补离机索引的耐久接收确认与真实恢复前置证据门禁，再接RECOVERY_READY/安装，D4真实恢复/中断验收仍OPEN。
 
 本批为私有工具事务的兼容增量：生产者/读者在同一bootstrap同步发布，只新增固定回执，不改写历史意图/marker/writers/恢复包或创建业务双控制路径；无依赖、业务schema/迁移、17+Manifest/250/300、九helper/三永久模板或唯一应用state变化。三组研究保持暂停，无生产/AWS操作。
 
@@ -30,7 +64,7 @@
 | 实际状态 | 成功仅INSTALLATION_SNAPSHOT_REVIEW_RETAINED / SNAPSHOT_REVIEW_RETAINED；snapshotReviewDurable=true是本轮实际IO后的内存事实，record.result仍是保存前内容比较。索引只生成未保存机外，offHostRetentionConfirmed=false、requiresOffHostRetention=true；AWS/时间/restore/安装/恢复许可仍false |
 | 快照恢复 | 最终回执生成在快照之后，snapshotContainsFinalReview=false；机外索引以后须和快照内原intent/writers/恢复包核对，不能要求快照内存在晚生成的回执，也不能只凭机内回执判故障机外材料已可得 |
 
-本批补齐回执保存和索引生成，尚未完成Mac的独占耐久接收/确认、离机索引与恢复材料读回，以及准确拓扑的一致性/真实恢复前置证据门禁；不得直接提升为RECOVERY_READY。全部源/主机/IO模型测试尚未运行。
+该已合并批次补齐回执保存和索引生成，20项测试已随PR #3044最终CI通过；本地客户端接收/确认帧状态见首节，尚无VM活跃确认/持久化和真实Mac验收，也未完成准确拓扑的恢复前置证据门禁，不得直接提升为RECOVERY_READY。
 
 ## D2 手动快照内容校验（源码已合并）
 
@@ -208,7 +242,7 @@
 
 1. 停写前目标/存储观察及原件接入意图/恢复包已分别随PR #3041/#3042通过最终CI；当前新入口只在同次owned流程组合，不接受独立摘要重放。
 2. 单次输入的字段/challenge/人工声明/顺序校验已随PR #3043最终CI验证；当前新增耐久回执20项测试未运行，准确范围见本文首节，所有恢复/安装许可仍false。
-3. 本轮核验回执独占耐久保存与读回、离机索引生成已有本地实现，新增20项测试尚待CI；接下来补机外耐久接收/确认和真实恢复前置证据门禁，再接 RECOVERY_READY。失败不补写、不重放、不自动开启业务。不得改变原 PRIVATE_FILES 四材料或手改 Manifest；不把“回执已保存”单独当成整套恢复验收完成。
+3. 本轮核验回执独占保存/读回及索引生成已随PR #3044最终CI通过；客户端接收/确认帧的22项测试尚待本批CI。接下来在原VM持锁调用栈接线、耐久保存确认并落实真实恢复前置证据门禁，再接 RECOVERY_READY。失败不补写、不重放、不自动开启业务。不得改变原 PRIVATE_FILES 四材料或手改 Manifest；不把“回执已保存”单独当成整套恢复验收完成。
 4. 通过 CI 后，在 D4 统一真实隔离验收中验证准确 AWS 对象、真实根盘/挂载、完整集群恢复、SSH/TTY、超时、中断和恢复。未完成这些步骤前，不能标记为生产可用。
 
-原文档批次只完成合同。目标/存储绑定及内容校验已分别随PR #3042/#3043通过CI；本地耐久核验回执和索引生成的20项测试尚待CI，离机耐久确认、恢复前置门禁、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
+原文档批次只完成合同。目标/存储绑定、内容校验及核验回执已随PR #3042/#3043/#3044最终CI通过；本地客户端接收器22项测试尚待CI，VM活跃确认接线/持久化、恢复前置门禁、Mac薄入口、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
