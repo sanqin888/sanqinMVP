@@ -46,11 +46,15 @@ class InstalledFenceApiTests(unittest.TestCase):
         self.script = self.root / "maintenance_guard.py"
         self.script.write_bytes(b"modeled installed guard source\n")
         self.script.chmod(0o644)
+        self.guard_command = guard.GUARD_COMMAND.replace(str(guard.GUARD_SCRIPT), str(self.script))
+        self.templates = {unit: raw.replace(str(guard.GUARD_SCRIPT), str(self.script))
+                          .replace(str(guard.MAINTENANCE_DIR), str(self.maintenance))
+                          for unit, raw in guard.DROPINS.items()}
         self.dropins = self.root / "systemd"
         self.dropins.mkdir(mode=0o755)
         self.rows = {}
         self.calls = []
-        for unit, raw in guard.DROPINS.items():
+        for unit, raw in self.templates.items():
             directory = self.dropins / (unit + ".d")
             directory.mkdir(mode=0o755)
             path = directory / "80-sanq-maintenance.conf"
@@ -60,12 +64,13 @@ class InstalledFenceApiTests(unittest.TestCase):
             if unit.endswith(".socket"):
                 self.rows[unit]["Triggers"] = "docker.service"
             else:
-                self.rows[unit]["ExecStartPre"] = "{ path=/usr/bin/python3 ; argv[]=" + guard.GUARD_COMMAND + " ; ignore_errors=no ; }"
+                self.rows[unit]["ExecStartPre"] = "{ path=/usr/bin/python3 ; argv[]=" + self.guard_command + " ; ignore_errors=no ; }"
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         for module, key, value in ((guard, "MAINTENANCE_DIR", self.maintenance),
                                    (guard, "GUARD_SCRIPT", self.script), (guard, "__file__", str(self.script)),
-                                   (guard, "DROPIN_ROOT", self.dropins), (guard.storage, "OWNER_UID", os.getuid())):
+                                   (guard, "DROPIN_ROOT", self.dropins), (guard, "GUARD_COMMAND", self.guard_command),
+                                   (guard, "DROPINS", self.templates), (guard.storage, "OWNER_UID", os.getuid())):
             self.stack.enter_context(patch.object(module, key, value))
         self.stack.enter_context(patch.object(guard.os, "geteuid", return_value=0))
 

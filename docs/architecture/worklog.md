@@ -2,7 +2,9 @@
 
 ## 2026-10-29 — 最小更新执行器：已安装门禁API与启动拒绝核验
 
-**D2_INSTALLED_GATE_API_LOCAL / TESTS_NOT_RUN / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+**D2_INSTALLED_GATE_API_PR_OPEN / CI_FIX_AWAITING_RESULT / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+本批已提交[PR #3053](https://github.com/sanqin888/sanqinMVP/pull/3053)。初次[CI #7798](https://github.com/sanqin888/sanqinMVP/actions/runs/40932979284)运行1329项Release，仅1项新fixture报错：临时GUARD_SCRIPT路径与模拟加载命令未对齐。现于同PR同步fixture的路径、GUARD_COMMAND和DROPINS模板；保留原API严格路径/命令断言，未修改运行源码或CI门禁。最终验证以该PR修复后head的实际Actions结果为准。
 
 基于[PR #3052](https://github.com/sanqin888/sanqinMVP/pull/3052)合并dev `1ad9775578bff42d79a95d57b1abea3f37a68b9c` 创建 `feat/runtime-minimal-installed-gate-api-20261029`。新增私有_verify_installation_permanent_gate_api，沿原两锁/同一完整新鲜安装调用，在27项工具写入与三永久门禁文件/manager属性交接全部核对后，再执行准确已安装guard的只读API；新原生bool依赖完整handover。旧观察/工具写入/门禁交接入口默认不执行该API，不接受磁盘回执或resume。
 
