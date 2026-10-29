@@ -5245,6 +5245,72 @@ def _snapshot_recovery_material_review(index_raw, payload, receipt, intent, writ
         "canExecute": False, "authorizedToMutateProduction": False, "requiresHostRecheck": True}
 
 
+def _snapshot_recovery_replacement_review(index_raw, payload, receipt, intent, writers, identity,
+                                           replacement_raw, *, expected, fetch):
+    """Review an independently selected replacement as data; never contact or authorize that host."""
+    _need(type(replacement_raw) is bytes and 0 < len(replacement_raw) <= 131072,
+          "invalid recovery replacement input size")
+    try:
+        value = json.loads(replacement_raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid recovery replacement JSON constant"))
+        _need(_json(value) == replacement_raw, "recovery replacement input must be canonical")
+    except (ValueError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid recovery replacement JSON") from None
+    _need(type(value) is dict and set(value) == {
+              "schemaVersion", "kind", "basisSha256", "indexSha256", "targetOriginal"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == "sanq-minimal-recovery-replacement-target"
+          and type(value["targetOriginal"]) is str,
+          "recovery replacement fields differ")
+    for key in ("basisSha256", "indexSha256"):
+        _need(type(value[key]) is str and re.fullmatch(r"[a-f0-9]{64}", value[key]),
+              "invalid recovery replacement digest")
+    fields = {"basisSha256", "indexSha256", "accountId", "region", "instanceArn",
+              "instanceName", "sshTarget", "sshHostKeySha256"}
+    _need(type(expected) is dict and set(expected) == fields
+          and all(type(item) is str and 0 < len(item) <= 256 for item in expected.values()),
+          "independent recovery replacement context differs")
+    try:
+        target_raw = value["targetOriginal"].encode("utf-8")
+    except UnicodeError:
+        raise release.ReleaseContractError("invalid recovery replacement target encoding") from None
+    target = _installation_snapshot_target(target_raw)
+    _need(all(expected[key] == value[key] for key in ("basisSha256", "indexSha256"))
+          and all(expected[key] == target[key] for key in fields - {"basisSha256", "indexSha256"}),
+          "replacement target differs from the independently selected context")
+    _need(type(index_raw) is bytes and 0 < len(index_raw) <= MAX_INSTALL_RECORD
+          and value["indexSha256"] == _hash(index_raw),
+          "replacement index differs from the selected original")
+    index = _snapshot_offhost_index_value(index_raw)
+    _need(target["accountId"] == index["accountId"] and target["region"] == index["region"]
+          and target["instanceArn"] != index["fromInstanceArn"]
+          and target["instanceName"] != index["fromInstanceName"],
+          "replacement must be a distinct instance in the reviewed account and region")
+    materials = _snapshot_recovery_material_review(index_raw, payload, receipt, intent, writers, identity, fetch=fetch)
+    _need(value["basisSha256"] == materials["basisSha256"],
+          "replacement recovery basis differs from the reviewed originals")
+    storage_raw = _installation_recovery_members(payload)[RECOVERY_STORAGE_MEMBER]
+    storage = json.loads(storage_raw, object_pairs_hook=_unique)
+    source = _installation_snapshot_target(storage["storageOriginals"]["targetOriginal"].encode("utf-8"))
+    _need(target["sshTarget"] != source["sshTarget"],
+          "replacement SSH route must not reuse the source route")
+    _need(target["cloudSystemDiskSizeInGb"] == materials["basis"]["sourceSystemDiskSizeInGb"],
+          "replacement disk size is outside the reviewed recovery scope")
+    return {"schemaVersion": 1, "kind": "sanq-minimal-recovery-replacement-review",
+        "outcome": "RECOVERY_REPLACEMENT_BOUND_EVIDENCE_REQUIRED",
+        "basisSha256": materials["basisSha256"], "indexSha256": _hash(index_raw),
+        "replacementInputSha256": _hash(replacement_raw), "replacementTarget": target,
+        "replacementTargetReviewed": True, "materialBindingsReviewed": True,
+        "sourceInstanceArn": source["instanceArn"], "sourceInstanceName": source["instanceName"],
+        "sourceSshRouteExcluded": True, "requiresIndependentSshVerification": True,
+        "sshEndpointIndependentlyAuthenticated": False, "cloudIsolationProven": False,
+        "snapshotLineageProven": False, "replacementHostObserved": False,
+        "requiredEvidence": list(RECOVERY_REQUIRED_EVIDENCE), "requiresIsolatedRestoreEvidence": True,
+        "awsOriginAuthenticated": False, "trustedTimeProven": False, "restoreProven": False,
+        "snapshotAvailable": False, "recoveryReady": False, "readyToInstall": False,
+        "canExecute": False, "authorizedToMutateProduction": False, "requiresHostRecheck": True}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
