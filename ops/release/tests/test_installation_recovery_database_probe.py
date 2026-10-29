@@ -174,7 +174,7 @@ class RecoveryDatabaseProbeTests(unittest.TestCase):
 
     def test_self_consistent_changed_history_still_fails_against_source_originals(self):
         value = self.captured_value()
-        for mutate in (lambda obj: obj["history"].reverse(),
+        for mutate in (lambda obj: obj["history"][0].update(state="rolled-back"),
                        lambda obj: obj["history"][0].update(sha256="f" * 64),
                        lambda obj: obj["history"].append(copy.deepcopy(obj["history"][0]))):
             with self.subTest(mutate=mutate), self.assertRaisesRegex(ReleaseContractError, "source originals"):
