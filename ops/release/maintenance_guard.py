@@ -1,15 +1,18 @@
 """Local maintenance preparation and cold-start gate; NOT installed/activated.
 
-The CLI only checks startup or reads status. The separately verified task calls
-internal locked stages. No standalone release, restore, unfreeze or SQL CLI.
+The CLI checks startup, reads status or observes an existing installation fence.
+The separately verified task calls internal locked stages. No standalone release,
+restore, unfreeze or SQL CLI.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import stat
 import uuid
 from pathlib import Path
 
@@ -355,6 +358,42 @@ def _write(root: int, value: dict, *, create: bool = False) -> None:
 def check_startup() -> None:
     """No Docker/systemd calls or job lock: safe for daemon ExecStartPre."""
     storage.check_maintenance_clear(MAINTENANCE_DIR)
+
+
+def check_installation_fence(*, run=collector.command) -> dict:
+    """Read-only probe for the installed gate under an existing installation marker."""
+    _need(os.geteuid() == 0, "installation fence observation requires root")
+    _installed_gate(run)
+    path = MAINTENANCE_DIR / MARKER
+    with storage._directory_fd(MAINTENANCE_DIR) as root:
+        _need(set(os.listdir(root)) == {MARKER}, "installation maintenance inventory differs")
+        raw = collector._private_bytes(path, storage.OWNER_UID, maximum=MAX_MARKER)
+        info = path.stat(follow_symlinks=False)
+        _need(stat.S_IMODE(info.st_mode) == 0o600,
+              "installation marker mode differs")
+        value = json.loads(raw, object_pairs_hook=plan._unique_object)
+        _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "installationId", "intentSha256"}
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-minimal-executor-install-intent",
+              "installation marker fields differ")
+        for key in ("installationId", "intentSha256"):
+            _need(type(value[key]) is str and re.fullmatch(r"[a-f0-9]{64}", value[key]) is not None,
+                  "installation marker identity differs")
+        _need(raw == plan._canonical(value) + b"\n", "installation marker is not canonical")
+        try:
+            check_startup()
+        except release.ReleaseContractError:
+            pass
+        else:
+            raise release.ReleaseContractError("installation marker did not block startup")
+        _need(set(os.listdir(root)) == {MARKER}
+              and collector._private_bytes(path, storage.OWNER_UID, maximum=MAX_MARKER) == raw
+              and collector._fingerprint(info) == collector._fingerprint(path.stat(follow_symlinks=False)),
+              "installation marker changed during gate observation")
+    return {"schemaVersion": 1, "kind": "sanq-minimal-installation-fence-observation",
+            "installationId": value["installationId"], "markerSha256": hashlib.sha256(raw).hexdigest(),
+            "installedGateChecked": True, "startupDenied": True,
+            "installationComplete": False, "canExecute": False}
 
 
 def status() -> dict:
@@ -1039,11 +1078,14 @@ def _register_created_migration_locked(root, jobs_root, identity, attempt, conta
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("check-startup", "status"))
+    parser.add_argument("command", choices=("check-startup", "status", "check-installation-fence"))
     args = parser.parse_args(argv)
     try:
         if args.command == "check-startup":
             check_startup()
+        elif args.command == "check-installation-fence":
+            observed = check_installation_fence(run=lambda args: collector.command(args, timeout=5, limit=65536))
+            print(plan._canonical(observed).decode("ascii"))
         else:
             print(json.dumps(status(), indent=2))
         return 0

@@ -722,10 +722,10 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
@@ -746,6 +746,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           "off-host confirmation requires this bound live durable review")
     _need(not _write_tools or _confirm_offhost_index, "tool writes require this complete live off-host confirmation")
     _need(not _handover_gates or _write_tools, "permanent gate handover requires this complete tool write flow")
+    _need(not _verify_gate_api or _handover_gates, "installed gate API requires this complete permanent handover")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
@@ -1105,12 +1106,21 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                         gate_handover["reloaded"] = True
                                         write_context()
                                         fresh_context()
-                                        return {**tool_result, "outcome": "PERMANENT_GATES_LOADED_FENCED",
+                                        gate_result = {**tool_result, "outcome": "PERMANENT_GATES_LOADED_FENCED",
                                             "permanentGatesLoaded": True, "permanentGatePropertiesObserved": True,
                                             "permanentGateFiles": _installation_handover_gate_files(gate_handover),
                                             "permanentGatePropertiesSha256": gate_handover["effectivePropertiesSha256"],
                                             "permanentGateApiVerified": False, "requiresInstalledGateApiVerification": True,
                                             "requiresApplicationVerification": True}
+                                        if _verify_gate_api:
+                                            report = _installation_gate_api_observation(intent, installation_id,
+                                                check_context=write_context, deadline=deadline)
+                                            fresh_context()
+                                            return {**gate_result, "outcome": "PERMANENT_GATE_API_VERIFIED_FENCED",
+                                                "permanentGateApiVerified": True, "startupDenialObserved": True,
+                                                "installedToolPermissionsRechecked": True, "permanentGateApiReport": report,
+                                                "requiresInstalledGateApiVerification": False}
+                                        return gate_result
                                     return tool_result
                                 return confirmed_result
                             return {**reviewed, **saved, "outcome": "SNAPSHOT_REVIEW_RETAINED"}
@@ -1133,7 +1143,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index)
             if _write_tools:
                 result["observationTiming"] = "PRE_INSTALLATION_INTENT"
-            result["outcome"] = ("INSTALLATION_PERMANENT_GATES_LOADED_FENCED" if _handover_gates else
+            result["outcome"] = ("INSTALLATION_PERMANENT_GATE_API_VERIFIED_FENCED" if _verify_gate_api else
+                                 "INSTALLATION_PERMANENT_GATES_LOADED_FENCED" if _handover_gates else
                                  "INSTALLATION_TOOL_FILES_WRITTEN_FENCED" if _write_tools else
                                  "INSTALLATION_OFFHOST_INDEX_CONFIRMED" if _confirm_offhost_index else
                                  "INSTALLATION_SNAPSHOT_REVIEW_RETAINED" if _retain_snapshot_review else
@@ -1283,12 +1294,16 @@ def _installation_daemon_reload(*, deadline):
     _need(output == "", "unexpected installation reload output")
 
 
-def _bounded_host_client(args, *, deadline, _writer=None):
+def _bounded_host_client(args, *, deadline, _writer=None, _installation_gate_api=False):
+    _need(type(_installation_gate_api) is bool and (not _installation_gate_api
+          or (args == list(INSTALL_GATE_API_ARGS) and _writer is None)),
+          "unreviewed installed gate API command")
     if _writer is not None:
         _need(type(_writer) is tuple and len(_writer) == 5
               and args == _saved_writer_args(*_writer), "unreviewed installation writer command")
     _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)
-          or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"] or _writer is not None),
+          or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"]
+          or _writer is not None or _installation_gate_api),
           "unreviewed or unprivileged Host observation")
     _need(not any(os.environ.get(key) for key in (
           "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
@@ -5954,6 +5969,51 @@ def _handover_installation_permanent_gates(retention_id, target, *, input_fd, ou
         _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
         _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
         _write_tools=True, _handover_gates=True)
+
+
+INSTALL_GATE_API_ARGS = (
+    "/usr/bin/python3", "-E", "-S", "-B", "-X", "pycache_prefix=/dev/null",
+    "/opt/sanq/runtime/ops/release/maintenance_guard.py", "check-installation-fence")
+
+
+def _installation_gate_api_value(raw, intent, installation_id):
+    marker = _installation_marker_bytes(intent, installation_id)
+    _need(type(raw) is str and 0 < len(raw) <= 4096, "installed gate API output exceeds budget")
+    value = json.loads(raw, object_pairs_hook=_unique,
+                       parse_constant=lambda _: _need(False, "invalid installed gate API constant"))
+    expected = {"schemaVersion": 1, "kind": "sanq-minimal-installation-fence-observation",
+                "installationId": installation_id, "markerSha256": _hash(marker),
+                "installedGateChecked": True, "startupDenied": True,
+                "installationComplete": False, "canExecute": False}
+    _need(type(value) is dict and value == expected and type(value["schemaVersion"]) is int
+          and all(type(value[key]) is bool for key in ("installedGateChecked", "startupDenied",
+                                                       "installationComplete", "canExecute"))
+          and raw == _json(value).decode("ascii"), "installed gate API result differs from this installation")
+    return {**value, "reportSha256": _hash(raw.encode("ascii"))}
+
+
+def _installation_gate_api_observation(intent, installation_id, *, check_context, deadline):
+    _installation_marker_bytes(intent, installation_id)
+    _need(callable(check_context) and type(deadline) in (int, float)
+          and time.monotonic() < deadline <= time.monotonic() + 300,
+          "invalid installed gate API context")
+    check_context()
+    raw = _bounded_host_client(list(INSTALL_GATE_API_ARGS), deadline=deadline, _installation_gate_api=True)
+    check_context()
+    value = _installation_gate_api_value(raw, intent, installation_id)
+    _need(time.monotonic() < deadline, "installed gate API deadline expired")
+    return value
+
+
+def _verify_installation_permanent_gate_api(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh owned install through installed gate API checks; no application restart or completion."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
+        include_application_binding=True, include_migrations=True, include_effective_configuration=True,
+        include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
+        _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
+        _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
+        _write_tools=True, _handover_gates=True, _verify_gate_api=True)
 
 
 def main(argv=None):

@@ -128,7 +128,17 @@ class OwnedInstallationToolWriteTests(unittest.TestCase):
         self.assert_fenced()
 
     def test_no_resume_or_repeat_installation_after_partial_or_complete_tool_writes(self):
-        self.observe()
+        failures = []
+        need = installer._need
+        def diagnostic(condition, message):
+            if not condition:
+                failures.append(message)
+            return need(condition, message)
+        with patch.object(installer, "_need", side_effect=diagnostic):
+            try:
+                self.observe()
+            except ReleaseContractError:
+                self.fail("initial tool-write setup rejected: " + repr(failures[-4:]))
         with patch.object(installer, "_write_installation_tool_member", side_effect=AssertionError("replayed tool write")), \
              self.assertRaises(ReleaseContractError):
             self.observe(first_exchange=lambda *args, **kwargs: self.fail("replayed snapshot wait"))
