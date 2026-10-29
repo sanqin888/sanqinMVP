@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Delivery, private observations and fixed file primitives. No host apply entry point.
+"""Delivery, private observations and owned tool writes. No public host-apply CLI.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -722,10 +722,10 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
@@ -744,11 +744,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           and _retain_recovery, "snapshot review retention requires the complete bound live flow")
     _need(not _confirm_offhost_index or _retain_snapshot_review,
           "off-host confirmation requires this bound live durable review")
+    _need(not _write_tools or _confirm_offhost_index, "tool writes require this complete live off-host confirmation")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
     storage_original = None
+    tool_progress = None
     def snapshot(*, temporary_files=None):
         nonlocal storage_original
         runtime = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
@@ -839,7 +841,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
             result.update({"outcome": "PRE_SNAPSHOT_STORAGE_OBSERVED",
                            "snapshotTargetAndStorageObserved": True, "snapshotStorage": before[10]})
         if _record_intent:
-            frozen_recheck = None
+            frozen_recheck = frozen_local_recheck = None
             def recheck():
                 _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch) == review,
                       "installation material source changed before intent recording")
@@ -883,14 +885,17 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                       == loaded["files"], "temporary gates changed after writer recording")
                 return saved
             def freeze_writers(check_owned, intent, writers, installation_id, loaded):
-                nonlocal frozen_recheck
-                def verify_context():
+                nonlocal frozen_recheck, frozen_local_recheck
+                def verify_local_context():
                     check_owned()
-                    _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
-                          == review and _retained_contents(root, identity) == (kit, old, value),
+                    _need(_retained_contents(root, identity) == (kit, old, value),
                           "installation materials changed during writer freeze")
-                    _need(_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]) == before[0]
-                          and _configuration_snapshot() == before[1]
+                    if tool_progress is None:
+                        _need(_installed_runtime_snapshot(old, value["currentArchiveSourceSha"]) == before[0],
+                              "installed files or recovery baseline changed during writer freeze")
+                    else:
+                        _installation_tool_progress_check(tool_progress)
+                    _need(_configuration_snapshot() == before[1]
                           and _host_filesystem_snapshot(deadline=deadline) == before[4]
                           and _external_backup_snapshot(before[0][0]) == before[9],
                           "installed files or recovery baseline changed during writer freeze")
@@ -907,6 +912,11 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                           and _hash(_json(database["history"])) == before[5]["migrationHistorySha256"],
                           "database identity or migration history changed during writer freeze")
                     check_owned()
+                def verify_context():
+                    check_owned()
+                    _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
+                          == review, "installation materials changed during writer freeze")
+                    verify_local_context()
                 frozen = _freeze_saved_installation_writers(intent, writers, installation_id,
                     loaded["files"], before[2], run=run, check_owned=check_owned, verify_context=verify_context,
                     mutate=lambda role, action: _installation_writer_command(
@@ -917,7 +927,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     _installation_writer_observation(_installation_writers_match(intent, writers, installation_id),
                         before[2], run, set(INSTALL_WRITER_ROLES), set(INSTALL_WRITER_ROLES))
                     check_owned()
+                def recheck_local_frozen():
+                    verify_local_context()
+                    _installation_writer_observation(_installation_writers_match(intent, writers, installation_id),
+                        before[2], run, set(INSTALL_WRITER_ROLES), set(INSTALL_WRITER_ROLES))
+                    check_owned()
                 frozen_recheck = recheck_frozen
+                frozen_local_recheck = recheck_local_frozen
                 return frozen
             capture = None
             if _retain_recovery:
@@ -948,7 +964,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 except BaseException:
                     raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
             def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt, *, persist_snapshot=None, persist_offhost=None):
-                nonlocal deadline
+                nonlocal deadline, tool_progress
                 try:
                     def fresh_context():
                         nonlocal deadline
@@ -1023,8 +1039,51 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                 materials = _snapshot_recovery_material_review(_json(index), payload, receipt,
                                     intent, writers, installation_id, fetch=fetch)
                                 fresh_context()
-                                return {**reviewed, **saved, **confirmed, "recoveryMaterialReview": materials,
+                                confirmed_result = {**reviewed, **saved, **confirmed, "recoveryMaterialReview": materials,
                                     "outcome": "OFFHOST_INDEX_CONFIRMED"}
+                                if _write_tools:
+                                    plan, targets = _installation_tool_write_set(kit, review["sourceSha"], old,
+                                        review["currentRuntimeSourceSha"], before[0][0], fetch=fetch)
+                                    fresh_context()
+                                    _need(callable(frozen_local_recheck), "tool writes lack this owned frozen context")
+                                    with _installation_tool_directories(before[0][1]) as directories:
+                                        names = {parts: set(os.listdir(fd)) for parts, fd in directories.items()}
+                                        _need(all(not any(name.startswith(".sanq-install-") for name in members)
+                                                  for members in names.values()), "installation has pending tool files")
+                                        tool_progress = {"original": before[0], "plan": plan, "targets": targets,
+                                            "names": names, "completed": {}, "active": None}
+                                        deadline = time.monotonic() + 300
+                                        def write_context():
+                                            check_owned()
+                                            frozen_local_recheck()
+                                            _recovery_private_matches(folders, capture)
+                                            _recovery_retention_matches(folders, capture)
+                                            check_owned()
+                                        write_context()
+                                        for row in plan["operations"]:
+                                            path = row["path"]
+                                            parts = Path(path).parts
+                                            parent = directories[parts[:-1]]
+                                            tool_progress["active"] = path
+                                            prior = before[0][0].get(path)
+                                            written = _write_installation_tool_member(parent, path,
+                                                prior[0] if prior is not None else None, targets[path],
+                                                expected_identity=prior[1] if prior is not None else None,
+                                                parent_identity=_directory_identity(os.fstat(parent)),
+                                                check_context=write_context, deadline=deadline)
+                                            tool_progress["completed"][path] = (tuple(written["identity"])
+                                                if written["changed"] else prior[1])
+                                            tool_progress["active"] = None
+                                            write_context()
+                                        files = _installation_tool_progress_check(tool_progress)
+                                        _need(set(files) == set(INSTALL_TOOL_PATHS), "installation tool write set is incomplete")
+                                    fresh_context()
+                                    return {**confirmed_result, "outcome": "TOOL_FILES_WRITTEN_FENCED", "toolFilesWritten": True,
+                                        "toolWriteSetSha256": plan["writeSetSha256"], "toolFiles": files,
+                                        "snapshotMaterialsConfirmed": True, "restoreValidationDeferred": True,
+                                        "restoreProven": False, "permanentGatesLoaded": False,
+                                        "installationComplete": False, "recoveryReady": False, "canExecute": False}
+                                return confirmed_result
                             return {**reviewed, **saved, "outcome": "SNAPSHOT_REVIEW_RETAINED"}
                         return reviewed
                     return {"outcome": "SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED",
@@ -1043,7 +1102,10 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                 snapshot_review=review_snapshot if _snapshot_channel is not None else None,
                 retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index)
-            result["outcome"] = ("INSTALLATION_OFFHOST_INDEX_CONFIRMED" if _confirm_offhost_index else
+            if _write_tools:
+                result["observationTiming"] = "PRE_INSTALLATION_INTENT"
+            result["outcome"] = ("INSTALLATION_TOOL_FILES_WRITTEN_FENCED" if _write_tools else
+                                 "INSTALLATION_OFFHOST_INDEX_CONFIRMED" if _confirm_offhost_index else
                                  "INSTALLATION_SNAPSHOT_REVIEW_RETAINED" if _retain_snapshot_review else
                                  "INSTALLATION_SNAPSHOT_CONTENT_VALIDATED" if target is not None and _snapshot_channel is not None else
                                  "INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED" if _snapshot_channel is not None else
@@ -5480,9 +5542,10 @@ def _installation_tool_write_set(payload, source_sha, old, old_sha, observed, *,
         "authorizedToMutateProduction": False}, targets
 
 
-def _installation_tool_member_read(parent, path):
-    _need(type(path) is str and path in INSTALL_TOOL_PATHS, "unreviewed installation tool path")
-    name = Path(path).name
+def _installation_tool_member_read(parent, path, *, _pending=False):
+    _need(type(path) is str and path in INSTALL_TOOL_PATHS and type(_pending) is bool,
+          "unreviewed installation tool path")
+    name = ".sanq-install-" + Path(path).name + ".pending" if _pending else Path(path).name
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
     try:
         before = os.fstat(fd)
@@ -5617,6 +5680,84 @@ def _write_installation_tool_member(parent, path, before, after, *, expected_ide
     finally:
         if fd is not None:
             os.close(fd)
+
+
+@contextlib.contextmanager
+def _installation_tool_directories(expected):
+    """Pin the existing Runtime directories; no mkdir, redirection or target imports."""
+    with contextlib.ExitStack() as stack:
+        anchor = _state_parent()
+        stack.callback(os.close, anchor)
+        root = stack.enter_context(_installed_directory(anchor, "runtime"))
+        directories = {(): root}
+        for path in INSTALL_TOOL_PATHS:
+            parts = Path(path).parts
+            for depth in range(1, len(parts)):
+                key = parts[:depth]
+                if key not in directories:
+                    directories[key] = stack.enter_context(_installed_directory(directories[key[:-1]], key[-1]))
+        actual = {"/".join(parts): _directory_identity(os.fstat(fd)) for parts, fd in directories.items()}
+        _need(actual == expected, "installation tool directory baseline changed")
+        yield directories
+        _need({"/".join(parts): _directory_identity(os.fstat(fd)) for parts, fd in directories.items()} == expected,
+              "installation tool directories changed during write")
+
+
+def _installation_tool_progress_check(progress):
+    """Validate this call's partial writes as current facts, never pretend the old Runtime is installed."""
+    original = progress["original"][0]
+    rows = {row["path"]: row for row in progress["plan"]["operations"]}
+    observed = {}
+    with _installation_tool_directories(progress["original"][1]) as directories:
+        allowed = {parts: set(names) for parts, names in progress["names"].items()}
+        for path in INSTALL_TOOL_PATHS:
+            parts = Path(path).parts
+            parent, row = directories[parts[:-1]], rows[path]
+            target = progress["targets"][path]
+            completed = progress["completed"].get(path)
+            active = progress["active"] == path
+            try:
+                actual = _installation_tool_member_read(parent, path)
+            except FileNotFoundError:
+                actual = None
+            previous = original.get(path)
+            if completed is not None:
+                _need(actual == (target, completed), "completed installation tool changed")
+            elif active and row["action"] != "verify":
+                _need(actual == previous or actual is not None and actual[0] == target
+                      and stat.S_IMODE(actual[1][7]) == row["mode"],
+                      "active installation tool differs from original and target")
+            else:
+                _need(actual == previous, "unwritten installation tool changed")
+            if path in HELPERS and actual is not None:
+                _need(completed is not None or active, "unowned helper appeared")
+                allowed[parts[:-1]].add(parts[-1])
+            pending_name = ".sanq-install-" + parts[-1] + ".pending"
+            try:
+                pending = _installation_tool_member_read(parent, path, _pending=True)
+            except FileNotFoundError:
+                pending = None
+            if pending is not None:
+                _need(active and row["action"] != "verify" and actual == previous
+                      and pending[0] == target and stat.S_IMODE(pending[1][7]) == row["mode"],
+                      "installation pending file is outside this active write")
+                allowed[parts[:-1]].add(pending_name)
+            if actual is not None:
+                observed[path] = {"sha256": _hash(actual[0]), "bytes": len(actual[0]), "identity": list(actual[1])}
+        for parts, fd in directories.items():
+            _need(set(os.listdir(fd)) == allowed[parts], "installation Runtime directory inventory changed")
+    return observed
+
+
+def _write_installation_tools(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh owned continuation only. Ends frozen after tool files, before permanent-gate handover."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
+        include_application_binding=True, include_migrations=True, include_effective_configuration=True,
+        include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
+        _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
+        _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
+        _write_tools=True)
 
 
 def main(argv=None):
