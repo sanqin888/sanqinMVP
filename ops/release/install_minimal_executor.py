@@ -737,7 +737,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           "invalid installation observation switches")
     _need(_snapshot_channel is None or _retain_recovery and type(_snapshot_channel) is tuple
           and len(_snapshot_channel) == 2, "snapshot evidence wait requires complete recovery flow")
-    _need(_snapshot_target is None or include_external_backup and _snapshot_channel is None
+    _need(_snapshot_target is None or include_external_backup
           and (not _record_intent or _retain_recovery),
           "target storage requires a read-only observation or the complete owned recovery flow")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
@@ -963,12 +963,27 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                           "snapshot review channel or frozen context changed")
                     fresh_context()
                     request = _installation_snapshot_request(payload, receipt, intent, writers, installation_id)
-                    response = _installation_snapshot_exchange(request, *_snapshot_channel,
-                        deadline=time.monotonic() + MAX_SNAPSHOT_REVIEW_SECONDS)
+                    sent_times = []
+                    if target is not None:
+                        bound = _installation_recovery_storage_value(capture[3], before[2],
+                            _installation_record_value(intent, installation_id))["facts"]
+                        _need(_json(bound) == _json(before[10]), "snapshot target no longer matches original intent")
+                        request = _snapshot_content_request(request, bound)
+                        response = _installation_snapshot_exchange(request, *_snapshot_channel,
+                            deadline=time.monotonic() + MAX_SNAPSHOT_REVIEW_SECONDS,
+                            _request_sent=lambda: sent_times.append(_snapshot_utc_now()))
+                    else:
+                        response = _installation_snapshot_exchange(request, *_snapshot_channel,
+                            deadline=time.monotonic() + MAX_SNAPSHOT_REVIEW_SECONDS)
+                    received_at = _snapshot_utc_now() if target is not None else None
                     value = _installation_snapshot_reply_value(response, request)
                     _need(_installation_snapshot_fds(*_snapshot_channel) == channel_identity,
                           "snapshot review descriptors changed during wait")
                     fresh_context()
+                    if target is not None:
+                        _need(len(sent_times) == 1, "snapshot challenge output was not confirmed complete")
+                        return _installation_snapshot_content_value(response, request, bound,
+                            request_sent_at=sent_times[0], reply_received_at=received_at)
                     return {"outcome": "SNAPSHOT_EVIDENCE_RECEIVED_UNVERIFIED",
                         "requestSha256": _hash(_json(request)), "replySha256": _hash(response),
                         "evidenceSha256": _hash(_json(value["evidence"])), "replyBytes": len(response),
@@ -984,7 +999,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 retain_recovery=retain_recovery if _retain_recovery else None,
                 recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                 snapshot_review=review_snapshot if _snapshot_channel is not None else None)
-            result["outcome"] = ("INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED" if _snapshot_channel is not None else
+            result["outcome"] = ("INSTALLATION_SNAPSHOT_CONTENT_VALIDATED" if target is not None and _snapshot_channel is not None else
+                                 "INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED" if _snapshot_channel is not None else
                                  "INSTALLATION_TARGET_STORAGE_RETAINED" if target is not None and _retain_recovery else
                                  "INSTALLATION_RECOVERY_FILES_RETAINED" if _retain_recovery else
                                  "INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
@@ -3860,9 +3876,10 @@ def _installation_snapshot_request(payload, receipt, intent, writers, identity):
         "maxWaitSeconds": MAX_SNAPSHOT_REVIEW_SECONDS, "snapshotAvailable": False, "canExecute": False}
 
 
-def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline):
+def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline, _request_sent=None):
     """One bounded live frame. Borrow descriptors; never close caller IO or open a path."""
     _installation_snapshot_fds(input_fd, output_fd)
+    _need(_request_sent is None or callable(_request_sent), "invalid snapshot output observer")
     now = time.monotonic()
     _need(type(deadline) in (int, float) and now < deadline <= now + MAX_SNAPSHOT_REVIEW_SECONDS,
           "invalid snapshot review deadline")
@@ -3889,6 +3906,8 @@ def _installation_snapshot_exchange(request, input_fd, output_fd, *, deadline):
                         _need(count > 0, "snapshot review output made no progress")
                         sent += count
                         if sent == len(raw):
+                            if _request_sent is not None:
+                                _request_sent()
                             selector.unregister(output_fd)
                             selector.register(input_fd, selectors.EVENT_READ)
                     else:
@@ -4432,6 +4451,118 @@ def _retain_installation_target_storage(retention_id, target, *, fetch=release.g
         include_migrations=True, include_effective_configuration=True, include_external_backup=True,
         _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
         _retain_recovery=True, _snapshot_target=target)
+
+
+def _snapshot_timestamp(value):
+    """Selected input: RFC3339 with explicit zone and at most microsecond precision."""
+    _need(type(value) is str and re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})",
+        value), "snapshot timestamp must have an explicit timezone")
+    try:
+        # -00:00 means an unknown offset in RFC3339, not verified UTC.
+        _need(not value.endswith("-00:00"), "unknown snapshot timezone offset")
+        offset = value[-6:] if not value.endswith("Z") else "+00:00"
+        _need(int(offset[1:3]) < 24 and int(offset[4:]) < 60, "invalid snapshot timezone offset")
+        parsed = dt.datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+        return parsed.astimezone(dt.timezone.utc)
+    except (ValueError, OverflowError):
+        raise release.ReleaseContractError("invalid snapshot timestamp") from None
+
+
+def _snapshot_utc_now():
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _snapshot_content_request(request, storage):
+    _need(type(storage) is dict and storage.get("localSystemDiskCoverageObserved") is True
+          and storage.get("defaultTablespacesOnly") is True, "snapshot requires bound storage coverage")
+    target = storage["target"]
+    return {**request, "reviewMode": "operator-content-v1",
+        "expectedSnapshotName": "sanq-runtime-" + request["challenge"],
+        "targetInputSha256": target["targetInputSha256"],
+        "targetStorageSha256": storage["observationSha256"],
+        "expectedTarget": {key: target[key] for key in ("accountId", "region", "instanceArn", "instanceName")},
+        "challengePreparedAt": _snapshot_utc_now()}
+
+
+def _installation_snapshot_content_value(raw, request, storage, *, request_sent_at, reply_received_at):
+    """Compare operator evidence to this owned round. Never authenticate AWS or authorize writes."""
+    reply = _installation_snapshot_reply_value(raw, request)
+    target = storage["target"]
+    expected = {key: target[key] for key in ("accountId", "region", "instanceArn", "instanceName")}
+    _need(request.get("reviewMode") == "operator-content-v1"
+          and request.get("expectedTarget") == expected
+          and request.get("targetInputSha256") == target["targetInputSha256"]
+          and request.get("targetStorageSha256") == storage["observationSha256"]
+          and storage.get("localSystemDiskCoverageObserved") is True
+          and storage.get("defaultTablespacesOnly") is True
+          and type(request.get("challenge")) is str and re.fullmatch(r"[a-f0-9]{64}", request["challenge"])
+          and request.get("expectedSnapshotName") == "sanq-runtime-" + request["challenge"],
+          "snapshot request differs from the original bound target")
+    evidence = reply["evidence"]
+    _need(set(evidence) == {"schemaVersion", "kind", "instanceSnapshot", "operatorVerification"}
+          and type(evidence["schemaVersion"]) is int and evidence["schemaVersion"] == 1
+          and evidence["kind"] == "sanq-minimal-manual-snapshot-content",
+          "snapshot content envelope differs")
+    snapshot, operator = evidence["instanceSnapshot"], evidence["operatorVerification"]
+    fields = {"arn", "name", "createdAt", "location", "resourceType", "state", "fromAttachedDisks",
+              "fromInstanceArn", "fromInstanceName", "isFromAutoSnapshot", "sizeInGb"}
+    _need(type(snapshot) is dict and fields <= set(snapshot), "snapshot required fields are missing")
+    prefix = "arn:aws:lightsail:" + target["region"] + ":" + target["accountId"] + ":InstanceSnapshot/"
+    _need(type(snapshot["arn"]) is str and snapshot["arn"].startswith(prefix)
+          and re.fullmatch(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", snapshot["arn"][len(prefix):])
+          and snapshot["name"] == request["expectedSnapshotName"]
+          and snapshot["resourceType"] == "InstanceSnapshot" and snapshot["state"] == "available"
+          and snapshot["fromInstanceArn"] == target["instanceArn"]
+          and snapshot["fromInstanceName"] == target["instanceName"]
+          and snapshot["isFromAutoSnapshot"] is False
+          and type(snapshot["fromAttachedDisks"]) is list and not snapshot["fromAttachedDisks"]
+          and type(snapshot["sizeInGb"]) is int
+          and snapshot["sizeInGb"] == target["cloudSystemDiskSizeInGb"],
+          "snapshot identity, state or disk coverage differs")
+    location = snapshot["location"]
+    _need(type(location) is dict and location.get("regionName") == target["region"]
+          and location.get("availabilityZone") in ("all", target["availabilityZone"]),
+          "snapshot location differs from the bound region or supported zone")
+    operator_fields = {"method", "accountId", "region", "instanceArn", "snapshotArn",
+                       "authenticatedAwsSession", "createdAfterChallenge", "availableObservedAt"}
+    _need(type(operator) is dict and set(operator) == operator_fields
+          and operator["method"] == "operator-authenticated-aws-session"
+          and operator["authenticatedAwsSession"] is True and operator["createdAfterChallenge"] is True
+          and all(operator[key] == target[key] for key in ("accountId", "region", "instanceArn"))
+          and operator["snapshotArn"] == snapshot["arn"], "snapshot operator verification differs")
+    prepared = _snapshot_timestamp(request["challengePreparedAt"])
+    sent, received = _snapshot_timestamp(request_sent_at), _snapshot_timestamp(reply_received_at)
+    created, observed = _snapshot_timestamp(snapshot["createdAt"]), _snapshot_timestamp(operator["availableObservedAt"])
+    _need(prepared <= sent <= created <= observed <= received,
+          "snapshot creation or observation order contradicts this round")
+    return {"outcome": "SNAPSHOT_CONTENT_VALIDATED",
+        "requestSha256": _hash(_json(request)), "replySha256": _hash(raw),
+        "evidenceSha256": _hash(_json(evidence)), "replyBytes": len(raw),
+        "targetInputSha256": target["targetInputSha256"], "targetStorageSha256": storage["observationSha256"],
+        "snapshotArn": snapshot["arn"], "snapshotName": snapshot["name"],
+        "fromInstanceArn": snapshot["fromInstanceArn"], "fromInstanceName": snapshot["fromInstanceName"],
+        "accountId": target["accountId"], "region": target["region"],
+        "sourceAvailabilityZone": target["availabilityZone"], "snapshotAvailabilityZone": location["availabilityZone"],
+        "createdAt": created.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "availableObservedAt": observed.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "requestSentAt": sent.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "replyReceivedAt": received.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "verificationMethod": operator["method"], "operatorObservedAvailable": True,
+        "snapshotContentValidated": True, "snapshotEvidenceValidated": True,
+        "awsOriginAuthenticated": False, "trustedTimeProven": False, "restoreProven": False,
+        "snapshotAvailable": False, "recoveryReady": False, "canExecute": False,
+        "requiresSnapshotValidation": False, "requiresDurableSnapshotReceipt": True,
+        "requiresRecoveryValidation": True, "requiresHostRecheck": True}
+
+
+def _review_installation_snapshot_content(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh owned flow only; no imported receipt, installation or resume authority."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
+        _retain_recovery=True, _snapshot_target=target, _snapshot_channel=(input_fd, output_fd))
 
 
 def main(argv=None):
