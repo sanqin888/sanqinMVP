@@ -1,8 +1,36 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## D2 恢复数据库只读原始采集与比对（源码已提交远端）
+## D2 工具写入清单与耐久文件原语（本地待审）
 
-**D2_RECOVERY_DATABASE_PROBE_REMOTE / REAL_RESTORE_EVIDENCE_OPEN / NOT_INSTALLED。**
+**D2_TOOL_FILE_WRITE_LOCAL / TESTS_NOT_RUN / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+2026-10-29用户明确要求“恢复验证等交付之后抽空再做”。据此将新Lightsail完整快照恢复、PG/WAL/业务内容对照、仅机外取得和恢复适用范围验收移入交付后待办；不再阻断本项目源码推进或作为首版完成条件，也不记为PASS。恢复研究/已合并材料保留，restoreProven保持false。更新前准确手动快照available核验、旧工具/配置恢复材料保存及机外索引确认仍属于安装前置；安装/正常发布/失败冻结自身的验收继续按原交付范围执行。历史章节中“真实恢复通过后才能交付/RECOVERY_READY”的前置关系由本节调整，以SNAPSHOT_MATERIALS_READY表示安装材料就绪，与实际恢复证明分开。
+
+基线为[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)合并dev `d7798ab48726574f47b04529a8ddcdf3c30c8e00`；其最终head `7062c657ed79c93f9fe1a3759204df23c166e5b2` 经[CI #7790](https://github.com/sanqin888/sanqinMVP/actions/runs/40909418492)SUCCESS（4成功/6范围跳过，两条Release各1244、Runtime1080、既有C1回归412）。本地分支 `feat/runtime-minimal-install-write-plan-20261029`。
+
+私有_installation_tool_write_set复用exact main/归档/Git来源和原工具差异审计，再核完整18项旧观察的原字节/metadata；返回固定27项顺序清单及单独私有目标字节：先九helper独占创建，原17按批准范围替换或只核对，最后写原目标归档的准确Manifest。只允许deploy_release.py/release_contract.py两项Runtime内容变化，保留旧文件模式；helper为0644。bootstrap不落入Runtime，永久三门禁另属后续阶段。清单只绑定来源/顺序/摘要/原身份，不是现场观察或授权，readyToInstall/canExecute仍false。
+
+私有_write_installation_tool_member使用调用方已固定的父目录FD、原字节/完整身份及现场复核回调；固定允许路径、root身份、owner/mode/单链接、≤300秒预算和5GiB余量。未变成员只读核对；写入先独占固定pending文件，短写循环、权限/文件fsync与整件读回，重新核原文件及pending后发布。替换用单文件rename并同步父目录；helper用不覆盖的硬链接发布、同步目录、移除pending后再同步目录，最终核内容/模式/身份。每个目录/文件原语不是整个安装原子事务。失败保留实际旧/新/pending，不清理或自动回滚；pending存在时连“未变核对”也拒绝。未修改现有读取白名单，也不以该底层原语独立认证来源/路径、锁或门禁。
+
+新增28项原件/真实临时文件与故障模型测试，覆盖固定清单/源变更、原Manifest字节及权限、独占创建、同步/rename/读回顺序、短写/零进展、残件/竞态、链接/晚变、容量/截止、失败保留及无目标代码执行。Python3.10 AST/符号/差异/读回静态审阅完成；MCP-workspace未运行lint/build/test，本批未提交或推送。
+
+本批仍为未接入现场事务的私有写入能力，现有安装入口不调用它。下一步在原两锁/同一owned流程、快照及机外确认后接逐项进度核验，再完成永久门禁、旧应用核验/完成交接和Mac入口；不能用导出的清单或随意回调发起生产安装。无新helper/永久unit、公开CLI、业务持久schema或第二应用state；仅新增固定pending中间件命名，后续owned清单须明确跟踪。已审阅，依赖图/基线无变化；17+Manifest/250/300、九helper/三永久模板及三组暂停研究保持，无依赖/业务迁移或生产/AWS/root安装/DB操作。
+
+## 文件写入原语与阶段边界
+
+固定写集为九helper加原17和runtime-release.json共27项；不含bootstrap或三永久drop-in。生成器返回公开摘要与私有targets二元组，不输出源码字节；调用者不能把sourceAuthenticated当现场许可。旧Manifest允许保留实际合法格式，比较其规范内容对原归档，beforeSha256绑定实际原字节；新Manifest使用目标准确归档中的原字节，不重写ciRunId/publishRunId。原Runtime保留实际合法mode，helper创建为root:root/0644；源/目标变化越过两项工具范围时拒绝。
+
+写入原语不打开生产根路径、不调用Docker/systemd/SSH或导入目标源码；它操作受信调用者固定的父目录FD。check_context必须由未来owned调用方核来源、原两锁/准确事务、目标/快照/机外材料、冻结门禁、应用配置/state等不变量，并核父目录仍对应准确固定路径。单凭FD inode相同不能认证其逻辑路径；普通回调/伪造dict不构成root安装入口。当前无现场调用方或公开apply命令，不影响现有观察/停写流程。
+
+单文件先写同父目录固定.sanq-install-<basename>.pending（0600/独占/nofollow），写完恢复固定owner和目标mode，文件fsync、整件读回/身份核验，再核原目标和现场。替换仅限两Runtime工具及Manifest；未变成员只读，其他Runtime内容差异先转平台审阅。helper只能从原不存在创建，不收养既有同名文件。helper发布采用link的no-clobber语义及两次目录fsync；若中断在移除pending前，可能留下两个名字/链接数2，必须阻断并保留。已替换后目录fsync或晚期核验失败时可能已是新内容，不能自动重放或撤回。固定pending不随机换名绕过残件，任何既有pending都要求人工审阅。
+
+文件耐久成功只返回TOOL_FILE_DURABLE/fileDurable，未变核对返回TOOL_FILE_UNCHANGED_VERIFIED；二者canExecute=false，不记录安装完成、不清维护标记、不恢复restart策略或开启业务。未来事务接线须逐项跟踪27目标、原件和可能pending，识别混装；在全部目标读回前不得调用已替换的工具或交接永久门禁。真实掉电/文件系统持久性仍需与安装自身验收区分，当前测试只覆盖临时文件及故障注入。
+
+## D2 恢复数据库只读原始采集与比对（源码已合并）
+
+**D2_RECOVERY_DATABASE_PROBE_MERGED_DEV / SOURCE_CI_VERIFIED / RESTORE_VALIDATION_DEFERRED / NOT_INSTALLED。**
+
+最终[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)已由head `7062c657ed79c93f9fe1a3759204df23c166e5b2` 经[CI #7790](https://github.com/sanqin888/sanqinMVP/actions/runs/40909418492)全绿后合并dev `d7798ab48726574f47b04529a8ddcdf3c30c8e00`；两条Release各1244、Runtime1080、既有C1回归412通过。下文初次失败记录保留为历史。
 
 本批已提交[PR #3049](https://github.com/sanqin888/sanqinMVP/pull/3049)。初次[CI #7789](https://github.com/sanqin888/sanqinMVP/actions/runs/40908506575)运行1244项Release测试，仅1项fixture失败：单行历史reverse不产生变化；同PR改为明确变更历史状态，保留原拒绝断言，未修改运行源码或CI门禁。修复后最终head的验证结果以该PR实际GitHub Actions记录为准。
 
@@ -892,7 +920,7 @@ D1本地源码尚未远端交付；D2主机安装、独立bootstrap root落地/�
 | RECORD_INSTALL_INTENT | 独立安装记录及 maintenance/active.json 安装意图先同步读回；该 marker 与普通应用维护记录分 kind，不冒充 v1–v6 | 保留原件；普通 guard 拒绝不识别的 kind，startup 仍因非空维护目录拒绝 |
 | LOAD_DENY_GATES | 三固定 drop-in 先用下述独立拒绝形态安装，daemon-reload后核有效加载属性和来源；仍不重启 daemon | 全部未确认前不改容器策略、不停业务、不覆盖 Runtime；此时不能声称跨重启已冻结 |
 | FREEZE_SAVED_WRITERS | 持原两锁，先耐久保存完整三 ID/image/策略；仅对保存对象设 restart=no 并 stop，复核角色全集/DB/挂载/备份 | 只尽力处理保存 ID，无法确认则 FENCE_UNCONFIRMED；不推断新 ID 或自动恢复策略 |
-| RECOVERY_READY | 已停写/抑制重启的准确 Lightsail 手动快照 available及原工具恢复材料核对；不自动调用 AWS | 未核实不能覆盖受保护执行源；恢复资格依准确对象，不靠裸 hash |
+| SNAPSHOT_MATERIALS_READY | 已停写/抑制重启的准确Lightsail手动快照available、原工具恢复材料及机外索引确认；不自动调用AWS；完整恢复演练延后 | 未核实材料不能覆盖受保护执行源；此阶段不声称restoreProven，不以实际恢复演练作为首版阻断条件 |
 | WRITE_TOOLS | 在拒绝门禁和两锁下安装已验真九工具、正式 17+原 Manifest及元数据；按明确逐文件顺序同步/读回 | 保留安装意图、实际新旧字节和拒绝门禁，不继续执行混装工具或自动退回 |
 | LOAD_PERMANENT_GATES | 全部新字节核对后把同三文件换为永久准确文本，daemon-reload并核 _installed_gate、API/签名/权限 | 旧加载拒绝形态与新非空目录 guard 都阻断冷启动；加载未知不清 marker |
 | VERIFY_OLD_APPLICATION | 原 .env/state/C4 marker逐字不变；仅在前序已知成功后启动保存的原应用 ID，核实际 image/挂载/DB/HTTP/readiness，恢复准确原策略 | 启动可能写业务数据；失败停保存 ID 并保留真实证据，不据快照自动恢复旧盘 |
@@ -915,7 +943,7 @@ D1本地源码尚未远端交付；D2主机安装、独立bootstrap root落地/�
 | D1：惰性材料与只读核验/计划 | 在拟定 install_minimal_executor.py 内固定清单、精确对象/原归档输入校验、无执行权的材料清点和安装差异；不接 host apply | 合法完整输入通过模型，错 source/hash/类型/链接/多缺成员/原件变更拒绝；不 import未验目标、不调用 Docker/systemd/AWS或写生产；实际 CI 通过 |
 | D2：受限安装与失败保持 | 固定 root 读写目标、两锁、安装意图/临时门禁/旧工具实物保存、逐项同步与最终读回、明确人工恢复材料 | 故障注入覆盖每个耐久边界；未知不续跑、不自动重开，不写 DB；实际 CI 通过 |
 | D3：Mac薄入口与一页 runbook | 固定 SSH 主机验证、准确子命令/参数、计划/SQL/回退摘要转交、重连 status/logs | 普通无迁移发布两次操作内；无任意 shell/URL/路径拼接，无新常驻设施；实际 CI 通过 |
-| D4：统一真实隔离验收与生产材料 | 旧→新安装、Compose美元往返、系统Python/Prisma/Docker/PID1、SSH/SIGKILL/socket/daemon/reboot、连续双发布与恢复 | 覆盖准确最终版本全部场景，恢复对象/证据可复核；通过后才提交准确生产安装与 main 晋级材料 |
+| D4：统一真实隔离验收与生产材料 | 旧→新安装、Compose美元往返、系统Python/Prisma/Docker/PID1、SSH/SIGKILL/socket/daemon/reboot、连续双发布及工具失败保持 | 覆盖准确最终版本的安装/发布/冻结场景；快照和恢复材料可核对；完整VM恢复演练列交付后待办；通过后提交准确生产安装与main晋级材料 |
 
 D1–D4是第三批内部切片，不新增项目目标。当前第一/二批源码及 CI 已推进，不把真实隔离验收记成完成。完成 D1/D2 不等于已获生产 root 写入授权；不会为每个模型测试要求生产主动演练。
 
