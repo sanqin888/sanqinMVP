@@ -21,6 +21,9 @@ class InstallationSnapshotStorageTests(unittest.TestCase):
         self.base = combined.InstallationCombinedPreflightTests()
         self.base.setUp()
         self.addCleanup(self.base.doCleanups)
+        self.prepare_storage()
+
+    def prepare_storage(self):
         self.root = self.base.materials.anchor
         self.blob = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20" + b"k" * 32
         self.key = self.root / "etc/ssh/ssh_host_ed25519_key.pub"

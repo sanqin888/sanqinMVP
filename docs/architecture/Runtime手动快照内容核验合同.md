@@ -1,14 +1,44 @@
 # Runtime 手动快照内容核验合同
 
-## D2 停写前目标与系统盘只读观察（本地待审）
+## D2 目标存储原件与恢复包意图绑定（本地待审）
 
-**D2_PRE_SNAPSHOT_STORAGE_OBSERVATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**D2_STORAGE_RECOVERY_BINDING_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于[PR #3041](https://github.com/sanqin888/sanqinMVP/pull/3041)合并dev `db53bdaccce01cb110744fa055358c1f02f3a3de` 建立 `feat/runtime-minimal-storage-recovery-binding-20261029`。新增私有 `_retain_installation_target_storage`，在同一次原两锁/完整预检中捕获目标和存储原件，复用原意图、临时门禁、原ID停写、恢复包审计及成对耐久保存；当前不接快照等待、内容核验或安装。
+
+恢复tar只增固定 `observations/pre-snapshot-storage.json` 成员及index.capture.snapshotStorage元数据：保存规范目标原始字节、公开SSH key原件/身份、两轮mountinfo、四次准确lsblk/只读SQL原stdout、目录/配置metadata、空表空间事实和写意图前完整观察。纯数据复核共用原验证规则重算facts，并将完整原观察摘要对照原intent.observationSha256；篡改后重算外层hash也不能替换该绑定。新owned流程强制require_target_storage=true，缺失原件不能降级为旧范围审计；旧格式与原入口保持原行为，不授予目标核验结果。
+
+新增20项一次性文件/主机模型测试，覆盖同锁且意图前采集、冻结后/保存后复核、原件/metadata/命令/SQL/目标篡改、原观察摘要变动、缺成员/降级、字节预算、失败保留及禁止重放；旧23项测试只提取共享fixture准备方法，保留全部断言。完成Python3.10语法AST、符号/定义、差异与读回静态核对；MCP-workspace未开放lint/build/test，未执行本批新测试或该分支CI。
+
+本批按工具恢复归档的兼容增量扩展处理：读者/生产者同一bootstrap原子更新，保留历史证据格式；不是第二发布控制器或并行业务兼容路径。PRIVATE_FILES四材料、原意图/marker/writers/回执schema、现役17+Manifest/250/300、九helper/三永久模板、锁/owner/mode与原共享预算保持。单独只读facts仍保留requiresIntentBinding=true原值；新流程只在实际耐久读回及最终现场重核后返回snapshotStorageBoundToIntent/snapshotTargetStorageReviewed=true，snapshotAvailable/recoveryReady/canExecute仍false。快照内容核验、核验回执、安装/门禁交接、Mac入口及D4统一真实恢复/中断验收仍OPEN；三组研究继续暂停，无生产或AWS操作。
+
+### 本批归档与调用边界
+
+| 对象 | 本地实现与约束 |
+| --- | --- |
+| 原只读入口 | _observe_installed_snapshot_storage保持只读返回，不接受导入结果作为执行票据 |
+| 新完整入口 | _retain_installation_target_storage要求从新调用开始，原两锁、全预检、意图/门禁/原ID停写和恢复保存完整组合；不能只带目标开启半段写入 |
+| 归档新成员 | observations/pre-snapshot-storage.json，schemaVersion=1、kind=sanq-minimal-recovery-target-storage；原观察字典与storageOriginals完整嵌入，规范JSON且≤原8MiB host envelope上限 |
+| 原件集合 | 原始目标JSON、公开Ed25519 key及指纹所对应metadata、两份mountinfo、准确原DB ID的两次只读SQL及两次固定lsblk stdout、固定目录/配置metadata、明确空pg_tblspc |
+| 意图绑定 | 原观察完整字节的规范摘要必须等于原intent.observationSha256，并核目标/旧Runtime source与retentionId；不改写原意图或自报成功字段 |
+| 范围审计 | 从成员原件重算target/facts，核index.capture.snapshotStorage的成员名/hash/大小/观察摘要；新流程必须require_target_storage=true，旧格式的packageScopeReviewed单独不能表示目标已核验 |
+| 耐久交接 | 新成员随原recovery.tar/recovery.json一起独占写入、同步和准确读回；冻结期间及保存后复核现场，失败继续FENCE_UNCONFIRMED、保留实际证据，不自动重放或恢复业务 |
+
+原PRIVATE_FILES四材料、host观察envelope、intent/marker/writers及回执的既有schema保持；只对工具恢复归档做增量扩展，不迁移/删除历史原件，不新增机内第三张成功票据。单个新增成员≤8MiB，整包仍受原48MiB源数据共享预算、归档总量和2100成员上限；不靠增加上限掩盖材料膨胀。旧归档通用审计继续明确它原有的有限范围；只有调用者明确要求目标原件并通过完整核验后，才返回snapshotTargetStorageReviewed。
+
+此处“原件”是受信操作者/root本轮采集并保留的实际输入和输出，不是服务端AWS认证、可信时间、跨克隆身份证明或数据库恢复证明。路径/文件metadata按原只读观察规则复核，不据此声称已捕获所有主机配置include或扩展自定义存储。快照内容核验及真正RECOVERY_READY仍是下一段，不因恢复包已有新成员而自动通过。
+
+## D2 停写前目标与系统盘只读观察（源码已合并）
+
+**D2_PRE_SNAPSHOT_STORAGE_OBSERVATION_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3041](https://github.com/sanqin888/sanqinMVP/pull/3041)最终head `cb7f490e96a00046fec26f612ceef849af03e4c7` 经[CI #7772](https://github.com/sanqin888/sanqinMVP/actions/runs/40819628612)SUCCESS（4成功/6范围跳过；两条Release各1076、Runtime1080、既有C1回归412），已合并dev `db53bdaccce01cb110744fa055358c1f02f3a3de`。初次CI #7771因测试辅助方法覆盖TestCase.run失败；同PR仅改命令模拟器命名，未修改源码行为或CI门禁，修复后最终head通过。
 
 基于[PR #3040](https://github.com/sanqin888/sanqinMVP/pull/3040)合并dev `d7b27fe0e573a32dd637f8c03a0baeb70efc0368` 建立 `feat/runtime-minimal-pre-snapshot-storage-20261028`。在现有安装器内新增私有只读 `_observe_installed_snapshot_storage`：沿原两锁/全预检双次观察，将停写前操作者AWS实例/SSH目标材料与本机固定Ed25519公钥指纹、系统盘/固定宿主路径、PG15默认数据/WAL/表空间及配置位置绑定；只返回观察与摘要，不创建意图/门禁、不停写。
 
 新增固定lsblk argv与原DB完整ID上的固定只读SQL，复用原300秒/单命令/输出预算；不接受调用者命令、设备路径或SQL。原始目标材料≤64KiB规范JSON且严格字段/原生类型/人工确认；源实例须唯一已附系统盘，区域/ARN/名称与既定目标一致。Linux只接受ext4/xfs根、单一普通disk/part及标准DockerRootDir；固定目录逐级nofollow并核路径/FD，拒绝分盘、同设备bind/子挂载、WAL/默认PG目录重定向、自定义/残留表空间及迁出PGDATA的主配置位置。设备名差异由明确的人工Linux系统盘绑定承载，不凭云盘名字或容量猜身份；awsOriginAuthenticated仍false。
 
-新增23项一次性文件/主机模型测试，覆盖完整同锁只读组合、原入口隔离、严格目标/同名错ARN/错SSH key、磁盘/挂载/PG目录/表空间/配置重定向、采集中及两轮间漂移、准确命令allowlist/预算和无公开CLI。完成静态AST/符号、差异和读回审阅；MCP-workspace未开放lint/build/test，未运行新测试或该分支CI，不复用文档PR的CI作源码通过证据。
+新增23项一次性文件/主机模型测试，覆盖完整同锁只读组合、原入口隔离、严格目标/同名错ARN/错SSH key、磁盘/挂载/PG目录/表空间/配置重定向、采集中及两轮间漂移、准确命令allowlist/预算和无公开CLI。完成静态核对后，上述23项已随本批两条Release各1076项实际通过最终CI；真实主机/SSH/设备/AWS及D4恢复仍未验证，不把源码CI当生产通过。
 
 新观察明确requiresIntentBinding/requiresHostRecheck=true；snapshotAvailable/recoveryReady/canExecute/restoreProven均false，原写意图/停写/恢复包/等待入口不调用新观察。本批按内部原子新增的只读观察能力交付，未改变持久schema、PRIVATE_FILES四材料、17+Manifest/250/300、九helper/三永久模板、唯一应用state、依赖或业务迁移；无生产/AWS操作。下一步在同一owned流程把目标/存储原始事实接入意图与恢复包审计，再接内容核验/耐久回执；D4真实设备/SSH/lsblk版本、实际完整DB恢复和中断验收仍OPEN。三组研究继续暂停、不取消。
 
@@ -26,9 +56,9 @@
 
 本批有意限定默认集群布局，不支持自定义表空间、WAL/PG目录链接、迁出的主配置或复杂块设备；不自动调整这些配置。它提供固定路径的覆盖观察，不宣称已完成所有配置include/扩展自定义存储的闭包审计、服务端AWS来源认证或真实恢复。无额外包安装；lsblk在实际目标平台的存在、JSON类型/PKNAME格式和时限行为仍须D4验证，不能用模型代替现场。
 
-原意图/marker、writers、恢复包schema和审计回放仍使用原事实。新目标/设备原件尚未耐久保存或进入原observationSha256；本批返回的observationSha256只是独立只读观察摘要。接入原同锁owned流程前，不能拿返回JSON重放或作为停写/安装许可。
+原只读阶段的返回摘要本身仍不是执行票据。当前新增owned流程已在本地把目标/设备原件及完整原观察接入同一次意图/恢复包审计与耐久保存，详见上节；原件保存及绑定的新测试尚未运行，不允许导入旧返回JSON重放。
 
-依据：[Linux内核mountinfo说明](https://www.kernel.org/doc/html/latest/filesystems/proc.html)、[util-linux上游](https://github.com/util-linux/util-linux)、[PG15数据目录布局](https://www.postgresql.org/docs/15/storage-file-layout.html)、[PG15配置位置](https://www.postgresql.org/docs/15/runtime-config-file-locations.html)。实现、测试、差异已静态审阅，23项新测试未执行；本节不授予任何生产操作权限。
+依据：[Linux内核mountinfo说明](https://www.kernel.org/doc/html/latest/filesystems/proc.html)、[util-linux上游](https://github.com/util-linux/util-linux)、[PG15数据目录布局](https://www.postgresql.org/docs/15/storage-file-layout.html)、[PG15配置位置](https://www.postgresql.org/docs/15/runtime-config-file-locations.html)。该只读切片的23项测试已随PR #3041最终head通过CI；本次新增原件绑定的20项测试未执行。本文不授予任何生产操作权限。
 
 ## 已合并的手动快照内容核验合同基线
 
@@ -111,9 +141,9 @@
 
 ## 实施批次与完结条件
 
-1. 停写前独立目标及固定路径设备/挂载观察已有本地只读实现与拒绝测试，尚待CI。必须继续把原始事实接入本轮意图/恢复包及完整owned重核，才算完成该安装前置；不能从独立摘要直接进入停写。
+1. 停写前目标/存储只读观察已通过PR #3041最终CI。原始事实接入本轮意图、恢复包及owned重核已本地实现，新增20项测试尚待CI；仍不能从独立摘要直接进入停写。
 2. 再在现有单次输入内核快照字段、challenge 关联、人工核验声明及创建顺序；声明属于人工操作证据，不能标成服务端来源认证。覆盖 `all` 可用区、错区域、缺失/空/非空磁盘清单、错误字段类型与时间格式；默认保持所有安装许可为 false。
 3. 设计并实现本轮核验回执的独占耐久保存与读回、离机索引及恢复前置门禁，再接 RECOVERY_READY。失败不补写、不重放、不自动开启业务。不得改变原 PRIVATE_FILES 四材料或手改 Manifest；不把“回执已保存”单独当成整套恢复验收完成。
 4. 通过 CI 后，在 D4 统一真实隔离验收中验证准确 AWS 对象、真实根盘/挂载、完整集群恢复、SSH/TTY、超时、中断和恢复。未完成这些步骤前，不能标记为生产可用。
 
-原文档批次只完成合同。当前增量仅本地只读目标/存储观察；意图与恢复包接入、快照实质核验、耐久回执、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
+原文档批次只完成合同。当前意图与恢复包原件绑定已有本地源码/测试，尚待本批CI；快照实质核验、核验回执、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。

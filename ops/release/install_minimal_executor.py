@@ -737,13 +737,16 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
           "invalid installation observation switches")
     _need(_snapshot_channel is None or _retain_recovery and type(_snapshot_channel) is tuple
           and len(_snapshot_channel) == 2, "snapshot evidence wait requires complete recovery flow")
-    _need(_snapshot_target is None or include_external_backup and not _record_intent and _snapshot_channel is None,
-          "pre-snapshot storage observation is read-only and cannot record an intent")
+    _need(_snapshot_target is None or include_external_backup and _snapshot_channel is None
+          and (not _record_intent or _retain_recovery),
+          "target storage requires a read-only observation or the complete owned recovery flow")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
+    storage_original = None
     def snapshot(*, temporary_files=None):
+        nonlocal storage_original
         runtime = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
         configuration = _configuration_snapshot() if include_configuration else None
         docker = (_docker_snapshot(configuration[1], runtime[0]["docker-compose.yml"][0], run, fetch)
@@ -764,7 +767,12 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
         baseline = (runtime, configuration, docker, systemd, filesystem, prerequisites, binding, migrations, effective, external_backup)
         if target is not None:
             storage = _installation_storage_snapshot(target, docker, prerequisites,
-                lambda args: _runtime_command(args, deadline=deadline), deadline=deadline)
+                lambda args: _runtime_command(args, deadline=deadline), deadline=deadline,
+                _capture_target=_snapshot_target if _record_intent else None)
+            if _record_intent:
+                storage, original = storage
+                if storage_original is None:
+                    storage_original = original
             return (*baseline, storage)
         return baseline
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
@@ -882,6 +890,10 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                           and _host_filesystem_snapshot(deadline=deadline) == before[4]
                           and _external_backup_snapshot(before[0][0]) == before[9],
                           "installed files or recovery baseline changed during writer freeze")
+                    if target is not None:
+                        _need(_json(_installation_storage_snapshot(target, before[2], before[5],
+                              lambda args: _runtime_command(args, deadline=deadline), deadline=deadline))
+                              == _json(before[10]), "bound target storage changed during writer freeze")
                     _temporary_gate_systemd_parity(before[3],
                         lambda args: _systemd_command(args, deadline=deadline), loaded["files"])
                     database = _docker_json(_installation_history_args(before[2]["containers"]["db"]["containerId"]),
@@ -908,6 +920,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 capture = _installation_recovery_sources(folders, identity, kit, old, value)
                 capture = _installation_recovery_host_capture(capture, before, run,
                     lambda args: _systemd_command(args, deadline=deadline), fetch=fetch)
+                if target is not None:
+                    capture = _installation_recovery_storage_capture(capture, storage_original, result)
             def retain_recovery(persist, check_owned, intent, writers, installation_id):
                 _need(capture is not None and callable(frozen_recheck), "recovery retention requires this owned frozen flow")
                 try:
@@ -917,7 +931,10 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     payload = _installation_recovery_payload(capture, intent, writers, installation_id)
                     receipt = _installation_recovery_receipt(payload, intent, writers, installation_id, _hash(_json(capture[1])))
                     check_owned()
-                    scope = _installation_recovery_scope(payload, receipt, intent, writers, installation_id, fetch=fetch)
+                    scope = _installation_recovery_scope(payload, receipt, intent, writers, installation_id,
+                        fetch=fetch, require_target_storage=target is not None)
+                    _need(target is None or scope.get("snapshotTargetStorageReviewed") is True,
+                          "recovery scope lacks original target storage binding")
                     check_owned()
                     result = persist(payload, receipt)
                     _recovery_retention_matches(folders, capture)
@@ -936,7 +953,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                         frozen_recheck()
                         _recovery_private_matches(folders, capture)
                         _recovery_retention_matches(folders, capture)
-                        scope = _installation_recovery_scope(payload, receipt, intent, writers, installation_id, fetch=fetch)
+                        scope = _installation_recovery_scope(payload, receipt, intent, writers, installation_id,
+                        fetch=fetch, require_target_storage=target is not None)
                         _need(scope["packageScopeReviewed"] is True and time.monotonic() < deadline,
                               "snapshot review context budget expired")
                         check_owned()
@@ -967,10 +985,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                 snapshot_review=review_snapshot if _snapshot_channel is not None else None)
             result["outcome"] = ("INSTALLATION_SNAPSHOT_EVIDENCE_RECEIVED" if _snapshot_channel is not None else
+                                 "INSTALLATION_TARGET_STORAGE_RETAINED" if target is not None and _retain_recovery else
                                  "INSTALLATION_RECOVERY_FILES_RETAINED" if _retain_recovery else
                                  "INSTALLATION_WRITERS_FROZEN" if _freeze_writers else
                                  "INSTALLATION_WRITERS_SAVED" if _save_writers else
                                  "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED")
+            if target is not None:
+                result["snapshotStorageBoundToIntent"] = True
         return result
 
 
@@ -3402,13 +3423,14 @@ def _installation_recovery_host_value(raw, saved):
 
 
 def _installation_recovery_entries(capture, intent, writers, identity):
-    _need(type(capture) is tuple and len(capture) in (2, 3)
+    _need(type(capture) is tuple and len(capture) in (2, 3, 4)
           and type(capture[0]) is dict and type(capture[1]) is dict, "invalid recovery source capture")
     files, summary = capture[:2]
     recorded = _installation_record_value(intent, identity)
     saved = _installation_writers_match(intent, writers, identity)
     _recovery_namespace_value(summary.get("privateNamespace"))
-    _need(summary.get("scope") == ("pre-install-files-and-host-observations" if len(capture) == 3
+    _need(summary.get("scope") == ("pre-install-files-host-and-target-storage" if len(capture) == 4 else
+                                      "pre-install-files-and-host-observations" if len(capture) == 3
                                       else "pre-install-original-files-only")
           and summary.get("retentionId") == recorded["retentionId"]
           and summary.get("sourceSha") == recorded["targetSourceSha"]
@@ -3440,7 +3462,8 @@ def _installation_recovery_entries(capture, intent, writers, identity):
     absent |= {"/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME for unit in INSTALL_DENY_DROPINS}
     absent |= {"/etc/systemd/system/" + unit for unit in ("docker.service", "docker.socket")}
     _need(fixed <= set(files) and summary.get("absentFiles") == sorted(absent)
-          and len(files) + 3 + (len(capture) == 3) <= MAX_RECOVERY_MEMBERS, "recovery fixed inventory differs")
+          and len(files) + 3 + (len(capture) >= 3) + (len(capture) == 4) <= MAX_RECOVERY_MEMBERS,
+          "recovery fixed inventory differs")
     total = 0
     for path, raw in files.items():
         _need(isinstance(path, str) and (path in fixed or re.fullmatch(
@@ -3458,9 +3481,9 @@ def _installation_recovery_entries(capture, intent, writers, identity):
           and summary["capturedBytes"] == total,
           "recovery total bytes differ")
     host_entries = {}
-    if len(capture) == 3:
+    if len(capture) >= 3:
         raw = capture[2]
-        _installation_recovery_host_value(raw, saved)
+        host = _installation_recovery_host_value(raw, saved)
         _need(summary.get("hostObservations") == {"member": RECOVERY_HOST_MEMBER,
               "sha256": _hash(raw), "bytes": len(raw), "preGate": True, "completeHostStateCaptured": False}
               and type(summary["hostObservations"]["bytes"]) is int
@@ -3471,6 +3494,19 @@ def _installation_recovery_entries(capture, intent, writers, identity):
         host_entries[RECOVERY_HOST_MEMBER] = raw
     else:
         _need("hostObservations" not in summary, "recovery host originals are missing")
+    if len(capture) == 4:
+        raw = capture[3]
+        reviewed = _installation_recovery_storage_value(raw, host["docker"], recorded)
+        _need(summary.get("snapshotStorage") == {
+              "member": RECOVERY_STORAGE_MEMBER, "sha256": _hash(raw), "bytes": len(raw),
+              "preGate": True, "observationSha256": reviewed["observationSha256"]}
+              and type(summary["snapshotStorage"]["bytes"]) is int
+              and summary["snapshotStorage"]["preGate"] is True
+              and total + len(capture[2]) + len(raw) <= MAX_RECOVERY_SOURCE_BYTES,
+              "recovery target storage metadata or shared budget differs")
+        host_entries[RECOVERY_STORAGE_MEMBER] = raw
+    else:
+        _need("snapshotStorage" not in summary, "recovery target storage originals are missing")
     index = _json({"schemaVersion": 1, "kind": "sanq-minimal-executor-recovery-files",
                    "installationId": identity, "intentSha256": _hash(intent), "writersSha256": _hash(writers),
                    "capture": summary, "canExecute": False, "recoveryReady": False})
@@ -3599,15 +3635,20 @@ def _installation_recovery_members(payload):
     return members
 
 
-def _installation_recovery_scope(payload, receipt, intent, writers, identity, *, fetch):
+def _installation_recovery_scope(payload, receipt, intent, writers, identity, *, fetch, require_target_storage=False):
     """Audit retained bytes and replay observations as data. No host or AWS commands."""
+    _need(type(require_target_storage) is bool, "invalid recovery target storage requirement")
     try:
         members = _installation_recovery_members(payload)
         index = _installation_recovery_index(payload, intent, writers, identity)
         summary = index["capture"]
         files = {name[len("originals"):]: raw for name, raw in members.items() if name.startswith("originals/")}
         _need(RECOVERY_HOST_MEMBER in members, "recovery scope lacks original host observations")
+        _need(not require_target_storage or RECOVERY_STORAGE_MEMBER in members,
+              "recovery scope lacks required target storage originals")
         capture = files, summary, members[RECOVERY_HOST_MEMBER]
+        if RECOVERY_STORAGE_MEMBER in members:
+            capture = (*capture, members[RECOVERY_STORAGE_MEMBER])
         entries = _installation_recovery_entries(capture, intent, writers, identity)
         _installation_recovery_verify(payload, entries)
         _installation_recovery_receipt_value(receipt, payload, intent, writers, identity)
@@ -3681,6 +3722,8 @@ def _installation_recovery_scope(payload, receipt, intent, writers, identity, *,
             "retainedMaterialGroups": len(groups), "hostObservations": len(rows),
             "oldRuntimeMembers": len(runtime), "applicationSha": application["applicationSha"],
             "packageScopeReviewed": True, "snapshotAvailable": False, "recoveryReady": False,
+            **({"snapshotTargetStorageReviewed": True,
+                "snapshotStorageOriginalsSha256": _hash(capture[3])} if len(capture) == 4 else {}),
             "canExecute": False, "requiresHostRecheck": True}
     except (json.JSONDecodeError, UnicodeError, KeyError, TypeError, ValueError, tarfile.TarError, OSError, EOFError,
             bundle.BundleBlocked):
@@ -4020,7 +4063,7 @@ def _snapshot_directory(root, parts):
         os.close(anchor)
 
 
-def _snapshot_hostkey(root):
+def _snapshot_hostkey(root, *, _capture=False):
     with _snapshot_directory(root, ("etc", "ssh")) as parent:
         _installed_info(os.fstat(parent), directory=True)
         fd = os.open("ssh_host_ed25519_key.pub", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
@@ -4035,18 +4078,9 @@ def _snapshot_hostkey(root):
                   "SSH public host key changed")
         finally:
             os.close(fd)
-    try:
-        text = raw.decode("ascii").strip()
-        _need(len(text.splitlines()) == 1, "SSH public host key must contain one line")
-        fields = text.split()
-        _need(len(fields) >= 2 and fields[0] == "ssh-ed25519", "fixed SSH host key algorithm differs")
-        blob = base64.b64decode(fields[1], validate=True)
-        _need(len(blob) == 51 and blob[:19] == b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20",
-              "SSH public host key encoding differs")
-    except (ValueError, UnicodeError):
-        raise release.ReleaseContractError("invalid SSH public host key") from None
-    return {"sha256": "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("="),
-            "identity": list(_installed_fingerprint(before))}
+    _need(type(_capture) is bool, "invalid public key capture switch")
+    facts = {"sha256": _snapshot_key_fingerprint(raw), "identity": list(_installed_fingerprint(before))}
+    return (facts, raw) if _capture else facts
 
 
 def _snapshot_mountinfo(*, deadline):
@@ -4157,32 +4191,36 @@ def _snapshot_database_configuration(root):
     return result
 
 
-def _installation_storage_snapshot(target, docker, prerequisites, run, *, deadline):
-    """Return local observations + explicit operator binding. Never write, freeze or authorize."""
+def _installation_storage_snapshot(target, docker, prerequisites, run, *, deadline, _capture_target=None):
+    """Read local facts; optional raw capture stays private and grants no authority."""
     _need(docker["dockerEngine"]["DockerRootDir"] == "/var/lib/docker",
           "nonstandard Docker storage needs platform review")
-    before_mounts = _snapshot_mounts(_snapshot_mountinfo(deadline=deadline))
-    blocks = _docker_json(INSTALL_BLOCK_ARGS, run)
+    if _capture_target is not None:
+        _need(_json(_installation_snapshot_target(_capture_target)) == _json(target),
+              "storage capture target differs from the original input")
+    commands = []
+    def observed(args):
+        raw = run(args)
+        if _capture_target is not None:
+            commands.append({"argv": list(args), "stdout": raw})
+        return raw
+    before_raw = _snapshot_mountinfo(deadline=deadline)
+    before_mounts = _snapshot_mounts(before_raw)
+    blocks = _docker_json(INSTALL_BLOCK_ARGS, observed)
     identifier = docker["containers"]["db"]["containerId"]
-    database = _docker_json(_installation_storage_args(identifier), run)
-    expected = {key: prerequisites["databaseIdentity"][key] for key in (
-        "database", "port", "dataDirectory", "transactionReadOnly", "inRecovery")}
-    expected.update({"configFile": "/var/lib/postgresql/data/postgresql.conf",
-                     "hbaFile": "/var/lib/postgresql/data/pg_hba.conf",
-                     "identFile": "/var/lib/postgresql/data/pg_ident.conf"})
-    expected["tablespaces"] = [{"oid": "1663", "name": "pg_default", "location": ""},
-                               {"oid": "1664", "name": "pg_global", "location": ""}]
-    _need(_json(database) == _json(expected), "database storage identity or default tablespaces differ")
-    paths = {}
+    database = _docker_json(_installation_storage_args(identifier), observed)
+    _installation_storage_database(database, prerequisites)
+    paths, tablespaces = {}, None
     root_fd = _host_storage_root()
     try:
-        hostkey = _snapshot_hostkey(root_fd)
+        hostkey, key_raw = _snapshot_hostkey(root_fd, _capture=True)
         _need(hostkey["sha256"] == target["sshHostKeySha256"], "operator SSH host key differs from this host")
         for path in INSTALL_STORAGE_DIRECTORIES:
             with _snapshot_directory(root_fd, tuple(path.strip("/").split("/"))) as directory:
                 paths[path] = list(_directory_identity(os.fstat(directory)))
                 if path == INSTALL_DB_DATA + "/pg_tblspc":
-                    _need(not os.listdir(directory), "custom or unregistered tablespace needs platform review")
+                    tablespaces = os.listdir(directory)
+                    _need(not tablespaces, "custom or unregistered tablespace needs platform review")
         configuration = _snapshot_database_configuration(root_fd)
         root = _snapshot_coverage(before_mounts, paths)
         block_root = _snapshot_block_root(blocks, root, target)
@@ -4190,10 +4228,79 @@ def _installation_storage_snapshot(target, docker, prerequisites, run, *, deadli
               "SSH host key or database configuration changed around storage observation")
     finally:
         os.close(root_fd)
-    _need(_snapshot_coverage(_snapshot_mounts(_snapshot_mountinfo(deadline=deadline)), paths) == root
-          and _snapshot_block_root(_docker_json(INSTALL_BLOCK_ARGS, run), root, target) == block_root
-          and _json(_docker_json(_installation_storage_args(identifier), run)) == _json(database)
+    after_raw = _snapshot_mountinfo(deadline=deadline)
+    _need(_snapshot_coverage(_snapshot_mounts(after_raw), paths) == root
+          and _snapshot_block_root(_docker_json(INSTALL_BLOCK_ARGS, observed), root, target) == block_root
+          and _json(_docker_json(_installation_storage_args(identifier), observed)) == _json(database)
           and time.monotonic() < deadline, "snapshot storage baseline changed during observation")
+    facts = _installation_storage_facts(target, hostkey, paths, root, block_root, configuration, database, identifier)
+    if _capture_target is None:
+        return facts
+    raw = _json({"schemaVersion": 1, "kind": "sanq-minimal-storage-originals",
+        "targetOriginal": _capture_target.decode("ascii"), "publicHostKeyOriginal": key_raw.decode("ascii"),
+        "publicHostKeyIdentity": hostkey["identity"], "directories": paths, "databaseConfiguration": configuration,
+        "mountinfoOriginals": [before_raw.decode("utf-8"), after_raw.decode("utf-8")],
+        "commands": commands, "databaseContainerId": identifier, "tablespaceEntries": tablespaces})
+    _need(_json(_installation_storage_originals_value(raw, docker, prerequisites)) == _json(facts),
+          "storage original capture differs from live facts")
+    return facts, raw
+
+
+def _observe_installed_snapshot_storage(retention_id, target, *, fetch=release.github_json):
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
+        include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
+        include_migrations=True, include_effective_configuration=True, include_external_backup=True,
+        _snapshot_target=target)
+
+
+# Raw snapshot prerequisites live inside the existing recovery pair, never as a permit file.
+RECOVERY_STORAGE_MEMBER = "observations/pre-snapshot-storage.json"
+
+
+def _snapshot_key_fingerprint(raw):
+    _need(type(raw) is bytes and 0 < len(raw) <= 4096, "invalid SSH public host key size")
+    try:
+        text = raw.decode("ascii").strip()
+        _need(len(text.splitlines()) == 1, "SSH public host key must contain one line")
+        fields = text.split()
+        _need(len(fields) >= 2 and fields[0] == "ssh-ed25519", "fixed SSH host key algorithm differs")
+        blob = base64.b64decode(fields[1], validate=True)
+        _need(len(blob) == 51 and blob[:19] == b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20",
+              "SSH public host key encoding differs")
+    except (ValueError, UnicodeError):
+        raise release.ReleaseContractError("invalid SSH public host key") from None
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
+def _storage_metadata(value, *, directory=False, public_key=False):
+    _need(type(value) is list and len(value) == (5 if directory else 9)
+          and all(type(item) is int and 0 <= item < 2**64 for item in value)
+          and value[0] < 2**63 and value[1] > 0,
+          "invalid storage observation metadata")
+    mode = value[4] if directory else value[7]
+    _need(not stat.S_IMODE(mode) & 0o7022
+          and (stat.S_ISDIR(mode) if directory else stat.S_ISREG(mode)
+               and value[8] == 1 and value[2] <= MAX_FILE), "storage observation metadata policy differs")
+    if public_key:
+        _need(value[2] > 0 and value[2] <= 4096
+              and value[5:7] == [PRIVATE_OWNER_UID, PRIVATE_GROUP_GID], "public key metadata differs")
+
+
+def _installation_storage_database(database, prerequisites):
+    expected = {key: prerequisites["databaseIdentity"][key] for key in (
+        "database", "port", "dataDirectory", "transactionReadOnly", "inRecovery")}
+    _need(_json(expected) == _json({"database": "sanqin_db", "port": "5432",
+          "dataDirectory": "/var/lib/postgresql/data", "transactionReadOnly": "on", "inRecovery": False}),
+          "storage observation database baseline differs")
+    expected.update({"configFile": "/var/lib/postgresql/data/postgresql.conf",
+                     "hbaFile": "/var/lib/postgresql/data/pg_hba.conf",
+                     "identFile": "/var/lib/postgresql/data/pg_ident.conf"})
+    expected["tablespaces"] = [{"oid": "1663", "name": "pg_default", "location": ""},
+                               {"oid": "1664", "name": "pg_global", "location": ""}]
+    _need(_json(database) == _json(expected), "database storage identity or default tablespaces differ")
+
+
+def _installation_storage_facts(target, hostkey, paths, root, block_root, configuration, database, identifier):
     facts = {"target": target, "sshHostKey": hostkey, "directories": paths, "rootMount": root,
              "blockStorage": block_root, "databaseConfiguration": configuration,
              "databaseStorageSha256": _hash(_json(database)),
@@ -4204,11 +4311,127 @@ def _installation_storage_snapshot(target, docker, prerequisites, run, *, deadli
     return {**facts, "observationSha256": _hash(_json(facts))}
 
 
-def _observe_installed_snapshot_storage(retention_id, target, *, fetch=release.github_json):
+def _installation_storage_originals_value(raw, docker, prerequisites):
+    """Recompute the same facts from original data only. No filesystem, SQL or host replay."""
+    try:
+        _need(type(raw) is bytes and 0 < len(raw) <= MAX_RECOVERY_HOST_BYTES,
+              "storage originals exceed budget")
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid storage originals JSON constant"))
+        fields = {"schemaVersion", "kind", "targetOriginal", "publicHostKeyOriginal", "publicHostKeyIdentity",
+                  "directories", "databaseConfiguration", "mountinfoOriginals", "commands",
+                  "databaseContainerId", "tablespaceEntries"}
+        _need(type(value) is dict and set(value) == fields and type(value["schemaVersion"]) is int
+              and value["schemaVersion"] == 1 and value["kind"] == "sanq-minimal-storage-originals"
+              and _json(value) == raw and type(value["targetOriginal"]) is str
+              and type(value["publicHostKeyOriginal"]) is str
+              and value["tablespaceEntries"] == [] and type(value["tablespaceEntries"]) is list,
+              "storage originals fields or canonical bytes differ")
+        target = _installation_snapshot_target(value["targetOriginal"].encode("ascii"))
+        key_raw = value["publicHostKeyOriginal"].encode("ascii")
+        key_identity = value["publicHostKeyIdentity"]
+        _storage_metadata(key_identity, public_key=True)
+        _need(key_identity[2] == len(key_raw), "public key original size differs")
+        hostkey = {"sha256": _snapshot_key_fingerprint(key_raw), "identity": key_identity}
+        _need(hostkey["sha256"] == target["sshHostKeySha256"], "archived SSH binding differs")
+        paths, configuration = value["directories"], value["databaseConfiguration"]
+        _need(type(paths) is dict and set(paths) == set(INSTALL_STORAGE_DIRECTORIES)
+              and type(configuration) is dict and set(configuration) == set(INSTALL_DB_CONFIG),
+              "storage original path inventory differs")
+        for metadata in paths.values():
+            _storage_metadata(metadata, directory=True)
+        for metadata in configuration.values():
+            _storage_metadata(metadata)
+        identifier = docker["containers"]["db"]["containerId"]
+        _need(value["databaseContainerId"] == identifier
+              and docker["dockerEngine"]["DockerRootDir"] == "/var/lib/docker",
+              "storage originals database or Docker identity differs")
+        mountinfo, rows = value["mountinfoOriginals"], value["commands"]
+        expected = [list(INSTALL_BLOCK_ARGS), _installation_storage_args(identifier)] * 2
+        _need(type(mountinfo) is list and len(mountinfo) == 2 and all(type(item) is str for item in mountinfo)
+              and type(rows) is list and len(rows) == 4, "storage original observation count differs")
+        for row, argv in zip(rows, expected):
+            _need(type(row) is dict and set(row) == {"argv", "stdout"} and type(row["argv"]) is list
+                  and _json(row["argv"]) == _json(argv) and type(row["stdout"]) is str
+                  and 0 < len(row["stdout"].encode("utf-8")) <= MAX_HOST_OUTPUT,
+                  "storage original command differs")
+        position = 0
+        def replay(args):
+            nonlocal position
+            _need(position < len(rows) and args == expected[position], "storage observation order differs")
+            output = rows[position]["stdout"]
+            position += 1
+            return output
+        root = _snapshot_coverage(_snapshot_mounts(mountinfo[0].encode("utf-8")), paths)
+        block_root = _snapshot_block_root(_docker_json(INSTALL_BLOCK_ARGS, replay), root, target)
+        database = _docker_json(_installation_storage_args(identifier), replay)
+        _installation_storage_database(database, prerequisites)
+        _need(_snapshot_coverage(_snapshot_mounts(mountinfo[1].encode("utf-8")), paths) == root
+              and _snapshot_block_root(_docker_json(INSTALL_BLOCK_ARGS, replay), root, target) == block_root
+              and _json(_docker_json(_installation_storage_args(identifier), replay)) == _json(database)
+              and position == len(rows), "storage originals changed across collection")
+        return _installation_storage_facts(target, hostkey, paths, root, block_root, configuration, database, identifier)
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid storage originals") from None
+
+
+def _installation_recovery_storage_value(raw, docker, recorded=None):
+    try:
+        _need(type(raw) is bytes and 0 < len(raw) <= MAX_RECOVERY_HOST_BYTES,
+              "recovery storage originals exceed budget")
+        value = json.loads(raw, object_pairs_hook=_unique,
+                           parse_constant=lambda _: _need(False, "invalid recovery storage JSON constant"))
+        _need(type(value) is dict and set(value) == {"schemaVersion", "kind", "originalObservation", "storageOriginals"}
+              and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+              and value["kind"] == "sanq-minimal-recovery-target-storage" and _json(value) == raw
+              and type(value["originalObservation"]) is dict, "recovery storage envelope differs")
+        observation = value["originalObservation"]
+        _need(observation.get("outcome") == "PRE_SNAPSHOT_STORAGE_OBSERVED"
+              and observation.get("snapshotTargetAndStorageObserved") is True
+              and "installationIntent" not in observation
+              and all(observation.get(key) is False for key in (
+                  "canExecute", "readyToInstall", "authorizedToMutateProduction", "hostPreflightComplete"))
+              and _json(observation["docker"]) == _json(docker),
+              "recovery storage original observation differs")
+        facts = _installation_storage_originals_value(_json(value["storageOriginals"]), docker, observation["prerequisites"])
+        _need(_json(facts) == _json(observation["snapshotStorage"]),
+              "recovery storage originals disagree with the original observation")
+        if recorded is not None:
+            _need(recorded["observationSha256"] == _hash(_json(observation))
+                  and observation["sourceSha"] == recorded["targetSourceSha"]
+                  and observation["currentArchiveSourceSha"] == recorded["installedRuntimeSourceSha"]
+                  and observation["retentionId"] == recorded["retentionId"],
+                  "recovery storage observation is not bound to the original intent")
+        return {"value": value, "facts": facts, "observationSha256": _hash(_json(observation))}
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid recovery storage originals") from None
+
+
+def _installation_recovery_storage_capture(capture, original, observation):
+    _need(type(capture) is tuple and len(capture) == 3, "storage originals require the pre-gate host capture")
+    _need(type(original) is bytes and 0 < len(original) <= MAX_RECOVERY_HOST_BYTES
+          and type(observation) is dict, "invalid recovery storage original capture")
+    value = json.loads(original, object_pairs_hook=_unique,
+                       parse_constant=lambda _: _need(False, "invalid storage capture JSON constant"))
+    _need(_json(value) == original, "recovery storage originals must keep canonical original bytes")
+    raw = _json({"schemaVersion": 1, "kind": "sanq-minimal-recovery-target-storage",
+                 "originalObservation": observation, "storageOriginals": value})
+    reviewed = _installation_recovery_storage_value(raw, observation["docker"])
+    _need(capture[1]["capturedBytes"] + len(capture[2]) + len(raw) <= MAX_RECOVERY_SOURCE_BYTES,
+          "storage originals exceed the shared recovery budget")
+    summary = {**capture[1], "scope": "pre-install-files-host-and-target-storage",
+               "snapshotStorage": {"member": RECOVERY_STORAGE_MEMBER, "sha256": _hash(raw), "bytes": len(raw),
+                   "preGate": True, "observationSha256": reviewed["observationSha256"]}}
+    return capture[0], summary, capture[2], raw
+
+
+def _retain_installation_target_storage(retention_id, target, *, fetch=release.github_json):
+    """Fresh owned flow only; preserve exact target/storage originals, never install or resume."""
     return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True, include_docker=True,
         include_systemd=True, include_filesystem=True, include_prerequisites=True, include_application_binding=True,
         include_migrations=True, include_effective_configuration=True, include_external_backup=True,
-        _snapshot_target=target)
+        _record_intent=True, _load_deny_gates=True, _save_writers=True, _freeze_writers=True,
+        _retain_recovery=True, _snapshot_target=target)
 
 
 def main(argv=None):
