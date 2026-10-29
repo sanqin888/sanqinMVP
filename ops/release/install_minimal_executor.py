@@ -722,10 +722,10 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
@@ -745,12 +745,14 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     _need(not _confirm_offhost_index or _retain_snapshot_review,
           "off-host confirmation requires this bound live durable review")
     _need(not _write_tools or _confirm_offhost_index, "tool writes require this complete live off-host confirmation")
+    _need(not _handover_gates or _write_tools, "permanent gate handover requires this complete tool write flow")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
     run = lambda args: _docker_command(args, deadline=deadline)
     storage_original = None
     tool_progress = None
+    gate_handover = None
     def snapshot(*, temporary_files=None):
         nonlocal storage_original
         runtime = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
@@ -903,8 +905,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                         _need(_json(_installation_storage_snapshot(target, before[2], before[5],
                               lambda args: _runtime_command(args, deadline=deadline), deadline=deadline))
                               == _json(before[10]), "bound target storage changed during writer freeze")
-                    _temporary_gate_systemd_parity(before[3],
-                        lambda args: _systemd_command(args, deadline=deadline), loaded["files"])
+                    if gate_handover is None:
+                        _temporary_gate_systemd_parity(before[3],
+                            lambda args: _systemd_command(args, deadline=deadline), loaded["files"])
+                    else:
+                        _temporary_gate_systemd_parity(before[3],
+                            lambda args: _systemd_command(args, deadline=deadline), loaded["files"],
+                            _handover=gate_handover)
                     database = _docker_json(_installation_history_args(before[2]["containers"]["db"]["containerId"]),
                                              lambda args: _runtime_command(args, deadline=deadline))
                     _need(type(database) is dict and set(database) == {*before[5]["databaseIdentity"], "history"}
@@ -964,7 +971,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 except BaseException:
                     raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
             def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt, *, persist_snapshot=None, persist_offhost=None):
-                nonlocal deadline, tool_progress
+                nonlocal deadline, tool_progress, gate_handover
                 try:
                     def fresh_context():
                         nonlocal deadline
@@ -1078,11 +1085,33 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                         files = _installation_tool_progress_check(tool_progress)
                                         _need(set(files) == set(INSTALL_TOOL_PATHS), "installation tool write set is incomplete")
                                     fresh_context()
-                                    return {**confirmed_result, "outcome": "TOOL_FILES_WRITTEN_FENCED", "toolFilesWritten": True,
+                                    tool_result = {**confirmed_result, "outcome": "TOOL_FILES_WRITTEN_FENCED", "toolFilesWritten": True,
                                         "toolWriteSetSha256": plan["writeSetSha256"], "toolFiles": files,
                                         "snapshotMaterialsConfirmed": True, "restoreValidationDeferred": True,
                                         "restoreProven": False, "permanentGatesLoaded": False,
                                         "installationComplete": False, "recoveryReady": False, "canExecute": False}
+                                    if _handover_gates:
+                                        gate_handover = _installation_gate_handover_begin()
+                                        deadline = time.monotonic() + 300
+                                        write_context()
+                                        for unit in DROPINS:
+                                            gate_handover["active"] = unit
+                                            written = _replace_installation_permanent_gate(unit, gate_handover,
+                                                check_context=write_context, deadline=deadline)
+                                            gate_handover["completed"][unit] = written
+                                            gate_handover["active"] = None
+                                            write_context()
+                                        _installation_daemon_reload(deadline=deadline)
+                                        gate_handover["reloaded"] = True
+                                        write_context()
+                                        fresh_context()
+                                        return {**tool_result, "outcome": "PERMANENT_GATES_LOADED_FENCED",
+                                            "permanentGatesLoaded": True, "permanentGatePropertiesObserved": True,
+                                            "permanentGateFiles": _installation_handover_gate_files(gate_handover),
+                                            "permanentGatePropertiesSha256": gate_handover["effectivePropertiesSha256"],
+                                            "permanentGateApiVerified": False, "requiresInstalledGateApiVerification": True,
+                                            "requiresApplicationVerification": True}
+                                    return tool_result
                                 return confirmed_result
                             return {**reviewed, **saved, "outcome": "SNAPSHOT_REVIEW_RETAINED"}
                         return reviewed
@@ -1104,7 +1133,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index)
             if _write_tools:
                 result["observationTiming"] = "PRE_INSTALLATION_INTENT"
-            result["outcome"] = ("INSTALLATION_TOOL_FILES_WRITTEN_FENCED" if _write_tools else
+            result["outcome"] = ("INSTALLATION_PERMANENT_GATES_LOADED_FENCED" if _handover_gates else
+                                 "INSTALLATION_TOOL_FILES_WRITTEN_FENCED" if _write_tools else
                                  "INSTALLATION_OFFHOST_INDEX_CONFIRMED" if _confirm_offhost_index else
                                  "INSTALLATION_SNAPSHOT_REVIEW_RETAINED" if _retain_snapshot_review else
                                  "INSTALLATION_SNAPSHOT_CONTENT_VALIDATED" if target is not None and _snapshot_channel is not None else
@@ -2922,13 +2952,19 @@ def _verify_temporary_gates(run):
 
 
 
-def _temporary_gate_systemd_parity(baseline, run, files):
+def _temporary_gate_systemd_parity(baseline, run, files, *, _handover=None):
     """Compare original manager/disk facts, allowing only this write's deny gates."""
-    _need(_verify_temporary_gates(run)["files"] == files, "temporary loaded gates changed")
+    if _handover is None:
+        _need(_verify_temporary_gates(run)["files"] == files, "temporary loaded gates changed")
+    else:
+        _need(_handover["original"] == files, "handover lost original temporary gates")
+        files = _installation_handover_gate_files(_handover)
     def normalized(args):
         raw = run(args)
         _need(isinstance(raw, str) and len(raw.encode("utf-8")) <= 65536, "manager parity output exceeds budget")
         unit = args[3]
+        if _handover is not None and unit in DROPINS:
+            _handover["effectivePropertiesSha256"][unit] = _hash(raw.encode("utf-8"))
         lines = []
         for line in raw.splitlines():
             key, sep, value = line.partition("=")
@@ -2936,9 +2972,12 @@ def _temporary_gate_systemd_parity(baseline, run, files):
                 expected = "/etc/systemd/system/" + unit + ".d/" + INSTALL_GATE_NAME
                 _need(sep == "=" and value.split() == [expected], "loaded deny path changed")
                 line = "DropInPaths="
+            elif _handover is not None and unit in DROPINS and key == "NeedDaemonReload":
+                _need(sep == "=" and value in ("no", "yes")
+                      and (not _handover["reloaded"] or value == "no"), "handover manager reload is unresolved")
+                line = "NeedDaemonReload=no"
             elif unit in ("docker.service", "sanq-backup.service") and key == "ExecStartPre":
-                _need("path=/usr/bin/false ; argv[]=/usr/bin/false ; ignore_errors=no" in value
-                      and value.count("path=") == value.count("argv[]=") == 1, "loaded denial changed")
+                _need(_installation_loaded_gate_command(value, _handover), "loaded denial changed")
                 line = "ExecStartPre="
             lines.append(line)
         return "\n".join(lines)
@@ -2971,7 +3010,9 @@ def _temporary_gate_systemd_parity(baseline, run, files):
             unit = name[:-2]
             if unit in INSTALL_DENY_DROPINS:
                 with _temporary_gate_directory(root, unit) as directory:
-                    _need(_temporary_gate_read(directory, unit) == files[unit], "temporary gate identity changed")
+                    _need((_temporary_gate_read(directory, unit) if _handover is None else
+                           _installation_handover_gate_read(directory, unit, _handover)) == files[unit],
+                          "owned gate identity changed")
                     if saved is not None:
                         _need(stable(os.fstat(directory)) == from_fingerprint(saved),
                               "original empty gate directory replaced")
@@ -2995,7 +3036,8 @@ def _temporary_gate_systemd_parity(baseline, run, files):
               "systemd root changed during gate parity read")
     finally:
         os.close(root)
-    _need(_temporary_gate_files() == files, "temporary files changed after manager parity")
+    _need((_temporary_gate_files() if _handover is None else _installation_handover_gate_files(_handover)) == files,
+          "owned gate files changed after manager parity")
     return baseline  # Comparison projection only; actual gate proof remains separate.
 
 
@@ -5758,6 +5800,160 @@ def _write_installation_tools(retention_id, target, *, input_fd, output_fd, fetc
         _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
         _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
         _write_tools=True)
+
+
+def _installation_loaded_gate_command(value, handover):
+    needle = ("path=/usr/bin/false ; argv[]=/usr/bin/false ; ignore_errors=no"
+              if handover is None or not handover["reloaded"] else
+              "path=/usr/bin/python3 ; argv[]=" + COMMAND + " ; ignore_errors=no")
+    return type(value) is str and needle + " ;" in value and value.count("path=") == value.count("argv[]=") == 1
+
+
+INSTALL_GATE_PENDING = ".sanq-install-gate.pending"
+
+
+def _installation_gate_leaf(root, name):
+    _need(name in (INSTALL_GATE_NAME, INSTALL_GATE_PENDING), "unreviewed installation gate leaf")
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        info = os.fstat(fd)
+        _installed_info(info)
+        _need(stat.S_IMODE(info.st_mode) == 0o644 and 0 < info.st_size <= 4096,
+              "installation gate metadata differs")
+        raw = os.read(fd, 4097)
+        _need(len(raw) == info.st_size and _installed_fingerprint(info) == _installed_fingerprint(os.fstat(fd))
+              == _installed_fingerprint(os.stat(name, dir_fd=root, follow_symlinks=False)),
+              "installation gate changed during read")
+        return raw, {"sha256": _hash(raw), "identity": list(_installed_fingerprint(info))}
+    finally:
+        os.close(fd)
+
+
+def _installation_gate_handover_begin():
+    original = _temporary_gate_files()
+    root = _systemd_root()
+    try:
+        directories = {}
+        for unit in DROPINS:
+            with _temporary_gate_directory(root, unit) as directory:
+                _need(_temporary_gate_read(directory, unit) == original[unit], "temporary gate changed before handover")
+                directories[unit] = _directory_identity(os.fstat(directory))
+        return {"original": original, "directories": directories, "completed": {},
+                "active": None, "reloaded": False, "effectivePropertiesSha256": {}}
+    finally:
+        os.close(root)
+
+
+def _installation_handover_gate_read(root, unit, progress):
+    _need(_directory_identity(os.fstat(root)) == progress["directories"][unit],
+          "installation gate directory replaced")
+    raw, facts = _installation_gate_leaf(root, INSTALL_GATE_NAME)
+    target = DROPINS[unit].encode()
+    original = progress["original"][unit]
+    if unit in progress["completed"]:
+        _need(raw == target and facts == progress["completed"][unit], "completed permanent gate changed")
+    elif progress["active"] == unit:
+        _need(raw == INSTALL_DENY_DROPINS[unit] and facts == original or raw == target,
+              "active gate differs from original and permanent target")
+    else:
+        _need(raw == INSTALL_DENY_DROPINS[unit] and facts == original, "unwritten temporary gate changed")
+    allowed = {INSTALL_GATE_NAME}
+    try:
+        pending, _ = _installation_gate_leaf(root, INSTALL_GATE_PENDING)
+    except FileNotFoundError:
+        pass
+    else:
+        _need(progress["active"] == unit and facts == original and pending == target,
+              "unowned permanent gate pending file")
+        allowed.add(INSTALL_GATE_PENDING)
+    _need(set(os.listdir(root)) == allowed, "installation gate directory inventory changed")
+    return facts
+
+
+def _installation_handover_gate_files(progress):
+    root = _systemd_root()
+    try:
+        result = {}
+        for unit in DROPINS:
+            with _temporary_gate_directory(root, unit) as directory:
+                result[unit] = _installation_handover_gate_read(directory, unit, progress)
+        return result
+    finally:
+        os.close(root)
+
+
+def _replace_installation_permanent_gate(unit, progress, *, check_context, deadline):
+    """One fixed drop-in under this owned handover. Unknown results preserve actual files."""
+    _need(os.geteuid() == 0 and type(unit) is str and unit in DROPINS and progress["active"] == unit
+          and callable(check_context) and type(deadline) in (int, float)
+          and time.monotonic() < deadline <= time.monotonic() + 300,
+          "invalid permanent gate write context")
+    check_context()
+    root = _systemd_root()
+    try:
+        with _temporary_gate_directory(root, unit) as directory:
+            _need(_directory_identity(os.fstat(directory)) == progress["directories"][unit],
+                  "permanent gate parent changed before write")
+            old, original = _installation_gate_leaf(directory, INSTALL_GATE_NAME)
+            _need(old == INSTALL_DENY_DROPINS[unit] and original == progress["original"][unit],
+                  "permanent gate original differs")
+            raw = DROPINS[unit].encode()
+            if raw == old:
+                check_context()
+                _need(time.monotonic() < deadline and _installation_gate_leaf(directory, INSTALL_GATE_NAME) == (old, original),
+                      "unchanged socket gate drifted")
+                return original
+            disk = os.fstatvfs(directory)
+            _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + len(raw),
+                  "permanent gate write lacks reserve")
+            fd = None
+            try:
+                _need(time.monotonic() < deadline, "permanent gate deadline expired")
+                fd = os.open(INSTALL_GATE_PENDING, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             0o600, dir_fd=directory)
+                os.fchown(fd, PRIVATE_OWNER_UID, PRIVATE_GROUP_GID)
+                remaining = memoryview(raw)
+                while remaining:
+                    _need(time.monotonic() < deadline, "permanent gate deadline expired")
+                    count = os.write(fd, remaining)
+                    _need(type(count) is int and 0 < count <= len(remaining), "permanent gate write made no progress")
+                    remaining = remaining[count:]
+                os.fchmod(fd, 0o644)
+                os.fsync(fd)
+                staged, staged_facts = _installation_gate_leaf(directory, INSTALL_GATE_PENDING)
+                _need(staged == raw and staged_facts["identity"] == list(_installed_fingerprint(os.fstat(fd))),
+                      "permanent gate staged readback differs")
+                check_context()
+                _need(time.monotonic() < deadline and _installation_gate_leaf(directory, INSTALL_GATE_NAME) == (old, original)
+                      and _installation_gate_leaf(directory, INSTALL_GATE_PENDING) == (raw, staged_facts),
+                      "permanent gate changed before publication")
+                os.replace(INSTALL_GATE_PENDING, INSTALL_GATE_NAME, src_dir_fd=directory, dst_dir_fd=directory)
+                os.fsync(directory)
+                actual, facts = _installation_gate_leaf(directory, INSTALL_GATE_NAME)
+                _need(actual == raw and facts["identity"] == list(_installed_fingerprint(os.fstat(fd))),
+                      "permanent gate published readback differs")
+                check_context()
+                _need(time.monotonic() < deadline and _installation_gate_leaf(directory, INSTALL_GATE_NAME) == (raw, facts),
+                      "permanent gate changed after publication")
+                return facts
+            except BaseException:
+                raise release.ReleaseContractError("GATE_HANDOVER_UNCONFIRMED: preserve gates and installation evidence") from None
+            finally:
+                if fd is not None:
+                    os.close(fd)
+    finally:
+        os.close(root)
+
+
+def _handover_installation_permanent_gates(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh install continuation through permanent file/loading checks; application remains frozen."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
+        include_application_binding=True, include_migrations=True, include_effective_configuration=True,
+        include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
+        _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
+        _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
+        _write_tools=True, _handover_gates=True)
 
 
 def main(argv=None):
