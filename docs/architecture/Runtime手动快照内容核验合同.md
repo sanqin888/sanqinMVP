@@ -1,14 +1,45 @@
 # Runtime 手动快照内容核验合同
 
-## D2 目标存储原件与恢复包意图绑定（本地待审）
+## D2 手动快照内容校验（本地待审）
 
-**D2_STORAGE_RECOVERY_BINDING_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+**D2_SNAPSHOT_CONTENT_VALIDATION_LOCAL / TESTS_NOT_RUN / NOT_INSTALLED。**
+
+基于[PR #3042](https://github.com/sanqin888/sanqinMVP/pull/3042)已合并dev `02dc3be9b3741024bc9ac31f5ad062992b0b89b9` 创建 `feat/runtime-minimal-snapshot-content-validation-20261029`。私有 `_review_installation_snapshot_content` 将已绑定目标/存储恢复包接入原同锁等待链：耐久包之后才发challenge，等待前后强制核目标原件/意图与完整现场；旧只读、恢复保存及未核验输入入口继续各自原行为。
+
+新请求展示原账户/区域/实例、目标/存储摘要及完整 `sanq-runtime-<64位challenge>` 名称。单帧回复沿原六项绑定/64KiB/1800秒限制，内容逐项核手动快照ARN/完整名称、来源实例、available状态、区域、原生bool/int、明确空fromAttachedDisks及系统盘大小；快照可用区允许all或准确源可用区，分别保留。操作者须明确确认已认证AWS会话及完整challenge后创建，并声明准确对象/available观察时间；这些是人工声明，不构成服务端AWS认证。
+
+完整请求写入FD后、开始读回复前记录本机UTC时间；创建/观察必须满足prepared≤完整写出≤createdAt≤available观察≤收到回复。输入选用带显式时区的RFC3339字符串、秒小数0–6位，规范到UTC微秒；拒绝无时区、未知-00:00、非法日期/偏移、超精度及epoch数值，不猜AWS数字单位。Mac薄入口尚未实现，未来须显式转换数字时间；操作者确认实际显示后创建。该顺序仅在本机/人工时钟信任范围内有效，时钟矛盾阻断，不宣称可信时间。
+
+新增25项纯内容比较、真实管道和完整主机模型测试，覆盖all/来源区分、每个必需字段缺失/null、错账户/区域/来源/名称、pending/error/伪成功、附加盘/类型、人工声明、时区/精度/顺序、原绑定替换、原件漂移、完整短写回调、同锁且耐久包后等待、失败保留及禁止重放。Python3.10 AST/符号和差异静态核对已完成；MCP-workspace无lint/build/test执行权限，本批测试未运行，未推送或创建PR。
+
+通过仅返回内存 `SNAPSHOT_CONTENT_VALIDATED` 摘要和 `snapshotContentValidated/snapshotEvidenceValidated=true`，不回显任意AWS元数据或原件。awsOriginAuthenticated/trustedTimeProven/restoreProven/snapshotAvailable/recoveryReady/canExecute仍false，requiresDurableSnapshotReceipt/requiresRecoveryValidation/requiresHostRecheck为true；尚无快照核验磁盘回执或离机索引。下一步为耐久核验回执、离机定位及真实恢复前置门禁，再接安装。该私有同bootstrap输入属于内部原子增量，无新持久schema/兼容路径、依赖或业务迁移；17+Manifest/250/300、PRIVATE_FILES、九helper/三永久模板、唯一应用state及三组研究暂停保持，无生产/AWS操作。
+
+### 本地内容输入与结果字段
+
+| 对象 | 当前私有合同 |
+| --- | --- |
+| 请求增量 | reviewMode=operator-content-v1、expectedSnapshotName、expectedTarget四字段、targetInputSha256、targetStorageSha256、challengePreparedAt；仍≤4096字节。目标来自原件及原意图，不取reply反向建立 |
+| 外层reply | 沿原schemaVersion/kind及六项原绑定；evidence为严格四字段schemaVersion=1、kind=sanq-minimal-manual-snapshot-content、instanceSnapshot、operatorVerification |
+| instanceSnapshot | 11个必需字段：arn/name/createdAt/location/resourceType/state/fromAttachedDisks/fromInstanceArn/fromInstanceName/isFromAutoSnapshot/sizeInGb；缺失或null均阻断。其他AWS metadata允许保留并纳入evidence摘要，不回显或执行；createdAt采用下述显式规范化输入，不声称是未经转换的AWS原始响应 |
+| operatorVerification | 精确八字段：method=operator-authenticated-aws-session、accountId、region、instanceArn、snapshotArn、authenticatedAwsSession=true、createdAfterChallenge=true、availableObservedAt；布尔必须原生true，声明准确对象且实际显示完整challenge后创建 |
+| 时间 | createdAt/availableObservedAt接受YYYY-MM-DDTHH:MM:SS[.1至6位小数](Z或±HH:MM)，例如2026-10-29T06:00:02.123456-04:00；规范为UTC六位小数。拒绝epoch数值、未知-00:00、非有限值、无时区、非法偏移/日历和超精度。只比较所选本机/人工时间，不授予可信时间证明 |
+| 快照范围 | ARN账户/区域和唯一UUID、原实例ARN/name、完整77字符challenge名、isFromAutoSnapshot=false标志、available、单盘大小及明确空附加盘列表；source inventory仍由停写前完整原件/硬盘观察证明，不以快照空清单替代 |
+| 返回结果 | 新入口顶层INSTALLATION_SNAPSHOT_CONTENT_VALIDATED；内层SNAPSHOT_CONTENT_VALIDATED，内容/证据比较为true、requiresSnapshotValidation=false仅表示本内容步骤结束。snapshotAvailable/recoveryReady/canExecute及AWS认证/可信时间/restore仍false，必须先补耐久回执/离机索引与恢复验收 |
+| 原件/失败 | 本批输入/结果只在同一活跃调用栈中，未增磁盘票据；等待前后核原两锁、原件/意图/恢复包、固定目标存储/门禁/原ID停写及DB。任何异常沿FENCE_UNCONFIRMED保留，不自动恢复/重放 |
+
+本批于2026-10-29再次核对[AWS InstanceSnapshot](https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_InstanceSnapshot.html)和[get-instance-snapshot官方示例](https://docs.aws.amazon.com/cli/latest/reference/lightsail/get-instance-snapshot.html)：实例快照可用区all与源可用区分开记录，progress不代替state。该复核不表示执行AWS查询或生产操作。
+
+## D2 目标存储原件与恢复包意图绑定（源码已合并）
+
+**D2_STORAGE_RECOVERY_BINDING_MERGED_DEV / SOURCE_CI_VERIFIED / NOT_INSTALLED。**
+
+本批[PR #3042](https://github.com/sanqin888/sanqinMVP/pull/3042)最终head `c9c097e496573d3bbae85c57de11b3373add0f7c` 经[CI #7774](https://github.com/sanqin888/sanqinMVP/actions/runs/40859596784)SUCCESS（4成功/6范围跳过；两条Release各1096、Runtime1080、既有C1回归412），已合并dev `02dc3be9b3741024bc9ac31f5ad062992b0b89b9`，无需CI修复；未安装或执行生产/AWS操作。
 
 基于[PR #3041](https://github.com/sanqin888/sanqinMVP/pull/3041)合并dev `db53bdaccce01cb110744fa055358c1f02f3a3de` 建立 `feat/runtime-minimal-storage-recovery-binding-20261029`。新增私有 `_retain_installation_target_storage`，在同一次原两锁/完整预检中捕获目标和存储原件，复用原意图、临时门禁、原ID停写、恢复包审计及成对耐久保存；当前不接快照等待、内容核验或安装。
 
 恢复tar只增固定 `observations/pre-snapshot-storage.json` 成员及index.capture.snapshotStorage元数据：保存规范目标原始字节、公开SSH key原件/身份、两轮mountinfo、四次准确lsblk/只读SQL原stdout、目录/配置metadata、空表空间事实和写意图前完整观察。纯数据复核共用原验证规则重算facts，并将完整原观察摘要对照原intent.observationSha256；篡改后重算外层hash也不能替换该绑定。新owned流程强制require_target_storage=true，缺失原件不能降级为旧范围审计；旧格式与原入口保持原行为，不授予目标核验结果。
 
-新增20项一次性文件/主机模型测试，覆盖同锁且意图前采集、冻结后/保存后复核、原件/metadata/命令/SQL/目标篡改、原观察摘要变动、缺成员/降级、字节预算、失败保留及禁止重放；旧23项测试只提取共享fixture准备方法，保留全部断言。完成Python3.10语法AST、符号/定义、差异与读回静态核对；MCP-workspace未开放lint/build/test，未执行本批新测试或该分支CI。
+新增20项一次性文件/主机模型测试，覆盖同锁且意图前采集、冻结后/保存后复核、原件/metadata/命令/SQL/目标篡改、原观察摘要变动、缺成员/降级、字节预算、失败保留及禁止重放；旧23项测试只提取共享fixture准备方法，保留全部断言。完成Python3.10语法AST、符号/定义、差异与读回静态核对后，上述20项已随本批两条Release各1096项通过最终CI；MCP-workspace未执行lint/build/test，真实平台/恢复仍未验证。
 
 本批按工具恢复归档的兼容增量扩展处理：读者/生产者同一bootstrap原子更新，保留历史证据格式；不是第二发布控制器或并行业务兼容路径。PRIVATE_FILES四材料、原意图/marker/writers/回执schema、现役17+Manifest/250/300、九helper/三永久模板、锁/owner/mode与原共享预算保持。单独只读facts仍保留requiresIntentBinding=true原值；新流程只在实际耐久读回及最终现场重核后返回snapshotStorageBoundToIntent/snapshotTargetStorageReviewed=true，snapshotAvailable/recoveryReady/canExecute仍false。快照内容核验、核验回执、安装/门禁交接、Mac入口及D4统一真实恢复/中断验收仍OPEN；三组研究继续暂停，无生产或AWS操作。
 
@@ -84,7 +115,7 @@
 
 当前 SSH 目标与 AWS 实例的对应关系须在停写前独立确定，并绑定进本轮原意图的 observation 摘要。目标账户/区域/实例 ARN 不能从等待后的回复中反向取得。hostname、IP、快照名字或裸 hash 单独均不构成目标身份；普通 SSH 主机密钥验证及操作者的目标核对继续有效。不引入 CA、Enrollment、离机 CAS 或跨克隆防护研究。
 
-独立目标材料必须说明操作者核对的账户、区域、实例 ARN/名称、已验证的 SSH 目标/主机密钥及核对方式，绑定本轮停写前观察；实现时在原 observation 中明确承载并重核这些事实，不能只加入无原件的摘要。当前 observation 尚无这些字段。该人工绑定不是云签名证明，也不能事后补写旧意图、修改旧 schema 记录或从 reply 倒灌目标。
+独立目标材料必须说明操作者核对的账户、区域、实例 ARN/名称、已验证的 SSH 目标/主机密钥及核对方式，绑定本轮停写前观察；实现时在原 observation 中明确承载并重核这些事实，不能只加入无原件的摘要。原合同基线的observation尚无这些字段；PR #3041/#3042已按本文首部所述实现原始目标/存储采集及原意图绑定。该人工绑定不是云签名证明，也不能事后补写旧意图、修改旧 schema 记录或从 reply 倒灌目标。
 
 ## AWS 字段依据
 
@@ -141,9 +172,9 @@
 
 ## 实施批次与完结条件
 
-1. 停写前目标/存储只读观察已通过PR #3041最终CI。原始事实接入本轮意图、恢复包及owned重核已本地实现，新增20项测试尚待CI；仍不能从独立摘要直接进入停写。
-2. 再在现有单次输入内核快照字段、challenge 关联、人工核验声明及创建顺序；声明属于人工操作证据，不能标成服务端来源认证。覆盖 `all` 可用区、错区域、缺失/空/非空磁盘清单、错误字段类型与时间格式；默认保持所有安装许可为 false。
+1. 停写前目标/存储观察及原件接入意图/恢复包已分别随PR #3041/#3042通过最终CI；当前新入口只在同次owned流程组合，不接受独立摘要重放。
+2. 当前已本地实现单次输入的字段/challenge/人工声明/顺序校验，新增25项测试未运行，准确范围见本文首节；通过后仍不授予安装/恢复许可或AWS认证。
 3. 设计并实现本轮核验回执的独占耐久保存与读回、离机索引及恢复前置门禁，再接 RECOVERY_READY。失败不补写、不重放、不自动开启业务。不得改变原 PRIVATE_FILES 四材料或手改 Manifest；不把“回执已保存”单独当成整套恢复验收完成。
 4. 通过 CI 后，在 D4 统一真实隔离验收中验证准确 AWS 对象、真实根盘/挂载、完整集群恢复、SSH/TTY、超时、中断和恢复。未完成这些步骤前，不能标记为生产可用。
 
-原文档批次只完成合同。当前意图与恢复包原件绑定已有本地源码/测试，尚待本批CI；快照实质核验、核验回执、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
+原文档批次只完成合同。当前意图与恢复包原件绑定已随PR #3042通过CI；本地快照内容校验及25项测试尚待本批CI，耐久核验回执、安装及真实恢复仍OPEN。既有17+Manifest/250/300、唯一应用state和三组研究暂停决定保持，无依赖、业务schema/迁移或生产操作。
