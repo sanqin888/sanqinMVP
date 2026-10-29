@@ -1745,18 +1745,8 @@ def _memory_threshold_observed():
     return {"minimumAvailableMemoryBytes": MIN_AVAILABLE_MEMORY, "availableMemoryThresholdSatisfied": True}
 
 
-def _runtime_prerequisite_snapshot(docker, run):
-    resources = _memory_threshold_observed()
-    # Reuse the bounded strict JSON decoder; arguments are independently allowlisted.
-    python = _docker_json(PYTHON_ARGS, run)
-    _need(type(python) is dict and set(python) == {"version", "implementation", "executable", "platform"}
-          and type(python["version"]) is list and len(python["version"]) == 3
-          and all(type(value) is int and value >= 0 for value in python["version"])
-          and python["version"][0] == 3 and tuple(python["version"][:2]) >= (3, 10)
-          and python["implementation"] == "cpython" and python["platform"] == "linux"
-          and python["executable"] == "/usr/bin/python3", "system Python prerequisite differs")
-    identifier = docker["containers"]["db"]["containerId"]
-    database = _docker_json(_installation_history_args(identifier), run)
+def _installation_database_history_value(database):
+    """Validate fixed read-only identity/history JSON; shared by live and retained observations."""
     _need(type(database) is dict and set(database) == {"database", "port", "dataDirectory",
           "serverVersionNum", "inRecovery", "transactionReadOnly", "history"}
           and database["database"] == "sanqin_db" and database["port"] == "5432"
@@ -1772,6 +1762,21 @@ def _runtime_prerequisite_snapshot(docker, run):
               and isinstance(row["name"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,199}", row["name"])
               and isinstance(row["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", row["sha256"])
               and row["state"] in ("applied", "rolled-back"), "database history is unresolved or invalid")
+    return database
+
+
+def _runtime_prerequisite_snapshot(docker, run):
+    resources = _memory_threshold_observed()
+    # Reuse the bounded strict JSON decoder; arguments are independently allowlisted.
+    python = _docker_json(PYTHON_ARGS, run)
+    _need(type(python) is dict and set(python) == {"version", "implementation", "executable", "platform"}
+          and type(python["version"]) is list and len(python["version"]) == 3
+          and all(type(value) is int and value >= 0 for value in python["version"])
+          and python["version"][0] == 3 and tuple(python["version"][:2]) >= (3, 10)
+          and python["implementation"] == "cpython" and python["platform"] == "linux"
+          and python["executable"] == "/usr/bin/python3", "system Python prerequisite differs")
+    identifier = docker["containers"]["db"]["containerId"]
+    database = _installation_database_history_value(_docker_json(_installation_history_args(identifier), run))
     statuses = {}
     for url in READINESS_URLS:
         code = run(list((*CURL_ARGS, url)))
@@ -5309,6 +5314,113 @@ def _snapshot_recovery_replacement_review(index_raw, payload, receipt, intent, w
         "awsOriginAuthenticated": False, "trustedTimeProven": False, "restoreProven": False,
         "snapshotAvailable": False, "recoveryReady": False, "readyToInstall": False,
         "canExecute": False, "authorizedToMutateProduction": False, "requiresHostRecheck": True}
+
+
+def _recovery_database_command_value(row, argv):
+    _need(type(row) is dict and set(row) == {"argv", "returncode", "stdout", "stderr"}
+          and type(row["argv"]) is list and _json(row["argv"]) == _json(argv)
+          and type(row["returncode"]) is int and row["returncode"] == 0
+          and type(row["stdout"]) is str and type(row["stderr"]) is str,
+          "recovery database command, exit status or fields differ")
+    try:
+        _need(0 < len(row["stdout"].encode("utf-8")) <= MAX_HOST_OUTPUT
+              and len(row["stderr"].encode("utf-8")) <= 4096
+              and len(row["stdout"].encode("utf-8")) + len(row["stderr"].encode("utf-8")) <= MAX_HOST_OUTPUT,
+              "recovery database command output exceeds budget")
+    except UnicodeError:
+        raise release.ReleaseContractError("invalid recovery database command encoding") from None
+    try:
+        return _docker_json(argv, lambda _: row["stdout"])
+    except (ValueError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid recovery database command JSON") from None
+
+
+def _snapshot_recovery_database_review(capture_raw, index_raw, payload, receipt, intent, writers,
+                                       identity, replacement_raw, *, expected, database_container_id, fetch):
+    """Recompute a scoped transcript comparison. No command replay or physical restore claim."""
+    _need(type(capture_raw) is bytes and 0 < len(capture_raw) <= MAX_RECOVERY_HOST_BYTES
+          and type(database_container_id) is str and re.fullmatch(r"[a-f0-9]{64}", database_container_id),
+          "invalid recovery database capture input")
+    try:
+        value = json.loads(capture_raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid recovery database capture constant"))
+        _need(_json(value) == capture_raw, "recovery database capture must be canonical")
+    except (ValueError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid recovery database capture JSON") from None
+    fields = {"schemaVersion", "kind", "basisSha256", "indexSha256", "replacementInputSha256",
+              "databaseContainerId", "commands"}
+    _need(type(value) is dict and set(value) == fields
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["kind"] == "sanq-minimal-recovery-database-capture"
+          and value["databaseContainerId"] == database_container_id
+          and type(value["commands"]) is list and len(value["commands"]) == 4,
+          "recovery database capture fields differ")
+    target = _snapshot_recovery_replacement_review(index_raw, payload, receipt, intent, writers,
+        identity, replacement_raw, expected=expected, fetch=fetch)
+    _need(all(type(value[key]) is str and value[key] == target[key] for key in
+              ("basisSha256", "indexSha256", "replacementInputSha256")),
+          "recovery database capture target or basis differs")
+    argv = [_installation_history_args(database_container_id), _installation_storage_args(database_container_id)] * 2
+    values = [_recovery_database_command_value(row, args) for row, args in zip(value["commands"], argv)]
+    before = _installation_database_history_value(values[0])
+    after = _installation_database_history_value(values[2])
+    _need(_json(before) == _json(after) and _json(values[1]) == _json(values[3]),
+          "recovery database identity, storage or history changed during capture")
+    source = json.loads(_installation_recovery_members(payload)[RECOVERY_STORAGE_MEMBER],
+                        object_pairs_hook=_unique)["originalObservation"]["prerequisites"]
+    observed = {"databaseIdentity": {key: item for key, item in before.items() if key != "history"}}
+    _installation_storage_database(values[1], observed)
+    _need(_json(observed["databaseIdentity"]) == _json(source["databaseIdentity"])
+          and len(before["history"]) == source["migrationHistoryRows"]
+          and _hash(_json(before["history"])) == source["migrationHistorySha256"],
+          "recovery database identity or history differs from source originals")
+    return {"schemaVersion": 1, "kind": "sanq-minimal-recovery-database-review",
+        "outcome": "RECOVERY_DATABASE_TRANSCRIPT_MATCHED_EVIDENCE_REQUIRED",
+        **{key: target[key] for key in ("basisSha256", "indexSha256", "replacementInputSha256")},
+        "captureSha256": _hash(capture_raw), "captureBytes": len(capture_raw),
+        "databaseContainerId": database_container_id, "databaseTranscriptReviewed": True,
+        "databaseIdentity": observed["databaseIdentity"],
+        "migrationHistorySha256": _hash(_json(before["history"])), "migrationHistoryRows": len(before["history"]),
+        "defaultTablespacesOnly": True, "readOnlyQuerySessionObserved": True,
+        "commandOutputSha256": [_hash(row["stdout"].encode("utf-8")) for row in value["commands"]],
+        "commandPortTargetAuthenticated": False, "databaseContainerBindingProven": False,
+        "databaseImageIdentityProven": False, "fullClusterContentProven": False,
+        "replacementHostObserved": False, "cloudIsolationProven": False, "snapshotLineageProven": False,
+        "awsOriginAuthenticated": False, "trustedTimeProven": False, "restoreProven": False,
+        "snapshotAvailable": False, "recoveryReady": False, "readyToInstall": False,
+        "canExecute": False, "authorizedToMutateProduction": False,
+        "requiredEvidence": list(RECOVERY_REQUIRED_EVIDENCE),
+        "requiresIsolatedRestoreEvidence": True, "requiresHostRecheck": True}
+
+
+def _capture_recovery_database_probe(index_raw, payload, receipt, intent, writers, identity,
+                                     replacement_raw, *, expected, database_container_id, run, fetch, deadline):
+    """Collect only four fixed queries through an already scoped port; return private raw bytes."""
+    _need(callable(run) and callable(fetch) and type(database_container_id) is str
+          and re.fullmatch(r"[a-f0-9]{64}", database_container_id), "invalid recovery database probe ports")
+    _need(type(deadline) in (int, float) and time.monotonic() < deadline <= time.monotonic() + 300,
+          "recovery database probe deadline differs")
+    target = _snapshot_recovery_replacement_review(index_raw, payload, receipt, intent, writers,
+        identity, replacement_raw, expected=expected, fetch=fetch)
+    commands = []
+    for argv in [_installation_history_args(database_container_id), _installation_storage_args(database_container_id)] * 2:
+        _need(_runtime_observation_allowed(argv), "unreviewed recovery database probe command")
+        _need(time.monotonic() < deadline, "recovery database probe deadline expired")
+        result = run(list(argv), deadline=deadline)
+        _need(time.monotonic() < deadline, "recovery database probe deadline expired")
+        _need(type(result) is dict and set(result) == {"returncode", "stdout", "stderr"},
+              "recovery database command port result differs")
+        row = {"argv": list(argv), **result}
+        _recovery_database_command_value(row, argv)
+        commands.append(row)
+        _need(len(_json(commands)) <= MAX_RECOVERY_HOST_BYTES, "recovery database capture exceeds budget")
+    raw = _json({"schemaVersion": 1, "kind": "sanq-minimal-recovery-database-capture",
+        **{key: target[key] for key in ("basisSha256", "indexSha256", "replacementInputSha256")},
+        "databaseContainerId": database_container_id, "commands": commands})
+    facts = _snapshot_recovery_database_review(raw, index_raw, payload, receipt, intent, writers,
+        identity, replacement_raw, expected=expected, database_container_id=database_container_id, fetch=fetch)
+    _need(time.monotonic() < deadline, "recovery database probe deadline expired")
+    return facts, raw
 
 
 def main(argv=None):
