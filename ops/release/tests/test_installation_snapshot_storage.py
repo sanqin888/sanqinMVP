@@ -65,7 +65,7 @@ class InstallationSnapshotStorageTests(unittest.TestCase):
     def raw(self):
         return installer._json(self.target)
 
-    def run(self, args):
+    def observe_storage_command(self, args):
         self.assertTrue(installer._runtime_observation_allowed(args))
         self.calls.append(args)
         if tuple(args) == installer.INSTALL_BLOCK_ARGS:
@@ -75,13 +75,13 @@ class InstallationSnapshotStorageTests(unittest.TestCase):
 
     def snapshot(self):
         return installer._installation_storage_snapshot(installer._installation_snapshot_target(self.raw()),
-            self.base.docker.snapshot(), self.prerequisites, self.run, deadline=installer.time.monotonic() + 60)
+            self.base.docker.snapshot(), self.prerequisites, self.observe_storage_command, deadline=installer.time.monotonic() + 60)
 
     def observe(self):
         original = self.base.runtime_read
         def runtime(args):
             if tuple(args) == installer.INSTALL_BLOCK_ARGS or args == installer._installation_storage_args(self.base.docker.ids[3]):
-                return self.run(args)
+                return self.observe_storage_command(args)
             return original(args)
         with patch.object(installer, "_observe_installed_external_backup",
                 side_effect=lambda identity, **kwargs: installer._observe_installed_snapshot_storage(
@@ -293,14 +293,14 @@ class InstallationSnapshotStorageTests(unittest.TestCase):
             self.snapshot()
 
     def test_block_or_database_change_within_collection_is_detected(self):
-        run = self.run
+        run = self.observe_storage_command
         count = [0]
         def changing(args):
             count[0] += tuple(args) == installer.INSTALL_BLOCK_ARGS
             if count[0] == 2:
                 self.blocks["blockdevices"][0]["size"] += 1
             return run(args)
-        with patch.object(self, "run", side_effect=changing), self.assertRaises(ReleaseContractError):
+        with patch.object(self, "observe_storage_command", side_effect=changing), self.assertRaises(ReleaseContractError):
             self.snapshot()
 
     def test_host_key_change_between_complete_observation_passes_blocks(self):
