@@ -6,6 +6,8 @@
 
 本批已提交[PR #3053](https://github.com/sanqin888/sanqinMVP/pull/3053)。初次[CI #7798](https://github.com/sanqin888/sanqinMVP/actions/runs/40932979284)运行1329项Release，仅1项新fixture报错：临时GUARD_SCRIPT路径与模拟加载命令未对齐。现于同PR同步fixture的路径、GUARD_COMMAND和DROPINS模板；保留原API严格路径/命令断言，未修改运行源码或CI门禁。最终验证以该PR修复后head的实际Actions结果为准。
 
+[CI #7799](https://github.com/sanqin888/sanqinMVP/actions/runs/40934448683)的新API测试已通过，但既有工具写入重放用例在首次准备时收到FENCE_UNCONFIRMED。审阅发现真实管道fixture可在父进程完整写出回调记录时间前生成模拟快照时间，存在调度竞态；现用事件明确“完整写出回调后才生成模拟证据”，新增强制peer先收到字节的回归测试，并为该首次准备保留不含秘密的固定判定原因诊断。未放宽生产时间顺序、截止、原件或冻结规则，也未修改运行源码/CI门禁。
+
 基于[PR #3052](https://github.com/sanqin888/sanqinMVP/pull/3052)合并dev `1ad9775578bff42d79a95d57b1abea3f37a68b9c` 创建 `feat/runtime-minimal-installed-gate-api-20261029`。新增私有_verify_installation_permanent_gate_api，沿原两锁/同一完整新鲜安装调用，在27项工具写入与三永久门禁文件/manager属性交接全部核对后，再执行准确已安装guard的只读API；新原生bool依赖完整handover。旧观察/工具写入/门禁交接入口默认不执行该API，不接受磁盘回执或resume。
 
 maintenance_guard新增兼容只读命令check-installation-fence：要求root，调用既有_installed_gate核固定helper/drop-in、三个实际加载属性和Docker live-restore/Swarm，再核私有维护目录仅有本次规范四字段安装marker、0600/原件身份，实际调用check_startup并要求其阻断，最后重读标记。只返回八字段规范JSON（版本/kind/安装ID/marker摘要/门禁已查/启动已拒绝/两个false许可），不解析该marker为普通发布维护记录，不修改标记或取得安装执行权。旧check-startup/status和daemon/backup固定命令保持，命令不可启动/解冻/恢复业务。

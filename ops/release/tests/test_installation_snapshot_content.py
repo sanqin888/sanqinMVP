@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -245,19 +246,45 @@ class SnapshotContentOwnedFlowTests(unittest.TestCase):
         incoming, sender, receiver, outgoing = self.wait.pipes()
         thread = requests = None
         if exchange is None:
-            thread, requests = self.wait.peer(sender, receiver, self.reply if respond is None else respond)
+            sent = threading.Event()
+            self.peer_received = threading.Event()
+            transport = installer._installation_snapshot_exchange
+            def respond_after_sent(request):
+                self.peer_received.set()
+                self.assertTrue(sent.wait(5), "request-complete callback was not observed")
+                return (self.reply if respond is None else respond)(request)
+            def exchange_after_sent(request, *fds, _request_sent=None, **kwargs):
+                def completed():
+                    if _request_sent is not None:
+                        _request_sent()
+                    sent.set()
+                return transport(request, *fds, _request_sent=completed, **kwargs)
+            thread, requests = self.wait.peer(sender, receiver, respond_after_sent)
         with patch.object(installer, "_retain_installation_target_storage",
                 side_effect=lambda identity, target, **kwargs: installer._review_installation_snapshot_content(
                     identity, target, input_fd=incoming, output_fd=outgoing, **kwargs)):
             if exchange is None:
                 try:
-                    return self.binding.observe(), requests
+                    with patch.object(installer, "_installation_snapshot_exchange", side_effect=exchange_after_sent):
+                        return self.binding.observe(), requests
                 finally:
                     thread.join(1)
                     self.assertFalse(thread.is_alive())
                     self.assertFalse(self.wait.errors)
             with patch.object(installer, "_installation_snapshot_exchange", side_effect=exchange):
                 return self.binding.observe(), requests
+
+    def test_peer_receiving_bytes_before_complete_callback_cannot_create_snapshot_early(self):
+        transport = installer._installation_snapshot_exchange
+        def delayed(request, *fds, _request_sent=None, **kwargs):
+            def after_peer_received():
+                self.assertTrue(self.peer_received.wait(5), "peer did not receive the complete request")
+                _request_sent()
+            return transport(request, *fds, _request_sent=after_peer_received, **kwargs)
+        with patch.object(installer, "_installation_snapshot_exchange", side_effect=delayed):
+            result, requests = self.observe()
+        self.assertEqual(len(requests), 1)
+        self.assertTrue(result["installationIntent"]["snapshotReview"]["snapshotContentValidated"])
 
     def test_complete_locked_flow_waits_after_durable_bound_pair_then_validates_content_without_new_disk_ticket(self):
         def respond(request):
