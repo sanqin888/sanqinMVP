@@ -1,8 +1,47 @@
 # Runtime 最小执行器恢复前置证据合同
 
-**2026-10-29（America/Toronto）｜RECOVERY_MATERIAL_REVIEW_LOCAL / REAL_RESTORE_EVIDENCE_OPEN / NOT_INSTALLED。**
+## D2 独立恢复实例目标绑定（本地待审）
 
-基线为PR #3046合并dev `335cb5b1a117716f993b22e3dcec03edda12d1b6`，本地分支 `feat/runtime-minimal-recovery-material-review-20261029`。本批完成材料关联审计和证据边界；没有执行恢复、创建AWS对象、改生产停写范围或取得真实验收结论。所属任务仍为最小执行器第三/四批，不另建长期平台研究。
+**D2_RECOVERY_REPLACEMENT_TARGET_LOCAL / TESTS_NOT_RUN / REAL_RESTORE_EVIDENCE_OPEN / NOT_INSTALLED。**
+
+基于[PR #3047](https://github.com/sanqin888/sanqinMVP/pull/3047)合并dev `91c242aa1b0b8b488e4943d134d15cb9ca7f5563` 创建 `feat/runtime-minimal-recovery-replacement-target-20261029`。私有 `_snapshot_recovery_replacement_review` 复用原件材料审计重算basis，将新目标输入与独立传入的八项预期上下文逐项核对；拒绝源实例ARN、源名称或源SSH路由复用。目标限原账户/区域、单系统盘及原容量；设备名和同区域可用区可以变化，不能把源机物理身份直接套到克隆机。
+
+恢复目标使用严格规范输入封装，保留原目标JSON的准确字节及摘要，复用既有实例/SSH/磁盘校验。它是数据核对入口，不接受PASS，不连接SSH、查询AWS、执行主机命令或写磁盘，不接回原安装事务。克隆可保留原SSH公钥；相同指纹既不证明新目标正确，也不是拒绝克隆的依据，须在准确新实例上独立核对。云来源、快照到新实例的实际血缘、启动前隔离和新主机观察均未证明，全部恢复/安装/执行许可保持false。
+
+新增19项回归测试，覆盖独立上下文/原件/索引/basis错配、源实例与路由误用、跨账户/区域、规范输入和预算、单盘容量、克隆公钥/设备身份、原件来源不可用、无IO/命令和无秘密回显。Python3.10 AST/符号/最终差异静态审阅完成；MCP-workspace未运行lint/build/test，本批未提交或推送。下一步按准确新目标实现只读原始证据采集与比对，真实D4证据和授权仍待落实，不能提前晋级RECOVERY_READY。
+
+本批为bootstrap同所有者内新增私有能力，无新helper/永久单元/持久记录/公开CLI或第二应用state；已审阅，依赖图和基线无变化。17+Manifest/250/300、九helper/三永久模板和三组暂停研究保持；无依赖、业务迁移、生产/AWS/root安装或DB操作。
+
+## 独立恢复实例目标输入与采集边界（本地实现）
+
+私有 `_snapshot_recovery_replacement_review` 在任何恢复主机采集前核对目标材料；当前没有调用者会据其输出执行主机命令。它接受原index、intent/writers、恢复二件、原安装ID、来源fetch端口及以下目标输入，不消费自报恢复结论。
+
+外层规范JSON（准确字段、schemaVersion原生整数1、总计≤128KiB）：
+
+| 字段 | 含义 |
+| --- | --- |
+| schemaVersion / kind | 1 / sanq-minimal-recovery-replacement-target |
+| basisSha256 | 用原件材料审计重算的basis规范摘要；不能只信输入 |
+| indexSha256 | 实际机外index准确字节摘要 |
+| targetOriginal | 字符串，保存新实例目标规范JSON的原字节；内层≤64KiB，复用既有sanq-minimal-pre-snapshot-target的严格账户/区域/ARN/名称/SSH/公钥/单盘输入格式，仅借用解析规则，不表示对新实例发起拍照或停写 |
+
+调用方还须从独立选定/审阅的新目标上下文传入准确八字段：basisSha256、indexSha256、accountId、region、instanceArn、instanceName、sshTarget、sshHostKeySha256。不能从外层输入复制这些值后声称独立校验；当前私有函数只核准确匹配，无法认证调用者如何取得上下文。任何缺失、额外字段、类型不符或错配均拒绝；错误不回显原始输入或秘密。
+
+先核严格输入、独立上下文、index准确摘要及新旧云身份，再用原恢复材料完整审计重算basis。新实例ARN和名称须与源不同，账户/区域保持原范围；来源包中的原SSH路由不能复用。别名不同不证明网络端点不同，SSH主机公钥也可能被快照克隆，故sshEndpointIndependentlyAuthenticated=false、requiresIndependentSshVerification=true。没有实现DNS解析/云查询/SSH连接，也没有自行刷新known_hosts或绕过主机密钥检查。
+
+当前仅支持原单系统盘容量，扩盘/跨账户/跨区域须另审准确兼容范围；同区域可用区、Linux设备名或云盘路径可变化。仅表示声明的新目标在范围内，不能把它当作真实磁盘覆盖检查。新目标原云响应可含metadata但只投影已验证的固定身份字段和准确摘要，不输出原备注/凭据。尚未验证新实例来自该快照，snapshotLineageProven=false。
+
+成功为RECOVERY_REPLACEMENT_BOUND_EVIDENCE_REQUIRED；replacementTargetReviewed/materialBindingsReviewed=true，但replacementHostObserved/cloudIsolationProven/restoreProven/recoveryReady/readyToInstall/canExecute/authorizedToMutateProduction均false，五组真实证据要求不减。该输出不写新文件，不恢复旧事务，不是恢复票据或安装授权。
+
+下一阶段只读采集必须先核实际SSH端点与独立新实例、启动前隔离及允许操作范围，保留固定命令/退出码/原始输出，再比较原应用/Runtime/DB版本与历史、逻辑路径和维护不变量。目标绑定源码/CI不能补出AWS血缘、网络隔离或完整集群恢复证据；真实恢复、root安装、云对象和DB写入仍须准确计划授权。未满足时保持隔离并留原件，不自动重试或开业务。
+
+## 材料关联审计基线（源码已合并）
+
+本批[PR #3047](https://github.com/sanqin888/sanqinMVP/pull/3047)最终head `bc67365544f8d8e5dcaf13ee00eed3abf5d6e25e` 经[CI #7785](https://github.com/sanqin888/sanqinMVP/actions/runs/40900423458)SUCCESS（4成功/6范围跳过；两条Release各1202、Runtime1080、既有C1回归412），已合并dev `91c242aa1b0b8b488e4943d134d15cb9ca7f5563`，无需CI修复；无生产/AWS操作。
+
+**2026-10-29（America/Toronto）｜RECOVERY_MATERIAL_REVIEW_MERGED_DEV / SOURCE_CI_VERIFIED / REAL_RESTORE_EVIDENCE_OPEN / NOT_INSTALLED。**
+
+基线为PR #3046合并dev `335cb5b1a117716f993b22e3dcec03edda12d1b6`，原分支 `feat/runtime-minimal-recovery-material-review-20261029`。本批完成材料关联审计和证据边界；没有执行恢复、创建AWS对象、改生产停写范围或取得真实验收结论。所属任务仍为最小执行器第三/四批，不另建长期平台研究。
 
 ## 当前已实现与未满足门禁
 
