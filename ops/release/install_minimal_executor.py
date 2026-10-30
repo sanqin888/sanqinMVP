@@ -1369,7 +1369,7 @@ def _bounded_host_client(args, *, deadline, _writer=None, _installation_gate_api
     if _writer is not None:
         _need(type(_writer) is tuple and len(_writer) == 5
               and args == _saved_writer_args(*_writer), "unreviewed installation writer command")
-    _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)
+    _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args) or _installation_task_show_allowed(args)
           or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"]
           or _writer is not None or _installation_gate_api or _application_start is not None or _policy_restore is not None),
           "unreviewed or unprivileged Host observation")
@@ -6587,6 +6587,121 @@ def _retain_from_bound_bootstrap(payload, source_sha, current_runtime, current_s
         result = _retain_verified_materials(payload, source_sha, current_runtime, current_source_sha, fetch=fetch)
         check()
     return result
+
+
+# Read-only manager binding for the pending first-install adapter. These internal
+# roles are not CLI commands yet; no unit is submitted and no cleanup is authorized.
+INSTALL_TASK_PREFIX = "sanq-runtime-install-"
+INSTALL_TASK_KEYS = (
+    "LoadState", "Transient", "Type", "Restart", "RemainAfterExit", "KillMode",
+    "ActiveState", "SubState", "MainPID", "ControlPID", "ControlGroup", "InvocationID",
+    "ExecStart", "ExecStopPost", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecCondition",
+    "NeedDaemonReload", "DropInPaths", "FragmentPath", "WorkingDirectory", "User", "Group",
+    "Environment", "EnvironmentFiles", "PassEnvironment", "UnsetEnvironment",
+    "RootDirectory", "RootImage", "SuccessExitStatus",
+)
+
+
+def _installation_task_id(retention_id):
+    _need(type(retention_id) is str and re.fullmatch(r"[a-f0-9]{64}", retention_id),
+          "invalid installation task retention identity")
+    return retention_id
+
+
+def _installation_task_argv(source_sha, retention_id, role):
+    sha = release.require_sha(source_sha)
+    identity = _installation_task_id(retention_id)
+    _need(type(role) is str and role in ("run", "cleanup"), "invalid installation task role")
+    script = "/opt/sanq/install-bootstrap/" + sha + "/" + BOOTSTRAP
+    return ["/usr/bin/python3", "-I", "-S", "-B", script, "installation-" + role,
+            "--source-sha", sha, "--retention-id", identity]
+
+
+def _installation_task_show_args(retention_id):
+    unit = INSTALL_TASK_PREFIX + _installation_task_id(retention_id) + ".service"
+    return [*SYSTEMCTL, "show", unit, "--no-pager", "--property=" + ",".join(INSTALL_TASK_KEYS)]
+
+
+def _installation_task_show_allowed(args):
+    if type(args) is not list or len(args) != 6 or not all(type(v) is str for v in args):
+        return False
+    unit = args[3]
+    match = re.fullmatch(re.escape(INSTALL_TASK_PREFIX) + r"([a-f0-9]{64})\.service", unit)
+    return match is not None and args == _installation_task_show_args(match.group(1))
+
+
+def _installation_task_exec_matches(raw, args):
+    # Exactly one manager command entry. Runtime metadata is not an argv suffix.
+    return (type(raw) is str and len(raw) <= 16384 and raw.count("argv[]=") == 1
+            and raw.count("path=") == 1
+            and re.fullmatch(r"\{\s*path=/usr/bin/python3\s*;\s*argv\[\]="
+                + re.escape(" ".join(args)) + r"\s*;\s*ignore_errors=no\s*;[^{}]*\}", raw) is not None)
+
+
+def _installation_task_process_file(name):
+    _need(name in ("cgroup", "cmdline"), "unreviewed task process input")
+    # Fixed procfs observations, never a caller-supplied PID or file path.
+    with open("/proc/self/" + name, "rb") as source:
+        raw = source.read(65537)
+    _need(0 < len(raw) <= 65536, "task process observation exceeds budget")
+    return raw
+
+
+def _installation_task_context(source_sha, retention_id, role, *, deadline):
+    """Manager facts only; not authority to load disk writers, mutate or skip cleanup."""
+    _bootstrap_invocation(source_sha)
+    argv = _installation_task_argv(source_sha, retention_id, role)
+    unit = INSTALL_TASK_PREFIX + retention_id + ".service"
+    _need(type(deadline) in (int, float) and time.monotonic() < deadline <= time.monotonic() + 30,
+          "invalid installation manager observation budget")
+    raw = _bounded_host_client(_installation_task_show_args(retention_id), deadline=deadline)
+    _need(type(raw) is str and 0 < len(raw.encode("utf-8")) <= 65536
+          and all(char == "\n" or 32 <= ord(char) < 127 for char in raw),
+          "installation manager output exceeds budget or contains controls")
+    fields = {}
+    for line in raw.splitlines():
+        key, separator, value = line.partition("=")
+        _need(separator == "=" and key in INSTALL_TASK_KEYS and key not in fields,
+              "ambiguous installation manager property")
+        fields[key] = value
+    _need(set(fields) == set(INSTALL_TASK_KEYS), "incomplete installation manager properties")
+    expected = {
+        "LoadState": "loaded", "Transient": "yes", "Type": "oneshot", "Restart": "no",
+        "RemainAfterExit": "yes", "KillMode": "control-group", "NeedDaemonReload": "no",
+        "FragmentPath": "/run/systemd/transient/" + unit,
+        "WorkingDirectory": "/opt/sanq/install-bootstrap/" + source_sha,
+        "User": "root", "Group": "root", "ControlGroup": "/system.slice/" + unit,
+        **{key: "" for key in ("DropInPaths", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecCondition",
+            "Environment", "EnvironmentFiles", "PassEnvironment", "UnsetEnvironment",
+            "RootDirectory", "RootImage", "SuccessExitStatus")},
+    }
+    _need(all(fields[key] == value for key, value in expected.items())
+          and Path.cwd() == Path(expected["WorkingDirectory"]),
+          "unreviewed installation manager context")
+    invocation = fields["InvocationID"]
+    _need(re.fullmatch(r"[a-f0-9]{32}", invocation) is not None and invocation != "0" * 32
+          and os.environ.get("INVOCATION_ID") == invocation,
+          "installation manager invocation differs")
+    pid = str(os.getpid())
+    if role == "run":
+        _need(fields["ActiveState"] == "activating" and fields["SubState"] == "start"
+              and fields["MainPID"] in ("0", pid) and fields["ControlPID"] in ("0", pid)
+              and pid in (fields["MainPID"], fields["ControlPID"]), "not the installation main process")
+    else:
+        _need(fields["ActiveState"] == "deactivating" and fields["SubState"] == "stop-post"
+              and fields["ControlPID"] == pid and fields["MainPID"] == "0",
+              "not the installation stop-post process")
+    _need(_installation_task_exec_matches(fields["ExecStart"],
+              _installation_task_argv(source_sha, retention_id, "run"))
+          and _installation_task_exec_matches(fields["ExecStopPost"],
+              _installation_task_argv(source_sha, retention_id, "cleanup")),
+          "installation manager commands differ")
+    _need(_installation_task_process_file("cgroup") == ("0::/system.slice/" + unit + "\n").encode("ascii")
+          and _installation_task_process_file("cmdline") == b"\0".join(v.encode("ascii") for v in argv) + b"\0",
+          "installation process cgroup or actual argv differs")
+    _need(time.monotonic() < deadline, "installation manager observation expired")
+    return {"sourceSha": source_sha, "retentionId": retention_id, "unit": unit, "invocationId": invocation, "role": role,
+            "managerContextObserved": True, "installationComplete": False, "canExecute": False}
 
 
 def main(argv=None):
