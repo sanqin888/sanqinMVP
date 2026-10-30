@@ -1,8 +1,26 @@
 # Runtime 最小执行器 D4 隔离验收方案
 
-## 首次安装：同代次失败任务的原ID收尾（本地待审）
+## 首次安装：固定任务角色入口与成功／失败交接（本地待审）
 
-**INSTALL_FAILED_TASK_CONTAINMENT_LOCAL / CI_PENDING / INSTALL_TASK_DISPATCH_OPEN / NOT_INSTALLED。**
+**INSTALL_TASK_ROLE_ADAPTER_LOCAL / CI_PENDING / TASK_SUBMISSION_OPEN / NOT_INSTALLED。**
+
+基于PR #3066合并dev `e31eb11c319b136b783509494feab913144cf614` 创建 `feat/runtime-install-task-role-adapter-20261030`。在既有bootstrap接入固定installation-run/installation-cleanup内部角色，CLI仅source-sha/retention-id，无host、路径或FD覆盖。独立审阅配置bootstrap后，仍须准确transient manager的PID/cgroup/argv/运行代次和原两锁/材料；普通用户直接调用不能获得安装权限。尚未提供unit提交或可用的操作者端完整通道，不作为现场安装指令。
+
+manager固定show由31项增到34项，仅增加Result/ExecMainCode/ExecMainStatus；按[systemd D-Bus声明](https://github.com/systemd/systemd/blob/main/src/core/dbus-execute.h)与退出环境交叉核对。运行中要求未退出状态，stop-post核真实退出码或信号；原8字段关联上下文和磁盘格式保持，不把环境success、零退出或完成审计单独当成功许可。
+
+run先持五源码FD进入有界首帧目标交互，复用既有严格目标JSON，再交完整监督安装。首帧仅请求既定数据、非执行许可；后续仍需原快照内容核验及离机耐久确认。入口先释放材料只读锁作用域，再让完整流程重取原两锁；源码FD持续覆盖通道、完整安装返回与最终退出检查。只有准确source/材料、原生完成结果及marker清除返回后才可退出0；SystemExit(0)、已观测IO错误或其他异常统一非零，不在错误路径写可能阻塞的管道。最后一次必须交互之后断连不一定可立即观测，仍须按同一任务查manager，不能自动重试。
+
+将新建空的监督进度对象贯穿完整流程与任务返回，不接受旧/未绑定进度作为重放许可。晚到失败若已有本次原件内存所有权，重取原两锁并钉住原目录/锁文件身份、核空闲后沿用原ID尽力收尾；不能取得锁或遇到未知时保持非零，不宣称停写保证，不补造marker/成功记录。原观察异常已收尾时不重复本次内存尝试。
+
+cleanup复用同一准确原件上下文：明确失败沿用原ID收尾；干净零退出还要求marker不存在、七项完整库存及恢复/快照/离机/完成审计链一致。仅返回cleanTaskExitObserved等观察，installationComplete/canExecute/restoreProven仍false；错误、旧运行代次、部分审计或外来marker均不能授予正常交接。持久completion保持原“清marker前准备”惰性含义。
+
+新增22项测试定义，含退出属性交叉校验、真实首帧管道、源码FD覆盖返回且原锁可重取、SystemExit/中断/非原生完成拒绝、末尾源码/通道替换、窄CLI、完整监督安装经新入口返回与晚到失败按原锁收尾、正常交接不误停、信号失败不被旧审计覆盖等。原14项manager夹具同步退出属性与受限角色解析；原失败收尾17项继续回归。源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，新增22项测试待CI，本批尚未提交/推送。
+
+已审阅owner/依赖图，基线无变化；无业务schema/迁移、新已安装helper文件/unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。下一步仍须专用unit提交、操作者通道/状态结果与真实D4；实际systemd、管道继承、断连/SIGKILL/主机故障尚未验收，G3仍OPEN。生产/AWS/DB未操作；完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
+
+## 首次安装：同代次失败任务的原ID收尾（源码已合并）
+
+**INSTALL_FAILED_TASK_CONTAINMENT_MERGED_DEV / SOURCE_CI_VERIFIED / INSTALL_TASK_DISPATCH_OPEN / NOT_INSTALLED。**
 
 基于PR #3065合并dev `2e6e4eb9e30d691c39c49794626a52a51da1e3aa` 创建 `feat/runtime-install-failed-task-containment-20261030`。在既有bootstrap新增私有失败收尾函数，只接准确sourceSha/retentionId；持原两锁、五源码FD及完整来源上下文，新鲜核本次cleanup PID/cgroup/argv/InvocationID，再核唯一安装事务、原intent/writers与准确关联记录。只认同一运行代次的耐久双摘要，不扫描“最新”记录，也不把它替代普通owned流程的内存证明。
 
@@ -12,7 +30,7 @@
 
 已知辅助顶层对象允许保留部分输出，只核私有类型/指纹而不把内容当收尾或完成许可；未知名字/第二事务、错代次/原件/维护标记拒绝。原marker已不存在时可处理同代次明确失败，但不补造标记；部分completion也不变成成功凭证。无任何新持久记录、第二应用state或自动恢复入口。
 
-新增17项测试定义，复用真实私有材料/原件、五源码FD和原两锁，模型化manager与Docker命令，覆盖准确顺序/原ID/DB与文件不变、失败分类/干净退出拒绝、错代次/缺关联/未知记录/第二事务、辅助残件、回复未知各一次、实际状态与原生策略校验、同字节替换/源码/manager变化、无marker晚到失败及外来marker保留。源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，[PR #3066](https://github.com/sanqin888/sanqinMVP/pull/3066)初始head `d644a926118b1517908f927bb361d33678960c05` 的[CI #7828](https://github.com/sanqin888/sanqinMVP/actions/runs/41114231070)默认Release实际运行1508项/691.088秒，6失败/4错误均因通用目录白名单拒绝installation-runs而提前阻断，3.10/Runtime/C1未运行。已补固定既有namespace的只读打开器（无创建/白名单放宽），并在原正向测试中断言通用打开器仍拒绝该目录；本次追加修复等待同一分支最终head CI，不预报通过。
+新增17项测试定义，复用真实私有材料/原件、五源码FD和原两锁，模型化manager与Docker命令，覆盖准确顺序/原ID/DB与文件不变、失败分类/干净退出拒绝、错代次/缺关联/未知记录/第二事务、辅助残件、回复未知各一次、实际状态与原生策略校验、同字节替换/源码/manager变化、无marker晚到失败及外来marker保留。源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，[PR #3066](https://github.com/sanqin888/sanqinMVP/pull/3066)初始head `d644a926118b1517908f927bb361d33678960c05` 的[CI #7828](https://github.com/sanqin888/sanqinMVP/actions/runs/41114231070)默认Release实际运行1508项/691.088秒，6失败/4错误均因通用目录白名单拒绝installation-runs而提前阻断，3.10/Runtime/C1未运行。已补固定既有namespace的只读打开器（无创建/白名单放宽），并在原正向测试中断言通用打开器仍拒绝该目录；追加修复最终head `6a4204812672de5b615f27831d29aba922034410` 经[CI #7829](https://github.com/sanqin888/sanqinMVP/actions/runs/41116362520)SUCCESS（4成功/6范围跳过；两条Release各1508、Runtime1080、既有C1回归412），已由PR #3066合并dev `e31eb11c319b136b783509494feab913144cf614`。
 
 已审阅owner/依赖图，基线无变化；无业务schema/迁移、新helper/unit/依赖，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。当前仍无公开安装CLI、专用unit提交/run/cleanup调度和正常成功交接，真实SIGKILL/断连/主机故障、快照/离机通道及D4未验收，G3仍OPEN。下一步接专用任务入口及成功/失败分支；生产/AWS/DB未操作。完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
 
@@ -48,14 +66,14 @@ Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并de
 | --- | --- | --- |
 | G1：准确隔离目标 | 本次尚未核到并绑定新的隔离实例；当前连接提供生产只读与代码工作区，不能默认复用它作故障试验目标 | 填齐下表目标事实，独立核SSH主机key与AWS对象，确认无生产流量/凭据/真实外部写入 |
 | G2：准确可验材料 | D1仅接受合格的准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不是替代物 | 用户控制main晋级后固定S_tool、发布/CI/Archive及完整Git对象；固定真实应用候选S1/S2和SQL/兼容审阅对象 |
-| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；manager身份观察已合dev并经CI；原件关联模型已合dev并经CI；关联记录IO原语已合dev并经CI；受控登记/清单校验已合dev并经CI；受监督writers登记时序已合dev并经CI；完整bootstrap源码FD持有及边界复核已合dev并经CI；本地新增同代次失败原ID收尾私有函数、尚待CI；_complete_installation及快照双帧/离机确认仍为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
+| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；manager身份观察已合dev并经CI；原件关联模型已合dev并经CI；关联记录IO原语已合dev并经CI；受控登记/清单校验已合dev并经CI；受监督writers登记时序已合dev并经CI；完整bootstrap源码FD持有及边界复核已合dev并经CI；同代次失败原ID收尾已合dev并经CI；本地新增固定内部角色入口、退出交叉核验及正常／失败交接，尚待CI；_complete_installation及快照双帧/离机确认已由本地固定内部角色适配，尚无首次安装专用transient提交/操作者完整通道与结果交付 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
 | G4：隔离就绪请求目标 | 安装器六端点含127.0.0.1与固定https://sanq.ca；新VM直接运行可能把生产200误作隔离结果 | 准确审阅隔离TLS/解析/路由与外部调用阻断，证明每个请求到隔离目标；不能改生产DNS/切流、跳TLS或借生产响应补通过 |
 
 受控入口可以是经审阅的一次性适配，复用现有私有函数，不要求另造通用公开安装API。问题是尚未落实监督、来源/目标和通道的完整调用边界，不是函数名称带下划线就不能使用。
 
 G3不是普通发布任务的缺口：release_task.py已有固定sanq-release-apply-<plan-id>.service、Restart=no、ExecStopPost及manager PID/cgroup检查。它不能直接当首次安装监督器，因为bootstrap运行在工具交接之前/之中，不可依赖尚未完整安装的release_task/guard，也不能根据目录里任意旧writers.json发root命令。
 
-首次安装现有_installation_application_ownership仅捕获Python异常，不能捕获SIGKILL或主机故障。准确原策略恢复后，运行中的daemon可能重启应用；最后清marker后，失败也不保证marker仍在。必须按这两个已知窗口补独立收尾及实际中断测试，不把“门禁存在”“发过stop”或FENCE_UNCONFIRMED当停写证明。这是原安装/失败保持目标的未完成适配，不新增CA、可信时间或常驻控制服务。
+首次安装_installation_application_ownership仅捕获Python异常；本地固定stop-post内部角色已接同代次原件链，但尚无unit提交与真实通道，不能据此宣称SIGKILL或主机故障已验收。准确原策略恢复后，运行中的daemon可能重启应用；最后清marker后，失败也不保证marker仍在。必须按这两个已知窗口补独立收尾及实际中断测试，不把“门禁存在”“发过stop”或FENCE_UNCONFIRMED当停写证明。这是原安装/失败保持目标的未完成适配，不新增CA、可信时间或常驻控制服务。
 
 ## 目标与材料登记（当前全部待现场填写）
 
