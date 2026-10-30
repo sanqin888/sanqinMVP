@@ -1,5 +1,19 @@
 # Runtime 最小执行器 D4 隔离验收方案
 
+## 首次安装：受监督bootstrap源码FD贯穿安装（本地待审）
+
+**INSTALL_SUPERVISED_BOOTSTRAP_FDS_LOCAL / CI_PENDING / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
+
+基于PR #3064合并dev `fa349da2740af9452449faab325e8f71e274b8ae` 创建 `feat/runtime-install-bound-source-fds-20261030`。受监督观察在原两锁内核准确保留材料后、现场观察与intent写入之前，进入既有五文件bootstrap来源上下文；持有原目录/文件FD直到观察退出，核私有权限、库存、原字节/身份与准确发布源码。普通分支不打开该上下文。
+
+将本次活来源检查闭包传入owned调用；源码绑定与callable检查必须成对出现。首次manager前后、持续task_check/recheck/check_owned及返回/上下文正常退出复核源码，拒绝同字节替换、权限或内容变化，不重新绑定新原件。沿用原件关联和事故保留，不新增磁盘许可、应用state或恢复重试。
+
+新增12项测试定义：真实临时五文件/FD、原两锁与已有现场模型，覆盖FD生命周期、初始坏源码、writers后同字节替换、gate后权限变化、关联后漂移、普通分支隔离、缺失检查拒绝；另覆盖受监督完整安装模型的关联/惰性完成审计、首个工具写入前、应用启动后及清marker后的源码变化。同步原10项受监督writers夹具以提供真实惰性源码文件。解释器/导入元数据与manager、Docker/systemd/HTTP仍为模型；快照/离机同伴仅既有测试夹具，不能代替真实通道与D4验收。
+
+完整源码FD复核发生在Python导入之后，仍必须先由独立操作者审阅并配置bootstrap；这不是暂停中的受保护加载器研究。当前仍无公开安装CLI、专用unit提交/run/cleanup或独立收尾；最后清marker后错误不伪造标记/完成回执，既有按原ID尽力收尾不等于SIGKILL/主机故障停写保证，G3仍OPEN。
+
+源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，新增12项测试待CI，本批尚未提交/推送。已审阅owner/依赖图，基线无变化；无业务schema/迁移、新helper/unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。下一步仍为安装专用提交/run/cleanup与真实快照/离机通道和成功/失败交接；生产/AWS/DB未操作。完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
+
 > **2026-10-30（America/Toronto）｜D4_PLAN_MERGED_DEV / VM_NOT_BOUND / INSTALL_ADAPTER_OPEN / NOT_EXECUTED / RESTORE_VALIDATION_DEFERRED。**本文件是第三批内部D4的执行前审计与固定验收方案，不是现场授权、执行脚本或通过回执。生产过渡仍属第四批。
 
 D4方案已由[PR #3058](https://github.com/sanqin888/sanqinMVP/pull/3058) head `686a70f8ec2c2598ad6cd73189fb195b2e0d4a72` 经[CI #7811](https://github.com/sanqin888/sanqinMVP/actions/runs/41066304814)SUCCESS（文档范围：1成功/9跳过，未重跑Release/Runtime测试）合并dev `8f0b6f11a8b61b0f83a4888764e15b2da5642998`。
@@ -18,7 +32,7 @@ Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并de
 | --- | --- | --- |
 | G1：准确隔离目标 | 本次尚未核到并绑定新的隔离实例；当前连接提供生产只读与代码工作区，不能默认复用它作故障试验目标 | 填齐下表目标事实，独立核SSH主机key与AWS对象，确认无生产流量/凭据/真实外部写入 |
 | G2：准确可验材料 | D1仅接受合格的准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不是替代物 | 用户控制main晋级后固定S_tool、发布/CI/Archive及完整Git对象；固定真实应用候选S1/S2和SQL/兼容审阅对象 |
-| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；manager身份观察已合dev并经CI；原件关联模型已合dev并经CI；关联记录IO原语已合dev并经CI；受控登记/清单校验已合dev并经CI；本地新增受监督writers登记时序、尚待CI；_complete_installation及快照双帧/离机确认仍为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
+| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；manager身份观察已合dev并经CI；原件关联模型已合dev并经CI；关联记录IO原语已合dev并经CI；受控登记/清单校验已合dev并经CI；受监督writers登记时序已合dev并经CI；本地新增完整bootstrap源码FD持有及边界复核、尚待CI；_complete_installation及快照双帧/离机确认仍为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
 | G4：隔离就绪请求目标 | 安装器六端点含127.0.0.1与固定https://sanq.ca；新VM直接运行可能把生产200误作隔离结果 | 准确审阅隔离TLS/解析/路由与外部调用阻断，证明每个请求到隔离目标；不能改生产DNS/切流、跳TLS或借生产响应补通过 |
 
 受控入口可以是经审阅的一次性适配，复用现有私有函数，不要求另造通用公开安装API。问题是尚未落实监督、来源/目标和通道的完整调用边界，不是函数名称带下划线就不能使用。
@@ -98,9 +112,9 @@ G3后续实现仍放在既有bootstrap/一次性安装范围，不增加常驻se
 
 这些条件来自现有D2/D4合同与实际未接线处，不把暂停的C1受保护加载、CPython全链、R2 CA/可信时间接回首版。适配源码及CI通过后才安排真实写入验收。
 
-## 本地待审：受监督writers阶段与登记时序
+## 源码已合并：受监督writers阶段与登记时序
 
-**INSTALL_SUPERVISED_WRITER_HANDOFF_LOCAL / CI_PENDING / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
+**INSTALL_SUPERVISED_WRITER_HANDOFF_MERGED_DEV / SOURCE_CI_VERIFIED / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
 
 基于PR #3063合并dev `06170a4af56ae2f0cd8b1c3dbbb97ce18b8aecec` 创建 `feat/runtime-install-supervised-writers-20261030`。将私有可选_task_source_sha从完整现场观察传到owned安装调用，要求已有完整writers观察且准确匹配保留材料/现场源码。首次manager核验在intent/marker/gate写入之前；空观测、错源码或非run角色提前拒绝。recheck、check_owned及末尾返回持续核同一manager运行代次，拒绝中途换代，不收养新任务。
 
@@ -108,7 +122,7 @@ G3后续实现仍放在既有bootstrap/一次性安装范围，不增加常驻se
 
 目前没有公开安装CLI、专用unit提交、run/cleanup或自动恢复。manager校验含既有bootstrap固定路径/解释器前置，但完整源码FD持有仍须后续受限任务入口负责；本次不能把路径、CI模型或已有completion审计当安装许可。新增完整包装器参数的测试只核传递，不能代替全流程快照/通道或真实systemd实测；SIGKILL、主机故障及最后清marker未知仍未验收，G3保持OPEN。
 
-新增10项测试定义，以已有现场模型、真实私有文件与原两锁，模拟manager核保存原件后登记、freeze之前时序、连续代次、manager初始失败/空观测、错源码、同步未知保留、原分支隔离及完整包装器参数。新增源码/测试Python3.10 AST、符号表与静态差异审阅完成；MCP-workspace不运行lint/build/test，10项测试待本批CI，未提交/推送。
+新增10项测试定义，以已有现场模型、真实私有文件与原两锁，模拟manager核保存原件后登记、freeze之前时序、连续代次、manager初始失败/空观测、错源码、同步未知保留、原分支隔离及完整包装器参数。新增源码/测试Python3.10 AST、符号表与静态差异审阅完成；MCP-workspace不运行lint/build/test，本批[PR #3064](https://github.com/sanqin888/sanqinMVP/pull/3064) head `58fad5fb8c1279221ce0aa0647a926e532225bb1` 经[CI #7824](https://github.com/sanqin888/sanqinMVP/actions/runs/41097966917)SUCCESS（4成功/6范围跳过；两条Release各1479、Runtime1080、既有C1回归412），已合并dev `fa349da2740af9452449faab325e8f71e274b8ae`，无CI修复。
 
 已审阅owner/依赖图，基线无变化；无业务schema/迁移、新helper/unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。下一步完成受限bootstrap FD持有/专用提交与run/cleanup、快照双帧/离机通道和成功/失败交接，再做真实D4。生产/AWS/DB未操作，完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
 

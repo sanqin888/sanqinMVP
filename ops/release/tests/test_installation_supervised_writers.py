@@ -13,6 +13,22 @@ import test_installation_saved_writers as saved
 from release_contract import ReleaseContractError
 
 
+def provision_bound_sources(test, materials, source):
+    """Real inert source files; loaded-interpreter metadata is modeled separately."""
+    root = materials.anchor / "install-bootstrap" / source
+    for path in installer.BOOTSTRAP_IMPORTS:
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        target.write_bytes(materials.case.sources[path])
+        target.chmod(0o600)
+    for directory in (root.parent, root, root / "ops", root / "ops/release", root / "ops/runtime"):
+        directory.chmod(0o700)
+    invocation = patch.object(installer, "_bootstrap_invocation", side_effect=lambda sha: sha)
+    invocation.start()
+    test.addCleanup(invocation.stop)
+    return root
+
+
 class SupervisedWriterStageTests(unittest.TestCase):
     def setUp(self):
         self.saved = saved.InstallationSavedWritersTests()
@@ -21,6 +37,7 @@ class SupervisedWriterStageTests(unittest.TestCase):
         self.base = self.saved.base
         self.materials = self.saved.materials
         self.source = "b" * 40
+        self.bootstrap = provision_bound_sources(self, self.materials, self.source)
         self.context = {"sourceSha": self.source, "retentionId": self.materials.identity,
             "unit": installer.INSTALL_TASK_PREFIX + self.materials.identity + ".service",
             "invocationId": "e" * 32, "role": "run", "managerContextObserved": True,
