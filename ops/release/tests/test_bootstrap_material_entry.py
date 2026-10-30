@@ -227,15 +227,18 @@ class BootstrapMaterialEntryTests(unittest.TestCase):
             self.retain()
         self.assertTrue((self.private.target / "retained.json").is_file())
         self.private.assert_no_install_effect()
-        with self.assertRaises(ReleaseContractError):
+        originals = {path.name: path.read_bytes() for path in self.private.target.iterdir()}
+        with patch.object(installer, "_private_write") as replay_write, self.assertRaises(FileExistsError):
             self.retain()  # Existing retention is never adopted/replayed.
+        replay_write.assert_not_called()
+        self.assertEqual({path.name: path.read_bytes() for path in self.private.target.iterdir()}, originals)
 
     def test_public_retain_dispatches_bound_adapter_and_cannot_apply(self):
         args = ["retain", "--source-sha", delivery.SHA, "--kit", "kit",
                 "--current-runtime-archive", "old", "--current-source-sha", delivery.OLD]
         output = io.StringIO()
         with patch.object(installer, "_read_artifact", side_effect=[self.kit, self.case.old_runtime]), \
-             patch.object(installer.release, "github_json", side_effect=self.case.fetch), \
+             patch.object(installer.release, "github_json", side_effect=lambda path, **kwargs: self.case.fetch(path)), \
              contextlib.redirect_stdout(output):
             self.assertEqual(installer.main(args), 0)
         self.assertEqual(json.loads(output.getvalue())["outcome"], "MATERIALS_RETAINED")

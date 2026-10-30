@@ -100,7 +100,7 @@ G3后续实现仍放在既有bootstrap/一次性安装范围，不增加常驻se
 
 ## 本地待审：bootstrap材料保留入口
 
-`feat/runtime-install-bootstrap-binding-20261030`在既有install_minimal_executor.py增加`retain`，仅调用已审阅的root私有材料保留，不是安装执行或普通Mac发布动作。15项测试定义尚未运行CI，G3仍OPEN；不会写Runtime/门禁/marker、运行Docker/systemd/SQL、提交安装unit或恢复营业。
+`feat/runtime-install-bootstrap-binding-20261030`在既有install_minimal_executor.py增加`retain`，仅调用已审阅的root私有材料保留，不是安装执行或普通Mac发布动作。15项测试已进入PR #3059 CI；初始head 7609b889 的[CI #7813](https://github.com/sanqin888/sanqinMVP/actions/runs/41068929792)默认Release运行1431项，发现1失败/1错误，不能记为通过：新增重放测试错误期待ReleaseContractError，实际create-only正确抛FileExistsError；新增CLI测试的GitHub模拟未接受token关键字。仅修测试为准确异常、重放零写/原件不变断言及接收token的模拟，生产实现不变；已推同PR重跑，最终结果待核。 G3仍OPEN；不会写Runtime/门禁/marker、运行Docker/systemd/SQL、提交安装unit或恢复营业。
 
 启动前必须由已授权操作者从独立审阅的准确源码准备固定`/opt/sanq/install-bootstrap/<source-sha>/`，再按已审阅系统Python调用。不能直接把kit解压为root代码；kit中的Python始终只当验证数据。程序启动后才核自己的来源，不可能追溯阻止已发生的恶意import；因此人工启动前来源/目录审阅不可省略。这不是C1受保护加载或CPython供应链证明，不承诺隔离恶意root/已受损进程。
 
