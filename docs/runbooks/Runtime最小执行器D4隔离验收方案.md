@@ -18,7 +18,7 @@ Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并de
 | --- | --- | --- |
 | G1：准确隔离目标 | 本次尚未核到并绑定新的隔离实例；当前连接提供生产只读与代码工作区，不能默认复用它作故障试验目标 | 填齐下表目标事实，独立核SSH主机key与AWS对象，确认无生产流量/凭据/真实外部写入 |
 | G2：准确可验材料 | D1仅接受合格的准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不是替代物 | 用户控制main晋级后固定S_tool、发布/CI/Archive及完整Git对象；固定真实应用候选S1/S2和SQL/兼容审阅对象 |
-| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；本地新增仅manager身份观察、尚待CI；_complete_installation及快照双帧/离机确认仍为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
+| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；manager身份观察已合dev并经CI；本地仅新增原件关联模型、尚待CI；_complete_installation及快照双帧/离机确认仍为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
 | G4：隔离就绪请求目标 | 安装器六端点含127.0.0.1与固定https://sanq.ca；新VM直接运行可能把生产200误作隔离结果 | 准确审阅隔离TLS/解析/路由与外部调用阻断，证明每个请求到隔离目标；不能改生产DNS/切流、跳TLS或借生产响应补通过 |
 
 受控入口可以是经审阅的一次性适配，复用现有私有函数，不要求另造通用公开安装API。问题是尚未落实监督、来源/目标和通道的完整调用边界，不是函数名称带下划线就不能使用。
@@ -98,7 +98,22 @@ G3后续实现仍放在既有bootstrap/一次性安装范围，不增加常驻se
 
 这些条件来自现有D2/D4合同与实际未接线处，不把暂停的C1受保护加载、CPython全链、R2 CA/可信时间接回首版。适配源码及CI通过后才安排真实写入验收。
 
-## 本地待审：安装任务manager身份边界
+## 本地待审：任务与原件关联模型
+
+**INSTALL_TASK_ORIGINALS_MODEL_LOCAL / CI_PENDING / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
+
+基于PR #3060合并dev `f98e4f293f4f64e8e87df360f9f401eb0bbae9d6` 创建 `feat/runtime-install-task-originals-20261030`，在既有bootstrap增加任务与原件关联的惰性字节模型及准确核对。严格核本次run观察字段/native bool、sourceSha、retentionId、固定unit和非零InvocationID；复用原intent/writers解析与摘要绑定，拒绝另一材料、源码、安装ID、运行代次或改动原件。
+
+规范JSON关联包含schemaVersion=1、独立kind、源码/材料/安装/unit/运行代次、intent/writers两摘要，installationComplete/canExecute/restoreProven始终false。核对只接受本次上下文和两原件重新计算出的准确字节，拒绝重复/额外字段、非规范编码或成功声明。它不证明上下文新鲜、来源可信、原件已经耐久存在或磁盘归属；不提供任何执行许可。
+
+当前只有内存模型，未新增持久文件/安装schema写入、未接安装回调、未提交unit、不扫描/收养事故记录，也不执行Docker/systemd/SQL或清marker。未来必须在完整来源FD上下文、准确manager新鲜核对及原两锁内，接线原件耐久交接与独立收尾；本模型不能独立作为SIGKILL安全、成功后跳过收尾或resume依据，G3仍OPEN。
+
+新增8项测试定义，复用惰性原容器事实夹具，核准确双摘要、严格上下文、错源码/材料/unit/运行代次、intent/writers变化、非规范/重复字段/伪造成功及输入预算。新增源码/测试Python3.10 AST、符号表与静态差异核对完成；MCP-workspace不运行lint/build/test，8项测试待本批CI，未提交/推送。
+
+已审阅owner/依赖图，基线无变化；17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。真实D4、生产/AWS/DB操作均未执行；完整VM/数据库恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。下一步仍须交付安装提交/run/cleanup、耐久原件关联及快照/离机通道。
+
+
+## 安装任务manager身份边界（源码已合并）
 
 既有bootstrap内新增只读_installation_task_context及固定argv/show模型，供后续受控run/cleanup接线。unit只按准确retention-id命名sanq-runtime-install-<64hex>.service；安装随机installationId在后续原intent落盘时才产生，当前没有将两者耐久关联，不能扫描目录选择旧writers或最新任务。
 
@@ -108,7 +123,7 @@ G3后续实现仍放在既有bootstrap/一次性安装范围，不增加常驻se
 
 官方参考：[systemd.service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html)、[systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)。ExecStopPost也覆盖服务停止路径，不能一律停原应用；InvocationID区分unit运行代次，但它本身不是安装完成许可。所查为当前上游手册，不能替代目标systemd版本/真实show格式及D4实测。本批仅校验身份，不根据SERVICE_RESULT/EXIT_CODE或completion历史记录作成功/失败收尾决定。
 
-14项测试定义为manager/proc输出模型与固定IO边界，尚待CI；没有真实systemd/VM/Mac验收。下一步需要同一owned流将准确manager代次、intent/writers原件和材料绑定，并接快照/离机实际通道、执行提交和独立失败收尾；正常交接后不可误停业务，清marker未知时不可伪称围栏仍在。G1–G4及20项真实验收状态不因此改为PASS。
+14项manager/proc模型测试已随源码CI通过；本批[PR #3060](https://github.com/sanqin888/sanqinMVP/pull/3060) head `f8ba5d39538ea32d6ff289e4020dbafa49bc2cd6` 经[CI #7816](https://github.com/sanqin888/sanqinMVP/actions/runs/41075422332)SUCCESS（4成功/6范围跳过；两条Release各1445、Runtime1080、既有C1回归412），已合并dev `f98e4f293f4f64e8e87df360f9f401eb0bbae9d6`，无CI修复。没有真实systemd/VM/Mac验收。下一步需要同一owned流将准确manager代次、intent/writers原件和材料绑定，并接快照/离机实际通道、执行提交和独立失败收尾；正常交接后不可误停业务，清marker未知时不可伪称围栏仍在。G1–G4及20项真实验收状态不因此改为PASS。
 
 ## bootstrap材料保留入口（源码已合并）
 

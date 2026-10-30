@@ -6704,6 +6704,43 @@ def _installation_task_context(source_sha, retention_id, role, *, deadline):
             "managerContextObserved": True, "installationComplete": False, "canExecute": False}
 
 
+# Inert original-record association for a future owned installation handoff.
+# No persistence, task submission, disk-record adoption or cleanup permission.
+def _installation_task_originals_bytes(context, intent, writers, identity):
+    _need(type(context) is dict and set(context) == {"sourceSha", "retentionId", "unit", "invocationId",
+          "role", "managerContextObserved", "installationComplete", "canExecute"}
+          and context["role"] == "run" and context["managerContextObserved"] is True
+          and context["installationComplete"] is False and context["canExecute"] is False,
+          "original record association requires this run observation")
+    source = release.require_sha(context["sourceSha"])
+    retained = _installation_task_id(context["retentionId"])
+    invocation = context["invocationId"]
+    _need(type(invocation) is str and re.fullmatch(r"[a-f0-9]{32}", invocation)
+          and invocation != "0" * 32
+          and context["unit"] == INSTALL_TASK_PREFIX + retained + ".service",
+          "original record association manager identity differs")
+    original = _installation_record_value(intent, identity)
+    _installation_writers_match(intent, writers, identity)
+    _need(original["targetSourceSha"] == source and original["retentionId"] == retained,
+          "original records belong to another material or source")
+    return _json({"schemaVersion": 1, "kind": "sanq-install-task-originals-binding",
+        "sourceSha": source, "retentionId": retained, "installationId": identity,
+        "unit": context["unit"], "invocationId": invocation,
+        "intentSha256": _hash(intent), "writersSha256": _hash(writers),
+        "installationComplete": False, "canExecute": False, "restoreProven": False})
+
+
+def _installation_task_originals_match(raw, context, intent, writers, identity):
+    """Exact canonical bytes only; a matching record never authorizes execution."""
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD,
+          "invalid task originals association bytes")
+    expected = _installation_task_originals_bytes(context, intent, writers, identity)
+    _need(raw == expected, "task originals association differs from this run and original records")
+    return {"installationId": identity, "invocationId": context["invocationId"],
+            "originalRecordsMatched": True, "installationComplete": False,
+            "canExecute": False, "restoreProven": False}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
