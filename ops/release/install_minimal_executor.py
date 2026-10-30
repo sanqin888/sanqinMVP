@@ -6741,6 +6741,81 @@ def _installation_task_originals_match(raw, context, intent, writers, identity):
             "canExecute": False, "restoreProven": False}
 
 
+INSTALL_TASK_ORIGINALS_FILE = "task-originals.json"
+
+
+def _installation_task_handoff_read(root, context, intent, writers, identity):
+    """Read one fixed inert association; caller must own the installation namespace."""
+    _private_info(os.fstat(root), directory=True)
+    directory = _directory_identity(os.fstat(root))
+    fd = os.open(INSTALL_TASK_ORIGINALS_FILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        _need(0 < before.st_size <= MAX_INSTALL_RECORD, "task handoff size differs")
+        chunks, size = [], 0
+        while size <= MAX_INSTALL_RECORD:
+            block = os.read(fd, min(65536, MAX_INSTALL_RECORD + 1 - size))
+            if not block:
+                break
+            chunks.append(block)
+            size += len(block)
+        after = os.fstat(fd)
+        actual = os.stat(INSTALL_TASK_ORIGINALS_FILE, dir_fd=root, follow_symlinks=False)
+        _private_info(after)
+        _private_info(actual)
+        fingerprint = _installed_fingerprint(before)
+        _need(size == before.st_size and fingerprint == _installed_fingerprint(after)
+              == _installed_fingerprint(actual) and directory == _directory_identity(os.fstat(root)),
+              "task handoff changed during read")
+        raw = b"".join(chunks)
+        _installation_task_originals_match(raw, context, intent, writers, identity)
+        return raw, fingerprint
+    finally:
+        os.close(fd)
+
+
+def _installation_task_handoff_write(root, context, intent, writers, identity):
+    """Create-only primitive, not an installation entry or permission to resume."""
+    _need(os.geteuid() == 0, "task handoff requires the authorized root operator")
+    raw = _installation_task_originals_bytes(context, intent, writers, identity)
+    before_dir = os.fstat(root)
+    _private_info(before_dir, directory=True)
+    directory = _directory_identity(before_dir)
+    disk = os.fstatvfs(root)
+    _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + len(raw),
+          "insufficient task handoff storage reserve")
+    fd = os.open(INSTALL_TASK_ORIGINALS_FILE, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                 0o600, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        remaining = memoryview(raw)
+        while remaining:
+            count = os.write(fd, remaining)
+            _need(count > 0, "short task handoff write")
+            remaining = remaining[count:]
+        os.fsync(fd)
+        after = os.fstat(fd)
+        _private_info(after)
+        _need((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+              and after.st_size == len(raw) and directory == _directory_identity(os.fstat(root)),
+              "task handoff identity changed during write")
+        os.fsync(root)
+        readback, fingerprint = _installation_task_handoff_read(root, context, intent, writers, identity)
+        final = os.fstat(fd)
+        _private_info(final)
+        actual = os.stat(INSTALL_TASK_ORIGINALS_FILE, dir_fd=root, follow_symlinks=False)
+        _private_info(actual)
+        _need(readback == raw and fingerprint == _installed_fingerprint(after)
+              == _installed_fingerprint(final) == _installed_fingerprint(actual)
+              and directory == _directory_identity(os.fstat(root)), "task handoff durability readback differs")
+        return {"recordSha256": _hash(raw), "recordFingerprint": fingerprint,
+                "installationComplete": False, "canExecute": False, "restoreProven": False}
+    finally:
+        os.close(fd)  # Preserve every partial/unknown record; no unlink, retry or truncation.
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
