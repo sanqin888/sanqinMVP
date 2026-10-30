@@ -722,10 +722,10 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False, _complete_installation=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api, _verify_application, _restore_policies))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api, _verify_application, _restore_policies, _complete_installation))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
@@ -749,6 +749,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     _need(not _verify_gate_api or _handover_gates, "installed gate API requires this complete permanent handover")
     _need(not _verify_application or _verify_gate_api, "application verification requires this complete installed gate API flow")
     _need(not _restore_policies or _verify_application, "policy restoration requires this complete original application verification")
+    _need(not _complete_installation or _restore_policies, "installation completion requires this full saved policy restoration")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
@@ -983,7 +984,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     return {**result, "scopeReview": scope}
                 except BaseException:
                     raise release.ReleaseContractError("FENCE_UNCONFIRMED: review retained recovery payload and installation evidence") from None
-            def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt, *, persist_snapshot=None, persist_offhost=None):
+            def review_snapshot(check_owned, intent, writers, installation_id, payload, receipt, *, persist_snapshot=None, persist_offhost=None, complete_installation=None):
                 nonlocal deadline, tool_progress, gate_handover
                 try:
                     def fresh_context():
@@ -998,6 +999,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                         _need(scope["packageScopeReviewed"] is True and time.monotonic() < deadline,
                               "snapshot review context budget expired")
                         check_owned()
+                    _need((complete_installation is not None) == _complete_installation
+                          and (complete_installation is None or callable(complete_installation)),
+                          "completion is outside this owned flow")
                     _need((persist_offhost is not None) == _confirm_offhost_index
                           and (persist_offhost is None or callable(persist_offhost)),
                           "off-host confirmation is outside this owned flow")
@@ -1148,7 +1152,16 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                                     policies = _restore_saved_installation_policies(application_progress,
                                                         run=run, check_context=write_context, deadline=deadline)
                                                     fresh_context()
-                                                    return {**api_result, **application, **policies}
+                                                    facts = {**api_result, **application, **policies}
+                                                    if complete_installation is not None:
+                                                        completion_deadline = time.monotonic() + 300
+                                                        def completion_context():
+                                                            _need(time.monotonic() < completion_deadline, "completion deadline expired")
+                                                            fresh_context()
+                                                            _need(time.monotonic() < completion_deadline, "completion context deadline expired")
+                                                        completed = complete_installation(facts, completion_context, completion_deadline)
+                                                        return {**facts, **completed}
+                                                    return facts
                                                 return {**api_result, **application}
                                             return api_result
                                         return gate_result
@@ -1172,7 +1185,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     retain_recovery=retain_recovery if _retain_recovery else None,
                     recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                     snapshot_review=review_snapshot if _snapshot_channel is not None else None,
-                    retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index)
+                    retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index,
+                    complete_installation=_complete_installation)
             if _write_tools:
                 result["observationTiming"] = "PRE_INSTALLATION_INTENT"
             if _verify_application:
@@ -1181,7 +1195,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                 if _restore_policies:
                     result["installationIntent"]["restartPoliciesRestored"] = True
                 result["installationIntent"]["frozenWriters"]["observationTiming"] = "PRE_APPLICATION_RESTART"
-            result["outcome"] = ("INSTALLATION_RESTART_POLICIES_RESTORED_MAINTENANCE_ACTIVE" if _restore_policies else
+            if _complete_installation:
+                result["installationComplete"] = True
+                result["installationIntent"].update(installationComplete=True, maintenanceMarkerCleared=True,
+                    startupFenceConfirmed=False)
+                result["installationIntent"]["temporaryGates"]["observationTiming"] = "PRE_PERMANENT_GATE_HANDOVER"
+            result["outcome"] = ("INSTALLATION_COMPLETE" if _complete_installation else
+                                 "INSTALLATION_RESTART_POLICIES_RESTORED_MAINTENANCE_ACTIVE" if _restore_policies else
                                  "INSTALLATION_OLD_APPLICATION_READY_RESTART_INHIBITED" if _verify_application else
                                  "INSTALLATION_PERMANENT_GATE_API_VERIFIED_FENCED" if _verify_gate_api else
                                  "INSTALLATION_PERMANENT_GATES_LOADED_FENCED" if _handover_gates else
@@ -2457,7 +2477,7 @@ def _installation_records_match(intent, marker, installation_id):
 
 
 def _installation_record_read(root, name, installation_id):
-    _need(name in ("intent.json", "active.json", "writers.json"), "unreviewed installation record name")
+    _need(name in ("intent.json", "active.json", "writers.json", INSTALL_COMPLETION_FILE), "unreviewed installation record name")
     _private_info(os.fstat(root), directory=True)
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
     try:
@@ -2490,7 +2510,7 @@ def _installation_record_write(root, name, raw, installation_id):
     Does not authorize installation or ensure a preceding intent exists for a marker.
     No public caller until the host orchestration is complete and reviewed.
     """
-    _need(os.geteuid() == 0 and name in ("intent.json", "active.json", "writers.json"),
+    _need(os.geteuid() == 0 and name in ("intent.json", "active.json", "writers.json", INSTALL_COMPLETION_FILE),
           "unprivileged or unreviewed installation record write")
     _private_info(os.fstat(root), directory=True)
     _installation_record_validate(name, raw, installation_id)
@@ -2582,13 +2602,14 @@ def _installation_namespace(parent, *, create=False, owned_identity=None, owned_
             if owned_identity is None:
                 _installation_runs_clear(fd)
             else:
-                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery", SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE},
+                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery", SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE, INSTALL_COMPLETION_FILE},
                       "unreviewed owned installation records")
                 recovery = (owned_records or {}).get("recovery")
                 _need(recovery is None or set(recovery[0]) == RECOVERY_FILES, "incomplete owned recovery pair")
                 _installation_owned_run(fd, owned_identity, saved_writers=(owned_records or {}).get("writers.json"),
                                         recovery=recovery, snapshot_review=(owned_records or {}).get(SNAPSHOT_REVIEW_FILE),
-                                        snapshot_offhost=(owned_records or {}).get(SNAPSHOT_OFFHOST_FILE))
+                                        snapshot_offhost=(owned_records or {}).get(SNAPSHOT_OFFHOST_FILE),
+                                        completion=(owned_records or {}).get(INSTALL_COMPLETION_FILE))
             after = os.fstat(fd)
             path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
             _private_info(after, directory=True)
@@ -2629,7 +2650,7 @@ def _inspect_installation_runs(*, create=False):
 
 
 
-def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None, snapshot_review=None, snapshot_offhost=None):
+def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None, snapshot_review=None, snapshot_offhost=None, completion=None):
     _need(saved_writers is None or type(saved_writers) is bytes, "invalid owned writer record proof")
     _need(set(os.listdir(namespace)) == {identity}, "installation transaction inventory changed")
     with _private_directory(namespace, identity) as root:
@@ -2646,6 +2667,10 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
               "off-host confirmation requires the original snapshot review")
         if snapshot_offhost is not None:
             expected.add(SNAPSHOT_OFFHOST_FILE)
+        _need(completion is None or type(completion) is bytes and snapshot_offhost is not None,
+              "completion requires this owned off-host record")
+        if completion is not None:
+            expected.add(INSTALL_COMPLETION_FILE)
         _need(set(os.listdir(root)) == expected, "unexpected installation transaction members")
         intent = _installation_record_read(root, "intent.json", identity)
         if saved_writers is not None:
@@ -2672,10 +2697,18 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
             _need(_snapshot_offhost_record_read(root) == snapshot_offhost, "owned off-host confirmation bytes changed")
             _snapshot_offhost_record_value(snapshot_offhost, snapshot_review, recovery[0]["recovery.tar"],
                 recovery[0]["recovery.json"], intent, saved_writers, identity)
+        if completion is not None:
+            _need(_installation_record_read(root, INSTALL_COMPLETION_FILE, identity) == completion,
+                  "owned completion bytes changed")
+            value = _installation_completion_value(completion, identity)
+            inputs = (intent, saved_writers, recovery[0]["recovery.tar"], recovery[0]["recovery.json"],
+                      snapshot_review, snapshot_offhost, _installation_marker_bytes(intent, identity))
+            _need(all(value[key] == _hash(content) for key, content in zip(INSTALL_COMPLETION_DIGESTS[:-1], inputs)),
+                  "completion audit no longer binds original owned records")
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False, complete_installation=False):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     _need(snapshot_review is None or retain_recovery is not None, "snapshot wait requires recovery persistence")
@@ -2683,6 +2716,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
           "snapshot review retention requires the live owned continuation")
     _need(type(confirm_offhost_index) is bool and (not confirm_offhost_index or retain_snapshot_review),
           "off-host confirmation requires this live snapshot review")
+    _need(type(complete_installation) is bool and (not complete_installation or confirm_offhost_index),
+          "installation completion requires this owned off-host continuation")
     _need((retain_recovery is None) == (recovery_namespace is None),
           "recovery continuation requires original private namespace facts")
     if recovery_namespace is not None:
@@ -2691,6 +2726,7 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
     identity = os.urandom(32).hex()
     gate_result = saved_result = frozen_result = recovery_result = snapshot_result = None
     owned_records = {}
+    marker_cleared = False
     anchor = _state_parent()
     try:
         with _private_directory(anchor, "deploy-state") as state:
@@ -2737,6 +2773,7 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                     _need(actual == raw and active == marker and initial == _directory_identity(os.fstat(root))
                           == _directory_identity(os.stat(identity, dir_fd=namespace, follow_symlinks=False)),
                           "installation intent path changed during recording")
+                    marker_identity = _installed_fingerprint(os.stat("active.json", dir_fd=folders["maintenance"], follow_symlinks=False))
                     def check_owned():
                         state_matches()
                         current_state = os.stat("deploy-state", dir_fd=anchor, follow_symlinks=False)
@@ -2747,9 +2784,12 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         _need(_installation_owned_run(namespace, identity, saved_writers=owned_records.get("writers.json"),
                                                        recovery=owned_records.get("recovery"),
                                                        snapshot_review=owned_records.get(SNAPSHOT_REVIEW_FILE),
-                                                       snapshot_offhost=owned_records.get(SNAPSHOT_OFFHOST_FILE)) == raw
-                              and set(os.listdir(folders["maintenance"])) == {"active.json"}
-                              and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
+                                                       snapshot_offhost=owned_records.get(SNAPSHOT_OFFHOST_FILE),
+                                                       completion=owned_records.get(INSTALL_COMPLETION_FILE)) == raw
+                              and (not os.listdir(folders["maintenance"]) if marker_cleared else
+                                   set(os.listdir(folders["maintenance"])) == {"active.json"}
+                                   and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
+                                   and _installed_fingerprint(os.stat("active.json", dir_fd=folders["maintenance"], follow_symlinks=False)) == marker_identity)
                               and _directory_identity(os.fstat(root)) == initial
                               == _directory_identity(os.stat(identity, dir_fd=namespace, follow_symlinks=False)),
                               "owned installation intent or marker changed")
@@ -2839,7 +2879,36 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                                     "offHostLocationIndependentlyAuthenticated": False,
                                     "snapshotAvailable": False, "recoveryReady": False, "canExecute": False,
                                     "requiresRecoveryValidation": True, "requiresHostRecheck": True}
+                            def finish_installation(facts, check_context, deadline):
+                                nonlocal marker_cleared
+                                check_owned()
+                                _need(complete_installation and not marker_cleared
+                                      and INSTALL_COMPLETION_FILE not in owned_records, "completion cannot replay")
+                                check_context()
+                                completed = _installation_completion_bytes(raw, owned_records["writers.json"], identity,
+                                    owned_records["recovery"], owned_records[SNAPSHOT_REVIEW_FILE],
+                                    owned_records[SNAPSHOT_OFFHOST_FILE], facts)
+                                disk = os.fstatvfs(root)
+                                _need(disk.f_bavail * disk.f_frsize >= MIN_PRIVATE_FREE_BYTES + len(completed),
+                                      "insufficient completion storage reserve")
+                                _installation_record_write(root, INSTALL_COMPLETION_FILE, completed, identity)
+                                owned_records[INSTALL_COMPLETION_FILE] = completed
+                                check_context()
+                                def cleared():
+                                    nonlocal marker_cleared
+                                    marker_cleared = True
+                                _clear_owned_installation_marker(folders["maintenance"], raw, identity,
+                                    check_context=check_context, mark_cleared=cleared, deadline=deadline,
+                                    expected_identity=marker_identity)
+                                _need(marker_cleared and not os.listdir(folders["maintenance"]), "final marker was not cleared")
+                                check_owned()
+                                return {"outcome": "INSTALLATION_COMPLETE", "completionRecordDurable": True,
+                                    "completionRecordSha256": _hash(completed), "maintenanceMarkerCleared": True,
+                                    "installationComplete": True, "requiresInstallationCompletion": False,
+                                    "canExecute": False, "restoreProven": False, "recoveryReady": False}
                             continuation = {"persist_snapshot": persist_snapshot}
+                            if complete_installation:
+                                continuation["complete_installation"] = finish_installation
                             if confirm_offhost_index:
                                 continuation["persist_offhost"] = persist_offhost
                             snapshot_result = snapshot_review(check_owned, raw, owned_records["writers.json"], identity,
@@ -2849,7 +2918,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                                 records["recovery.tar"], records["recovery.json"])
                         check_owned()
                 state_matches()
-            _need(_installation_record_read(folders["maintenance"], "active.json", identity) == marker,
+            _need((not os.listdir(folders["maintenance"]) if marker_cleared else
+                   _installation_record_read(folders["maintenance"], "active.json", identity) == marker),
                   "installation marker changed after namespace validation")
             return {"installationId": identity, "intentSha256": _hash(raw), "markerSha256": _hash(marker),
                     "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": frozen_result is not None,
@@ -3178,8 +3248,9 @@ def _installation_writers_value(raw, identity):
 
 
 def _installation_record_validate(name, raw, identity):
-    _need(name in ("intent.json", "active.json", "writers.json"), "unreviewed installation record")
-    return (_installation_writers_value(raw, identity) if name == "writers.json" else
+    _need(name in ("intent.json", "active.json", "writers.json", INSTALL_COMPLETION_FILE), "unreviewed installation record")
+    return (_installation_completion_value(raw, identity) if name == INSTALL_COMPLETION_FILE else
+            _installation_writers_value(raw, identity) if name == "writers.json" else
             _installation_record_value(raw, identity, marker=name == "active.json"))
 
 
@@ -6282,6 +6353,117 @@ def _restore_installation_restart_policies(retention_id, target, *, input_fd, ou
         _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
         _write_tools=True, _handover_gates=True, _verify_gate_api=True, _verify_application=True,
         _restore_policies=True)
+
+
+
+INSTALL_COMPLETION_FILE = "completion.json"
+INSTALL_COMPLETION_KIND = "sanq-minimal-executor-install-completion-prepared"
+INSTALL_COMPLETION_DIGESTS = ("intentSha256", "writersSha256", "recoveryArchiveSha256",
+    "recoveryReceiptSha256", "snapshotReviewSha256", "offHostReceiptSha256", "markerSha256", "verificationSha256")
+
+
+def _installation_completion_value(raw, identity):
+    _need(type(raw) is bytes and 0 < len(raw) <= MAX_INSTALL_RECORD
+          and type(identity) is str and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid completion record input")
+    try:
+        value = json.loads(raw, object_pairs_hook=_unique,
+            parse_constant=lambda _: _need(False, "invalid completion JSON constant"))
+        _need(type(value) is dict and set(value) == {
+            "schemaVersion", "kind", "installationId", "createdAt", "phase",
+            "installationComplete", "canExecute", "restoreProven", *INSTALL_COMPLETION_DIGESTS}
+            and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+            and value["kind"] == INSTALL_COMPLETION_KIND and value["installationId"] == identity
+            and value["phase"] == "PREPARED_BEFORE_MARKER_CLEAR"
+            and all(value[key] is False for key in ("installationComplete", "canExecute", "restoreProven")),
+            "completion record is not an inert pre-clear audit")
+        for key in INSTALL_COMPLETION_DIGESTS:
+            _need(type(value[key]) is str and re.fullmatch(r"[a-f0-9]{64}", value[key]), "invalid completion digest")
+        stamp = value["createdAt"]
+        _need(type(stamp) is str and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z", stamp),
+            "invalid completion UTC audit time")
+        dt.datetime.fromisoformat(stamp[:-1] + "+00:00")
+        _need(_json(value) == raw, "completion record requires canonical original bytes")
+        return value
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+        raise release.ReleaseContractError("invalid completion record") from None
+
+
+def _installation_completion_bytes(intent, writers, identity, recovery, snapshot_review, offhost, facts):
+    _installation_writers_match(intent, writers, identity)
+    _need(type(facts) is dict and all(facts.get(key) is True for key in (
+        "toolFilesWritten", "permanentGatesLoaded", "permanentGateApiVerified",
+        "oldApplicationVerified", "restartPoliciesRestored", "snapshotMaterialsConfirmed"))
+        and all(facts.get(key) is False for key in ("installationComplete", "canExecute", "restoreProven"))
+        and facts.get("requiresInstallationCompletion") is True
+        and set(facts.get("toolFiles", {})) == set(INSTALL_TOOL_PATHS)
+        and type(facts.get("restartPolicyReadiness")) is dict
+        and set(facts["restartPolicyReadiness"]) == set(READINESS_URLS)
+        and all(type(code) is int and code == 200 for code in facts["restartPolicyReadiness"].values()),
+        "completion requires this full verified application flow")
+    _need(type(recovery) is tuple and len(recovery) == 2 and set(recovery[0]) == RECOVERY_FILES,
+          "completion requires the original durable recovery pair")
+    files = recovery[0]
+    _snapshot_review_value(snapshot_review, files["recovery.tar"], files["recovery.json"], intent, writers, identity)
+    _snapshot_offhost_record_value(offhost, snapshot_review, files["recovery.tar"], files["recovery.json"],
+                                  intent, writers, identity)
+    values = (intent, writers, files["recovery.tar"], files["recovery.json"],
+              snapshot_review, offhost, _installation_marker_bytes(intent, identity), _json(facts))
+    raw = _json({"schemaVersion": 1, "kind": INSTALL_COMPLETION_KIND, "installationId": identity,
+        "createdAt": _snapshot_utc_now(), "phase": "PREPARED_BEFORE_MARKER_CLEAR",
+        "installationComplete": False, "canExecute": False, "restoreProven": False,
+        **{key: _hash(content) for key, content in zip(INSTALL_COMPLETION_DIGESTS, values)}})
+    _installation_completion_value(raw, identity)
+    return raw
+
+
+def _clear_owned_installation_marker(root, intent, identity, *, check_context, mark_cleared, deadline, expected_identity):
+    """Last owned mutation only; unknown unlink/fsync never retries or recreates a marker."""
+    _need(os.geteuid() == 0 and callable(check_context) and callable(mark_cleared)
+          and type(deadline) in (int, float) and time.monotonic() < deadline <= time.monotonic() + 300,
+          "invalid final marker-clear context")
+    expected = _installation_marker_bytes(intent, identity)
+    _private_info(os.fstat(root), directory=True)
+    directory = _directory_identity(os.fstat(root))
+    check_context()
+    _need(set(os.listdir(root)) == {"active.json"}
+          and _installation_record_read(root, "active.json", identity) == expected,
+          "final marker is not this owned installation")
+    fd = os.open("active.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        before = os.fstat(fd)
+        _private_info(before)
+        _need(_installed_fingerprint(before) == expected_identity, "original owned marker identity changed")
+        check_context()
+        actual = os.stat("active.json", dir_fd=root, follow_symlinks=False)
+        _private_info(actual)
+        _need(time.monotonic() < deadline and directory == _directory_identity(os.fstat(root))
+              and set(os.listdir(root)) == {"active.json"}
+              and _installed_fingerprint(before) == _installed_fingerprint(os.fstat(fd))
+              == _installed_fingerprint(actual)
+              and _installation_record_read(root, "active.json", identity) == expected,
+              "final owned marker changed before unlink")
+        os.unlink("active.json", dir_fd=root)
+        mark_cleared()
+        os.fsync(root)
+        _need(not os.listdir(root) and directory == _directory_identity(os.fstat(root))
+              and time.monotonic() < deadline, "marker removal durability or directory changed")
+        check_context()
+        _need(not os.listdir(root) and time.monotonic() < deadline, "marker reappeared after final observation")
+    finally:
+        os.close(fd)
+
+
+def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh owned complete flow; neither disk receipts nor old progress authorize replay."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
+        include_application_binding=True, include_migrations=True, include_effective_configuration=True,
+        include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
+        _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
+        _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
+        _write_tools=True, _handover_gates=True, _verify_gate_api=True, _verify_application=True,
+        _restore_policies=True, _complete_installation=True)
 
 
 def main(argv=None):
