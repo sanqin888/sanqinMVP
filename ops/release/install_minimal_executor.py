@@ -792,13 +792,18 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
             return (*baseline, storage)
         return baseline
     _need(isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity), "invalid retention identity")
-    with _installation_application_ownership(application_progress), _private_session() as folders, _private_directory(folders["installations"], identity) as root:
+    with _installation_application_ownership(application_progress), _private_session() as folders, _private_directory(folders["installations"], identity) as root, contextlib.ExitStack() as source_stack:
         _idle_for_materials(folders)
         kit, old, value = _retained_contents(root, identity)
         _need(_task_source_sha is None or _task_source_sha == value["sourceSha"],
               "task source differs from retained source")
+        source_check = (source_stack.enter_context(_bound_bootstrap_sources(kit, _task_source_sha, fetch=fetch))
+                        if _task_source_sha is not None else None)
+        _need(_task_source_sha is None or callable(source_check), "bound installation source check unavailable")
         review = review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
         _need(not review["requiresAdditionalPlatformReview"], "retained transition exceeds tool-only scope")
+        if source_check is not None:
+            source_check()
         before = snapshot()
         _need(review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch) == review,
               "material source review changed during installed observation")
@@ -1191,7 +1196,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                     snapshot_review=review_snapshot if _snapshot_channel is not None else None,
                     retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index,
-                    complete_installation=_complete_installation, task_source_sha=_task_source_sha)
+                    complete_installation=_complete_installation, task_source_sha=_task_source_sha,
+                    task_source_check=source_check)
             if _write_tools:
                 result["observationTiming"] = "PRE_INSTALLATION_INTENT"
             if _verify_application:
@@ -1222,6 +1228,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                  "TEMPORARY_DENY_GATES_LOADED" if _load_deny_gates else "INSTALLATION_INTENT_RECORDED")
             if target is not None:
                 result["snapshotStorageBoundToIntent"] = True
+        if source_check is not None:
+            source_check()
         return result
 
 
@@ -2726,7 +2734,7 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False, complete_installation=False, task_source_sha=None):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False, complete_installation=False, task_source_sha=None, task_source_check=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     _need(snapshot_review is None or retain_recovery is not None, "snapshot wait requires recovery persistence")
@@ -2744,19 +2752,26 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
     _need(task_source_sha is None or save_writers is not None and type(task_source_sha) is str
           and release.require_sha(task_source_sha) == observation["sourceSha"],
           "task handoff requires exact observed source and saved writers")
+    _need(task_source_sha is None and task_source_check is None
+          or task_source_sha is not None and callable(task_source_check),
+          "supervised installation requires the live bound source check")
     task_context = None
     if task_source_sha is not None:
+        task_source_check()
         task_context = _installation_task_context(task_source_sha, retention_id, "run",
             deadline=time.monotonic() + 30)
         _need(type(task_context) is dict and task_context.get("managerContextObserved") is True
               and task_context.get("sourceSha") == task_source_sha
               and task_context.get("retentionId") == retention_id and task_context.get("role") == "run",
               "installation task run context unavailable")
+        task_source_check()
     def task_check():
         if task_context is not None:
+            task_source_check()
             current = _installation_task_context(task_source_sha, retention_id, "run",
                 deadline=time.monotonic() + 30)
             _need(current == task_context, "installation task manager generation changed")
+            task_source_check()
         return task_context
     original_recheck = recheck
     def guarded_recheck():
