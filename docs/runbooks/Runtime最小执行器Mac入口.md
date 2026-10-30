@@ -1,6 +1,10 @@
 # Runtime 最小执行器 Mac 入口
 
-> **2026-10-30（America/Toronto）｜D3_MAC_ENTRY_LOCAL / TESTS_NOT_RUN / MAC_ACCEPTANCE_OPEN / NOT_INSTALLED。**本文对应本地待审源码，不表示生产工具已安装或已允许执行生产更新。
+本批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)最终head `6b8d1e77cfef23228160021b37779e4eed2a3c48` 经[CI #7809](https://github.com/sanqin888/sanqinMVP/actions/runs/41054754179)SUCCESS（4成功/6范围跳过；两条Release各1416、Runtime1080、既有C1回归412），已合并dev `b3ec0a2e046ecf0467f0b7b81115533e78cff292`，无需CI修复；无生产/AWS操作。
+
+D4真实执行尚未开始，目标/准确材料、首次安装监督适配与隔离HTTP路由须先落实，详见[D4隔离验收方案](Runtime最小执行器D4隔离验收方案.md)。
+
+> **2026-10-30（America/Toronto）｜D3_MAC_ENTRY_MERGED_DEV / SOURCE_CI_VERIFIED / MAC_ACCEPTANCE_OPEN / NOT_INSTALLED。**本文对应已合并dev、通过CI的源码；真实Mac和隔离执行仍待验收，不表示生产工具已安装或已允许执行生产更新。
 
 ## 前置条件与固定目标
 
@@ -62,6 +66,6 @@ SSH/远端非零退出按原码返回；本地阻断返回1，中断返回128+si
 
 ## 本批验证与后续
 
-新增26项测试定义：准确命令映射与独立确认、SQL/兼容摘要与注入/重复/缩写参数拒绝；真实临时本地文件、元数据/私钥不读、公钥/host、替换/权限/链接/FIFO、最小环境与 agent；以本地管道子进程模拟 SSH 的有界输出/UTF-8/退出255/超时/文件漂移，以及本地profile、提交响应不冒充ACTIVE、信号恢复、非Mac/root拒绝和含空格路径、恶意搜索路径/同目录stdlib阴影模块下的shell启动器。测试不连接 SSH 或生产。Python3.9源码/3.10测试 AST、嵌套符号、重复测试和读回静态核对完成；未运行项目测试，本批尚无CI。
+新增26项测试定义：准确命令映射与独立确认、SQL/兼容摘要与注入/重复/缩写参数拒绝；真实临时本地文件、元数据/私钥不读、公钥/host、替换/权限/链接/FIFO、最小环境与 agent；以本地管道子进程模拟 SSH 的有界输出/UTF-8/退出255/超时/文件漂移，以及本地profile、提交响应不冒充ACTIVE、信号恢复、非Mac/root拒绝和含空格路径、恶意搜索路径/同目录stdlib阴影模块下的shell启动器。测试不连接 SSH 或生产。Python3.9源码/3.10测试 AST、嵌套符号、重复测试和读回静态核对完成；本地未运行项目测试；上述26项已随最终head两条Release各1416项通过CI，真实Mac行为仍未验收。
 
-下一步由CI验证这批代码，再进行D4统一隔离安装、真实Mac往返、正常发布及失败冻结验收。完整真实恢复演练继续列交付后；交付前仍保留更新前手动快照、内容核验、恢复材料及离机确认，不伪改restoreProven。生产未部署，暂停研究保持。
+下一步按[D4隔离验收方案](Runtime最小执行器D4隔离验收方案.md)先落实目标、准确main材料、首次安装受控适配/独立收尾及请求路由，再进行真实Mac/隔离安装、正常发布与失败冻结验收。完整真实恢复演练继续列交付后；交付前仍保留更新前手动快照、内容核验、恢复材料及离机确认，不伪改restoreProven。生产未部署，暂停研究保持。
