@@ -6654,8 +6654,8 @@ def _retain_from_bound_bootstrap(payload, source_sha, current_runtime, current_s
     return result
 
 
-# Read-only manager binding for the pending first-install adapter. These internal
-# roles are not CLI commands yet; no unit is submitted and no cleanup is authorized.
+# Read-only manager binding for the pending first-install task dispatcher.
+# These facts alone do not authorize mutation; run/cleanup remain private roles.
 INSTALL_TASK_PREFIX = "sanq-runtime-install-"
 INSTALL_TASK_KEYS = (
     "LoadState", "Transient", "Type", "Restart", "RemainAfterExit", "KillMode",
@@ -6910,6 +6910,186 @@ def _save_supervised_installation_writers(retention_id, source_sha, *, fetch=rel
         include_application_binding=True, include_migrations=True, include_effective_configuration=True,
         include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
         _task_source_sha=release.require_sha(source_sha))
+
+
+def _failed_installation_task_status():
+    """Stop-post classification only; neither clean exit nor unknown status is authority."""
+    result, code, status = (os.environ.get(name) for name in ("SERVICE_RESULT", "EXIT_CODE", "EXIT_STATUS"))
+    numeric = (type(status) is str and re.fullmatch(r"0|[1-9][0-9]{0,2}", status) is not None
+               and int(status) <= 255)
+    named = type(status) is str and status in {item.name.removeprefix("SIG") for item in signal.Signals}
+    valid = code == "exited" and numeric or code in ("killed", "dumped") and named
+    failed = (result == "exit-code" and code == "exited" and numeric and int(status) > 0
+              or result in ("timeout", "watchdog", "resources") and valid
+              or result == "signal" and code == "killed" and named
+              or result == "core-dump" and code == "dumped" and named
+              or result == "oom-kill" and code == "killed" and named
+              or result == "success" and code == "killed" and status in ("HUP", "INT", "TERM", "PIPE"))
+    _need(failed, "clean or unknown task status is not failure containment authority")
+    return result, code, status
+
+
+@contextlib.contextmanager
+def _existing_installation_task_namespace(parent):
+    """Open only the existing fixed namespace; no creation, enumeration or adoption authority."""
+    _private_info(os.fstat(parent), directory=True)
+    original_parent = _directory_identity(os.fstat(parent))
+    fd = os.open(INSTALLATION_RUNS, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        original = _directory_identity(os.fstat(fd))
+        def check():
+            actual = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
+            _private_info(actual, directory=True)
+            _private_info(os.fstat(fd), directory=True)
+            _need(original_parent == _directory_identity(os.fstat(parent))
+                  and original == _directory_identity(os.fstat(fd)) == _directory_identity(actual),
+                  "existing installation task namespace replaced")
+        check()
+        yield fd
+        check()
+    finally:
+        os.close(fd)
+
+
+def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release.github_json):
+    """Private failed stop-post only. No public dispatch, success adoption, retry or recovery."""
+    source = _bootstrap_invocation(release.require_sha(source_sha))
+    retained_id = _installation_task_id(retention_id)
+    status = _failed_installation_task_status()
+    with _private_session() as folders:
+        _material_jobs_idle(folders)
+        anchor = _state_parent()
+        try:
+            with _private_directory(anchor, "deploy-state") as state, \
+                 _private_directory(folders["installations"], retained_id) as materials:
+                kit, old, retained = _retained_contents(materials, retained_id)
+                _need(retained["sourceSha"] == source, "failed task source differs from retained source")
+                with _bound_bootstrap_sources(kit, source, fetch=fetch) as source_check:
+                    _need(callable(source_check), "failed task source context unavailable")
+                    source_check()
+                    context = _installation_task_context(source, retained_id, "cleanup",
+                        deadline=time.monotonic() + 30)
+                    _need(type(context) is dict and context.get("role") == "cleanup"
+                          and context.get("sourceSha") == source and context.get("retentionId") == retained_id
+                          and context.get("managerContextObserved") is True, "failed stop-post context unavailable")
+                    run_context = {**context, "role": "run"}
+                    def names(fd, maximum):
+                        found = set()
+                        with os.scandir(fd) as entries:
+                            for entry in entries:
+                                _need(len(found) < maximum, "failed task inventory exceeds budget")
+                                found.add(entry.name)
+                        return found
+                    with _existing_installation_task_namespace(state) as namespace:
+                        identities = names(namespace, 1)
+                        _need(len(identities) == 1, "failed task requires one exact installation transaction")
+                        identity = next(iter(identities))
+                        _need(re.fullmatch(r"[a-f0-9]{64}", identity) is not None,
+                              "failed task transaction identity differs")
+                        with _private_directory(namespace, identity) as root:
+                            mandatory = {"intent.json", "writers.json", INSTALL_TASK_ORIGINALS_FILE}
+                            permitted = mandatory | {"recovery", SNAPSHOT_REVIEW_FILE,
+                                                     SNAPSHOT_OFFHOST_FILE, INSTALL_COMPLETION_FILE}
+                            inventory = names(root, len(permitted))
+                            _need(mandatory <= inventory <= permitted, "failed task has unknown or missing records")
+                            def fingerprint(parent, name, *, directory=False):
+                                info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                                _private_info(info, directory=directory)
+                                return _installed_fingerprint(info)
+                            records = {name: fingerprint(root, name, directory=name == "recovery")
+                                       for name in inventory}
+                            intent = _installation_record_read(root, "intent.json", identity)
+                            writers = _installation_record_read(root, "writers.json", identity)
+                            value = _installation_writers_match(intent, writers, identity)
+                            association = _installation_task_handoff_read(root, run_context, intent, writers, identity)
+                            maintenance = names(folders["maintenance"], 1)
+                            _need(maintenance <= {"active.json"}, "foreign maintenance inventory blocks containment")
+                            marker = (_installation_record_read(folders["maintenance"], "active.json", identity)
+                                      if maintenance else None)
+                            marker_identity = fingerprint(folders["maintenance"], "active.json") if maintenance else None
+                            if marker is not None:
+                                _installation_records_match(intent, marker, identity)
+                            paths = [(anchor, "deploy-state", state),
+                                     *[(state, name, fd) for name, fd in folders.items()],
+                                     (folders["installations"], retained_id, materials),
+                                     (state, INSTALLATION_RUNS, namespace), (namespace, identity, root)]
+                            directories = [_directory_identity(os.fstat(fd)) for _, _, fd in paths]
+                            original_anchor = _directory_identity(os.fstat(anchor))
+                            locks = [(folders["jobs"], ".release.lock"), (folders["plans"], ".prepare.lock")]
+                            lock_ids = [fingerprint(parent, name) for parent, name in locks]
+                            deadline = time.monotonic() + 300
+                            def check():
+                                _need(time.monotonic() < deadline, "failed task containment deadline expired")
+                                source_check()
+                                _need(_failed_installation_task_status() == status
+                                      and _installation_task_context(source, retained_id, "cleanup",
+                                          deadline=min(deadline, time.monotonic() + 30)) == context,
+                                      "failed task manager generation or status changed")
+                                _material_jobs_idle(folders)
+                                fresh = _state_parent()
+                                try:
+                                    _need(original_anchor == _directory_identity(os.fstat(anchor))
+                                          == _directory_identity(os.fstat(fresh)), "failed task anchor replaced")
+                                finally:
+                                    os.close(fresh)
+                                for (parent, name, fd), expected in zip(paths, directories):
+                                    actual = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                                    _private_info(actual, directory=True)
+                                    _need(expected == _directory_identity(os.fstat(fd))
+                                          == _directory_identity(actual), "failed task original directory replaced")
+                                _need([fingerprint(parent, name) for parent, name in locks] == lock_ids,
+                                      "failed task original lock path replaced")
+                                _need(_retained_contents(materials, retained_id) == (kit, old, retained)
+                                      and names(namespace, 1) == {identity} and names(root, len(permitted)) == inventory,
+                                      "failed task material or transaction inventory changed")
+                                _need({name: fingerprint(root, name, directory=name == "recovery")
+                                       for name in inventory} == records
+                                      and _installation_record_read(root, "intent.json", identity) == intent
+                                      and _installation_record_read(root, "writers.json", identity) == writers
+                                      and _installation_task_handoff_read(root, run_context, intent, writers, identity) == association,
+                                      "failed task original records replaced or changed")
+                                _need(names(folders["maintenance"], 1) == maintenance
+                                      and (marker is None or
+                                           _installation_record_read(folders["maintenance"], "active.json", identity) == marker
+                                           and fingerprint(folders["maintenance"], "active.json") == marker_identity),
+                                      "failed task maintenance evidence changed")
+                                source_check()
+                                _need(time.monotonic() < deadline, "failed task recheck deadline expired")
+                            check()
+                            command_unknown = False
+                            for action, roles in (("disable-restart", INSTALL_WRITER_ROLES),
+                                                  ("stop", tuple(reversed(INSTALL_WRITER_ROLES)))):
+                                for role in roles:
+                                    check()
+                                    try:
+                                        _installation_writer_command(intent, writers, identity, role, action, deadline=deadline)
+                                    except BaseException:
+                                        command_unknown = True  # Continue the other exact IDs once; never replay this action.
+                                    check()
+                            for role in INSTALL_WRITER_ROLES:
+                                check()
+                                actual = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}",
+                                    value["containers"][role]["containerId"]),
+                                    lambda args: _docker_command(args, deadline=deadline))
+                                _need(type(actual) is dict and actual.get("Id") == value["containers"][role]["containerId"]
+                                      and type(actual.get("HostConfig")) is dict
+                                      and _json(actual["HostConfig"].get("RestartPolicy")) == _json({"Name": "no", "MaximumRetryCount": 0})
+                                      and type(actual.get("State")) is dict
+                                      and actual["State"].get("Running") is False and actual["State"].get("Status") == "exited"
+                                      and actual["State"].get("Restarting") is False and actual["State"].get("Paused") is False
+                                      and actual["State"].get("Dead") is False,
+                                      "FENCE_UNCONFIRMED: original writer is not observed stopped with restart inhibited")
+                            check()
+                            _need(not command_unknown, "FENCE_UNCONFIRMED: failed task command outcome requires review")
+                            result = {"outcome": "FAILED_INSTALLATION_ORIGINAL_WRITERS_STOPPED",
+                                "installationId": identity, "invocationId": context["invocationId"],
+                                "originalWritersStoppedObserved": True, "restartInhibitedObserved": True,
+                                "requiresOperatorReview": True, "installationComplete": False,
+                                "canExecute": False, "restoreProven": False}
+                    source_check()
+                return result
+        finally:
+            os.close(anchor)
 
 
 def main(argv=None):
