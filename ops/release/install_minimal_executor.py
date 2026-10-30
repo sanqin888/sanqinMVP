@@ -6929,6 +6929,28 @@ def _failed_installation_task_status():
     return result, code, status
 
 
+@contextlib.contextmanager
+def _existing_installation_task_namespace(parent):
+    """Open only the existing fixed namespace; no creation, enumeration or adoption authority."""
+    _private_info(os.fstat(parent), directory=True)
+    original_parent = _directory_identity(os.fstat(parent))
+    fd = os.open(INSTALLATION_RUNS, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        original = _directory_identity(os.fstat(fd))
+        def check():
+            actual = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
+            _private_info(actual, directory=True)
+            _private_info(os.fstat(fd), directory=True)
+            _need(original_parent == _directory_identity(os.fstat(parent))
+                  and original == _directory_identity(os.fstat(fd)) == _directory_identity(actual),
+                  "existing installation task namespace replaced")
+        check()
+        yield fd
+        check()
+    finally:
+        os.close(fd)
+
+
 def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release.github_json):
     """Private failed stop-post only. No public dispatch, success adoption, retry or recovery."""
     source = _bootstrap_invocation(release.require_sha(source_sha))
@@ -6958,7 +6980,7 @@ def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release
                                 _need(len(found) < maximum, "failed task inventory exceeds budget")
                                 found.add(entry.name)
                         return found
-                    with _private_directory(state, INSTALLATION_RUNS) as namespace:
+                    with _existing_installation_task_namespace(state) as namespace:
                         identities = names(namespace, 1)
                         _need(len(identities) == 1, "failed task requires one exact installation transaction")
                         identity = next(iter(identities))

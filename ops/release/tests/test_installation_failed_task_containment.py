@@ -63,6 +63,10 @@ class FailedTaskContainmentTests(unittest.TestCase):
 
     def test_failed_task_uses_original_order_and_ids_without_mutating_records_marker_or_database(self):
         records, marker = self.originals(), self.writer.base.marker.read_bytes()
+        # The CI repair must not broaden the general private-directory name allowlist.
+        with self.assertRaisesRegex(ReleaseContractError, "unreviewed private directory"):
+            with installer._private_directory(-1, installer.INSTALLATION_RUNS):
+                self.fail("general directory helper accepted the transaction namespace")
         db = copy.deepcopy(self.docker.containers[self.docker.ids[3]])
         result = self.contain()
         expected = [(role, "disable-restart") for role in installer.INSTALL_WRITER_ROLES]
