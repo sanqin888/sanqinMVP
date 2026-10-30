@@ -722,7 +722,7 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False, _complete_installation=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False, _complete_installation=False, _task_source_sha=None):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
                                              include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api, _verify_application, _restore_policies, _complete_installation))
@@ -750,6 +750,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     _need(not _verify_application or _verify_gate_api, "application verification requires this complete installed gate API flow")
     _need(not _restore_policies or _verify_application, "policy restoration requires this complete original application verification")
     _need(not _complete_installation or _restore_policies, "installation completion requires this full saved policy restoration")
+    _need(_task_source_sha is None or _save_writers and type(_task_source_sha) is str
+          and release.require_sha(_task_source_sha) == _task_source_sha,
+          "supervised task binding requires the full saved writer observation")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
@@ -792,6 +795,8 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     with _installation_application_ownership(application_progress), _private_session() as folders, _private_directory(folders["installations"], identity) as root:
         _idle_for_materials(folders)
         kit, old, value = _retained_contents(root, identity)
+        _need(_task_source_sha is None or _task_source_sha == value["sourceSha"],
+              "task source differs from retained source")
         review = review_transition(kit, value["sourceSha"], old, value["currentArchiveSourceSha"], fetch=fetch)
         _need(not review["requiresAdditionalPlatformReview"], "retained transition exceeds tool-only scope")
         before = snapshot()
@@ -1186,7 +1191,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                     recovery_namespace=capture[1]["privateNamespace"] if _retain_recovery else None,
                     snapshot_review=review_snapshot if _snapshot_channel is not None else None,
                     retain_snapshot_review=_retain_snapshot_review, confirm_offhost_index=_confirm_offhost_index,
-                    complete_installation=_complete_installation)
+                    complete_installation=_complete_installation, task_source_sha=_task_source_sha)
             if _write_tools:
                 result["observationTiming"] = "PRE_INSTALLATION_INTENT"
             if _verify_application:
@@ -2721,7 +2726,7 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
         return intent
 
 
-def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False, complete_installation=False):
+def _write_installation_intent_locked(folders, retention_id, observation, *, recheck, load_gates=None, save_writers=None, freeze_writers=None, retain_recovery=None, recovery_namespace=None, snapshot_review=None, retain_snapshot_review=False, confirm_offhost_index=False, complete_installation=False, task_source_sha=None):
     """Private observer continuation only; no CLI or externally imported approval."""
     _need(os.geteuid() == 0, "installation intent requires root")
     _need(snapshot_review is None or retain_recovery is not None, "snapshot wait requires recovery persistence")
@@ -2736,8 +2741,31 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
     if recovery_namespace is not None:
         _need(_recovery_namespace_snapshot(folders) == recovery_namespace,
               "recovery private namespace changed before intent")
+    _need(task_source_sha is None or save_writers is not None and type(task_source_sha) is str
+          and release.require_sha(task_source_sha) == observation["sourceSha"],
+          "task handoff requires exact observed source and saved writers")
+    task_context = None
+    if task_source_sha is not None:
+        task_context = _installation_task_context(task_source_sha, retention_id, "run",
+            deadline=time.monotonic() + 30)
+        _need(type(task_context) is dict and task_context.get("managerContextObserved") is True
+              and task_context.get("sourceSha") == task_source_sha
+              and task_context.get("retentionId") == retention_id and task_context.get("role") == "run",
+              "installation task run context unavailable")
+    def task_check():
+        if task_context is not None:
+            current = _installation_task_context(task_source_sha, retention_id, "run",
+                deadline=time.monotonic() + 30)
+            _need(current == task_context, "installation task manager generation changed")
+        return task_context
+    original_recheck = recheck
+    def guarded_recheck():
+        task_check()
+        original_recheck()
+        task_check()
+    recheck = guarded_recheck
     identity = os.urandom(32).hex()
-    gate_result = saved_result = frozen_result = recovery_result = snapshot_result = None
+    gate_result = saved_result = frozen_result = recovery_result = snapshot_result = task_result = None
     owned_records = {}
     marker_cleared = False
     anchor = _state_parent()
@@ -2788,6 +2816,7 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                           "installation intent path changed during recording")
                     marker_identity = _installed_fingerprint(os.stat("active.json", dir_fd=folders["maintenance"], follow_symlinks=False))
                     def check_owned():
+                        task_check()
                         state_matches()
                         current_state = os.stat("deploy-state", dir_fd=anchor, follow_symlinks=False)
                         _private_info(current_state, directory=True)
@@ -2811,6 +2840,7 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                         _private_info(current_namespace, directory=True)
                         _need(_directory_identity(current_namespace) == _directory_identity(os.fstat(namespace)),
                               "owned installation namespace replaced")
+                        task_check()
                     if load_gates is not None:
                         check_owned()
                         gate_result = load_gates(check_owned)
@@ -2829,6 +2859,10 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                             return {"sha256": _hash(saved), "canExecute": False, "writersFrozen": False}
                         saved_result = save_writers(persist_writers, check_owned, gate_result)
                         check_owned()
+                        if task_context is not None:
+                            task_result = _persist_owned_installation_task_handoff(root, task_check(), raw,
+                                owned_records["writers.json"], identity, owned_records, check_owned=check_owned)
+                            check_owned()
                     if freeze_writers is not None:
                         _need(saved_result is not None and gate_result is not None, "writer freeze requires saved originals")
                         check_owned()
@@ -2935,10 +2969,12 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
             _need((not os.listdir(folders["maintenance"]) if marker_cleared else
                    _installation_record_read(folders["maintenance"], "active.json", identity) == marker),
                   "installation marker changed after namespace validation")
+            task_check()
             return {"installationId": identity, "intentSha256": _hash(raw), "markerSha256": _hash(marker),
                     "canExecute": False, "startupFenceConfirmed": gate_result is not None, "writersFrozen": frozen_result is not None,
                     "requiresHostRecheck": True, **({"temporaryGates": gate_result} if gate_result is not None else {}),
                     **({"savedWriters": saved_result} if saved_result is not None else {}),
+                    **({"taskHandoff": task_result} if task_result is not None else {}),
                     **({"frozenWriters": frozen_result} if frozen_result is not None else {}),
                     **({"recoveryFiles": recovery_result} if recovery_result is not None else {}),
                     **({"snapshotReview": snapshot_result} if snapshot_result is not None else {})}
@@ -6468,7 +6504,7 @@ def _clear_owned_installation_marker(root, intent, identity, *, check_context, m
         os.close(fd)
 
 
-def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=release.github_json, task_source_sha=None):
     """Fresh owned complete flow; neither disk receipts nor old progress authorize replay."""
     return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
         include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
@@ -6477,7 +6513,7 @@ def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=r
         _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
         _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
         _write_tools=True, _handover_gates=True, _verify_gate_api=True, _verify_application=True,
-        _restore_policies=True, _complete_installation=True)
+        _restore_policies=True, _complete_installation=True, _task_source_sha=task_source_sha)
 
 
 # First-install material entry only. This is not the paused protected-loader work:
@@ -6850,6 +6886,15 @@ def _persist_owned_installation_task_handoff(root, context, intent, writers, ide
     check_owned()
     return {"taskOriginalsSha256": _hash(raw), "installationComplete": False,
             "canExecute": False, "restoreProven": False}
+
+
+def _save_supervised_installation_writers(retention_id, source_sha, *, fetch=release.github_json):
+    """Private supervised evidence stage; no freeze, tool install or public CLI."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
+        include_application_binding=True, include_migrations=True, include_effective_configuration=True,
+        include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
+        _task_source_sha=release.require_sha(source_sha))
 
 
 def main(argv=None):
