@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Delivery, private observations and owned installation stages. No public host-apply CLI.
+"""Delivery, bound material retention and owned stages. No public host-apply CLI.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -6466,16 +6466,139 @@ def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=r
         _restore_policies=True, _complete_installation=True)
 
 
+# First-install material entry only. This is not the paused protected-loader work:
+# an authorized operator must review/provision these five files BEFORE Python starts.
+BOOTSTRAP_IMPORTS = (
+    BOOTSTRAP, "ops/release/release_contract.py", "ops/runtime/build_bundle.py",
+    "ops/runtime/versioned_release_contract.py", "ops/runtime/runtime_trust.py",
+)
+
+
+def _bootstrap_invocation(source_sha):
+    sha = release.require_sha(source_sha)
+    root = STATE_PARENT / "install-bootstrap" / sha
+    _need(os.geteuid() == 0 and sys.platform == "linux"
+          and sys.implementation.name == "cpython" and sys.version_info >= (3, 10)
+          and sys.executable == "/usr/bin/python3"
+          and sys.flags.isolated == 1 and sys.flags.no_site == 1
+          and sys.flags.dont_write_bytecode == 1,
+          "material entry requires reviewed root system Python with -I -S -B")
+    origins = {
+        BOOTSTRAP: __file__,
+        "ops/release/release_contract.py": release.__file__,
+        "ops/runtime/build_bundle.py": bundle.__file__,
+        "ops/runtime/versioned_release_contract.py": historical.__file__,
+        "ops/runtime/runtime_trust.py": getattr(sys.modules.get("runtime_trust"), "__file__", None),
+    }
+    _need(ROOT == root and all(type(path) is str and path == str(root / name)
+          for name, path in origins.items()), "bootstrap imports are not the fixed reviewed source tree")
+    return sha
+
+
+def _bootstrap_read(fd, parent, name):
+    before = os.fstat(fd)
+    _private_info(before)
+    _need(0 < before.st_size <= MAX_FILE, "bootstrap source size differs")
+    os.lseek(fd, 0, os.SEEK_SET)
+    chunks, size = [], 0
+    while size <= MAX_FILE:
+        raw = os.read(fd, min(65536, MAX_FILE + 1 - size))
+        if not raw:
+            break
+        chunks.append(raw)
+        size += len(raw)
+    after = os.fstat(fd)
+    actual = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    _private_info(after)
+    _private_info(actual)
+    identity = _installed_fingerprint(before)
+    _need(size == before.st_size and identity == _installed_fingerprint(after)
+          == _installed_fingerprint(actual), "bootstrap source changed during read")
+    return b"".join(chunks), identity
+
+
+@contextlib.contextmanager
+def _bound_bootstrap_sources(payload, source_sha, *, fetch=release.github_json):
+    """Hold independently provisioned source FDs; never extract/import kit Python."""
+    sha = _bootstrap_invocation(source_sha)
+    inventory = {
+        ("install-bootstrap",): {sha},
+        ("install-bootstrap", sha): {"ops"},
+        ("install-bootstrap", sha, "ops"): {"release", "runtime"},
+        ("install-bootstrap", sha, "ops", "release"): {"install_minimal_executor.py", "release_contract.py"},
+        ("install-bootstrap", sha, "ops", "runtime"): {
+            "build_bundle.py", "versioned_release_contract.py", "runtime_trust.py"},
+    }
+    with contextlib.ExitStack() as stack:
+        anchor = _state_parent()
+        stack.callback(os.close, anchor)
+        anchor_identity = _directory_identity(os.fstat(anchor))
+        folders, folder_ids = {(): anchor}, {}
+        for parts in inventory:
+            parent = folders[parts[:-1]]
+            fd = os.open(parts[-1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            stack.callback(os.close, fd)
+            _private_info(os.fstat(fd), directory=True)
+            folders[parts] = fd
+            folder_ids[parts] = _directory_identity(os.fstat(fd))
+        files, observed = {}, {}
+        for path in BOOTSTRAP_IMPORTS:
+            parts = ("install-bootstrap", sha, *Path(path).parts)
+            parent = folders[parts[:-1]]
+            fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            stack.callback(os.close, fd)
+            files[path] = (fd, parent, parts[-1])
+            observed[path] = _bootstrap_read(fd, parent, parts[-1])
+
+        def check():
+            _need(_bootstrap_invocation(sha) == sha, "bootstrap invocation changed")
+            fresh = _state_parent()
+            try:
+                _need(anchor_identity == _directory_identity(os.fstat(anchor))
+                      == _directory_identity(os.fstat(fresh)), "bootstrap anchor changed")
+            finally:
+                os.close(fresh)
+            for parts, expected in inventory.items():
+                fd = folders[parts]
+                actual = os.stat(parts[-1], dir_fd=folders[parts[:-1]], follow_symlinks=False)
+                _private_info(actual, directory=True)
+                _private_info(os.fstat(fd), directory=True)
+                _need(folder_ids[parts] == _directory_identity(os.fstat(fd))
+                      == _directory_identity(actual) and set(os.listdir(fd)) == expected,
+                      "bootstrap directory or inventory changed")
+            for path, (fd, parent, name) in files.items():
+                _need(_bootstrap_read(fd, parent, name) == observed[path],
+                      "original bootstrap source replaced or modified")
+
+        check()
+        contents, _, _ = _review(payload, sha, fetch)
+        _need(all(observed[path][0] == contents["sources/" + path] for path in BOOTSTRAP_IMPORTS),
+              "reviewed bootstrap bytes differ from exact published source")
+        check()
+        yield check
+        check()
+
+
+def _retain_from_bound_bootstrap(payload, source_sha, current_runtime, current_source_sha,
+                                 *, fetch=release.github_json):
+    """Finite material-only adapter; no host preflight, maintenance or installation."""
+    with _bound_bootstrap_sources(payload, source_sha, fetch=fetch) as check:
+        check()
+        result = _retain_verified_materials(payload, source_sha, current_runtime, current_source_sha, fetch=fetch)
+        check()
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("pack", "verify", "plan"):
-        sub = commands.add_parser(name)
+    for name in ("pack", "verify", "plan", "retain"):
+        sub = commands.add_parser(name, allow_abbrev=False)
         sub.add_argument("--source-sha", required=True)
         sub.add_argument("--runtime-archive" if name == "pack" else "--kit", type=Path, required=True)
         if name == "pack":
             sub.add_argument("--output", type=Path, required=True)
-        if name == "plan":
+        if name in ("plan", "retain"):
             sub.add_argument("--current-runtime-archive", type=Path, required=True)
             sub.add_argument("--current-source-sha", required=True)
     args = parser.parse_args(argv)
@@ -6491,6 +6614,11 @@ def main(argv=None):
                       "canExecute": False, "authorizedToMutateProduction": False}
         elif args.command == "verify":
             result = verify_materials(_read_artifact(args.kit, MAX_KIT), args.source_sha, fetch=fetch)
+        elif args.command == "retain":
+            _bootstrap_invocation(args.source_sha)
+            result = _retain_from_bound_bootstrap(_read_artifact(args.kit, MAX_KIT), args.source_sha,
+                _read_artifact(args.current_runtime_archive, bundle.MAX_ARCHIVE_BYTES),
+                args.current_source_sha, fetch=fetch)
         else:
             result = review_transition(_read_artifact(args.kit, MAX_KIT), args.source_sha,
                 _read_artifact(args.current_runtime_archive, bundle.MAX_ARCHIVE_BYTES),

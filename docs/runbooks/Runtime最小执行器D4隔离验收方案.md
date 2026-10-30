@@ -1,12 +1,14 @@
 # Runtime 最小执行器 D4 隔离验收方案
 
-> **2026-10-30（America/Toronto）｜D4_PREPARATION_LOCAL / VM_NOT_BOUND / INSTALL_ADAPTER_OPEN / NOT_EXECUTED / RESTORE_VALIDATION_DEFERRED。**本文件是第三批内部D4的执行前审计与固定验收方案，不是现场授权、执行脚本或通过回执。生产过渡仍属第四批。
+> **2026-10-30（America/Toronto）｜D4_PLAN_MERGED_DEV / VM_NOT_BOUND / INSTALL_ADAPTER_OPEN / NOT_EXECUTED / RESTORE_VALIDATION_DEFERRED。**本文件是第三批内部D4的执行前审计与固定验收方案，不是现场授权、执行脚本或通过回执。生产过渡仍属第四批。
+
+D4方案已由[PR #3058](https://github.com/sanqin888/sanqinMVP/pull/3058) head `686a70f8ec2c2598ad6cd73189fb195b2e0d4a72` 经[CI #7811](https://github.com/sanqin888/sanqinMVP/actions/runs/41066304814)SUCCESS（文档范围：1成功/9跳过，未重跑Release/Runtime测试）合并dev `8f0b6f11a8b61b0f83a4888764e15b2da5642998`。
 
 ## 当前结论与准确基线
 
 Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并dev `b3ec0a2e046ecf0467f0b7b81115533e78cff292` 后，以该准确源码树作为本方案审阅基线。源码/CI通过、隔离验证、生产安装和最终交付分别记录；任何一项都不能代替下一项。
 
-本批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)最终head `6b8d1e77cfef23228160021b37779e4eed2a3c48` 经[CI #7809](https://github.com/sanqin888/sanqinMVP/actions/runs/41054754179)SUCCESS（4成功/6范围跳过；两条Release各1416、Runtime1080、既有C1回归412），已合并dev `b3ec0a2e046ecf0467f0b7b81115533e78cff292`，无需CI修复；无生产/AWS操作。
+前序Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)最终head `6b8d1e77cfef23228160021b37779e4eed2a3c48` 经[CI #7809](https://github.com/sanqin888/sanqinMVP/actions/runs/41054754179)SUCCESS（4成功/6范围跳过；两条Release各1416、Runtime1080、既有C1回归412），已合并dev `b3ec0a2e046ecf0467f0b7b81115533e78cff292`，无需CI修复；无生产/AWS操作。
 
 本轮只读核到：GitHub main在观察时为 `d3a896f32f1db71e49433f9e87bef534e27589bb`，与PR初始head `6b8d1e77cfef23228160021b37779e4eed2a3c48` 的compare元信息为diverged、ahead103/behind1。该数字仅说明分支关系，不用compare文件清单证明材料完整、来源通过或可直接晋级。main和目标发布必须在实际准备前重新按准确对象核验，本批不自动合main或触发发布。
 
@@ -16,7 +18,7 @@ Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并de
 | --- | --- | --- |
 | G1：准确隔离目标 | 本次尚未核到并绑定新的隔离实例；当前连接提供生产只读与代码工作区，不能默认复用它作故障试验目标 | 填齐下表目标事实，独立核SSH主机key与AWS对象，确认无生产流量/凭据/真实外部写入 |
 | G2：准确可验材料 | D1仅接受合格的准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不是替代物 | 用户控制main晋级后固定S_tool、发布/CI/Archive及完整Git对象；固定真实应用候选S1/S2和SQL/兼容审阅对象 |
-| G3：首次安装受控入口/监督 | install_minimal_executor.py公开CLI仍只有pack/verify/plan；_complete_installation及材料保留、快照双帧/离机确认均为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
+| G3：首次安装受控入口/监督 | install_minimal_executor.py已有pack/verify/plan，本地新增仅保留材料的retain入口、尚待CI；_complete_installation及快照双帧/离机确认仍为私有能力，未有首次安装专用transient提交/独立失败收尾入口 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
 | G4：隔离就绪请求目标 | 安装器六端点含127.0.0.1与固定https://sanq.ca；新VM直接运行可能把生产200误作隔离结果 | 准确审阅隔离TLS/解析/路由与外部调用阻断，证明每个请求到隔离目标；不能改生产DNS/切流、跳TLS或借生产响应补通过 |
 
 受控入口可以是经审阅的一次性适配，复用现有私有函数，不要求另造通用公开安装API。问题是尚未落实监督、来源/目标和通道的完整调用边界，不是函数名称带下划线就不能使用。
@@ -96,8 +98,38 @@ G3后续实现仍放在既有bootstrap/一次性安装范围，不增加常驻se
 
 这些条件来自现有D2/D4合同与实际未接线处，不把暂停的C1受保护加载、CPython全链、R2 CA/可信时间接回首版。适配源码及CI通过后才安排真实写入验收。
 
+## 本地待审：bootstrap材料保留入口
+
+`feat/runtime-install-bootstrap-binding-20261030`在既有install_minimal_executor.py增加`retain`，仅调用已审阅的root私有材料保留，不是安装执行或普通Mac发布动作。15项测试已进入PR #3059 CI；初始head 7609b889 的[CI #7813](https://github.com/sanqin888/sanqinMVP/actions/runs/41068929792)默认Release运行1431项，发现1失败/1错误，不能记为通过：新增重放测试错误期待ReleaseContractError，实际create-only正确抛FileExistsError；新增CLI测试的GitHub模拟未接受token关键字。仅修测试为准确异常、重放零写/原件不变断言及接收token的模拟，生产实现不变；已推同PR重跑，最终结果待核。 G3仍OPEN；不会写Runtime/门禁/marker、运行Docker/systemd/SQL、提交安装unit或恢复营业。
+
+启动前必须由已授权操作者从独立审阅的准确源码准备固定`/opt/sanq/install-bootstrap/<source-sha>/`，再按已审阅系统Python调用。不能直接把kit解压为root代码；kit中的Python始终只当验证数据。程序启动后才核自己的来源，不可能追溯阻止已发生的恶意import；因此人工启动前来源/目录审阅不可省略。这不是C1受保护加载或CPython供应链证明，不承诺隔离恶意root/已受损进程。
+
+bootstrap树固定五文件：
+
+| 目录 | 唯一文件 |
+| --- | --- |
+| ops/release | install_minimal_executor.py、release_contract.py |
+| ops/runtime | build_bundle.py、versioned_release_contract.py、runtime_trust.py |
+
+install-bootstrap父目录只允许本次准确SHA，其下只能上述ops/两子目录/五文件；不放.git、__pycache__、凭据、kit或额外脚本。所有bootstrap目录root:root 0700，源文件root:root 0600普通单链接；/opt/sanq祖先仍按既有保护规则核验。入口不自动创建bootstrap、chown/chmod、删除旧SHA或清未知成员。要保留其他bootstrap版本时先独立审阅安置方式，不绕过本入口库存限制。
+
+要求Linux、root、CPython3.10+且sys.executable准确/usr/bin/python3，以-I -S -B启动；源码模块路径也必须准确对应该树。启动前就须遵守这些参数，不能期望检查失败撤销此前的Python加载/pycache行为。材料参数只选数据，不选择代码、目标Runtime或主机命令：
+
+| 参数 | 准确内容 |
+| --- | --- |
+| --source-sha | 与bootstrap目录及独立main发布相同的40位小写SHA |
+| --kit | 不执行/不解压的交付kit普通单链接文件 |
+| --current-runtime-archive | 保留的准确旧Runtime原归档数据 |
+| --current-source-sha | 该旧归档准确40位来源SHA |
+
+本节只列接口，不给尚未绑定目标/材料的可复制root执行命令，也不授权当前连接执行retain。材料保留本身不要求先完成安装的网络/快照交互，但实际root写入范围仍须独立核对；它不能解除G1/G2/G4或授权完整安装/普通release_task适配。
+
+入口先持有受保护目录与五个原文件FD/身份，核固定库存、权限、大小/单链接，与准确main/发布/完整Git来源逐字节一致，调用既有两锁下create-only/fsync材料保留，返回前再核原FD/路径、库存及身份。失败保留原件；晚变即使发生在retained.json已写后也不报告成功、不删除或重试。MATERIALS_RETAINED仍携带readyToInstall/canExecute/authorizedToMutateProduction=false，不证明已安装、已停写、来源未来不再变化或可重放。
+
+尚需实现安装专用transient/manager关联、原writers准确ID独立收尾、快照双帧/离机确认通道及成功交接判别；本节不能拿来执行完整安装、SIGKILL验证或20项真实验收。首次安装与更新前快照/内容核验仍保留，完整VM/DB恢复实演继续交付后。
+
 ## 收口与本批边界
 
-本批只完成方案/审计，未新增执行器、CLI、schema、unit或测试，没有操作AWS/VM/Mac/DB或运行项目测试。G1–G4未解除，20个case均未执行；源CI成功也不把它们改为PASS。相关入口：[实现方案](../architecture/Runtime最小更新执行器实现方案.md)、[安装合同](../architecture/Runtime最小执行器工具交付与安装合同.md)、[Mac入口](Runtime最小执行器Mac入口.md)、[当前优先级](../architecture/Runtime最小更新执行器与暂停恢复计划.md)。
+PR #3058只完成方案/审计，无代码/CLI/schema/unit/测试；其后本地bootstrap材料入口的实现与待验状态见下节，不能回填为PR #3058的CI结果。没有操作AWS/VM/Mac/DB或运行项目测试。G1–G4未解除，20个case均未执行；源CI成功也不把它们改为PASS。相关入口：[实现方案](../architecture/Runtime最小更新执行器实现方案.md)、[安装合同](../architecture/Runtime最小执行器工具交付与安装合同.md)、[Mac入口](Runtime最小执行器Mac入口.md)、[当前优先级](../architecture/Runtime最小更新执行器与暂停恢复计划.md)。
 
 D4通过后提交可审阅的第四批材料：准确目标/备份快照/工具包/最终来源、受限root步骤与每步验收/停止点、当前真实应用候选/配置/迁移审阅、残件与人工处置方案。生产root/systemd/AWS/数据库和dev→main晋级继续独立核对授权；不因本方案或一次模型成功自动执行。完整快照/数据库恢复实演列交付后，仍不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
