@@ -722,10 +722,10 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
-                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api, _verify_application))
+                                             include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api, _verify_application, _restore_policies))
           and (not include_docker or include_configuration) and (not include_systemd or include_docker)
           and (not include_filesystem or include_systemd) and (not include_prerequisites or include_filesystem)
           and (not include_application_binding or include_prerequisites) and (not include_migrations or include_application_binding)
@@ -748,6 +748,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     _need(not _handover_gates or _write_tools, "permanent gate handover requires this complete tool write flow")
     _need(not _verify_gate_api or _handover_gates, "installed gate API requires this complete permanent handover")
     _need(not _verify_application or _verify_gate_api, "application verification requires this complete installed gate API flow")
+    _need(not _restore_policies or _verify_application, "policy restoration requires this complete original application verification")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
@@ -1135,13 +1136,19 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
                                                 application_progress.update({"intent": intent, "writers": writers,
                                                     "identity": installation_id, "docker": before[2], "started": {},
                                                     "requireHealthy": False, "attempted": False, "containmentAttempted": False,
-                                                    "binding": None, "health": {}})
+                                                    "binding": None, "health": {}, "restoredPolicies": set()})
                                                 deadline = time.monotonic() + 300
                                                 application = _start_saved_installation_application(application_progress,
                                                     run=run, check_context=write_context,
                                                     bind_application=lambda: _installation_restarted_binding(before[2], before[6], run),
                                                     deadline=deadline)
                                                 fresh_context()
+                                                if _restore_policies:
+                                                    deadline = time.monotonic() + 300
+                                                    policies = _restore_saved_installation_policies(application_progress,
+                                                        run=run, check_context=write_context, deadline=deadline)
+                                                    fresh_context()
+                                                    return {**api_result, **application, **policies}
                                                 return {**api_result, **application}
                                             return api_result
                                         return gate_result
@@ -1169,9 +1176,13 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
             if _write_tools:
                 result["observationTiming"] = "PRE_INSTALLATION_INTENT"
             if _verify_application:
-                result["installationIntent"].update(writersFrozen=False, writersRestartInhibited=True)
+                result["installationIntent"].update(writersFrozen=False,
+                    writersRestartInhibited=result["installationIntent"]["snapshotReview"]["writersRestartInhibited"])
+                if _restore_policies:
+                    result["installationIntent"]["restartPoliciesRestored"] = True
                 result["installationIntent"]["frozenWriters"]["observationTiming"] = "PRE_APPLICATION_RESTART"
-            result["outcome"] = ("INSTALLATION_OLD_APPLICATION_READY_RESTART_INHIBITED" if _verify_application else
+            result["outcome"] = ("INSTALLATION_RESTART_POLICIES_RESTORED_MAINTENANCE_ACTIVE" if _restore_policies else
+                                 "INSTALLATION_OLD_APPLICATION_READY_RESTART_INHIBITED" if _verify_application else
                                  "INSTALLATION_PERMANENT_GATE_API_VERIFIED_FENCED" if _verify_gate_api else
                                  "INSTALLATION_PERMANENT_GATES_LOADED_FENCED" if _handover_gates else
                                  "INSTALLATION_TOOL_FILES_WRITTEN_FENCED" if _write_tools else
@@ -1323,7 +1334,11 @@ def _installation_daemon_reload(*, deadline):
     _need(output == "", "unexpected installation reload output")
 
 
-def _bounded_host_client(args, *, deadline, _writer=None, _installation_gate_api=False, _application_start=None):
+def _bounded_host_client(args, *, deadline, _writer=None, _installation_gate_api=False, _application_start=None, _policy_restore=None):
+    if _policy_restore is not None:
+        _need(type(_policy_restore) is tuple and len(_policy_restore) == 4
+              and _writer is None and _installation_gate_api is False and _application_start is None
+              and args == _saved_restart_policy_args(*_policy_restore), "unreviewed saved restart policy command")
     if _application_start is not None:
         _need(type(_application_start) is tuple and len(_application_start) == 4
               and _writer is None and _installation_gate_api is False
@@ -1336,7 +1351,7 @@ def _bounded_host_client(args, *, deadline, _writer=None, _installation_gate_api
               and args == _saved_writer_args(*_writer), "unreviewed installation writer command")
     _need(os.geteuid() == 0 and (_docker_allowed(args) or _systemd_allowed(args)
           or _runtime_observation_allowed(args) or args == [*SYSTEMCTL, "daemon-reload"]
-          or _writer is not None or _installation_gate_api or _application_start is not None),
+          or _writer is not None or _installation_gate_api or _application_start is not None or _policy_restore is not None),
           "unreviewed or unprivileged Host observation")
     _need(not any(os.environ.get(key) for key in (
           "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")),
@@ -6088,6 +6103,9 @@ def _installation_application_observation(progress, run):
           and type(progress["requireHealthy"]) is bool
           and (not progress["requireHealthy"] or set(progress["started"]) == set(INSTALL_WRITER_ROLES)),
           "invalid original application progress")
+    restored = progress.get("restoredPolicies", set())
+    _need(type(restored) is set and restored <= set(INSTALL_WRITER_ROLES)
+          and (not restored or progress["requireHealthy"] is True), "invalid original policy restoration progress")
     rows = {role: dict(row) for role, row in value["containers"].items()}
     for role, lifetime in progress["started"].items():
         _need(type(lifetime) is dict and set(lifetime) == {"startedAt", "restartCount"},
@@ -6096,7 +6114,7 @@ def _installation_application_observation(progress, run):
             "State": {"StartedAt": lifetime["startedAt"]}, "RestartCount": lifetime["restartCount"]}, rows[role])
         rows[role].update(lifetime)
     health = _installation_writer_observation({**value, "containers": rows}, progress["docker"], run,
-        set(INSTALL_WRITER_ROLES), set(INSTALL_WRITER_ROLES) - set(progress["started"]),
+        set(INSTALL_WRITER_ROLES) - restored, set(INSTALL_WRITER_ROLES) - set(progress["started"]),
         _allow_starting=not progress["requireHealthy"])
     progress["health"] = health
     return health
@@ -6198,6 +6216,72 @@ def _verify_installation_old_application(retention_id, target, *, input_fd, outp
         _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
         _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
         _write_tools=True, _handover_gates=True, _verify_gate_api=True, _verify_application=True)
+
+
+def _saved_restart_policy_args(intent, writers, identity, role):
+    value = _installation_writers_match(intent, writers, identity)
+    _need(type(role) is str and role in INSTALL_WRITER_ROLES, "unreviewed saved policy role")
+    policy = value["containers"][role]["restartPolicy"]
+    argument = policy["Name"] + (":" + str(policy["MaximumRetryCount"]) if policy["Name"] == "on-failure" else "")
+    return [*DOCKER, "update", "--restart=" + argument, value["containers"][role]["containerId"]]
+
+
+def _installation_restart_policy_command(intent, writers, identity, role, *, deadline):
+    args = _saved_restart_policy_args(intent, writers, identity, role)
+    output = _bounded_host_client(args, deadline=deadline, _policy_restore=(intent, writers, identity, role))
+    _need(output in (args[-1], args[-1] + "\n"), "unexpected saved restart policy output")
+
+
+def _restore_saved_installation_policies(progress, *, run, check_context, deadline):
+    _need(type(progress) is dict and progress["requireHealthy"] is True and progress["attempted"] is True
+          and set(progress["started"]) == set(INSTALL_WRITER_ROLES) and progress.get("binding") is not None
+          and type(progress.get("restoredPolicies", set())) is set and not progress.get("restoredPolicies", set())
+          and callable(check_context) and type(deadline) in (int, float)
+          and time.monotonic() < deadline <= time.monotonic() + 300,
+          "original restart policy restoration lacks this ready application context")
+    value = _installation_writers_match(progress["intent"], progress["writers"], progress["identity"])
+    progress["restoredPolicies"] = set()
+    check_context()
+    _installation_application_observation(progress, run)
+    for role in INSTALL_WRITER_ROLES:
+        check_context()
+        _need(time.monotonic() < deadline, "saved restart policy deadline expired")
+        if value["containers"][role]["restartPolicy"]["Name"] != "no":
+            _installation_restart_policy_command(progress["intent"], progress["writers"], progress["identity"],
+                                                 role, deadline=deadline)
+        progress["restoredPolicies"].add(role)
+        _installation_application_observation(progress, run)
+        check_context()
+    statuses = {}
+    for url in READINESS_URLS:
+        _need(time.monotonic() < deadline, "post-policy readiness deadline expired")
+        check_context()
+        _need(_runtime_command(list((*CURL_ARGS, url)), deadline=deadline) == "200",
+              "post-policy application readiness failed")
+        statuses[url] = 200
+        check_context()
+    _need(time.monotonic() < deadline, "saved restart policy verification deadline expired")
+    check_context()
+    _installation_application_observation(progress, run)
+    policies = {role: dict(value["containers"][role]["restartPolicy"]) for role in INSTALL_WRITER_ROLES}
+    return {"outcome": "ORIGINAL_RESTART_POLICIES_RESTORED_MAINTENANCE_ACTIVE",
+            "restartPoliciesRestored": True, "applicationRestartPolicies": policies,
+            "writersRestartInhibited": all(row["Name"] == "no" for row in policies.values()),
+            "writersFrozen": False, "restartPolicyReadiness": statuses,
+            "requiresRestartPolicyRestoration": False, "requiresInstallationCompletion": True,
+            "installationComplete": False, "canExecute": False}
+
+
+def _restore_installation_restart_policies(retention_id, target, *, input_fd, output_fd, fetch=release.github_json):
+    """Fresh owned continuation through exact original policies; installation marker remains."""
+    return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
+        include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
+        include_application_binding=True, include_migrations=True, include_effective_configuration=True,
+        include_external_backup=True, _record_intent=True, _load_deny_gates=True, _save_writers=True,
+        _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
+        _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
+        _write_tools=True, _handover_gates=True, _verify_gate_api=True, _verify_application=True,
+        _restore_policies=True)
 
 
 def main(argv=None):
