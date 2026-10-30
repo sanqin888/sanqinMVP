@@ -11,6 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import install_minimal_executor as installer
 import test_installation_restart_policy_restore as policy
+import test_installation_snapshot_content as content
 from release_contract import ReleaseContractError
 
 
@@ -281,8 +282,16 @@ class OwnedInstallationCompletionTests(unittest.TestCase):
 
     def test_successful_disk_record_does_not_authorize_second_installation(self):
         self.observe()
-        with patch.object(installer, "_installation_application_start_command", side_effect=AssertionError("replay")), self.assertRaises(ReleaseContractError):
+        observe_flow = content.SnapshotContentOwnedFlowTests.observe
+        def without_peer(flow, respond=None, exchange=None):
+            return observe_flow(flow, respond=respond,
+                exchange=lambda *args, **kwargs: self.fail("replayed snapshot exchange"))
+        with patch.object(content.SnapshotContentOwnedFlowTests, "observe", without_peer), \
+             patch.object(installer, "_installation_application_start_command", side_effect=AssertionError("replay")), \
+             self.assertRaises(ReleaseContractError):
             self.observe()
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(self.path().read_bytes(), self.receipt)
 
     def test_native_complete_switch_requires_full_flow_before_io(self):
         with patch.object(installer.os, "open", side_effect=AssertionError("host IO")):
