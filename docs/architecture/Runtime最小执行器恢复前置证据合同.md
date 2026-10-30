@@ -1,8 +1,22 @@
 # Runtime 最小执行器恢复前置证据合同
 
-## 首次安装：固定bootstrap来源与材料保留入口（本地待审）
+## 首次安装：安装任务manager身份校验（本地待审）
 
-**INSTALL_BOOTSTRAP_MATERIAL_ENTRY_LOCAL / CI_PENDING / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
+**INSTALL_TASK_MANAGER_CONTEXT_LOCAL / CI_PENDING / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
+
+基于PR #3059合并dev `e85fb8298e07f9ef0cbbfa0e99848cd242af1a4d` 创建 `feat/runtime-install-manager-context-20261030`，继续G3安装监督的只读身份边界。在既有bootstrap增加准确retention-id固定unit名、系统Python/准确bootstrap的run与cleanup参数模型，以及有界systemctl show查询；两个内部角色尚未加入CLI，不提交unit、不开放安装apply，也不读取磁盘writers后执行停容器。
+
+先复核既有bootstrap固定路径/解释器调用前置；完整发布源码FD验真仍须由未来上层持有，本观察函数不重新验证kit/main。校验本次manager的InvocationID并与进程环境交叉核对，要求正确主进程/stop-post控制PID、实际/proc/self/cgroup与cmdline、当前目录、精确ExecStart/ExecStopPost单条命令、root用户/组、transient/oneshot/Restart=no/RemainAfterExit=yes和固定fragment；拒绝额外ExecCondition/启动或停止动作、drop-in、环境/根目录覆盖、自定义成功退出码、未知/重复/缺失属性、错误代次与≤30秒预算耗尽。只增加准确安装unit的show读权限，不扩大普通systemd调用或添加任意命令入口。
+
+结果仅managerContextObserved=true，installationComplete/canExecute仍false；它不是持久安装授权、冻结证明、磁盘原件收养许可或成功后跳过收尾的依据。原材料ID先于随机installationId存在；两者及原intent/writers的耐久摘要关联尚未接线，不能凭unit名反查“最新”记录。未来执行流程仍须持完整bootstrap来源上下文和原两锁，在具体边界新鲜复核manager，不能把一次只读结果长期复用。
+
+新增14项测试定义，模拟manager输出/进程元数据而不启动systemd，覆盖主进程/stop-post、准确命令和只读show白名单、每个固定属性、代次/PID/cgroup/实际argv/目录、额外或忽略失败命令、来源先拒绝、截止与有界proc读取；两个内部角色仍被公开CLI拒绝。新增源码/测试Python3.10 AST、符号表、重复测试/空白与读回静态审阅完成，MCP-workspace不运行lint/build/test，本批测试待CI，未提交/推送。
+
+已审阅owner/依赖图，基线无变化；无新helper/unit/持久schema/依赖/业务迁移或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。下一步仍须接安装专用提交/run/cleanup、准确原件与invocation绑定、快照双帧/离机通道和成功/失败交接判别；真实D4与生产未执行。完整VM/DB恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
+
+## 首次安装：固定bootstrap来源与材料保留入口（源码已合并）
+
+**INSTALL_BOOTSTRAP_MATERIAL_ENTRY_MERGED_DEV / SOURCE_CI_VERIFIED / INSTALL_ADAPTER_OPEN / NOT_INSTALLED。**
 
 基于PR #3058合并dev `8f0b6f11a8b61b0f83a4888764e15b2da5642998` 创建 `feat/runtime-install-bootstrap-binding-20261030`。在既有bootstrap增加有限`retain`材料入口，调用已有两锁/create-only材料保留；只保存验证后的kit/旧归档与原记录，不写Runtime、门禁或安装marker，不运行Docker/systemd/SQL，不开放安装apply或收养旧进度。
 
@@ -10,7 +24,7 @@
 
 这是独立审阅启动后的有限调用边界检查，不能使尚未受信的Python启动过程自证安全，不是暂停C1受保护loader/自建CPython证明，也不防恶意root或验证进程内存遭修改。启动前人工来源/权限审阅仍必要。失败只保留已落盘材料，不清理、重试或标安装成功；MATERIALS_RETAINED及所有原false权限字段保持，G3的安装transient/独立收尾/快照与离机通道仍OPEN，G1/G2/G4及20项真实验收未完成。
 
-新增15项测试定义，以真实临时文件、原OS锁和耐久读回覆盖成功材料保留、系统调用前置/五来源、每文件准确字节、main失败、目录库存/权限/链接/FIFO、持有期间文件/目录/anchor替换、晚变保留证据和公开CLI分发/拒绝apply。测试只模型化root身份、解释器flags/模块路径与固定anchor，夹具源码为惰性数据不执行；没有真实root安装、SSH或AWS。已完成Python3.10 AST/符号表、重复测试/空白及静态差异核对；MCP-workspace不运行lint/build/test，15项已提交[PR #3059](https://github.com/sanqin888/sanqinMVP/pull/3059)。初始head 7609b889 的[CI #7813](https://github.com/sanqin888/sanqinMVP/actions/runs/41068929792)默认Release运行1431项，发现1失败/1错误，不能记为通过：新增重放测试错误期待ReleaseContractError，实际create-only正确抛FileExistsError；新增CLI测试的GitHub模拟未接受token关键字。仅修测试为准确异常、重放零写/原件不变断言及接收token的模拟，生产实现不变；已推同PR重跑，最终结果待核。
+新增15项测试定义，以真实临时文件、原OS锁和耐久读回覆盖成功材料保留、系统调用前置/五来源、每文件准确字节、main失败、目录库存/权限/链接/FIFO、持有期间文件/目录/anchor替换、晚变保留证据和公开CLI分发/拒绝apply。测试只模型化root身份、解释器flags/模块路径与固定anchor，夹具源码为惰性数据不执行；没有真实root安装、SSH或AWS。已完成Python3.10 AST/符号表、重复测试/空白及静态差异核对；MCP-workspace不运行lint/build/test，15项已提交[PR #3059](https://github.com/sanqin888/sanqinMVP/pull/3059)。初始head 7609b889 的[CI #7813](https://github.com/sanqin888/sanqinMVP/actions/runs/41068929792)默认Release运行1431项，发现1失败/1错误，不能记为通过：新增重放测试错误期待ReleaseContractError，实际create-only正确抛FileExistsError；新增CLI测试的GitHub模拟未接受token关键字。仅修测试为准确异常、重放零写/原件不变断言及接收token的模拟，生产实现不变；已推同PR重跑，修复后最终head `40a12ecc413735bca57c8fde613a82ca9d5f6dee` 已经[CI #7814](https://github.com/sanqin888/sanqinMVP/actions/runs/41070377603)SUCCESS（4成功/6范围跳过；两条Release各1431、Runtime1080、既有C1回归412），由[PR #3059](https://github.com/sanqin888/sanqinMVP/pull/3059)合并dev `e85fb8298e07f9ef0cbbfa0e99848cd242af1a4d`。
 
 owner/依赖图已审阅，基线无变化；无新helper/unit/持久schema/依赖/业务迁移或第二应用state，17+Manifest/250/300、九helper/三永久模板及三组暂停研究保持。下一步在同一G3范围接安装监督、原ID独立失败收尾和快照通道，不能把材料入口当安装完成。完整VM/数据库恢复实演继续交付后；更新前手动快照/内容核验、恢复材料及离机确认保留，生产未部署，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
 
