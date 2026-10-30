@@ -118,8 +118,9 @@ class InstallationSubmissionTests(unittest.TestCase):
         def disposable(args, **options):
             self.assertEqual(args, installer._installation_task_submit_args(self.source, self.materials.identity))
             # Exercise real FD inheritance through Popen, not the systemd manager or installer.
-            program = ("import os; os.write(1,b'fixture-request'+bytes([10])); "
-                       "raise SystemExit(0 if os.read(0,4096)==b'fixture-reply'+bytes([10]) else 1)")
+            program = ("import os,select; os.write(1,b'fixture-request'+bytes([10])); "
+                       "ready=select.select([0],[],[],5)[0]; "
+                       "raise SystemExit(0 if ready and os.read(0,4096)==b'fixture-reply'+bytes([10]) else 1)")
             return real_popen([sys.executable, "-I", "-S", "-B", "-c", program], **options)
         result, opened = self.submit(launch=disposable)
         worker.join(timeout=6)
