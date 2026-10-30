@@ -2602,14 +2602,15 @@ def _installation_namespace(parent, *, create=False, owned_identity=None, owned_
             if owned_identity is None:
                 _installation_runs_clear(fd)
             else:
-                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery", SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE, INSTALL_COMPLETION_FILE},
+                _need(owned_records is None or set(owned_records) <= {"writers.json", "recovery", SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE, INSTALL_COMPLETION_FILE, INSTALL_TASK_ORIGINALS_FILE},
                       "unreviewed owned installation records")
                 recovery = (owned_records or {}).get("recovery")
                 _need(recovery is None or set(recovery[0]) == RECOVERY_FILES, "incomplete owned recovery pair")
                 _installation_owned_run(fd, owned_identity, saved_writers=(owned_records or {}).get("writers.json"),
                                         recovery=recovery, snapshot_review=(owned_records or {}).get(SNAPSHOT_REVIEW_FILE),
                                         snapshot_offhost=(owned_records or {}).get(SNAPSHOT_OFFHOST_FILE),
-                                        completion=(owned_records or {}).get(INSTALL_COMPLETION_FILE))
+                                        completion=(owned_records or {}).get(INSTALL_COMPLETION_FILE),
+                                        task_handoff=(owned_records or {}).get(INSTALL_TASK_ORIGINALS_FILE))
             after = os.fstat(fd)
             path = os.stat(INSTALLATION_RUNS, dir_fd=parent, follow_symlinks=False)
             _private_info(after, directory=True)
@@ -2650,11 +2651,18 @@ def _inspect_installation_runs(*, create=False):
 
 
 
-def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None, snapshot_review=None, snapshot_offhost=None, completion=None):
+def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery=None, snapshot_review=None, snapshot_offhost=None, completion=None, task_handoff=None):
     _need(saved_writers is None or type(saved_writers) is bytes, "invalid owned writer record proof")
     _need(set(os.listdir(namespace)) == {identity}, "installation transaction inventory changed")
     with _private_directory(namespace, identity) as root:
         expected = {"intent.json"} | ({"writers.json"} if saved_writers is not None else set())
+        _need(task_handoff is None or saved_writers is not None and type(task_handoff) is tuple
+              and len(task_handoff) == 3 and type(task_handoff[0]) is dict
+              and type(task_handoff[1]) is bytes and type(task_handoff[2]) is tuple
+              and len(task_handoff[2]) == 9 and all(type(v) is int for v in task_handoff[2]),
+              "invalid owned task handoff proof")
+        if task_handoff is not None:
+            expected.add(INSTALL_TASK_ORIGINALS_FILE)
         _need(recovery is None or saved_writers is not None and type(recovery) is tuple and len(recovery) == 2,
               "invalid owned recovery proof")
         if recovery is not None:
@@ -2677,6 +2685,11 @@ def _installation_owned_run(namespace, identity, *, saved_writers=None, recovery
             actual = _installation_record_read(root, "writers.json", identity)
             _need(actual == saved_writers, "owned saved writer bytes changed")
             _installation_writers_match(intent, actual, identity)
+        if task_handoff is not None:
+            context, raw, fingerprint = task_handoff
+            observed, actual_fingerprint = _installation_task_handoff_read(root, context, intent, saved_writers, identity)
+            _need(observed == raw and actual_fingerprint == fingerprint,
+                  "original owned task handoff bytes or identity changed")
         if recovery is not None:
             files, directory_identity = recovery
             _need(type(files) is dict and set(files) <= RECOVERY_FILES
@@ -2785,7 +2798,8 @@ def _write_installation_intent_locked(folders, retention_id, observation, *, rec
                                                        recovery=owned_records.get("recovery"),
                                                        snapshot_review=owned_records.get(SNAPSHOT_REVIEW_FILE),
                                                        snapshot_offhost=owned_records.get(SNAPSHOT_OFFHOST_FILE),
-                                                       completion=owned_records.get(INSTALL_COMPLETION_FILE)) == raw
+                                                       completion=owned_records.get(INSTALL_COMPLETION_FILE),
+                                                       task_handoff=owned_records.get(INSTALL_TASK_ORIGINALS_FILE)) == raw
                               and (not os.listdir(folders["maintenance"]) if marker_cleared else
                                    set(os.listdir(folders["maintenance"])) == {"active.json"}
                                    and _installation_record_read(folders["maintenance"], "active.json", identity) == marker
@@ -6814,6 +6828,28 @@ def _installation_task_handoff_write(root, context, intent, writers, identity):
                 "installationComplete": False, "canExecute": False, "restoreProven": False}
     finally:
         os.close(fd)  # Preserve every partial/unknown record; no unlink, retry or truncation.
+
+
+def _persist_owned_installation_task_handoff(root, context, intent, writers, identity,
+                                            owned_records, *, check_owned):
+    """Owned-flow primitive; caller supplies original locks and fresh source/manager checks."""
+    _need(type(owned_records) is dict and callable(check_owned)
+          and owned_records.get("writers.json") == writers
+          and INSTALL_TASK_ORIGINALS_FILE not in owned_records,
+          "task handoff requires the original owned writers and no previous association")
+    _installation_task_originals_bytes(context, intent, writers, identity)
+    check_owned()
+    _need(_installation_record_read(root, "intent.json", identity) == intent
+          and _installation_record_read(root, "writers.json", identity) == writers,
+          "task handoff lost original durable records")
+    result = _installation_task_handoff_write(root, context, intent, writers, identity)
+    raw, fingerprint = _installation_task_handoff_read(root, context, intent, writers, identity)
+    _need(result["recordSha256"] == _hash(raw) and result["recordFingerprint"] == fingerprint,
+          "owned task handoff write and read identities differ")
+    owned_records[INSTALL_TASK_ORIGINALS_FILE] = (dict(context), raw, fingerprint)
+    check_owned()
+    return {"taskOriginalsSha256": _hash(raw), "installationComplete": False,
+            "canExecute": False, "restoreProven": False}
 
 
 def main(argv=None):
