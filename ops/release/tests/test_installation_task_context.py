@@ -32,7 +32,7 @@ class InstallationTaskContextTests(unittest.TestCase):
             ActiveState="activating", SubState="start", MainPID="4321", ControlPID="0",
             ControlGroup="/system.slice/" + self.unit, InvocationID=INVOCATION,
             FragmentPath="/run/systemd/transient/" + self.unit, WorkingDirectory=str(self.root),
-            User="root", Group="root",
+            User="root", Group="root", Result="success", ExecMainCode="0", ExecMainStatus="0",
             ExecStart=self.exec_value("run"), ExecStopPost=self.exec_value("cleanup"))
         self.command = self.stack.enter_context(patch.object(installer, "_bounded_host_client",
             side_effect=lambda args, **kwargs: self.output()))
@@ -49,6 +49,13 @@ class InstallationTaskContextTests(unittest.TestCase):
     def output(self):
         return "\n".join(key + "=" + value for key, value in self.props.items()) + "\n"
 
+    def stop_post(self):
+        self.role = "cleanup"
+        self.props.update(ActiveState="deactivating", SubState="stop-post", MainPID="0", ControlPID="4321",
+                          Result="success", ExecMainCode=str(os.CLD_EXITED), ExecMainStatus="0")
+        self.stack.enter_context(patch.dict(os.environ,
+            {"SERVICE_RESULT": "success", "EXIT_CODE": "exited", "EXIT_STATUS": "0"}))
+
     def context(self, role=None):
         return installer._installation_task_context(SHA, RETENTION, role or self.role,
                                                     deadline=time.monotonic() + 20)
@@ -62,8 +69,7 @@ class InstallationTaskContextTests(unittest.TestCase):
         self.assertIs(main["installationComplete"], False)
         self.origin.assert_called_with(SHA)
         self.assertEqual(self.command.call_args.args[0], installer._installation_task_show_args(RETENTION))
-        self.role = "cleanup"
-        self.props.update(ActiveState="deactivating", SubState="stop-post", MainPID="0", ControlPID="4321")
+        self.stop_post()
         self.assertEqual(self.context()["role"], "cleanup")
 
     def test_fixed_argv_binds_both_source_and_retention_without_shell(self):
@@ -128,8 +134,7 @@ class InstallationTaskContextTests(unittest.TestCase):
         self.assertTrue(self.context()["managerContextObserved"])
 
     def test_cleanup_requires_this_control_pid_and_stop_post_state(self):
-        self.role = "cleanup"
-        self.props.update(ActiveState="deactivating", SubState="stop-post", MainPID="0", ControlPID="4321")
+        self.stop_post()
         original = self.props.copy()
         for changes in ({"MainPID": "4321"}, {"ControlPID": "0"},
                         {"ControlPID": "99"}, {"SubState": "stop"}, {"ActiveState": "failed"}):
@@ -199,11 +204,11 @@ class InstallationTaskContextTests(unittest.TestCase):
              self.assertRaises(ReleaseContractError):
             original_reader("cgroup")
 
-    def test_internal_roles_still_not_public_install_commands(self):
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
-            installer.main(["installation-run", "--source-sha", SHA, "--retention-id", RETENTION])
-        self.assertEqual(raised.exception.code, 2)
+    def test_internal_roles_require_reviewed_bootstrap_before_manager_or_host_io(self):
+        self.origin.side_effect = ReleaseContractError("untrusted bootstrap")
+        self.assertEqual(installer.main(["installation-run", "--source-sha", SHA, "--retention-id", RETENTION]), 1)
         self.command.assert_not_called()
+        self.process.assert_not_called()
 
     _actual_reader = staticmethod(installer._installation_task_process_file)
 

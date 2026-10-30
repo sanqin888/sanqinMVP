@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Delivery, bound material retention and owned stages. No public host-apply CLI.
+"""Delivery, bound retention and manager-bound internal installation roles. No general host-apply CLI.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -722,7 +722,7 @@ def _installed_runtime_snapshot(old, old_sha):
 
 
 def _observe_installed_runtime(identity, *, fetch=release.github_json, include_configuration=False, include_docker=False, include_systemd=False,
-                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False, _complete_installation=False, _task_source_sha=None):
+                               include_filesystem=False, include_prerequisites=False, include_application_binding=False, include_migrations=False, include_effective_configuration=False, include_external_backup=False, _record_intent=False, _load_deny_gates=False, _save_writers=False, _freeze_writers=False, _retain_recovery=False, _snapshot_channel=None, _snapshot_target=None, _retain_snapshot_review=False, _confirm_offhost_index=False, _write_tools=False, _handover_gates=False, _verify_gate_api=False, _verify_application=False, _restore_policies=False, _complete_installation=False, _task_source_sha=None, _task_application_progress=None):
     """Private staged observer; writes require complete fresh observations, never a CLI permit."""
     _need(all(type(flag) is bool for flag in (include_configuration, include_docker, include_systemd,
                                              include_filesystem, include_prerequisites, include_application_binding, include_migrations, include_effective_configuration, include_external_backup, _record_intent, _load_deny_gates, _save_writers, _freeze_writers, _retain_recovery, _retain_snapshot_review, _confirm_offhost_index, _write_tools, _handover_gates, _verify_gate_api, _verify_application, _restore_policies, _complete_installation))
@@ -753,6 +753,9 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     _need(_task_source_sha is None or _save_writers and type(_task_source_sha) is str
           and release.require_sha(_task_source_sha) == _task_source_sha,
           "supervised task binding requires the full saved writer observation")
+    _need(_task_application_progress is None or _complete_installation and _task_source_sha is not None
+          and type(_task_application_progress) is dict and not _task_application_progress,
+          "task ownership requires a new empty progress object for this supervised complete flow")
     target = _installation_snapshot_target(_snapshot_target) if _snapshot_target is not None else None
     channel_identity = (_installation_snapshot_fds(*_snapshot_channel) if _snapshot_channel is not None else None)
     deadline = time.monotonic() + 300
@@ -760,7 +763,7 @@ def _observe_installed_runtime(identity, *, fetch=release.github_json, include_c
     storage_original = None
     tool_progress = None
     gate_handover = None
-    application_progress = {}
+    application_progress = _task_application_progress if _task_application_progress is not None else {}
     def snapshot(*, temporary_files=None):
         nonlocal storage_original
         runtime = _installed_runtime_snapshot(old, value["currentArchiveSourceSha"])
@@ -6519,7 +6522,7 @@ def _clear_owned_installation_marker(root, intent, identity, *, check_context, m
         os.close(fd)
 
 
-def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=release.github_json, task_source_sha=None):
+def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=release.github_json, task_source_sha=None, task_application_progress=None):
     """Fresh owned complete flow; neither disk receipts nor old progress authorize replay."""
     return _observe_installed_runtime(retention_id, fetch=fetch, include_configuration=True,
         include_docker=True, include_systemd=True, include_filesystem=True, include_prerequisites=True,
@@ -6528,10 +6531,11 @@ def _complete_installation(retention_id, target, *, input_fd, output_fd, fetch=r
         _freeze_writers=True, _retain_recovery=True, _snapshot_target=target,
         _snapshot_channel=(input_fd, output_fd), _retain_snapshot_review=True, _confirm_offhost_index=True,
         _write_tools=True, _handover_gates=True, _verify_gate_api=True, _verify_application=True,
-        _restore_policies=True, _complete_installation=True, _task_source_sha=task_source_sha)
+        _restore_policies=True, _complete_installation=True, _task_source_sha=task_source_sha,
+        _task_application_progress=task_application_progress)
 
 
-# First-install material entry only. This is not the paused protected-loader work:
+# First-install bootstrap boundary. This is not the paused protected-loader work:
 # an authorized operator must review/provision these five files BEFORE Python starts.
 BOOTSTRAP_IMPORTS = (
     BOOTSTRAP, "ops/release/release_contract.py", "ops/runtime/build_bundle.py",
@@ -6654,8 +6658,8 @@ def _retain_from_bound_bootstrap(payload, source_sha, current_runtime, current_s
     return result
 
 
-# Read-only manager binding for the pending first-install task dispatcher.
-# These facts alone do not authorize mutation; run/cleanup remain private roles.
+# Manager binding for fixed first-install internal task roles.
+# These facts alone do not authorize mutation; unit submission remains a separate boundary.
 INSTALL_TASK_PREFIX = "sanq-runtime-install-"
 INSTALL_TASK_KEYS = (
     "LoadState", "Transient", "Type", "Restart", "RemainAfterExit", "KillMode",
@@ -6663,7 +6667,7 @@ INSTALL_TASK_KEYS = (
     "ExecStart", "ExecStopPost", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecCondition",
     "NeedDaemonReload", "DropInPaths", "FragmentPath", "WorkingDirectory", "User", "Group",
     "Environment", "EnvironmentFiles", "PassEnvironment", "UnsetEnvironment",
-    "RootDirectory", "RootImage", "SuccessExitStatus",
+    "RootDirectory", "RootImage", "SuccessExitStatus", "Result", "ExecMainCode", "ExecMainStatus",
 )
 
 
@@ -6710,6 +6714,31 @@ def _installation_task_process_file(name):
         raw = source.read(65537)
     _need(0 < len(raw) <= 65536, "task process observation exceeds budget")
     return raw
+
+
+def _installation_task_exit_environment():
+    return tuple(os.environ.get(name) for name in ("SERVICE_RESULT", "EXIT_CODE", "EXIT_STATUS"))
+
+
+def _installation_task_exit_matches(fields, role):
+    """Corroborate process environment with the manager's actual main-process exit fields."""
+    if role == "run":
+        _need(fields["Result"] == "success" and fields["ExecMainCode"] == "0"
+              and fields["ExecMainStatus"] == "0", "installation main already has an exit result")
+        return
+    result, code, status = _installation_task_exit_environment()
+    _need(result in ("success", "protocol", "timeout", "exit-code", "signal", "core-dump", "watchdog",
+                     "exec-condition", "oom-kill", "start-limit-hit", "resources")
+          and fields["Result"] == result, "installation result environment differs from manager")
+    if code == "exited":
+        _need(type(status) is str and re.fullmatch(r"0|[1-9][0-9]{0,2}", status) is not None
+              and int(status) <= 255 and fields["ExecMainCode"] == str(os.CLD_EXITED)
+              and fields["ExecMainStatus"] == status, "installation exit code differs from manager")
+    else:
+        signals = {item.name.removeprefix("SIG"): str(item.value) for item in signal.Signals}
+        _need(code in ("killed", "dumped") and type(status) is str and status in signals
+              and fields["ExecMainCode"] == str(os.CLD_KILLED if code == "killed" else os.CLD_DUMPED)
+              and fields["ExecMainStatus"] == signals[status], "installation exit signal differs from manager")
 
 
 def _installation_task_context(source_sha, retention_id, role, *, deadline):
@@ -6764,6 +6793,7 @@ def _installation_task_context(source_sha, retention_id, role, *, deadline):
     _need(_installation_task_process_file("cgroup") == ("0::/system.slice/" + unit + "\n").encode("ascii")
           and _installation_task_process_file("cmdline") == b"\0".join(v.encode("ascii") for v in argv) + b"\0",
           "installation process cgroup or actual argv differs")
+    _installation_task_exit_matches(fields, role)
     _need(time.monotonic() < deadline, "installation manager observation expired")
     return {"sourceSha": source_sha, "retentionId": retention_id, "unit": unit, "invocationId": invocation, "role": role,
             "managerContextObserved": True, "installationComplete": False, "canExecute": False}
@@ -6914,7 +6944,7 @@ def _save_supervised_installation_writers(retention_id, source_sha, *, fetch=rel
 
 def _failed_installation_task_status():
     """Stop-post classification only; neither clean exit nor unknown status is authority."""
-    result, code, status = (os.environ.get(name) for name in ("SERVICE_RESULT", "EXIT_CODE", "EXIT_STATUS"))
+    result, code, status = _installation_task_exit_environment()
     numeric = (type(status) is str and re.fullmatch(r"0|[1-9][0-9]{0,2}", status) is not None
                and int(status) <= 255)
     named = type(status) is str and status in {item.name.removeprefix("SIG") for item in signal.Signals}
@@ -6951,11 +6981,12 @@ def _existing_installation_task_namespace(parent):
         os.close(fd)
 
 
-def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release.github_json):
-    """Private failed stop-post only. No public dispatch, success adoption, retry or recovery."""
+@contextlib.contextmanager
+def _installation_cleanup_originals(retention_id, source_sha, *, fetch=release.github_json):
+    """Hold exact same-generation originals for either cleanup branch; no mutation or disk success grant."""
     source = _bootstrap_invocation(release.require_sha(source_sha))
     retained_id = _installation_task_id(retention_id)
-    status = _failed_installation_task_status()
+    status = _installation_task_exit_environment()
     with _private_session() as folders:
         _material_jobs_idle(folders)
         anchor = _state_parent()
@@ -7000,7 +7031,7 @@ def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release
                                        for name in inventory}
                             intent = _installation_record_read(root, "intent.json", identity)
                             writers = _installation_record_read(root, "writers.json", identity)
-                            value = _installation_writers_match(intent, writers, identity)
+                            _installation_writers_match(intent, writers, identity)
                             association = _installation_task_handoff_read(root, run_context, intent, writers, identity)
                             maintenance = names(folders["maintenance"], 1)
                             _need(maintenance <= {"active.json"}, "foreign maintenance inventory blocks containment")
@@ -7021,7 +7052,7 @@ def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release
                             def check():
                                 _need(time.monotonic() < deadline, "failed task containment deadline expired")
                                 source_check()
-                                _need(_failed_installation_task_status() == status
+                                _need(_installation_task_exit_environment() == status
                                       and _installation_task_context(source, retained_id, "cleanup",
                                           deadline=min(deadline, time.monotonic() + 30)) == context,
                                       "failed task manager generation or status changed")
@@ -7056,40 +7087,178 @@ def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release
                                 source_check()
                                 _need(time.monotonic() < deadline, "failed task recheck deadline expired")
                             check()
-                            command_unknown = False
-                            for action, roles in (("disable-restart", INSTALL_WRITER_ROLES),
-                                                  ("stop", tuple(reversed(INSTALL_WRITER_ROLES)))):
-                                for role in roles:
-                                    check()
-                                    try:
-                                        _installation_writer_command(intent, writers, identity, role, action, deadline=deadline)
-                                    except BaseException:
-                                        command_unknown = True  # Continue the other exact IDs once; never replay this action.
-                                    check()
-                            for role in INSTALL_WRITER_ROLES:
-                                check()
-                                actual = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}",
-                                    value["containers"][role]["containerId"]),
-                                    lambda args: _docker_command(args, deadline=deadline))
-                                _need(type(actual) is dict and actual.get("Id") == value["containers"][role]["containerId"]
-                                      and type(actual.get("HostConfig")) is dict
-                                      and _json(actual["HostConfig"].get("RestartPolicy")) == _json({"Name": "no", "MaximumRetryCount": 0})
-                                      and type(actual.get("State")) is dict
-                                      and actual["State"].get("Running") is False and actual["State"].get("Status") == "exited"
-                                      and actual["State"].get("Restarting") is False and actual["State"].get("Paused") is False
-                                      and actual["State"].get("Dead") is False,
-                                      "FENCE_UNCONFIRMED: original writer is not observed stopped with restart inhibited")
+                            yield {"intent": intent, "writers": writers, "identity": identity,
+                                   "context": context, "root": root, "namespace": namespace,
+                                   "association": association, "inventory": inventory,
+                                   "maintenance": maintenance, "check": check, "deadline": deadline}
                             check()
-                            _need(not command_unknown, "FENCE_UNCONFIRMED: failed task command outcome requires review")
-                            result = {"outcome": "FAILED_INSTALLATION_ORIGINAL_WRITERS_STOPPED",
-                                "installationId": identity, "invocationId": context["invocationId"],
-                                "originalWritersStoppedObserved": True, "restartInhibitedObserved": True,
-                                "requiresOperatorReview": True, "installationComplete": False,
-                                "canExecute": False, "restoreProven": False}
                     source_check()
-                return result
         finally:
             os.close(anchor)
+
+
+def _contain_failed_installation_task(retention_id, source_sha, *, fetch=release.github_json):
+    """Failed stop-post only. Each original-ID action is attempted once, never resumed."""
+    _failed_installation_task_status()
+    with _installation_cleanup_originals(retention_id, source_sha, fetch=fetch) as original:
+        intent, writers, identity = original["intent"], original["writers"], original["identity"]
+        context, check, deadline = original["context"], original["check"], original["deadline"]
+        value = _installation_writers_match(intent, writers, identity)
+        command_unknown = False
+        for action, roles in (("disable-restart", INSTALL_WRITER_ROLES),
+                              ("stop", tuple(reversed(INSTALL_WRITER_ROLES)))):
+            for role in roles:
+                check()
+                try:
+                    _installation_writer_command(intent, writers, identity, role, action, deadline=deadline)
+                except BaseException:
+                    command_unknown = True  # Continue the other exact IDs once; never replay this action.
+                check()
+        for role in INSTALL_WRITER_ROLES:
+            check()
+            actual = _docker_json((*DOCKER, "inspect", "--type", "container", "--format", "{{json .}}",
+                value["containers"][role]["containerId"]),
+                lambda args: _docker_command(args, deadline=deadline))
+            _need(type(actual) is dict and actual.get("Id") == value["containers"][role]["containerId"]
+                  and type(actual.get("HostConfig")) is dict
+                  and _json(actual["HostConfig"].get("RestartPolicy")) == _json({"Name": "no", "MaximumRetryCount": 0})
+                  and type(actual.get("State")) is dict
+                  and actual["State"].get("Running") is False and actual["State"].get("Status") == "exited"
+                  and actual["State"].get("Restarting") is False and actual["State"].get("Paused") is False
+                  and actual["State"].get("Dead") is False,
+                  "FENCE_UNCONFIRMED: original writer is not observed stopped with restart inhibited")
+        check()
+        _need(not command_unknown, "FENCE_UNCONFIRMED: failed task command outcome requires review")
+        result = {"outcome": "FAILED_INSTALLATION_ORIGINAL_WRITERS_STOPPED",
+            "installationId": identity, "invocationId": context["invocationId"],
+            "originalWritersStoppedObserved": True, "restartInhibitedObserved": True,
+            "requiresOperatorReview": True, "installationComplete": False,
+            "canExecute": False, "restoreProven": False}
+    return result
+
+
+def _installation_task_cleanup(retention_id, source_sha, *, fetch=release.github_json):
+    """Classify this exact stop-post; clean exit requires full original audit consistency."""
+    if _installation_task_exit_environment() != ("success", "exited", "0"):
+        return _contain_failed_installation_task(retention_id, source_sha, fetch=fetch)
+    with _installation_cleanup_originals(retention_id, source_sha, fetch=fetch) as original:
+        check, root = original["check"], original["root"]
+        identity, intent, writers = original["identity"], original["intent"], original["writers"]
+        check()
+        expected = {"intent.json", "writers.json", INSTALL_TASK_ORIGINALS_FILE, "recovery",
+                    SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE, INSTALL_COMPLETION_FILE}
+        _need(original["inventory"] == expected and not original["maintenance"],
+              "clean task exit lacks complete audit inventory or marker absence")
+        with _installation_recovery_directory(root) as recovery:
+            _need(set(os.listdir(recovery)) == RECOVERY_FILES, "clean task recovery inventory differs")
+            files = {name: _installation_recovery_read(recovery, name) for name in RECOVERY_FILES}
+            recovery_identity = _directory_identity(os.fstat(recovery))
+        review = _snapshot_review_read(root)
+        offhost = _snapshot_offhost_record_read(root)
+        completion = _installation_record_read(root, INSTALL_COMPLETION_FILE, identity)
+        context = {**original["context"], "role": "run"}
+        check()
+        _need(_installation_owned_run(original["namespace"], identity, saved_writers=writers,
+              recovery=(files, recovery_identity), snapshot_review=review, snapshot_offhost=offhost,
+              completion=completion, task_handoff=(context, *original["association"])) == intent,
+              "clean task exit original audit binding changed")
+        check()
+        result = {"outcome": "CLEAN_INSTALLATION_TASK_EXIT_OBSERVED",
+            "installationId": identity, "invocationId": context["invocationId"],
+            "cleanTaskExitObserved": True, "installationComplete": False,
+            "canExecute": False, "restoreProven": False}
+    return result
+
+
+def _installation_task_entry(role, retention_id, source_sha, *, input_fd=0, output_fd=1,
+                             fetch=release.github_json):
+    """Finite role adapter: zero exit requires the complete selected branch and final source checks."""
+    progress = {}
+    return_locks = {}
+    try:
+        _need(role in ("run", "cleanup"), "unknown installation task role")
+        source = _bootstrap_invocation(release.require_sha(source_sha))
+        retained = _installation_task_id(retention_id)
+        context = _installation_task_context(source, retained, role, deadline=time.monotonic() + 30)
+        _need(type(context) is dict and context.get("role") == role
+              and context.get("sourceSha") == source and context.get("retentionId") == retained
+              and context.get("managerContextObserved") is True
+              and context.get("canExecute") is False and context.get("installationComplete") is False,
+              "installation task context unavailable")
+        with contextlib.ExitStack() as sources:
+            # Keep source FDs across protocol/return handling, but release this read lock scope
+            # before the complete owned flow or cleanup reacquires the same two original locks.
+            with _private_session() as folders, _private_directory(folders["installations"], retained) as materials:
+                (_idle_for_materials if role == "run" else _material_jobs_idle)(folders)
+                return_locks = {name: (_directory_identity(os.fstat(folders[name])),
+                    _installed_fingerprint(os.stat(filename, dir_fd=folders[name], follow_symlinks=False)))
+                    for name, filename in (("jobs", ".release.lock"), ("plans", ".prepare.lock"))}
+                kit, _, record = _retained_contents(materials, retained)
+                _need(record["sourceSha"] == source, "task source differs from retained material")
+                source_check = sources.enter_context(_bound_bootstrap_sources(kit, source, fetch=fetch))
+                _need(callable(source_check), "task source context unavailable")
+            def same_task():
+                source_check()
+                _need(_installation_task_context(source, retained, role,
+                      deadline=time.monotonic() + 30) == context, "installation task manager changed")
+            same_task()
+            if role == "cleanup":
+                result = _installation_task_cleanup(retained, source, fetch=fetch)
+                _need(type(result) is dict and result.get("outcome") in (
+                          "CLEAN_INSTALLATION_TASK_EXIT_OBSERVED", "FAILED_INSTALLATION_ORIGINAL_WRITERS_STOPPED")
+                      and result.get("installationComplete") is False and result.get("canExecute") is False
+                      and result.get("restoreProven") is False
+                      and result.get("invocationId") == context["invocationId"]
+                      and type(result.get("installationId")) is str
+                      and re.fullmatch(r"[a-f0-9]{64}", result["installationId"]) is not None
+                      and (result["outcome"] == "CLEAN_INSTALLATION_TASK_EXIT_OBSERVED"
+                           and result.get("cleanTaskExitObserved") is True
+                           or result["outcome"] == "FAILED_INSTALLATION_ORIGINAL_WRITERS_STOPPED"
+                           and result.get("originalWritersStoppedObserved") is True
+                           and result.get("restartInhibitedObserved") is True),
+                      "installation cleanup returned unknown evidence")
+                same_task()
+                return 0
+            channel = _installation_snapshot_fds(input_fd, output_fd)
+            def check_channel():
+                same_task()
+                _need(_installation_snapshot_fds(input_fd, output_fd) == channel,
+                      "installation target channel changed")
+            request = {"schemaVersion": 1, "kind": "sanq-minimal-install-target-request",
+                "sourceSha": source, "retentionId": retained, "maxWaitSeconds": 30,
+                "installationComplete": False, "canExecute": False}
+            check_channel()
+            raw = _installation_snapshot_exchange(request, input_fd, output_fd,
+                deadline=time.monotonic() + 30, _request_sent=check_channel)
+            check_channel()
+            _installation_snapshot_target(raw)
+            result = _complete_installation(retained, raw, input_fd=input_fd, output_fd=output_fd,
+                fetch=fetch, task_source_sha=source, task_application_progress=progress)
+            _need(type(result) is dict and result.get("outcome") == "INSTALLATION_COMPLETE"
+                  and result.get("sourceSha") == source and result.get("retentionId") == retained
+                  and result.get("installationComplete") is True and result.get("canExecute") is False
+                  and type(result.get("installationIntent")) is dict
+                  and result["installationIntent"].get("maintenanceMarkerCleared") is True,
+                  "installation main did not complete this exact flow")
+            check_channel()
+            return 0
+    except BaseException:
+        # Late errors still own the captured original IDs in memory. Reacquire the
+        # original locks before best-effort containment; no disk receipt is adopted.
+        if progress.get("attempted") and not progress.get("containmentAttempted"):
+            try:
+                with _private_session() as folders:
+                    for name, filename in (("jobs", ".release.lock"), ("plans", ".prepare.lock")):
+                        _need(return_locks.get(name) == (_directory_identity(os.fstat(folders[name])),
+                              _installed_fingerprint(os.stat(filename, dir_fd=folders[name], follow_symlinks=False))),
+                              "task return lost original lock scope")
+                    _material_jobs_idle(folders)
+                    with _installation_application_ownership(progress):
+                        raise
+            except BaseException:
+                pass
+        # Includes SystemExit(0) and lost IO. No error-path pipe write can stall stop-post.
+        return 1
 
 
 def main(argv=None):
@@ -7104,9 +7273,16 @@ def main(argv=None):
         if name in ("plan", "retain"):
             sub.add_argument("--current-runtime-archive", type=Path, required=True)
             sub.add_argument("--current-source-sha", required=True)
+    for role in ("run", "cleanup"):
+        sub = commands.add_parser("installation-" + role, allow_abbrev=False)
+        sub.add_argument("--source-sha", required=True)
+        sub.add_argument("--retention-id", required=True)
     args = parser.parse_args(argv)
     fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
     try:
+        if args.command in ("installation-run", "installation-cleanup"):
+            return _installation_task_entry(args.command.removeprefix("installation-"),
+                args.retention_id, args.source_sha, fetch=fetch)
         if args.command == "pack":
             _need(os.geteuid() != 0, "D1 pack output requires an unprivileged operator")
             payload = build_materials(_read_artifact(args.runtime_archive, bundle.MAX_ARCHIVE_BYTES),
