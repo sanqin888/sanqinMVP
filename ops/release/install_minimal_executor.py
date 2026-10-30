@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Delivery, bound retention and manager-bound internal installation roles. No general host-apply CLI.
+"""Delivery, bound retention and fixed supervised installation task submission. No general host-apply CLI.
 
 Run from an independently reviewed bootstrap checkout. Never import or execute
 Python from the kit. A transport manifest is not a release or root authority.
@@ -6668,6 +6668,8 @@ INSTALL_TASK_KEYS = (
     "NeedDaemonReload", "DropInPaths", "FragmentPath", "WorkingDirectory", "User", "Group",
     "Environment", "EnvironmentFiles", "PassEnvironment", "UnsetEnvironment",
     "RootDirectory", "RootImage", "SuccessExitStatus", "Result", "ExecMainCode", "ExecMainStatus",
+    "TimeoutStartUSec", "TimeoutStopUSec", "TimeoutStartFailureMode", "TimeoutStopFailureMode",
+    "SendSIGKILL", "CollectMode", "Delegate",
 )
 
 
@@ -6761,7 +6763,10 @@ def _installation_task_context(source_sha, retention_id, role, *, deadline):
     _need(set(fields) == set(INSTALL_TASK_KEYS), "incomplete installation manager properties")
     expected = {
         "LoadState": "loaded", "Transient": "yes", "Type": "oneshot", "Restart": "no",
-        "RemainAfterExit": "yes", "KillMode": "control-group", "NeedDaemonReload": "no",
+        "RemainAfterExit": "no", "KillMode": "control-group", "NeedDaemonReload": "no",
+        "TimeoutStartUSec": "2h", "TimeoutStopUSec": "15min",
+        "TimeoutStartFailureMode": "terminate", "TimeoutStopFailureMode": "terminate",
+        "SendSIGKILL": "yes", "CollectMode": "inactive", "Delegate": "no",
         "FragmentPath": "/run/systemd/transient/" + unit,
         "WorkingDirectory": "/opt/sanq/install-bootstrap/" + source_sha,
         "User": "root", "Group": "root", "ControlGroup": "/system.slice/" + unit,
@@ -7261,6 +7266,98 @@ def _installation_task_entry(role, retention_id, source_sha, *, input_fd=0, outp
         return 1
 
 
+INSTALL_TASK_START_SECONDS = 7200
+INSTALL_TASK_STOP_SECONDS = 900
+INSTALL_TASK_CLIENT_SECONDS = 10000
+
+
+def _installation_task_submit_args(source_sha, retention_id):
+    source = release.require_sha(source_sha)
+    retained = _installation_task_id(retention_id)
+    cleanup = " ".join(_installation_task_argv(source, retained, "cleanup"))
+    return ["/usr/bin/systemd-run", "--system", "--quiet", "--no-ask-password", "--pipe", "--wait",
+        "--unit=" + INSTALL_TASK_PREFIX + retained + ".service", "--service-type=oneshot",
+        "--uid=root", "--gid=root", "--working-directory=/opt/sanq/install-bootstrap/" + source,
+        "--property=Restart=no", "--property=RemainAfterExit=no", "--property=KillMode=control-group",
+        "--property=Delegate=no", "--property=CollectMode=inactive", "--property=SendSIGKILL=yes",
+        "--property=TimeoutStartSec=" + str(INSTALL_TASK_START_SECONDS),
+        "--property=TimeoutStopSec=" + str(INSTALL_TASK_STOP_SECONDS),
+        "--property=TimeoutStartFailureMode=terminate", "--property=TimeoutStopFailureMode=terminate",
+        "--property=ExecStopPost=" + cleanup, "--", *_installation_task_argv(source, retained, "run")]
+
+
+def _installation_task_submit(retention_id, source_sha, *, input_fd=0, output_fd=1,
+                              fetch=release.github_json):
+    """Submit once with borrowed live IO; unknown results never authorize retry or host cleanup."""
+    process = None
+    try:
+        source = _bootstrap_invocation(release.require_sha(source_sha))
+        retained = _installation_task_id(retention_id)
+        args = _installation_task_submit_args(source, retained)
+        channel = _installation_snapshot_fds(input_fd, output_fd)
+        with contextlib.ExitStack() as sources:
+            with _private_session() as folders, _private_directory(folders["installations"], retained) as materials:
+                _idle_for_materials(folders)
+                kit, _, record = _retained_contents(materials, retained)
+                _need(record["sourceSha"] == source, "submission source differs from retained material")
+                check_source = sources.enter_context(_bound_bootstrap_sources(kit, source, fetch=fetch))
+                anchor = _state_parent()
+                try:
+                    with _private_directory(anchor, "deploy-state") as state:
+                        for name, fd in folders.items():
+                            current = os.stat(name, dir_fd=state, follow_symlinks=False)
+                            _private_info(current, directory=True)
+                            _need(_directory_identity(current) == _directory_identity(os.fstat(fd)),
+                                  "submission no longer shares the original lock directories")
+                        # No disk record is adopted. Any previous/partial transaction blocks submission.
+                        with _installation_namespace(state):
+                            _idle_for_materials(folders)
+                            check_source()
+                finally:
+                    os.close(anchor)
+            def check():
+                check_source()
+                _need(_installation_snapshot_fds(input_fd, output_fd) == channel,
+                      "submission live channel changed")
+            check()
+            deadline = time.monotonic() + INSTALL_TASK_CLIENT_SECONDS
+            # No shell, terminal auto-selection, environment forwarding or additional passed FDs.
+            # The manager owns the unit independently of this local waiting client.
+            process = subprocess.Popen(args, stdin=input_fd, stdout=output_fd, stderr=subprocess.DEVNULL,
+                close_fds=True, start_new_session=True, cwd="/",
+                env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+            while True:
+                check()
+                remaining = deadline - time.monotonic()
+                _need(remaining > 0, "installation waiting client expired; query the same unit")
+                try:
+                    status = process.wait(timeout=min(1, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+            check()
+            _need(time.monotonic() < deadline, "installation waiting result arrived after budget")
+            _need(type(status) is int and status == 0,
+                  "installation service returned a nonzero or unknown result; do not resubmit")
+        # Only the live waiting client's successful result, never a persisted completion grant.
+        return 0
+    except BaseException:
+        # Reap only our systemd-run client. Never stop/reset/restart a unit of unproven generation.
+        # The service and stop-post retain their own manager deadlines and original-record checks.
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
+            except BaseException:
+                pass
+        return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -7273,13 +7370,15 @@ def main(argv=None):
         if name in ("plan", "retain"):
             sub.add_argument("--current-runtime-archive", type=Path, required=True)
             sub.add_argument("--current-source-sha", required=True)
-    for role in ("run", "cleanup"):
+    for role in ("run", "cleanup", "submit"):
         sub = commands.add_parser("installation-" + role, allow_abbrev=False)
         sub.add_argument("--source-sha", required=True)
         sub.add_argument("--retention-id", required=True)
     args = parser.parse_args(argv)
     fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
     try:
+        if args.command == "installation-submit":
+            return _installation_task_submit(args.retention_id, args.source_sha, fetch=fetch)
         if args.command in ("installation-run", "installation-cleanup"):
             return _installation_task_entry(args.command.removeprefix("installation-"),
                 args.retention_id, args.source_sha, fetch=fetch)

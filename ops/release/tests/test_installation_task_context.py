@@ -28,7 +28,9 @@ class InstallationTaskContextTests(unittest.TestCase):
         self.role = "run"
         self.props = {key: "" for key in installer.INSTALL_TASK_KEYS}
         self.props.update(LoadState="loaded", Transient="yes", Type="oneshot", Restart="no",
-            RemainAfterExit="yes", KillMode="control-group", NeedDaemonReload="no",
+            RemainAfterExit="no", KillMode="control-group", NeedDaemonReload="no",
+            TimeoutStartUSec="2h", TimeoutStopUSec="15min", TimeoutStartFailureMode="terminate",
+            TimeoutStopFailureMode="terminate", SendSIGKILL="yes", CollectMode="inactive", Delegate="no",
             ActiveState="activating", SubState="start", MainPID="4321", ControlPID="0",
             ControlGroup="/system.slice/" + self.unit, InvocationID=INVOCATION,
             FragmentPath="/run/systemd/transient/" + self.unit, WorkingDirectory=str(self.root),

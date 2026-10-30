@@ -1,8 +1,24 @@
 # Runtime 最小执行器 D4 隔离验收方案
 
-## 首次安装：固定任务角色入口与成功／失败交接（本地待审）
+## 首次安装：固定transient提交与活通道继承（本地待审）
 
-**INSTALL_TASK_ROLE_ADAPTER_LOCAL / CI_PENDING / TASK_SUBMISSION_OPEN / NOT_INSTALLED。**
+**INSTALL_TASK_SUBMISSION_LOCAL / CI_PENDING / OPERATOR_PEER_OPEN / NOT_INSTALLED。**
+
+基于PR #3067合并dev `56d025f88771d32e999bc2949ad256c60ee71997` 创建 `feat/runtime-install-task-submission-20261030`。在既有bootstrap新增窄installation-submit入口，仅准确source-sha/retention-id，固定根解释器/源码路径和同一sanq-runtime-install-<retention>.service；以固定argv提交一次systemd-run，禁shell、任意unit/property/路径/FD覆盖、reset、自动重试或恢复。
+
+提交前须独立审阅配置五源码，沿原两锁核私有保留材料、来源和空闲，拒绝任何既有/部分安装事务及维护证据；只读namespace不创建新许可。持原五源码FD贯穿提交、等待和返回检查，但提交前释放原两锁，由run/cleanup各自重取。借用stdin/stdout活管道或TTY、钉身份，以--pipe直接传递，复用目标首帧及原快照/离机协议；不注入额外成功JSON，不转发调用者环境/令牌，stderr隔离，现存严格角色审计继续执行。
+
+按[systemd-run v249文档与源码](https://github.com/systemd/systemd/blob/v249/src/run/run.c)核--pipe/--wait、AddRef、manager Result和退出码传播；[service语义](https://github.com/systemd/systemd/blob/v249/man/systemd.service.xml)及实际退出分支已核。将本首次安装任务的RemainAfterExit改为no：oneshot主进程退出后自动进入ExecStopPost再停用，避免成功后持续active使等待不能完成；普通release_task既有协议不改。固定Restart=no、KillMode=control-group、Delegate=no、CollectMode=inactive、SendSIGKILL=yes，启动7200秒/停止900秒、失败模式terminate；角色manager固定show由34到41项，同步复核这些属性，超时字符串按[systemctl属性输出源码](https://github.com/systemd/systemd/blob/v249/src/shared/bus-print-properties.c)限定2h/15min。
+
+本地等待客户端10000秒总预算、分段有界wait，来源/通道持续复核；仅准确原生零返回且预算/末尾上下文正常才返回0，含义为本次活等待链成功观察，不新增磁盘完成许可。异常/非原生返回/中断/SystemExit(0)/预算过期一律非零；只对本次Popen等待客户端尽力terminate/kill并有界回收，不对未知代次unit发stop/reset/start。unit仍由manager独立管理，非零不证明任务取消或停写；按同一身份核事实，不自动重交。成功unit可被正常回收，已有事务仍阻止新提交，不能据“unit不存在”恢复或重放。
+
+新增17项测试定义：真实保留材料/五源码FD/原两锁、一次性子进程的实际管道继承，及模型等待客户端的固定参数、环境隔离、锁释放、单次提交、源码/活通道漂移、旧/部分事务与维护证据、返回未知/信号/非原生值、中断/超时/有界回收、窄CLI和manager期限属性拒绝。一次性子进程不执行systemd或安装器，实际systemd/SSH继承与故障行为仍未实测。Python3.10 AST/符号表与静态差异核对完成；MCP-workspace未运行lint/build/test，新17项待CI，本批未提交/推送。
+
+已审阅owner/依赖图，基线无变化；无业务schema/迁移、新已安装helper文件/永久unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。当前仅提交器与既有通道的VM端接线；Mac操作者同伴、准确目标/SSH传输、快照内容/离机耐久确认及未知结果查询交付仍待接，不能作为已验收现场安装指令。G3及真实D4仍OPEN/NOT_RUN，生产/AWS/DB未操作。完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
+
+## 首次安装：固定任务角色入口与成功／失败交接（源码已合并）
+
+**INSTALL_TASK_ROLE_ADAPTER_MERGED_DEV / SOURCE_CI_VERIFIED / TASK_SUBMISSION_OPEN / NOT_INSTALLED。**
 
 基于PR #3066合并dev `e31eb11c319b136b783509494feab913144cf614` 创建 `feat/runtime-install-task-role-adapter-20261030`。在既有bootstrap接入固定installation-run/installation-cleanup内部角色，CLI仅source-sha/retention-id，无host、路径或FD覆盖。独立审阅配置bootstrap后，仍须准确transient manager的PID/cgroup/argv/运行代次和原两锁/材料；普通用户直接调用不能获得安装权限。尚未提供unit提交或可用的操作者端完整通道，不作为现场安装指令。
 
@@ -14,7 +30,7 @@ run先持五源码FD进入有界首帧目标交互，复用既有严格目标JSO
 
 cleanup复用同一准确原件上下文：明确失败沿用原ID收尾；干净零退出还要求marker不存在、七项完整库存及恢复/快照/离机/完成审计链一致。仅返回cleanTaskExitObserved等观察，installationComplete/canExecute/restoreProven仍false；错误、旧运行代次、部分审计或外来marker均不能授予正常交接。持久completion保持原“清marker前准备”惰性含义。
 
-新增22项测试定义，含退出属性交叉校验、真实首帧管道、源码FD覆盖返回且原锁可重取、SystemExit/中断/非原生完成拒绝、末尾源码/通道替换、窄CLI、完整监督安装经新入口返回与晚到失败按原锁收尾、正常交接不误停、信号失败不被旧审计覆盖等。原14项manager夹具同步退出属性与受限角色解析；原失败收尾17项继续回归。源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，新增22项测试待CI，本批尚未提交/推送。
+新增22项测试定义，含退出属性交叉校验、真实首帧管道、源码FD覆盖返回且原锁可重取、SystemExit/中断/非原生完成拒绝、末尾源码/通道替换、窄CLI、完整监督安装经新入口返回与晚到失败按原锁收尾、正常交接不误停、信号失败不被旧审计覆盖等。原14项manager夹具同步退出属性与受限角色解析；原失败收尾17项继续回归。源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，[PR #3067](https://github.com/sanqin888/sanqinMVP/pull/3067) head `cf1b91961f1135f3011271d7d3db3d1a7f9085ca` 经[CI #7831](https://github.com/sanqin888/sanqinMVP/actions/runs/41134764360)SUCCESS（4成功/6范围跳过；两条Release各1530，默认891.275秒/3.10为1265.859秒；Runtime1080/12.756秒，既有C1回归412/4.877秒），已合并dev `56d025f88771d32e999bc2949ad256c60ee71997`，无CI修复。
 
 已审阅owner/依赖图，基线无变化；无业务schema/迁移、新已安装helper文件/unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。下一步仍须专用unit提交、操作者通道/状态结果与真实D4；实际systemd、管道继承、断连/SIGKILL/主机故障尚未验收，G3仍OPEN。生产/AWS/DB未操作；完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
 
@@ -66,7 +82,7 @@ Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并de
 | --- | --- | --- |
 | G1：准确隔离目标 | 本次尚未核到并绑定新的隔离实例；当前连接提供生产只读与代码工作区，不能默认复用它作故障试验目标 | 填齐下表目标事实，独立核SSH主机key与AWS对象，确认无生产流量/凭据/真实外部写入 |
 | G2：准确可验材料 | D1仅接受合格的准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不是替代物 | 用户控制main晋级后固定S_tool、发布/CI/Archive及完整Git对象；固定真实应用候选S1/S2和SQL/兼容审阅对象 |
-| G3：首次安装受控入口/监督 | install_minimal_executor.py的pack/verify/plan/retain材料入口已合dev并经源码CI；manager身份观察已合dev并经CI；原件关联模型已合dev并经CI；关联记录IO原语已合dev并经CI；受控登记/清单校验已合dev并经CI；受监督writers登记时序已合dev并经CI；完整bootstrap源码FD持有及边界复核已合dev并经CI；同代次失败原ID收尾已合dev并经CI；本地新增固定内部角色入口、退出交叉核验及正常／失败交接，尚待CI；_complete_installation及快照双帧/离机确认已由本地固定内部角色适配，尚无首次安装专用transient提交/操作者完整通道与结果交付 | 在既有bootstrap内交付有限适配及故障模型、最终CI，再审准确root读写/manager/通道与失败方案；不能临时用python -c/任意导入/nohup绕过这些检查 |
+| G3：首次安装受控入口/监督 | pack/verify/plan/retain材料入口、manager身份/原件关联与IO、受控登记、受监督writers、完整bootstrap源码FD、同代次失败原ID收尾、固定run/cleanup角色入口及退出交叉核验/正常失败交接均已合dev并经源码CI；本地新增固定transient提交、--pipe活FD继承、退出自动清理、有限等待与manager预算属性，尚待CI；Mac操作者同伴、准确目标/SSH传输及完整结果查询交付仍待接 | 核本地有限提交适配及故障模型、最终CI，再完成操作端通道与真实systemd/断连验收；不能临时用python -c/任意导入/nohup绕过这些检查 |
 | G4：隔离就绪请求目标 | 安装器六端点含127.0.0.1与固定https://sanq.ca；新VM直接运行可能把生产200误作隔离结果 | 准确审阅隔离TLS/解析/路由与外部调用阻断，证明每个请求到隔离目标；不能改生产DNS/切流、跳TLS或借生产响应补通过 |
 
 受控入口可以是经审阅的一次性适配，复用现有私有函数，不要求另造通用公开安装API。问题是尚未落实监督、来源/目标和通道的完整调用边界，不是函数名称带下划线就不能使用。
