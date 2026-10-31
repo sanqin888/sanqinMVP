@@ -1,5 +1,21 @@
 # Runtime 最小执行器 Mac 入口
 
+## Mac固定Python3.14启动与本地预检（本地待审）
+
+**MAC_PYTHON314_LAUNCHER_LOCAL / CI_PENDING / MAC_PREFLIGHT_NOT_RUN / NOT_INSTALLED。**
+
+基于PR #3069合并dev `b29772c9d93a26d4d792c218a5ea2020d0589de2` 的本批继续接入Mac。操作者已报告独立安装命令 `/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14 --version` 返回Python3.14.10；这只确认该路径可启动并报告版本，不代替客户端/SSH或解释器来源验收。既有Mac登记为macOS10.15.8、x86_64、Apple系统Python3.8.2与OpenSSH8.1p1／LibreSSL2.7.3。
+
+sanq-deploy.sh已改为固定调用上述3.14框架路径，保持-I/-S/-B及-X pycache_prefix=/dev/null。文件缺失时直接阻断，无PATH、环境、CLI或系统Python回退；不覆盖Apple管理的/usr/bin/python3，不变更VM解释器。普通客户端语言版本门槛仍为3.9+，但交付启动器准确选用用户已安装的3.14路径；继续保留独立安装路线，不将兼容旧3.8列为必做交付项。
+
+新增local-check纯本地诊断：核普通Mac/CPython、隔离参数，观察pythonExecutable、configuredLauncherPython、版本和架构；home只读dir_fd/NOFOLLOW身份核对，匿名非阻塞管道/select观察；复用既有固定SSH选项，以-F /dev/null、数字回环目标和-G解析配置，移除远端命令槽，stdio丢弃、10秒预算和最小无agent环境。已按[OpenSSH8.1源码](https://github.com/openssh/openssh-portable/blob/V_8_1_P1/ssh.c)核-G在连接及身份密钥加载前退出。诊断不读取本地profile/私钥、不连接VM、不创建配置；这些只是运行观察，不是受保护加载器或来源证明。
+
+只在完整检查后输出观察JSON；sshConnectionTested/remoteOperationPerformed/readyToInstall/canExecute始终false。Python3.8可观察但报告releaseClientVersionSupported=false并返回1，普通发布仍阻断；本地诊断0也不等于真实认证、VM工具安装或首次安装就绪。超时/非原生返回/缺失API/home替换阻断且不输出半份成功；中断恢复原信号处理。独立升级Python不代表系统SSH或LibreSSL同时升级，其实际行为仍待Mac只读验证。
+
+本批共新增12项测试定义：local-check的11项（真实目录FD/管道、最小环境/固定-G、版本分支、原门槛、平台/root/隔离参数、未知/超时/缺失API、真实home替换、窄CLI、中断及CI主机本地-G）；另加固定解释器缺失不回退测试。原26项Mac测试继续回归，现合计38项。shell夹具先断言交付路径固定，只有一次性测试副本替换为当前CI解释器以核含空格路径/恶意PATH及pathlib/json阴影模块；交付脚本没有测试覆盖开关。新增CI步骤在ops_release范围使用精确CPython3.14.10 x64运行这38项Linux离线夹具，update-environment=false，原3.10和C1步骤保持；该结果不能代替用户Darwin/PSF安装器/OpenSSH8.1实测，当前尚未运行。
+
+源码/测试Python3.8 AST、符号表与读回/差异静态检查完成，CI配置同步静态核对；MCP-workspace未运行lint/build/test。初始head `9a8128c31ad8e5edfb52b90069a2880f0299a852` 的[CI #7838](https://github.com/sanqin888/sanqinMVP/actions/runs/41232185005)在默认Release中新local-check测试处中止：测试sys.flags桩缺少Python3.14 argparse/importlib使用的ignore_environment/verbose，未形成完整Release计数，后续3.10/3.14专项/Runtime/C1未运行。仅修测试桩以保留实际解释器的全部公开非callable字段、覆盖三个隔离值，并在原CLI测试核ignore_environment/verbose不丢失；客户端运行逻辑不变。将原新增3.14专项提前到耗时Release全量之前以尽早暴露兼容问题，原全量步骤全部保留，仍为38项Mac测试，无跳过或放宽门槛。owner/依赖图已审阅，基线无变化：无VM helper/永久unit/业务schema/迁移/外部运行依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及C1/CPython/R2暂停研究保持。本批已推送PR #3070，修订后CI待验；真实Mac客户端/网络及生产/AWS/DB操作均未执行。生产首用与后置隔离/故障/恢复决策保持；下一步先经CI交付固定版本并完成Mac本地预检，再接首次安装操作者通道与完整结果查询。
+
 ## 2026-10-31：采用生产首用验证，隔离验收后置
 
 **PRODUCTION_FIRST_USE_SELECTED / PREPARATION_OPEN / PRODUCTION_NOT_EXECUTED / ISOLATED_VALIDATION_DEFERRED。**
@@ -14,7 +30,7 @@
 
 后置任务统一登记在D4 runbook：隔离实例创建/身份绑定、脱敏基线与隔离TLS/路由/外部调用准备、原20项隔离矩阵及未做的断线/并发/杀进程/部分写入/daemon/socket/VM重启/交接边界等故障验证、完整VM与数据库恢复实演。全部未执行项保留DEFERRED/NOT_RUN，未知项保留UNKNOWN/BLOCKED；生产现场证据按生产首用范围登记，不能冒充隔离case PASS。交付进度分开记录“生产首用验证结果”和“后置验证缺口”，不宣称完整故障/恢复验收完成，不标restoreProven或无保留MINIMAL_EXECUTOR_COMPLETE。
 
-本批仅文档调整，已审阅owner/依赖图，基线无变化：17+Manifest、250commits/300files、九helper/三永久模板和唯一应用state保持；不新增schema、依赖、常驻控制器或绕过开关，C1受保护加载/自建CPython/R2 CA研究继续暂停。本次未执行生产/AWS/DB操作或项目测试；下一步先完成Mac兼容、操作者通道及首次安装结果查询，再准备生产首用维护流程。
+本批仅文档调整，已审阅owner/依赖图，基线无变化：17+Manifest、250commits/300files、九helper/三永久模板和唯一应用state保持；不新增schema、依赖、常驻控制器或绕过开关，C1受保护加载/自建CPython/R2 CA研究继续暂停。本次未执行生产/AWS/DB操作或项目测试；[PR #3069](https://github.com/sanqin888/sanqinMVP/pull/3069) head `076ef21785e44c4e8dc92d15ef09d8e92f39ed11` 经[CI #7836](https://github.com/sanqin888/sanqinMVP/actions/runs/41223126710)SUCCESS（文档范围1成功/9范围跳过，未重跑Release/Runtime）合并dev `b29772c9d93a26d4d792c218a5ea2020d0589de2`。下一步先完成Mac解释器路线与兼容核验、操作者通道及首次安装结果查询，再准备生产首用维护流程。
 
 本批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)最终head `6b8d1e77cfef23228160021b37779e4eed2a3c48` 经[CI #7809](https://github.com/sanqin888/sanqinMVP/actions/runs/41054754179)SUCCESS（4成功/6范围跳过；两条Release各1416、Runtime1080、既有C1回归412），已合并dev `b3ec0a2e046ecf0467f0b7b81115533e78cff292`，无需CI修复；无生产/AWS操作。
 
@@ -24,7 +40,7 @@
 
 ## 前置条件与固定目标
 
-客户端是本地 `ops/release/sanq-deploy.sh` 与相邻 `sanq_deploy.py`，不加入 VM 的九 helper、27 项安装集合或 17+Manifest。需要普通 Mac 用户、系统 `/usr/bin/python3` CPython 3.9+、`/usr/bin/ssh`、已安装并验收的 VM 工具，以及既有 ubuntu 用户的非交互 sudo 能力。Mac启动器使用-I -S -B隔离环境、用户site和脚本目录的导入，客户端仅用标准库。客户端不安装 Python、工具、密钥或 sudoers，不接受自定义 sudo/SSH 程序。
+客户端是本地 `ops/release/sanq-deploy.sh` 与相邻 `sanq_deploy.py`，不加入VM九helper、27项安装集合或17+Manifest。启动器固定调用独立安装的 `/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14`，操作者已报告该路径版本3.14.10；保留Apple系统Python，无PATH/环境/CLI覆盖或旧版回退。需要普通Mac用户与 `/usr/bin/ssh`；真实远端操作还须VM工具安装、固定profile与既有ubuntu非交互sudo等条件。local-check无需profile、密钥或VM。启动器保持-I/-S/-B/-X pycache_prefix=/dev/null隔离，仅用标准库，不自动安装Python/工具/密钥/sudoers，也不接受自定义sudo/SSH程序。
 
 使用账户数据库中的真实 home，不从 HOME 环境变量、当前目录或命令参数选择目标。手工准备唯一固定目录 `~/.sanq-deploy/`，真实目录为本人所有、0700，且只能有下列三个真实普通单链接文件，均为本人所有、0600 或0400：
 
@@ -44,6 +60,16 @@
 ```
 
 文件缺失、权限错误、软/硬链接、FIFO、额外目录成员、非法主机/公钥或本次观察期间的替换均阻断；不自动 mkdir、chmod、清理或修复。home 不得由组/其他用户写入；配置目录与原文件 FD/路径身份在 SSH 前后重核。此约束不提供对本机账户所有者主动更换配置的隔离。
+
+## 固定版本交付后的本地预检
+
+本批仍为本地待审/CI_PENDING；收到经CI核对的准确两文件交付版本后，再从其目录执行：
+
+```sh
+/bin/sh ops/release/sanq-deploy.sh local-check
+```
+
+该命令只核本地隔离参数、目录FD、匿名管道及SSH -G参数解析，不要求先配置target/known_hosts/identity，不发远端连接。完整观察JSON会给出pythonExecutable、configuredLauncherPython、pythonVersion等；releaseClientVersionSupported表示语言版本门槛，不证明安装来源/真实SSH认证。返回0也不表示工具安装就绪，readyToInstall/canExecute始终false；3.8诊断返回1，任何真实远端操作仍按原门槛阻断。
 
 ## 计划、执行与查询
 

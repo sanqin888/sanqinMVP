@@ -10,4 +10,4 @@ case "$0" in
     *) SCRIPT_BASE=. ;;
 esac
 SCRIPT_DIR=$(CDPATH= cd -P "$SCRIPT_BASE" && pwd -P)
-exec /usr/bin/python3 -I -S -B -X pycache_prefix=/dev/null "$SCRIPT_DIR/sanq_deploy.py" "$@"
+exec /Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14 -I -S -B -X pycache_prefix=/dev/null "$SCRIPT_DIR/sanq_deploy.py" "$@"

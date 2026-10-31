@@ -8,6 +8,7 @@ import base64
 import contextlib
 import hashlib
 import ipaddress
+import json
 import os
 from pathlib import Path
 import pwd
@@ -53,6 +54,7 @@ def _operation(argv):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("profile", help="Inspect the local fixed host and host-key fingerprint", allow_abbrev=False)
+    commands.add_parser("local-check", help="Observe local Python/FD/SSH-option compatibility without connecting", allow_abbrev=False)
     prepare = commands.add_parser("plan", help="Prepare and retain one exact target review", allow_abbrev=False)
     prepare.add_argument("--target-sha", required=True, type=lambda value: _hex(value, 40))
     commands.add_parser("plan-rollback", help="Review and retain the recorded previous release", allow_abbrev=False)
@@ -72,7 +74,7 @@ def _operation(argv):
         parser.error("duplicate options are not accepted")
     args = parser.parse_args(argv)
     name = args.command
-    if name == "profile":
+    if name in ("profile", "local-check"):
         return {"command": name, "remote": None, "timeout": 0, "planId": None}
     script, timeout = "collect_deployment_plan.py", 60
     if name == "plan":
@@ -312,10 +314,70 @@ def _unknown_guidance(operation):
     return "保留原 plan-id " + operation["planId"] + "，查询" + query + "/logs，不自动重提或恢复。"
 
 
+def _local_preflight():
+    """Local observations only: no profile/key reads, SSH connection or remote command."""
+    _need(sys.platform == "darwin" and sys.implementation.name == "cpython"
+          and sys.version_info >= (3, 8) and os.geteuid() != 0,
+          "local-check requires an unprivileged Mac account and CPython 3.8 or newer")
+    _need(sys.flags.isolated == 1
+          and sys.flags.no_site == 1 and sys.flags.dont_write_bytecode == 1
+          and sys.pycache_prefix == "/dev/null",
+          "run local-check through the fixed sanq-deploy.sh launcher")
+    home = _home()
+    with contextlib.ExitStack() as stack:
+        home_fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        stack.callback(os.close, home_fd)
+        before = os.fstat(home_fd)
+        _directory(before)
+        identity = _stamp(before)[:5]
+        child_fd = os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=home_fd)
+        stack.callback(os.close, child_fd)
+        _need(identity == _stamp(os.fstat(child_fd))[:5]
+              == _stamp(os.stat(".", dir_fd=home_fd, follow_symlinks=False))[:5],
+              "local directory descriptor APIs differ")
+        reader, writer = os.pipe()
+        stack.callback(os.close, reader)
+        stack.callback(os.close, writer)
+        os.set_blocking(reader, False)
+        with selectors.DefaultSelector() as selector:
+            selector.register(reader, selectors.EVENT_READ)
+            _need(os.write(writer, b"x") == 1 and selector.select(1)
+                  and os.read(reader, 2) == b"x", "local nonblocking pipe observation failed")
+        # -G evaluates fixed options and exits. A numeric loopback target avoids DNS.
+        # Strip the empty remote-command slot; no profile or key is opened by this client.
+        target = {"directory": home / ".sanq-deploy", "host": "127.0.0.1"}
+        ordinary = _ssh_argv(target, {"remote": ""})
+        args = [ordinary[0], "-G", *ordinary[1:-1]]
+        completed = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, cwd=home, timeout=10, close_fds=True, start_new_session=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(home), "LANG": "C", "LC_ALL": "C",
+                 "TERM": "dumb", "SSH_ASKPASS_REQUIRE": "never"})
+        _need(type(completed.returncode) is int and completed.returncode == 0,
+              "local SSH option parsing failed; no connection was requested")
+        _directory(os.fstat(home_fd))
+        _need(identity == _stamp(os.fstat(home_fd))[:5]
+              == _stamp(os.stat(home, follow_symlinks=False))[:5], "local home identity changed")
+    return {"schemaVersion": 1, "kind": "sanq-mac-local-preflight",
+        "outcome": "LOCAL_PREFLIGHT_OBSERVED", "machine": os.uname().machine,
+        "pythonVersion": ".".join(str(value) for value in sys.version_info[:3]),
+        "pythonExecutable": sys.executable,
+        "configuredLauncherPython": "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14",
+        "releaseClientVersionSupported": sys.version_info >= (3, 9),
+        "isolatedFlagsObserved": True, "directoryFdObserved": True,
+        "nonblockingPipeObserved": True, "sshOptionsParsed": True,
+        "sshConnectionTested": False, "remoteOperationPerformed": False,
+        "readyToInstall": False, "canExecute": False}
+
+
 def main(argv=None):
     operation = _operation(sys.argv[1:] if argv is None else argv)
     attempted = False
     try:
+        if operation["command"] == "local-check":
+            with _signals():
+                result = _local_preflight()
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0 if result["releaseClientVersionSupported"] else 1
         _need(sys.platform == "darwin" and sys.version_info >= (3, 9) and os.geteuid() != 0,
               "client requires an unprivileged Mac account and CPython 3.9 or newer")
         with _signals(), _profile() as target:
@@ -334,7 +396,7 @@ def main(argv=None):
         print(("本地连接已中断，远端结果未知；" + _unknown_guidance(operation)) if attempted
               else "本地检查已中断，尚未发起SSH。", file=sys.stderr)
         return 128 + error.number
-    except (ClientError, OSError, ValueError, UnicodeError, subprocess.SubprocessError) as error:
+    except (ClientError, OSError, ValueError, UnicodeError, NotImplementedError, subprocess.SubprocessError) as error:
         reason = str(error) if isinstance(error, ClientError) else "无法读取固定本地配置或完成SSH传输"
         print("请求被阻断：" + reason, file=sys.stderr)
         if attempted:
