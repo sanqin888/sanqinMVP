@@ -100,6 +100,23 @@ jobs:
           "$RELEASE_TEST_PYTHON" -c 'import sys; print(sys.version); sys.exit(0 if sys.implementation.name == "cpython" and sys.version_info[:2] == (3, 10) else "unexpected release test interpreter")'
           "$RELEASE_TEST_PYTHON" -m unittest discover -s ops/release/tests -p 'test_*.py'
 
+      - name: Set up Mac-client CPython 3.14.10 compatibility lane
+        if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
+        id: mac_client_python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.10'
+          architecture: x64
+          update-environment: false
+
+      - name: Test Mac client on CPython 3.14.10 (Linux offline fixtures)
+        if: ${{ needs.ci_scope.outputs.ops_release != 'false' }}
+        env:
+          MAC_CLIENT_TEST_PYTHON: ${{ steps.mac_client_python.outputs.python-path }}
+        run: |
+          "$MAC_CLIENT_TEST_PYTHON" -c 'import sys; print(sys.version); sys.exit(0 if sys.implementation.name == "cpython" and sys.version_info == (3, 14, 10, "final", 0) else "unexpected Mac-client test interpreter")'
+          "$MAC_CLIENT_TEST_PYTHON" -m unittest discover -s ops/release/tests -p 'test_sanq_deploy_*.py'
+
       - name: Test Runtime layout preflight (offline)
         if: ${{ needs.ci_scope.outputs.ops_runtime != 'false' }}
         run: |

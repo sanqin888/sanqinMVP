@@ -360,15 +360,48 @@ class MainTests(ProfileFixture, unittest.TestCase):
 
     def test_shell_launcher_locates_adjacent_client_with_spaces_and_hostile_search_path(self):
         import shutil
+        import shlex
         bundle = self.home / "client bundle with spaces"
         bundle.mkdir()
         source = Path(client.__file__).parent
         for name in ("sanq-deploy.sh", "sanq_deploy.py"):
             shutil.copyfile(source / name, bundle / name)
-        (bundle / "pathlib.py").write_text('raise RuntimeError("local module shadow must not execute")\n', encoding="utf-8")
+        fixed_python = "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14"
+        launcher = (source / "sanq-deploy.sh").read_text(encoding="utf-8")
+        self.assertEqual(launcher.count(fixed_python), 1)
+        self.assertNotIn("exec /usr/bin/python3 ", launcher)
+        # Only the disposable test copy uses the running CI interpreter; the delivered launcher is fixed.
+        (bundle / "sanq-deploy.sh").write_text(launcher.replace(fixed_python, shlex.quote(sys.executable)), encoding="utf-8")
+        for name in ("pathlib.py", "json.py"):
+            (bundle / name).write_text('raise RuntimeError("local module shadow must not execute")\n', encoding="utf-8")
         completed = subprocess.run(["/bin/sh", str(bundle / "sanq-deploy.sh"), "--help"],
             cwd=self.home, env={"PATH": "/untrusted/missing", "PYTHONPATH": "/untrusted/missing",
                                "HOME": str(self.home)}, capture_output=True, text=True, timeout=10)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("apply", completed.stdout)
         self.assertIn("profile", completed.stdout)
+
+    def test_missing_fixed_python_does_not_fall_back_to_path_or_system_python(self):
+        import shlex
+        source = Path(client.__file__).parent / "sanq-deploy.sh"
+        text = source.read_text(encoding="utf-8")
+        fixed_python = "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14"
+        self.assertEqual(text.count(fixed_python), 1)
+        missing = self.home / "missing framework python"
+        script = self.home / "fixed-launcher.sh"
+        script.write_text(text.replace(fixed_python, shlex.quote(str(missing))), encoding="utf-8")
+        commands = self.home / "hostile-bin"
+        commands.mkdir()
+        marker = self.home / "fallback-was-used"
+        fallback = commands / "python3"
+        fallback.write_text("#!/bin/sh" + chr(10) + "/usr/bin/touch " + shlex.quote(str(marker)) + chr(10), encoding="utf-8")
+        fallback.chmod(0o700)
+        subprocess.run([str(fallback)], cwd=self.home, check=True, timeout=10)
+        self.assertTrue(marker.exists())
+        marker.unlink()
+        completed = subprocess.run(["/bin/sh", str(script), "--help"], cwd=self.home,
+            env={"PATH": str(commands), "PYTHON": str(fallback), "PYTHON3": str(fallback)},
+            capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertEqual(completed.stdout, "")
+        self.assertFalse(marker.exists())
