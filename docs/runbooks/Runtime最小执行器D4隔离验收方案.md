@@ -1,8 +1,24 @@
 # Runtime 最小执行器 D4 隔离验收方案
 
-## 首次安装：固定transient提交与活通道继承（本地待审）
+## 2026-10-31：采用生产首用验证，隔离验收后置
 
-**INSTALL_TASK_SUBMISSION_LOCAL / CI_PENDING / OPERATOR_PEER_OPEN / NOT_INSTALLED。**
+**PRODUCTION_FIRST_USE_SELECTED / PREPARATION_OPEN / PRODUCTION_NOT_EXECUTED / ISOLATED_VALIDATION_DEFERRED。**
+
+用户已决定：完成必要代码与操作准备后，在现有生产实例的明确非营业维护窗口进行首次正常安装／更新验证；新隔离实例及未做的隔离故障测试统一后置，完整VM／数据库恢复实演亦列入后置验证任务。本决定替代下文旧版“全部D4隔离验收通过后才能进入生产”的先后顺序；历史记录和隔离case判据保留，不将延期记为通过或删除缺口。
+
+生产首用前仍须完成：Mac客户端兼容与真实SSH参数核验、首次安装操作者通道及准确任务结果查询；固定准确生产目标、main来源／发布镜像／Runtime归档与独立审阅的bootstrap，保持原来源、原两锁、门禁及现场检查。已登记操作者Mac为macOS 10.15.8、x86_64、系统Python 3.8.2、OpenSSH 8.1p1／LibreSSL 2.7.3；当前客户端仍要求Python3.9+，静态审阅未见明显3.9专用语法/API，但尚无3.8.2兼容实测，不能视为准备通过，也不降低版本门槛代替验证。
+
+执行顺序为：只读预检与材料核对；落实非营业维护窗口及业务/外部写入、进行中事务处置安排；通过已审阅Mac通道提交一次受控首次安装任务；在同一任务监督和原两锁内，沿既定维护流程记录准确原件、加载门禁、禁自动重启并确认实际停写；原任务暂停等待操作者手动创建准确生产实例快照、available及内容核验，并等待原恢复材料机外耐久保存与确认；条件满足后由原任务继续工具写入及正常交接，核工具、门禁、原应用/DB/卷、策略、健康端点及真实结果。后续正常发布仅按真实需要与准确计划/批准执行，不为补验收数字在生产刻意制造SQL、连续发布或回退场景。
+
+失败或结果未知时，按既有准确原件/同代次收尾与事故保留规则处理，核实际容器及marker状态；不自动重提、重放SQL、重开业务或恢复快照，不将本地SSH返回或旧完成审计单独升级为成功，也不把FENCE_UNCONFIRMED当停写保证。维护窗口结束时间不能作为保证恢复营业的依据；快照恢复所需的新实例与连接/切流安排仍须纳入现场恢复准备。
+
+后置任务统一登记在D4 runbook：隔离实例创建/身份绑定、脱敏基线与隔离TLS/路由/外部调用准备、原20项隔离矩阵及未做的断线/并发/杀进程/部分写入/daemon/socket/VM重启/交接边界等故障验证、完整VM与数据库恢复实演。全部未执行项保留DEFERRED/NOT_RUN，未知项保留UNKNOWN/BLOCKED；生产现场证据按生产首用范围登记，不能冒充隔离case PASS。交付进度分开记录“生产首用验证结果”和“后置验证缺口”，不宣称完整故障/恢复验收完成，不标restoreProven或无保留MINIMAL_EXECUTOR_COMPLETE。
+
+本批仅文档调整，已审阅owner/依赖图，基线无变化：17+Manifest、250commits/300files、九helper/三永久模板和唯一应用state保持；不新增schema、依赖、常驻控制器或绕过开关，C1受保护加载/自建CPython/R2 CA研究继续暂停。本次未执行生产/AWS/DB操作或项目测试；下一步先完成Mac兼容、操作者通道及首次安装结果查询，再准备生产首用维护流程。
+
+## 首次安装：固定transient提交与活通道继承（源码已合并）
+
+**INSTALL_TASK_SUBMISSION_MERGED_DEV / SOURCE_CI_VERIFIED / OPERATOR_PEER_OPEN / NOT_INSTALLED。**
 
 基于PR #3067合并dev `56d025f88771d32e999bc2949ad256c60ee71997` 创建 `feat/runtime-install-task-submission-20261030`。在既有bootstrap新增窄installation-submit入口，仅准确source-sha/retention-id，固定根解释器/源码路径和同一sanq-runtime-install-<retention>.service；以固定argv提交一次systemd-run，禁shell、任意unit/property/路径/FD覆盖、reset、自动重试或恢复。
 
@@ -12,7 +28,7 @@
 
 本地等待客户端10000秒总预算、分段有界wait，来源/通道持续复核；仅准确原生零返回且预算/末尾上下文正常才返回0，含义为本次活等待链成功观察，不新增磁盘完成许可。异常/非原生返回/中断/SystemExit(0)/预算过期一律非零；只对本次Popen等待客户端尽力terminate/kill并有界回收，不对未知代次unit发stop/reset/start。unit仍由manager独立管理，非零不证明任务取消或停写；按同一身份核事实，不自动重交。成功unit可被正常回收，已有事务仍阻止新提交，不能据“unit不存在”恢复或重放。
 
-新增17项测试定义：真实保留材料/五源码FD/原两锁、一次性子进程的实际管道继承，及模型等待客户端的固定参数、环境隔离、锁释放、单次提交、源码/活通道漂移、旧/部分事务与维护证据、返回未知/信号/非原生值、中断/超时/有界回收、窄CLI和manager期限属性拒绝。一次性子进程不执行systemd或安装器，实际systemd/SSH继承与故障行为仍未实测。Python3.10 AST/符号表与静态差异核对完成；MCP-workspace未运行lint/build/test，新17项待CI，本批未提交/推送。
+新增17项测试定义：真实保留材料/五源码FD/原两锁、一次性子进程的实际管道继承，及模型等待客户端的固定参数、环境隔离、锁释放、单次提交、源码/活通道漂移、旧/部分事务与维护证据、返回未知/信号/非原生值、中断/超时/有界回收、窄CLI和manager期限属性拒绝。一次性子进程不执行systemd或安装器，实际systemd/SSH继承与故障行为仍未实测。Python3.10 AST/符号表与静态差异核对完成；MCP-workspace未运行lint/build/test，[PR #3068](https://github.com/sanqin888/sanqinMVP/pull/3068) 最终head `0fcf3f781adcfa194aa5684103fdfcf2d856310a` 经[CI #7834](https://github.com/sanqin888/sanqinMVP/actions/runs/41141055650)SUCCESS（4成功/6范围跳过；两条Release各1547，默认893.211秒/3.10为1238.750秒；Runtime1080/12.543秒，既有C1回归412/4.830秒），已合并dev `9c9d013069bb32be6c25f4e8724daa96a55d6f88`。提交期间补一次性管道测试子进程5秒读超时，运行时代码未因该修订变化。
 
 已审阅owner/依赖图，基线无变化；无业务schema/迁移、新已安装helper文件/永久unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。当前仅提交器与既有通道的VM端接线；Mac操作者同伴、准确目标/SSH传输、快照内容/离机耐久确认及未知结果查询交付仍待接，不能作为已验收现场安装指令。G3及真实D4仍OPEN/NOT_RUN，生产/AWS/DB未操作。完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
 
@@ -64,7 +80,7 @@ cleanup复用同一准确原件上下文：明确失败沿用原ID收尾；干�
 
 源码/测试Python3.10 AST、符号表及静态差异审阅完成；MCP-workspace未运行lint/build/test，本批[PR #3065](https://github.com/sanqin888/sanqinMVP/pull/3065) head `a244e6218b951757a7305087a073d0a9d4a08ce2` 经[CI #7826](https://github.com/sanqin888/sanqinMVP/actions/runs/41109645658)SUCCESS（4成功/6范围跳过；两条Release各1491、Runtime1080、既有C1回归412），已合并dev `2e6e4eb9e30d691c39c49794626a52a51da1e3aa`，无CI修复。已审阅owner/依赖图，基线无变化；无业务schema/迁移、新helper/unit/依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及暂停C1/CPython/R2保持。下一步仍为安装专用提交/run/cleanup与真实快照/离机通道和成功/失败交接；生产/AWS/DB未操作。完整恢复实演继续交付后，更新前手动快照/内容核验、材料/离机确认保留，不标restoreProven或MINIMAL_EXECUTOR_COMPLETE。
 
-> **2026-10-30（America/Toronto）｜D4_PLAN_MERGED_DEV / VM_NOT_BOUND / INSTALL_ADAPTER_OPEN / NOT_EXECUTED / RESTORE_VALIDATION_DEFERRED。**本文件是第三批内部D4的执行前审计与固定验收方案，不是现场授权、执行脚本或通过回执。生产过渡仍属第四批。
+> **2026-10-31（America/Toronto）｜PRODUCTION_FIRST_USE_SELECTED / D4_ISOLATED_DEFERRED / NOT_EXECUTED / RESTORE_VALIDATION_DEFERRED。**用户已调整为先进行非营业维护窗口的生产首用验证；本文件保留后置隔离与恢复验证的固定判据。当前生产执行及后置测试均未开始，实际执行以各自准确范围、目标/材料及就绪条件为准。
 
 D4方案已由[PR #3058](https://github.com/sanqin888/sanqinMVP/pull/3058) head `686a70f8ec2c2598ad6cd73189fb195b2e0d4a72` 经[CI #7811](https://github.com/sanqin888/sanqinMVP/actions/runs/41066304814)SUCCESS（文档范围：1成功/9跳过，未重跑Release/Runtime测试）合并dev `8f0b6f11a8b61b0f83a4888764e15b2da5642998`。
 
@@ -76,22 +92,36 @@ Mac入口批[PR #3057](https://github.com/sanqin888/sanqinMVP/pull/3057)合并de
 
 本轮只读核到：GitHub main在观察时为 `d3a896f32f1db71e49433f9e87bef534e27589bb`，与PR初始head `6b8d1e77cfef23228160021b37779e4eed2a3c48` 的compare元信息为diverged、ahead103/behind1。该数字仅说明分支关系，不用compare文件清单证明材料完整、来源通过或可直接晋级。main和目标发布必须在实际准备前重新按准确对象核验，本批不自动合main或触发发布。
 
-### 四项必须先落实的前置
+### 后置隔离执行的四项前置（不再整体作为生产首用之前置）
 
 | 前置 | 已有能力与实际缺口 | 解除条件 |
 | --- | --- | --- |
 | G1：准确隔离目标 | 本次尚未核到并绑定新的隔离实例；当前连接提供生产只读与代码工作区，不能默认复用它作故障试验目标 | 填齐下表目标事实，独立核SSH主机key与AWS对象，确认无生产流量/凭据/真实外部写入 |
-| G2：准确可验材料 | D1仅接受合格的准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不是替代物 | 用户控制main晋级后固定S_tool、发布/CI/Archive及完整Git对象；固定真实应用候选S1/S2和SQL/兼容审阅对象 |
-| G3：首次安装受控入口/监督 | pack/verify/plan/retain材料入口、manager身份/原件关联与IO、受控登记、受监督writers、完整bootstrap源码FD、同代次失败原ID收尾、固定run/cleanup角色入口及退出交叉核验/正常失败交接均已合dev并经源码CI；本地新增固定transient提交、--pipe活FD继承、退出自动清理、有限等待与manager预算属性，尚待CI；Mac操作者同伴、准确目标/SSH传输及完整结果查询交付仍待接 | 核本地有限提交适配及故障模型、最终CI，再完成操作端通道与真实systemd/断连验收；不能临时用python -c/任意导入/nohup绕过这些检查 |
+| G2：准确可验材料 | 生产首用与后置隔离都须核准确main来源/成对发布/原Runtime归档；dev CI或kit自报hash不能替代。隔离S1/S2和专项SQL/回退对象随隔离验收后置 | 生产首用固定S_tool及实际需要发布的准确材料；后置隔离执行前再固定其独立B0、S1/S2和SQL/兼容审阅对象 |
+| G3：首次安装受控入口/监督 | 固定提交/run/cleanup、来源FD及同代次原件收尾已由PR #3068等合dev并经源码CI；Mac兼容、首次安装操作者通道与完整结果查询仍待完成 | 生产首用前完成必要接线/CI、真实Mac只读验证及准确生产目标/材料/快照通道准备；破坏性中断与隔离故障验证保留后置，不用任意导入/nohup或跳过校验替代 |
 | G4：隔离就绪请求目标 | 安装器六端点含127.0.0.1与固定https://sanq.ca；新VM直接运行可能把生产200误作隔离结果 | 准确审阅隔离TLS/解析/路由与外部调用阻断，证明每个请求到隔离目标；不能改生产DNS/切流、跳TLS或借生产响应补通过 |
 
 受控入口可以是经审阅的一次性适配，复用现有私有函数，不要求另造通用公开安装API。问题是尚未落实监督、来源/目标和通道的完整调用边界，不是函数名称带下划线就不能使用。
 
 G3不是普通发布任务的缺口：release_task.py已有固定sanq-release-apply-<plan-id>.service、Restart=no、ExecStopPost及manager PID/cgroup检查。它不能直接当首次安装监督器，因为bootstrap运行在工具交接之前/之中，不可依赖尚未完整安装的release_task/guard，也不能根据目录里任意旧writers.json发root命令。
 
-首次安装_installation_application_ownership仅捕获Python异常；本地固定stop-post内部角色已接同代次原件链，但尚无unit提交与真实通道，不能据此宣称SIGKILL或主机故障已验收。准确原策略恢复后，运行中的daemon可能重启应用；最后清marker后，失败也不保证marker仍在。必须按这两个已知窗口补独立收尾及实际中断测试，不把“门禁存在”“发过stop”或FENCE_UNCONFIRMED当停写证明。这是原安装/失败保持目标的未完成适配，不新增CA、可信时间或常驻控制服务。
+首次安装_installation_application_ownership仅捕获Python异常；固定stop-post及同代次原件收尾、unit提交已合dev并经源码CI，操作者完整通道仍待完成，实际SIGKILL/主机故障验证统一后置。准确原策略恢复后，运行中的daemon可能重启应用；最后清marker后，失败也不保证marker仍在。生产首用须如实保留这两个窗口的未验收边界，不把“门禁存在”“发过stop”或FENCE_UNCONFIRMED当停写证明；后置隔离执行时仍须覆盖独立收尾及实际中断测试，不新增CA、可信时间或常驻控制服务。
 
-## 目标与材料登记（当前全部待现场填写）
+## 后置隔离与恢复验证统一登记
+
+以下任务随隔离实例一起延期，后续单独安排；当前均未执行，不能据生产首用成功填为通过。
+
+| 后置任务 | 范围 | 当前状态 |
+| --- | --- | --- |
+| 隔离实例与身份 | 创建/绑定独立实例、AWS对象、SSH key与系统版本 | DEFERRED / NOT_RUN |
+| 脱敏旧基线与准确候选 | 原工具/示例数据、独立S1/S2发布与SQL/兼容对象 | DEFERRED / NOT_RUN |
+| 隔离网络及外部调用 | TLS/解析/实际请求目标，支付/邮件/备份等隔离 | DEFERRED / NOT_RUN |
+| 原D4-01至D4-20矩阵 | 完整正常场景、断线/并发/部分写入/杀进程/daemon/socket/VM重启及交接边界 | DEFERRED / NOT_RUN |
+| 完整恢复实演 | VM及数据库真实恢复、恢复后数据/服务核验；所需实例与连接安排 | DEFERRED / NOT_RUN |
+
+生产首用另按准确维护窗口、目标、材料、正常执行与实际结果保留证据。任何自然发生的故障仍按现场真实UNKNOWN/BLOCKED记录；延期不是停用现有失败保护或重放许可。
+
+## 后置隔离目标与材料登记（待现场填写）
 
 以下是人工审阅表，不是新的持久schema/授权文件；空值必须保持待定，不用示例替代真实事实。
 
@@ -108,21 +138,21 @@ G3不是普通发布任务的缺口：release_task.py已有固定sanq-release-ap
 
 可以用新实例重建受控旧工具/示例数据基线，不必先做完整生产快照恢复演练。不得直接让生产快照克隆带真实凭据联网营业；隔离方式和基线差异必须如实记录，不能将脱敏基线称为生产副本完全一致。
 
-在G1–G4未齐前，仅准备材料与只读版本/对象核查，不发安装、停容器、改策略、reload、杀进程、重启或SQL写入。当前没有提供可直接执行的安装apply命令；后续适配交付后再按准确参数登记。
+本节G1/G4及隔离基线只约束后置隔离执行，不能用生产目标代替隔离目标。生产首用按文首调整方案落实准确生产目标、可验材料、Mac/操作者/查询接线、维护窗口、停写与快照/离机确认等准备后进行一次正常执行；准备未通过时继续只读核查。主动故障注入统一保留后置。
 
-## 固定执行顺序与证据
+## 后置隔离执行顺序与证据
 
 1. 先完成四项前置及准确操作范围审阅，锁定S_tool、B0、应用候选和目标实例。真实测试均从可辨认的干净基线开始，不在未知残件上重试。
 2. 先只读预检与拒绝场景，再一次正常旧→新工具安装。每次写入故障/主机重启用独立可丢弃试验基线；不要把上一条事故的现场清理后冒充同一轮恢复成功。
 3. 安装通过后，验证普通无迁移发布、真实增量SQL、连续双发布和兼容镜像回退；SQL批准及回退兼容批准各自绑定准确计划。
 4. 最后执行SSH断线、并发、SIGKILL、Docker socket/daemon/VM重启和交接中断。每条都核实际对象，不只看日志/退出码。
-5. 汇总真实结果、未处置现场及第四批生产材料；没有足够证据的项保持NOT_RUN/UNKNOWN/BLOCKED，不自动扩大范围或重新启用暂停研究。
+5. 汇总后置隔离真实结果、未处置现场及与既有生产首用事实的差异；没有足够证据的项保持NOT_RUN/UNKNOWN/BLOCKED，不倒填早期通过、不自动扩大范围或重新启用暂停研究。
 
 证据目录放在操作者私有位置，不进入git。每个case保留：case-id、准确源码与目标、前置/注入时刻、实际argv/时间与退出码、unit/PID/cgroup、marker/intent/writers/completion等原件hash、前后容器/策略/DB/卷/挂载和唯一state观察、HTTP实际路由及返回、原始日志位置、结论与未决项。原件可能含配置/数据；仓库只收脱敏总结与摘要，不收.env、私钥、业务数据或恢复tar。
 
 UTC只作审计时间，不作为可信时间证明。不要为演练新增证书权威/离机CAS服务；如需一次性隔离TLS夹具，应单独标其边界，它不能证明真实Cloudflare公网路由。公网端到端证据不足的项保留OPEN，第四批实际生产路由另验。
 
-## 验收矩阵（当前均NOT_RUN）
+## 后置隔离验收矩阵（D4-01至D4-20均DEFERRED / NOT_RUN）
 
 | case-id | 场景 | 最低判据与保留证据 |
 | --- | --- | --- |
