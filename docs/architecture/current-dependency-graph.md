@@ -1,5 +1,9 @@
 # Current 12-context dependency graph
 
+## 2026-10-31：FI-MAC-1B1 安装目标材料只读检查（本地待审）
+
+在原 Runtime/Ops 所有权下为独立 Mac 首次安装客户端新增本地 `check-target` 预检：严格核本人 home 固定 AWS 目标文件权限/规范 JSON、VM v1 字段结构以及与已有受保护 SSH profile 的唯一目标与主机密钥绑定；不导入其他业务上下文、不建立第二状态权威或凭结构授予 AWS 来源、发布或恢复权限。不新增远端命令/VM helper/依赖/服务/数据库对象，12-context 依赖边界及基线未变化。FI-MAC-1A 已由 PR #3072 经 CI SUCCESS 合并 dev `6e9deea1`；本新增切片仅本地源码/模拟测试、CI 和 Mac 尚未验收。
+
 ## 2026-10-31：FI-MAC-1A 运行时只读适配器（本地待审）
 
 在 Runtime/Ops 所有权内新增独立 Mac `sanq-install` 只读 systemd 首次安装 unit 观察端，复用现有 `sanq_deploy.py` 身份/SSH 适配器；不改变 VM 安装执行器、任何业务上下文、数据库/支付或 12-context 公共依赖图，不新增服务/部署单元/权限/Manifest/依赖。仅含 `status`；高权限首次提交/交互及持久结果核查继续 OPEN。MCP-workspace 未运行测试，CI/真机待审；参见 [FI-MAC-1A](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。

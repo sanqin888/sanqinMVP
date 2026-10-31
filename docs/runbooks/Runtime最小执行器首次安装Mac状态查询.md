@@ -1,6 +1,22 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
-> **2026-10-31｜本地工作区待审 / CI_NOT_RUN / MAC_NOT_TESTED / PRODUCTION_NOT_INSTALLED**
+## FI-MAC-1B1：操作者目标材料本地预检（本地待审）
+
+首次安装正式发送任何 VM 交互帧之前，可先对独立 AWS 会话取得并人工审阅的目标材料进行严格本地结构检查。**该动作没有 SSH 连接，不会访问 AWS API，也不能证实来源真实性**。
+
+在 Mac 账户目录固定保存 `$HOME/sanq-install-target.json`，权限须 0400 或 0600；这是单独的用户文件，不得放进 `~/.sanq-deploy` 的三文件固定目录。内容是 VM 现有 `sanq-minimal-pre-snapshot-target` v1 的原 canonical JSON 对象，必须按字段名排序、紧凑分隔、ASCII 转义、末尾单个换行。准确字段：`schemaVersion=1`、`kind`、`accountId`、`region`、`instanceArn`、`instanceName`、`sshTarget`、`sshHostKeySha256`、`linuxSystemDisk`、`operatorConfirmed=true`、`instance`。其中 `instance` 须为独立 AWS 会话中目标 Lightsail 实例的原始观测对象，包含 `arn/name/resourceType/location.regionName/location.availabilityZone/hardware.disks`；只接受一个已附着系统盘。不得填造、猜测账户号、实例 ARN 或系统盘；不收录 AWS 密钥和登录令牌。
+
+```sh
+/bin/sh ops/release/sanq-install.sh check-target \
+  --source-sha <准确40位main提交SHA> \
+  --retention-id <准确64位保留材料ID>
+```
+
+返回的 `TARGET_STRUCTURE_MATCHED_FIXED_PROFILE` 仅证明严格字段结构、Mac 目标/host key 一致及单盘模型相符，输出 `targetInputSha256` 和输入请求的两个身份便于人工复核。始终报告 AWS 来源未经认证、独立核实未完成、无安装或恢复许可。文件权限错误、软链接/硬链接、目录原件变化、重复字段、非 canonical JSON、错主机/密钥、错实例/盘、非原生布尔均拒绝；不修复文件、不自动拉取 AWS、不提交 VM 任务。
+
+实际交互提交/快照双帧/离机耐久回执/任务退出后的持久证据校验仍待 FI-MAC-1B2。此时 **NOT_READY_TO_INSTALL**，不能因预检成功而在生产执行安装。
+
+> **FI-MAC-1A 已由 PR #3072 经 CI #7842 SUCCESS 合并 dev `6e9deea1`；Mac 真机首次安装状态查询未实测，生产仍未安装。以下旧实施与验收说明保留。**
 
 本切片仅建立 **已有首次安装任务的 systemd manager 状态观察入口**，不是安装操作者交互/提交器，也不是安装结果的权威完成审计。已完成的 Mac 普通更新客户端 `sanq-deploy.sh` 不变。
 
