@@ -1,5 +1,7 @@
 # Runtime 最小执行器 Mac 入口
 
+> **2026-10-31 实测补充：** 原 Mac `dev` 已更新至 `a8b8d2ea`（PR #3071）；Mac Python3.14.10 `local-check` 通过，Agent 包含多身份时 SanQ 正式 `status` 客户端成功进入 VM 执行 Python（远端提示 `/opt/sanq/runtime/ops/release/release_task.py` 不存在，退出2）。本机 `~/.sanq-ssh-*` 临时目录清理通过、`~/.sanq-deploy` 保持三文件。故 SSH 身份/传输与清理已实际验证，但 VM 普通更新工具未安装、真实安装/发布均未执行。新 FI-MAC-1A 只读**首次安装**任务查询见 [独立手册](Runtime最小执行器首次安装Mac状态查询.md)；该切片本地待审、未 CI/真机验收，不改变旧发布入口。
+
 ## 2026-10-31：加密 OpenSSH 身份在旧版 Mac 的 Agent 选择修复（本地待审）
 
 **MAC_ENCRYPTED_IDENTITY_SOURCE_AUTHORED / CI_NOT_RUN / MAC_CLIENT_NOT_REVERIFIED / NO_REMOTE_DELIVERY / NO_PRODUCTION_CHANGE。** 真实 Mac SSH 只读验证已观察到：使用加密的 `~/.sanq-deploy/identity`、`IdentitiesOnly=yes` 时未向 VM 提交公钥；而使用匹配的临时公钥文件和本机 `ssh-agent` 时，VM 接受公钥、认证成功，`/usr/bin/true` 退出 0。该观察不等于 SanQ 正式客户端通过或 VM 工具安装就绪。

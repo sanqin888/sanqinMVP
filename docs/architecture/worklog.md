@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-31 — FI-MAC-1A 首次安装受限 Mac 状态观察（本地待审）
+
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** 新分支 `feat/runtime-fi-mac1a-install-readonly-status-20261031` 从最新 dev 建立；新增 `sanq-install.sh`/`sanq_install.py`，复用原 Mac 受限 profile、唯一加密身份 Agent 选择及 SSH 传输，只查询准确 source-sha/retention-id 的固定 systemd unit；校验 run/cleanup manager 身份，不将任何查询/任务成功结果升级为安装完成、可执行或可恢复许可。新增离线否定夹具及 [运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。Ops 边界、VM helper、17+Manifest、原两锁、数据库/业务及永久门禁不变；安装提交交互与持久核查继续 OPEN。MCP-workspace 不执行项目测试，尚未推送/PR/CI/真机、未更改生产。等待用户审阅后再进入远端交付。
+
 ## 2026-10-31 — Runtime Mac 加密身份选择修复（仅本地源码）
 
 **LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / MAC_REVERIFICATION_PENDING / NO_PR / PRODUCTION_UNCHANGED。** 本地分支 `fix/runtime-mac-encrypted-ssh-identity-20261031`，在最新 `origin/dev` 上修复旧版 Mac OpenSSH 无法从加密私钥自动发现 Agent 身份的问题。操作者独立只读 SSH 实测证实：直接 `identity` 无 `Offering public key`；从已加载 Agent 获取对应公钥作为受限临时 `-i` 时，VM 接受身份，SSH_EXIT=0。客户端只在正式远端操作中从原受保护 FD 解出 AES256-CTR/bcrypt 单一 Ed25519 的外层公钥，绑定唯一匹配 Agent 身份并使用临时 0700/0600 `.pub`；不解密私钥，`profile` / `local-check` 不读取私钥；其余格式沿用旧 `-i`。新增聚焦离线测试，固定三文件、SSH 受限选项、Release/Runtime/VM 权威与业务状态不变，不增加依赖/CI、schema、迁移、unit 或生产权限。详见 [Mac 入口运行手册](../runbooks/Runtime最小执行器Mac入口.md)。未在 MCP-workspace 执行测试，也未推送/创建 PR；待用户审阅授权远端交付，再由准确最终 head 的 GitHub Actions 验证及 Mac 真机复验。生产安装/发布另须独立批准。
