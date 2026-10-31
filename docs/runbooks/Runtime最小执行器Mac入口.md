@@ -1,5 +1,13 @@
 # Runtime 最小执行器 Mac 入口
 
+## 2026-10-31：加密 OpenSSH 身份在旧版 Mac 的 Agent 选择修复（本地待审）
+
+**MAC_ENCRYPTED_IDENTITY_SOURCE_AUTHORED / CI_NOT_RUN / MAC_CLIENT_NOT_REVERIFIED / NO_REMOTE_DELIVERY / NO_PRODUCTION_CHANGE。** 真实 Mac SSH 只读验证已观察到：使用加密的 `~/.sanq-deploy/identity`、`IdentitiesOnly=yes` 时未向 VM 提交公钥；而使用匹配的临时公钥文件和本机 `ssh-agent` 时，VM 接受公钥、认证成功，`/usr/bin/true` 退出 0。该观察不等于 SanQ 正式客户端通过或 VM 工具安装就绪。
+
+修复范围仅限 Mac 客户端的本地身份选择：远端操作期间，经原只读 FD 和原件身份检查读取 `identity` 的 OpenSSH 外层封装，提取 AES-256-CTR/bcrypt 加密单一 Ed25519 密钥的**内嵌公钥**；不解密、输出或落盘私钥材料。用受限环境调用本机 `/usr/bin/ssh-add -L`，只接受与内嵌公钥精确匹配的唯一 Agent 身份；在本人 home 下建立 0700 临时目录、0600 临时 `.pub`，作为 SSH `-i` 身份，调用结束即清理。Agent 缺失、密钥不匹配/重复、格式异常或子进程失败均阻断；`profile` 和 `local-check` 不读取私钥。非加密/其他旧格式仍使用原 `identity` 直接交给 SSH，不扩大可选主机/密钥/SSH 参数。
+
+固定三文件 profile 不变；`BatchMode`、`IdentitiesOnly`、严格单一主机密钥校验、禁代理/转发、单次 SSH、结果未知不重试及 VM 发布门禁均不变。新增 8 项离线合成夹具测试，覆盖解析、Agent 身份匹配及拒绝、临时文件权限与清理、既有身份路径、实际传输参数与无远端网络行为。未运行 MCP-workspace 测试；以用户授权后准确最终 head 的 GitHub Actions 和 Mac 真机复验为准。生产首次安装和恢复演练仍需独立授权与验收。
+
 ## Mac固定Python3.14启动与本地预检（本地待审）
 
 **MAC_PYTHON314_LAUNCHER_LOCAL / CI_PENDING / MAC_PREFLIGHT_NOT_RUN / NOT_INSTALLED。**
@@ -48,11 +56,11 @@ sanq-deploy.sh已改为固定调用上述3.14框架路径，保持-I/-S/-B及-X 
 | --- | --- |
 | `target` | 一个小写 ASCII DNS 名或规范 IPv4，最后恰好一个 LF；无用户、端口、URL、选项或其他行；≤256字节 |
 | `known_hosts` | 恰好一行 `sanq-runtime ssh-ed25519 <base64主机公钥>` 加 LF；只接受合法 SSH Ed25519 二进制公钥；≤1024字节 |
-| `identity` | 本人用于 ubuntu 登录的私钥文件；≤64KiB；客户端只核元数据，不读取或打印私钥字节，由 SSH 读取 |
+| `identity` | 本人用于 ubuntu 登录的私钥文件；≤64KiB。`profile` 仅核元数据；正式 SSH 操作对受支持的加密 OpenSSH Ed25519 格式，只解析外层内嵌公钥并绑定本地 Agent；不解密或输出私钥；其他格式仍由 SSH 自行读取 |
 
 主机公钥必须先通过 AWS 受信控制台等独立渠道核对 SHA256 指纹，再由操作者手工放入固定文件。不要将未核对的 ssh-keyscan 输出当作首次信任；客户端不自动抓取、接受或更新主机密钥。主机变化或密钥轮换必须重新独立核对并显式更改本地配置。当前未核实生产 VM 的 Ed25519 主机公钥，不能为它填造内容。
 
-客户端不会提示密码或私钥口令。加密的身份密钥需要操作者预先按自己的凭据管理方式载入本机 SSH agent；仅允许传入本人所有的真实 agent socket，IdentitiesOnly 仍限制固定 identity，禁止向远端转发 agent。profile 命令只显示固定目标和已保存主机公钥的 SHA256 指纹，不证明首次公钥来源已经核对。
+客户端不会提示密码或私钥口令。AES-256-CTR/bcrypt 加密的单一 OpenSSH Ed25519 密钥需要操作者预先载入本机 SSH Agent；正式 SSH 只以该 `identity` 内嵌公钥精确匹配 Agent，临时 `.pub` 退出即清除。仅允许本人真实 Agent socket，`IdentitiesOnly=yes` 限定唯一匹配身份，禁止向远端转发 Agent。profile 命令只显示固定目标和已保存主机公钥的 SHA256 指纹，不证明首次公钥来源已经核对。
 
 ```sh
 /bin/sh ops/release/sanq-deploy.sh profile

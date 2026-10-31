@@ -232,6 +232,150 @@ class ProfileTests(ProfileFixture, unittest.TestCase):
                 client._environment(self.home)
 
 
+class EncryptedIdentityTests(ProfileFixture, unittest.TestCase):
+    """Encrypted envelope + agent tests use synthetic ciphertext and never contact a VM."""
+
+    def setUp(self):
+        super().setUp()
+        def field(value):
+            return struct.pack("!I", len(value)) + value
+        inner = (b"openssh-key-v1\x00" + field(b"aes256-ctr") + field(b"bcrypt")
+                 + field(b"synthetic-kdf") + struct.pack("!I", 1)
+                 + field(self.key_blob) + field(b"synthetic-encrypted-private-bytes"))
+        encoded = base64.b64encode(inner)
+        text = (b"-----BEGIN OPENSSH PRIVATE KEY-----\n"
+                + b"\n".join(encoded[i:i+70] for i in range(0, len(encoded), 70))
+                + b"\n-----END OPENSSH PRIVATE KEY-----\n")
+        (self.root / "identity").write_bytes(text)
+        self.public_line = b"ssh-ed25519 " + base64.b64encode(self.key_blob) + b" test-agent\n"
+        self.agent_path = self.home / "test-agent"
+
+    @contextlib.contextmanager
+    def agent(self, keys=None):
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.bind(str(self.agent_path))
+            with patch.dict(os.environ, {"SSH_AUTH_SOCK": str(self.agent_path)}, clear=True), \
+                 patch.object(client.subprocess, "run", return_value=SimpleNamespace(
+                     returncode=0, stdout=self.public_line if keys is None else keys)) as listed:
+                try:
+                    yield listed
+                finally:
+                    self.agent_path.unlink()
+
+    def test_matching_agent_pins_temporary_public_key_without_changing_profile(self):
+        with self.agent() as listed, client._profile() as target:
+            with client._agent_identity(target, client._environment(self.home)) as identity:
+                self.assertNotEqual(identity, self.root / "identity")
+                self.assertEqual(identity.read_bytes(), self.public_line.replace(b" test-agent", b""))
+                self.assertEqual(identity.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(identity.parent.stat().st_mode & 0o777, 0o700)
+                self.assertEqual(set(os.listdir(self.root)), client.PROFILE_FILES)
+                argv = client._ssh_argv(target, client._operation(["status", "b" * 64]), identity)
+                self.assertEqual(argv[-9:-7], ["-i", str(identity)])
+                self.assertIn("IdentitiesOnly=yes", argv)
+                self.assertIn("ForwardAgent=no", argv)
+            self.assertFalse(identity.exists())
+            self.assertFalse(identity.parent.exists())
+            target["check"]()
+        self.assertEqual(listed.call_args.args[0], ["/usr/bin/ssh-add", "-L"])
+        self.assertNotIn("shell", listed.call_args.kwargs)
+        self.assertEqual(listed.call_args.kwargs["stderr"], subprocess.DEVNULL)
+
+    def test_mismatched_missing_or_duplicated_agent_key_refused_before_ssh(self):
+        wrong = (b"ssh-ed25519 " + base64.b64encode(
+            self.key_blob[:-1] + b"X") + b" wrong\n")
+        for keys in (wrong, b"", self.public_line * 2, b"garbage\n"):
+            with self.subTest(keys=keys), self.agent(keys), client._profile() as target:
+                with self.assertRaises(client.ClientError):
+                    with client._agent_identity(target, client._environment(self.home)):
+                        self.fail("must never hand out a key")
+        with patch.dict(os.environ, {}, clear=True), client._profile() as target:
+            with self.assertRaisesRegex(client.ClientError, "requires a local SSH agent"):
+                with client._agent_identity(target, client._environment(self.home)):
+                    pass
+        self.assertEqual(set(os.listdir(self.home)), {".sanq-deploy"})
+
+    def test_bad_encrypted_envelopes_refuse_without_agent_fallback(self):
+        valid = (self.root / "identity").read_bytes()
+        for raw in (valid.replace(b"-----END", b"-----BAD", 1),
+                    valid.replace(b"-----BEGIN OPENSSH PRIVATE KEY-----\n",
+                                  b"-----BEGIN OPENSSH PRIVATE KEY-----\n%%%", 1),
+                    b"-----BEGIN OPENSSH PRIVATE KEY-----\n%%%\n-----END OPENSSH PRIVATE KEY-----\n"):
+            with self.subTest(raw=raw[:45]):
+                (self.root / "identity").write_bytes(raw)
+                with client._profile() as target:
+                    with self.assertRaises(client.ClientError):
+                        with client._agent_identity(target, {}):
+                            self.fail("invalid keys cannot fall back")
+        (self.root / "identity").write_bytes(valid)
+
+    def test_encrypted_agent_missing_failure_or_timeout_never_creates_pub_file(self):
+        with self.agent(), client._profile() as target, \
+             patch.object(client.subprocess, "run", return_value=SimpleNamespace(
+                 returncode=1, stdout=b"")):
+            with self.assertRaises(client.ClientError):
+                with client._agent_identity(target, client._environment(self.home)):
+                    pass
+        with self.agent(), client._profile() as target, \
+             patch.object(client.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh-add", 10)):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                with client._agent_identity(target, client._environment(self.home)):
+                    pass
+        self.assertEqual(set(os.listdir(self.home)), {".sanq-deploy"})
+
+    def test_legacy_unencrypted_identity_does_not_require_agent(self):
+        (self.root / "identity").write_bytes(b"UNENCRYPTED_OR_LEGACY_SSH_PRIVATE_KEY")
+        with patch.dict(os.environ, {}, clear=True), client._profile() as target:
+            with client._agent_identity(target, client._environment(self.home)) as identity:
+                self.assertIsNone(identity)
+                self.assertEqual(client._ssh_argv(target, client._operation(["status", "b" * 64]))[-8],
+                                 str(self.root / "identity"))
+
+    def test_execute_uses_agent_pinned_identity_for_one_local_ssh_child(self):
+        observed = []
+        original = subprocess.Popen
+
+        def local_ssh(argv, **kwargs):
+            self.assertEqual(argv[0], "/usr/bin/ssh")
+            public_path = Path(argv[argv.index("-i") + 1])
+            self.assertEqual(public_path.read_bytes(),
+                             self.public_line.replace(b" test-agent", b""))
+            self.assertEqual(kwargs["env"]["SSH_AUTH_SOCK"], str(self.agent_path))
+            self.assertIn("BatchMode=yes", argv)
+            observed.append(public_path)
+            return original([sys.executable, "-c", "print('LOCAL_ONLY')"], **kwargs)
+
+        with self.agent(), patch.object(client.subprocess, "Popen", side_effect=local_ssh), \
+             client._profile() as target:
+            result = client._execute(target, client._operation(["status", "b" * 64]))
+        self.assertEqual(result, (0, "LOCAL_ONLY\n", ""))
+        self.assertEqual(len(observed), 1)
+        self.assertFalse(observed[0].exists())
+        self.assertFalse(observed[0].parent.exists())
+
+    def test_temp_public_key_removed_when_local_ssh_launch_fails(self):
+        paths = []
+
+        def refused(argv, **kwargs):
+            candidate = Path(argv[argv.index("-i") + 1])
+            self.assertTrue(candidate.is_file())
+            paths.append(candidate)
+            raise OSError("synthetic SSH launch failure")
+
+        with self.agent(), patch.object(client.subprocess, "Popen", side_effect=refused), \
+             client._profile() as target:
+            with self.assertRaises(OSError):
+                client._execute(target, client._operation(["status", "b" * 64]))
+        self.assertEqual(len(paths), 1)
+        self.assertFalse(paths[0].exists())
+        self.assertFalse(paths[0].parent.exists())
+
+    def test_profile_only_never_reads_private_key_even_when_encrypted(self):
+        with patch.object(client.os, "pread", side_effect=AssertionError("private read")):
+            with client._profile() as target:
+                self.assertNotIn("identity", target)
+
+
 class TransportTests(ProfileFixture, unittest.TestCase):
     @contextlib.contextmanager
     def local_child(self, code):

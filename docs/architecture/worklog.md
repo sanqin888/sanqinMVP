@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-31 — Runtime Mac 加密身份选择修复（仅本地源码）
+
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / MAC_REVERIFICATION_PENDING / NO_PR / PRODUCTION_UNCHANGED。** 本地分支 `fix/runtime-mac-encrypted-ssh-identity-20261031`，在最新 `origin/dev` 上修复旧版 Mac OpenSSH 无法从加密私钥自动发现 Agent 身份的问题。操作者独立只读 SSH 实测证实：直接 `identity` 无 `Offering public key`；从已加载 Agent 获取对应公钥作为受限临时 `-i` 时，VM 接受身份，SSH_EXIT=0。客户端只在正式远端操作中从原受保护 FD 解出 AES256-CTR/bcrypt 单一 Ed25519 的外层公钥，绑定唯一匹配 Agent 身份并使用临时 0700/0600 `.pub`；不解密私钥，`profile` / `local-check` 不读取私钥；其余格式沿用旧 `-i`。新增聚焦离线测试，固定三文件、SSH 受限选项、Release/Runtime/VM 权威与业务状态不变，不增加依赖/CI、schema、迁移、unit 或生产权限。详见 [Mac 入口运行手册](../runbooks/Runtime最小执行器Mac入口.md)。未在 MCP-workspace 执行测试，也未推送/创建 PR；待用户审阅授权远端交付，再由准确最终 head 的 GitHub Actions 验证及 Mac 真机复验。生产安装/发布另须独立批准。
+
 ## 2026-10-31 — 最小更新执行器：Mac固定Python3.14启动与本地预检
 
 **MAC_PYTHON314_LAUNCHER_LOCAL / CI_PENDING / MAC_PREFLIGHT_NOT_RUN / NOT_INSTALLED。**
