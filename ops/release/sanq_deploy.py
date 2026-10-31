@@ -7,6 +7,7 @@ import argparse
 import base64
 import contextlib
 import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -19,6 +20,7 @@ import stat
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 ALIAS = "sanq-runtime"
@@ -158,6 +160,98 @@ def _host_key(raw):
         raise ClientError("invalid known_hosts encoding") from None
 
 
+def _encrypted_identity_public(raw):
+    """Read only the public envelope of a supported encrypted OpenSSH Ed25519 key."""
+    header = b"-----BEGIN OPENSSH PRIVATE KEY-----\n"
+    footer = b"-----END OPENSSH PRIVATE KEY-----\n"
+    if not raw.startswith(header):
+        return None  # Preserve the existing direct-SSH path for other private-key formats.
+    _need(raw.endswith(footer), "invalid OpenSSH identity envelope")
+    try:
+        body = base64.b64decode(b"".join(raw[len(header):-len(footer)].splitlines()), validate=True)
+        magic = b"openssh-key-v1\x00"
+        _need(body.startswith(magic), "invalid OpenSSH identity encoding")
+        position = len(magic)
+
+        def field():
+            nonlocal position
+            _need(position + 4 <= len(body), "truncated OpenSSH identity")
+            size = struct.unpack_from("!I", body, position)[0]
+            position += 4
+            _need(position + size <= len(body), "truncated OpenSSH identity")
+            value = body[position:position + size]
+            position += size
+            return value
+
+        cipher, kdf, _ = field(), field(), field()
+        _need(position + 4 <= len(body), "truncated OpenSSH identity")
+        count = struct.unpack_from("!I", body, position)[0]
+        position += 4
+        _need(count == 1, "unsupported OpenSSH identity key count")
+        public, _ = field(), field()  # Do not decode, log or persist encrypted private material.
+        _need(position == len(body), "unexpected OpenSSH identity trailing bytes")
+        if cipher == b"none" and kdf == b"none":
+            return None  # Unencrypted keys still use their unchanged direct path.
+        _need(cipher == b"aes256-ctr" and kdf == b"bcrypt",
+              "unsupported encrypted OpenSSH identity")
+        prefix = struct.pack("!I", 11) + b"ssh-ed25519" + struct.pack("!I", 32)
+        _need(public.startswith(prefix) and len(public) == len(prefix) + 32,
+              "encrypted identity must contain one Ed25519 public key")
+        return public
+    except (ValueError, struct.error):
+        raise ClientError("invalid OpenSSH identity encoding") from None
+
+
+@contextlib.contextmanager
+def _agent_identity(target, environment):
+    """Select only the agent identity matching the local encrypted key's public envelope."""
+    identity_fd = target["identity_fd"]
+    size = os.fstat(identity_fd).st_size
+    _need(0 < size <= 65536, "identity size changed")
+    # Do not read legacy/private-key formats beyond the identifying OpenSSH header.
+    header = b"-----BEGIN OPENSSH PRIVATE KEY-----\n"
+    if os.pread(identity_fd, len(header), 0) != header:
+        target["check"]()
+        yield None
+        return
+    raw = os.pread(identity_fd, size + 1, 0)
+    _need(len(raw) == size, "identity read changed")
+    public = _encrypted_identity_public(raw)
+    del raw
+    target["check"]()
+    if public is None:
+        yield None
+        return
+    _need("SSH_AUTH_SOCK" in environment, "encrypted identity requires a local SSH agent")
+    listed = subprocess.run(["/usr/bin/ssh-add", "-L"], env=environment, cwd=target["home"],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            close_fds=True, timeout=10, check=False)
+    _need(type(listed.returncode) is int and listed.returncode == 0
+          and len(listed.stdout) <= 65536, "cannot list SSH agent identities")
+    matches = 0
+    for line in listed.stdout.splitlines():
+        parts = line.split(maxsplit=2)
+        if len(parts) < 2 or parts[0] != b"ssh-ed25519":
+            continue
+        try:
+            blob = base64.b64decode(parts[1], validate=True)
+        except ValueError:
+            continue
+        if hmac.compare_digest(blob, public):
+            matches += 1
+    _need(matches == 1, "SSH agent does not contain exactly one matching identity")
+    with tempfile.TemporaryDirectory(prefix=".sanq-ssh-", dir=target["home"]) as directory:
+        path = Path(directory) / "identity.pub"
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            data = b"ssh-ed25519 " + base64.b64encode(public) + b"\n"
+            _need(os.write(fd, data) == len(data), "short temporary public key write")
+        finally:
+            os.close(fd)
+        target["check"]()
+        yield path
+
+
 @contextlib.contextmanager
 def _profile():
     home = _home()
@@ -178,7 +272,7 @@ def _profile():
             info = os.fstat(fd)
             _file(info, maximum)
             held[name], saved[name] = fd, _stamp(info)
-            if name != "identity":  # SSH reads the key; this adapter never reads or prints private key bytes.
+            if name != "identity":  # Profile inspection never reads private key bytes.
                 content = os.read(fd, maximum + 1)
                 _need(len(content) == info.st_size, "local profile short or oversized read")
                 raw[name] = content
@@ -194,13 +288,14 @@ def _profile():
                 _need(_stamp(os.fstat(fd)) == saved[name]
                       == _stamp(os.stat(name, dir_fd=root, follow_symlinks=False)), "local profile file changed")
         target = {"home": home, "directory": home / ".sanq-deploy",
-                  "host": _host(raw["target"]), "fingerprint": _host_key(raw["known_hosts"]), "check": check}
+                  "host": _host(raw["target"]), "fingerprint": _host_key(raw["known_hosts"]),
+                   "identity_fd": held["identity"], "check": check}
         check()
         yield target
         check()
 
 
-def _ssh_argv(target, operation):
+def _ssh_argv(target, operation, identity_path=None):
     _need(operation["remote"] is not None, "local profile operation cannot enter SSH")
     directory = target["directory"]
     options = ("BatchMode=yes", "StrictHostKeyChecking=yes",
@@ -214,7 +309,7 @@ def _ssh_argv(target, operation):
     args = ["/usr/bin/ssh", "-F", "/dev/null", "-n", "-T"]
     for option in options:
         args.extend(("-o", option))
-    return [*args, "-i", str(directory / "identity"), "-p", "22", "-l", "ubuntu", "--",
+    return [*args, "-i", str(identity_path if identity_path is not None else directory / "identity"), "-p", "22", "-l", "ubuntu", "--",
             target["host"], operation["remote"]]
 
 
@@ -252,10 +347,17 @@ def _stop_local(process):
 
 def _execute(target, operation):
     target["check"]()
-    args = _ssh_argv(target, operation)
+    environment = _environment(target["home"])
     deadline = time.monotonic() + operation["timeout"]
+    with _agent_identity(target, environment) as identity_path:
+        return _execute_transport(target, operation, environment, identity_path, deadline)
+
+
+def _execute_transport(target, operation, environment, identity_path, deadline):
+    _need(time.monotonic() < deadline, "SSH response deadline expired")
+    args = _ssh_argv(target, operation, identity_path)
     process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        env=_environment(target["home"]), cwd=target["home"], close_fds=True, start_new_session=True)
+        env=environment, cwd=target["home"], close_fds=True, start_new_session=True)
     buffers = {"out": bytearray(), "err": bytearray()}
     try:
         with selectors.DefaultSelector() as selector:
