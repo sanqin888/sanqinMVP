@@ -1,5 +1,9 @@
 # Runtime 最小执行器工具交付与安装合同
 
+## 2026-10-31：FI-MAC-1A 首次安装任务只读观察入口（本地待审）
+
+**FI_MAC_1A_LOCAL / CI_NOT_RUN / MAC_NOT_TESTED / INSTALL_OPERATOR_PEER_OPEN / NOT_INSTALLED。** 在现有 Mac 独立 Python3.14 入口、SSH Agent 绑定与三文件 profile 上增加只读 `sanq-install.sh status --source-sha <40hex> --retention-id <64hex>`，复用原 SSH 传输，不更改普通 `sanq-deploy`。仅允许固定 systemctl show 的11个已知 manager 字段；已加载 unit 必须精确匹配两条受审阅的 installation-run / installation-cleanup systemd argv、Transient 与 oneshot 身份；not-found 不等于可重试。无远端代码写入/任务提交、无 sudoers/agent forwarding/任意 SSH 命令、无安装完成许可。实际 VM 高权限受控 installation-submit、Mac 快照/离机交互、持久结果只读对账仍为 OPEN，不能据本次状态查询执行生产安装。详见 [FI-MAC-1A 运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+
 ## Mac固定Python3.14启动与本地预检（本地待审）
 
 **MAC_PYTHON314_LAUNCHER_LOCAL / CI_PENDING / MAC_PREFLIGHT_NOT_RUN / NOT_INSTALLED。**

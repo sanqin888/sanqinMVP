@@ -1,5 +1,9 @@
 # Current 12-context dependency graph
 
+## 2026-10-31：FI-MAC-1A 运行时只读适配器（本地待审）
+
+在 Runtime/Ops 所有权内新增独立 Mac `sanq-install` 只读 systemd 首次安装 unit 观察端，复用现有 `sanq_deploy.py` 身份/SSH 适配器；不改变 VM 安装执行器、任何业务上下文、数据库/支付或 12-context 公共依赖图，不新增服务/部署单元/权限/Manifest/依赖。仅含 `status`；高权限首次提交/交互及持久结果核查继续 OPEN。MCP-workspace 未运行测试，CI/真机待审；参见 [FI-MAC-1A](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+
 ## Mac固定Python3.14启动与本地预检（本地待审）
 
 **MAC_PYTHON314_LAUNCHER_LOCAL / CI_PENDING / MAC_PREFLIGHT_NOT_RUN / NOT_INSTALLED。**
