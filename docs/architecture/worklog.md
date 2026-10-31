@@ -14,7 +14,7 @@ sanq-deploy.sh已改为固定调用上述3.14框架路径，保持-I/-S/-B及-X 
 
 本批共新增12项测试定义：local-check的11项（真实目录FD/管道、最小环境/固定-G、版本分支、原门槛、平台/root/隔离参数、未知/超时/缺失API、真实home替换、窄CLI、中断及CI主机本地-G）；另加固定解释器缺失不回退测试。原26项Mac测试继续回归，现合计38项。shell夹具先断言交付路径固定，只有一次性测试副本替换为当前CI解释器以核含空格路径/恶意PATH及pathlib/json阴影模块；交付脚本没有测试覆盖开关。新增CI步骤在ops_release范围使用精确CPython3.14.10 x64运行这38项Linux离线夹具，update-environment=false，原3.10和C1步骤保持；该结果不能代替用户Darwin/PSF安装器/OpenSSH8.1实测，当前尚未运行。
 
-源码/测试Python3.8 AST、符号表与读回/差异静态检查完成，CI配置同步静态核对；MCP-workspace未运行lint/build/test。owner/依赖图已审阅，基线无变化：无VM helper/永久unit/业务schema/迁移/外部运行依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及C1/CPython/R2暂停研究保持。本批未提交/推送，真实Mac客户端/网络及生产/AWS/DB操作均未执行。生产首用与后置隔离/故障/恢复决策保持；下一步先经CI交付固定版本并完成Mac本地预检，再接首次安装操作者通道与完整结果查询。
+源码/测试Python3.8 AST、符号表与读回/差异静态检查完成，CI配置同步静态核对；MCP-workspace未运行lint/build/test。初始head `9a8128c31ad8e5edfb52b90069a2880f0299a852` 的[CI #7838](https://github.com/sanqin888/sanqinMVP/actions/runs/41232185005)在默认Release中新local-check测试处中止：测试sys.flags桩缺少Python3.14 argparse/importlib使用的ignore_environment/verbose，未形成完整Release计数，后续3.10/3.14专项/Runtime/C1未运行。仅修测试桩以保留实际解释器的全部公开非callable字段、覆盖三个隔离值，并在原CLI测试核ignore_environment/verbose不丢失；客户端运行逻辑不变。将原新增3.14专项提前到耗时Release全量之前以尽早暴露兼容问题，原全量步骤全部保留，仍为38项Mac测试，无跳过或放宽门槛。owner/依赖图已审阅，基线无变化：无VM helper/永久unit/业务schema/迁移/外部运行依赖或第二应用state，17+Manifest/250/300、九helper/三永久模板及C1/CPython/R2暂停研究保持。本批已推送PR #3070，修订后CI待验；真实Mac客户端/网络及生产/AWS/DB操作均未执行。生产首用与后置隔离/故障/恢复决策保持；下一步先经CI交付固定版本并完成Mac本地预检，再接首次安装操作者通道与完整结果查询。
 
 ## 2026-10-31 — 最小更新执行器：生产首用验证与后置隔离任务
 

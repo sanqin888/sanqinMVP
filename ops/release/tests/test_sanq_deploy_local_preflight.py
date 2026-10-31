@@ -25,8 +25,11 @@ class LocalPreflightTests(base.ProfileFixture, unittest.TestCase):
         self.stack.enter_context(patch.object(client.sys, "platform", "darwin"))
         self.stack.enter_context(patch.object(client.sys, "version_info", (3, 8, 2)))
         self.stack.enter_context(patch.object(client.sys, "executable", "/usr/bin/python3"))
+        # Preserve interpreter flags used by argparse/importlib and other stdlib internals.
+        self.real_flags = {name: getattr(client.sys.flags, name) for name in dir(client.sys.flags)
+                           if not name.startswith("_") and not callable(getattr(client.sys.flags, name))}
         self.stack.enter_context(patch.object(client.sys, "flags",
-            SimpleNamespace(isolated=1, no_site=1, dont_write_bytecode=1)))
+            SimpleNamespace(**dict(self.real_flags, isolated=1, no_site=1, dont_write_bytecode=1))))
         self.stack.enter_context(patch.object(client.sys, "pycache_prefix", "/dev/null"))
         self.stack.enter_context(patch.object(client.os, "geteuid", return_value=1001))
         self.real_run = subprocess.run
@@ -107,7 +110,7 @@ class LocalPreflightTests(base.ProfileFixture, unittest.TestCase):
     def test_wrong_launcher_flags_or_pycache_refuses_before_home_io(self):
         cases = [(client.sys, "pycache_prefix", None)]
         for flag in ("isolated", "no_site", "dont_write_bytecode"):
-            values = dict(isolated=1, no_site=1, dont_write_bytecode=1)
+            values = dict(self.real_flags, isolated=1, no_site=1, dont_write_bytecode=1)
             values[flag] = 0
             cases.append((client.sys, "flags", SimpleNamespace(**values)))
         for target, name, value in cases:
@@ -163,6 +166,8 @@ class LocalPreflightTests(base.ProfileFixture, unittest.TestCase):
         self.ssh.assert_not_called()
 
     def test_local_check_has_no_host_key_path_fd_or_command_override(self):
+        self.assertEqual(client.sys.flags.ignore_environment, self.real_flags["ignore_environment"])
+        self.assertEqual(client.sys.flags.verbose, self.real_flags["verbose"])
         operation = client._operation(["local-check"])
         self.assertIsNone(operation["remote"])
         for flag in ("--host", "--identity", "--input-fd", "--command", "--target-sha"):
