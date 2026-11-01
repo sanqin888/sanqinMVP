@@ -1,6 +1,10 @@
 # Current 12-context dependency graph
 
-## 2026-11-01：FI-MAC-1B3a 只读安装 PRE-CLEAR 原件摘要模型（本地待审）
+## 2026-11-01：FI-MAC-1B3b root 私有原件权限评审（本地设计）
+
+PR #3078 CI SUCCESS、已合并 `dev` `c71cd2ea`。本批只在 Runtime/Ops 文档设计可信 VM 只读取证边界：现有 root `_private_session`、两把独占锁、固定事务目录与 `completion.json` PRE-CLEAR 语义不可由 Mac 非特权 status 替代；需单独批准新增特权入口或人工 root 现场取证。没有新增代码、导入、权限、CLI、业务/数据库/部署单元、依赖图节点或第二状态权威，12-context 基线不变。详见 [权限评审](Runtime首次安装可信只读取证权限评审.md)。
+
+## 2026-11-01：FI-MAC-1B3a 只读安装 PRE-CLEAR 原件摘要模型（已合并 dev）
 
 Runtime/Ops Mac 侧新增纯内存 `sanq_install_result.py`，仅消费未来经独立可信采集的 VM 原件字节，复核既有 intent→writers→recovery→snapshot→offhost→pre-clear completion 部分摘要/代次约束，不写 VM 或建立第二安装 authority。当前无法证明 maintenance marker 清除、运行状态/来源或恢复；不增加公有 CLI/特权路径、业务依赖、Docker/Compose/数据库对象或权限，原 12 上下文依赖关系不变。前一 FI-MAC-1B2d PR #3077 已经 CI SUCCESS 合并 dev。
 

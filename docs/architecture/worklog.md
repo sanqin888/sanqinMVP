@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
-## 2026-11-01 — FI-MAC-1B3a 安装持久完成 PRE-CLEAR 原件摘要结构审阅（本地待审）
+## 2026-11-01 — FI-MAC-1B3b 可信 VM 原件取证权限评审（本地方案，未推送）
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** PR #3077 head `bf05e3a282347ae76409b7a87985f0515e47a24a` 经 GitHub Actions run `41320794040` SUCCESS，squash 合并 dev `5c98c0a0ad329849024b78cbdf90e806a2bb35e8`。从最新 dev 建立 `feat/runtime-fi-mac1b3a-offline-completion-audit-20261101`。添加 `sanq_install_result.py`：只读核七份由未来可信取证提供的 VM 原件的 source/retention/installation ID、原始 SHA-256 互相绑定及 completion.markerSha256 对原 intent 的重建，拒绝缺失/多余/错代次、伪造授权、非规范 JSON/哈希及时间次序错误。新增本地离线负面模拟 `test_sanq_deploy_install_result.py`，覆盖篡改、字段与许可提升、跨代次、记录缺口；未调用 VM/AWS/系统服务。注意 VM completion 是 `PREPARED_BEFORE_MARKER_CLEAR`，所有成功授权保持 false；verificationSha256 基于内存 facts，当前离线不能复算；完整恢复语义、marker 已清除与真实健康仍未知。无依赖/权限/模式/架构/API/数据库变更；CI、Mac 真机未实测。下一切片审计如何仅用获授权的可信只读通道检查持久原件身份与维护状态，严格禁止以原件哈希一致替代安装完成。
+**DESIGN_ONLY / PRIVILEGE_CHANGE_NOT_AUTHORIZED / NOT_INSTALLED。** FI-MAC-1B3a PR #3078 最终 HEAD `ab047022e11f97019aedff78cb0940b2de5e6164` 经 [CI #7856](https://github.com/sanqin888/sanqinMVP/actions/runs/41325902899) SUCCESS，squash 合并 `dev` `c71cd2eaa0c5c5847c14e14bcdb8379993ebb80e`。从该最新 `origin/dev` 建立本地 `feat/runtime-fi-mac1b3b-privileged-read-audit-plan-20261101`。审计原 root `_private_session` 的两锁、`installation-runs` 事务/七原件、维护 marker、cleanup 角色和 systemd 回收后历史成功证明缺口；在 [FI-MAC-1B3b 权限评审](Runtime首次安装可信只读取证权限评审.md) 提出最小 root 只读入口的独立权限审批、受限输出与隐私防护、失败/UNKNOWN 语义、负向测试矩阵及不扩权的人工替代方案。仅文档，未改 sudoers/VM/CLI/持久合同、无测试运行/远端 PR/生产操作；12-context 依赖基线不变，无数据库迁移。当前可信历史取证仍 BLOCKED，生产首次安装 NO-GO；停止等待权限范围及远端交付的另行授权。
+
+## 2026-11-01 — FI-MAC-1B3a 安装持久完成 PRE-CLEAR 原件摘要结构审阅（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3078_MERGED_DEV / NOT_INSTALLED。** PR #3077 head `bf05e3a282347ae76409b7a87985f0515e47a24a` 经 GitHub Actions run `41320794040` SUCCESS，squash 合并 dev `5c98c0a0ad329849024b78cbdf90e806a2bb35e8`。从最新 dev 建立 `feat/runtime-fi-mac1b3a-offline-completion-audit-20261101`。添加 `sanq_install_result.py`：只读核七份由未来可信取证提供的 VM 原件的 source/retention/installation ID、原始 SHA-256 互相绑定及 completion.markerSha256 对原 intent 的重建，拒绝缺失/多余/错代次、伪造授权、非规范 JSON/哈希及时间次序错误。新增本地离线负面模拟 `test_sanq_deploy_install_result.py`，覆盖篡改、字段与许可提升、跨代次、记录缺口；未调用 VM/AWS/系统服务。注意 VM completion 是 `PREPARED_BEFORE_MARKER_CLEAR`，所有成功授权保持 false；verificationSha256 基于内存 facts，当前离线不能复算；完整恢复语义、marker 已清除与真实健康仍未知。无依赖/权限/模式/架构/API/数据库变更；MCP-workspace 未执行测试，PR #3078 CI #7856 已通过，Mac 真机未实测。下一切片审计如何仅用获授权的可信只读通道检查持久原件身份与维护状态，严格禁止以原件哈希一致替代安装完成。
 
 ## 2026-11-01 — FI-MAC-1B2d 固定活 SSH 管道与同代次原件投递（已合并 dev）
 

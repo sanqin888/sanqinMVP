@@ -1,14 +1,20 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## 2026-11-01：FI-MAC-1B3a 首次安装持久原件 PRE-CLEAR 离线摘要审阅（本地待审）
+## 2026-11-01：FI-MAC-1B3b 可信 VM 只读取证权限边界（本地设计，待独立批准）
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / PRODUCTION_NOT_INSTALLED。** PR #3077 最终 head `bf05e3a282347ae76409b7a87985f0515e47a24a` 的 [GitHub Actions](https://github.com/sanqin888/sanqinMVP/actions/runs/41320794040) SUCCESS，squash 合并 dev `5c98c0a0ad329849024b78cbdf90e806a2bb35e8`。FI-MAC-1B2d 首次安装 SSH 私有 transport 已进入 dev，但仍未接入真实安装 CLI。
+**DESIGN_ONLY / PRIVILEGE_REVIEW_REQUIRED / NO_PRIVILEGED_IMPLEMENTATION / PRODUCTION_NOT_INSTALLED。** FI-MAC-1B3a [PR #3078](https://github.com/sanqin888/sanqinMVP/pull/3078) 最终 HEAD `ab047022e11f97019aedff78cb0940b2de5e6164` 的 [CI #7856](https://github.com/sanqin888/sanqinMVP/actions/runs/41325902899) 全部必需检查 SUCCESS，已 squash 合并 `dev` `c71cd2eaa0c5c5847c14e14bcdb8379993ebb80e`。审计发现现有 VM `_private_session` 强制 root 并持原两把排他锁，Mac 现有 `status` 只允许固定非特权 `systemctl show`；因此无新权限时无法可信地读取 root 原件、判维护标记真实缺席或核历史 cleanup 完成。`completion.json` 仍是 PRE-CLEAR 原件，且 unit 可能被 manager 回收；原字节摘要一致不是历史成功证明。
+
+本批只编写[FI-MAC-1B3b 权限评审与设计](Runtime首次安装可信只读取证权限评审.md)，列出最小固定 root 只读报告器、来源与事务/两锁/marker/manager 绑定、隐私数据最小化、不可证明历史成功时的 UNKNOWN 语义、负向测试清单及三种替代路径。**没有新增特权 CLI、sudoers、root 读取代码、持久终态合同、生产操作或安装许可。** 新增特权查询入口、后清标记持久成功证据和生产现场调用分别需要用户单独授权；此处停止在本地设计审阅，生产首次安装继续 NO-GO。
+
+## 2026-11-01：FI-MAC-1B3a 首次安装持久原件 PRE-CLEAR 离线摘要审阅（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3078_MERGED_DEV / PRODUCTION_NOT_INSTALLED。** PR #3077 最终 head `bf05e3a282347ae76409b7a87985f0515e47a24a` 的 [GitHub Actions](https://github.com/sanqin888/sanqinMVP/actions/runs/41320794040) SUCCESS，squash 合并 dev `5c98c0a0ad329849024b78cbdf90e806a2bb35e8`。FI-MAC-1B2d 首次安装 SSH 私有 transport 已进入 dev，但仍未接入真实安装 CLI。
 
 在 Mac 只读内存分析层新增 `ops/release/sanq_install_result.py`：输入只能是由后续**另行审查的可信 VM 只读取证**提供的 7 个准确原始字节对象（`intent.json`、`writers.json`、`recovery.tar`、`recovery.json`、`snapshot-review.json`、`snapshot-offhost.json`、`completion.json`）；核 sourceSha/retentionId/installationId 精确一致，按 VM 既有 canonical JSON/v1 字段校验关键身份和 false 权限，重算六份原件 SHA-256，并重建 `active.json` 原始逻辑的标记摘要与 `completion.json.markerSha256` 比对。拒绝缺失文件、外来文件、重复键、非规范记录、摘要篡改和来源身份错代次；此模型不访问真实 VM、AWS 或 systemd、不读生产私有目录、不创建新状态权威。
 
 **最关键的架构事实：VM `completion.json` 是在清除 `active.json` 维护标记之前创建的，且该原件 `installationComplete=false`、`phase=PREPARED_BEFORE_MARKER_CLEAR`。** 该持久记录本身绝不表明维护标记已清除、任务成功、原业务容器健康。另有 `verificationSha256` 来自 VM 原流程**内存中的**最终 `facts`；此七文件集并不独立包含其原始字节，当前只能核该哈希格式，不能重算或认证；`recovery.tar` 与 snapshot/offhost 的完整语义验收仍归 VM 原有验证器，便携模型仅核部分结构与原字节摘要，明确返回 `verificationFactsRecomputed=false`、`vmOriginalsAuthenticated=false`、`vmSemanticValidationComplete=false`、`maintenanceMarkerAbsentObserved=false`、`installationComplete=false`，不将摘要一致升级为真实安装成功。
 
-**下一阶段 FI-MAC-1B3b** 须单独设计/审查 VM 侧 root 权限下的只读原件取证与稳定来源、准确事务代次、维护 marker 真实缺席与两锁、systemd 收口及必要应用健康证据；任何新增 sudoers/公共命令、生产执行/安装须另外审阅授权，不能通过离线一致性自动放行。无第三方依赖、DB 迁移、原 VM 命令或权限改动；MCP workspace 未运行测试，须 CI 与 Mac 真机审查。
+**下一阶段 FI-MAC-1B3b** 须单独设计/审查 VM 侧 root 权限下的只读原件取证与稳定来源、准确事务代次、维护 marker 真实缺席与两锁、systemd 收口及必要应用健康证据；任何新增 sudoers/公共命令、生产执行/安装须另外审阅授权，不能通过离线一致性自动放行。无第三方依赖、DB 迁移、原 VM 命令或权限改动；MCP workspace 未运行测试，PR #3078 CI 已通过，Mac 真机仍待审查。
 
 ## 2026-11-01：FI-MAC-1B2d 单代次活 SSH 传输适配层（已合并 dev）
 

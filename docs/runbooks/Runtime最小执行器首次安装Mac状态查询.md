@@ -1,6 +1,12 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
-## FI-MAC-1B3a：首次安装 PRE-CLEAR 原件离线完整性审阅（本地待审）
+## FI-MAC-1B3b：可信 VM 原件只读取证权限审计（设计中，禁止执行）
+
+FI-MAC-1B3a PR #3078 已经 [CI #7856](https://github.com/sanqin888/sanqinMVP/actions/runs/41325902899) SUCCESS 并合并 `dev` `c71cd2ea`，但 Mac 的 `status` 仍只能读固定 systemd 属性，不能访问 root 保护的原件目录。VM `_private_session` 强制 root、依次独占 `.release.lock` 与 `.prepare.lock`；`completion.json` 在 marker 删除之前写入，原 unit 可能已回收。**禁止用 status=0、unit not-found、SSH 子进程退出零、B3a 哈希一致或 PRE-CLEAR completion 当作生产安装成功/可重试许可。**
+
+当前没有经批准的 root 原件只读查询入口。不得手工添加 sudoers、调用 `installation-submit` 作为查询、用任意 shell/cat/find 读取私有材料、向 Mac 导出恢复归档或在生产测试。若需要可信只读报告，先按 [FI-MAC-1B3b 权限评审](../architecture/Runtime首次安装可信只读取证权限评审.md) 分别审批固定 root 入口、可能的后清标记历史终态证据以及现场操作。未批准前只能运行原已授权的非特权 status 和操作者自有材料的离线 B3a 检查，均不证明安装成功；首次安装 NO-GO。
+
+## FI-MAC-1B3a：首次安装 PRE-CLEAR 原件离线完整性审阅（已合并 dev）
 
 新模块 `ops/release/sanq_install_result.py` 的 `review_preclear_records(originals, installation_id=..., source_sha=..., retention_id=...)` **仅为后续受限 VM 只读取证模块准备的内存审阅 API**，没有新增 shell/CLI 命令，不联网，也不读取真实 VM 文件。输入严格由 7 个具备精确固定名称的原始字节组成，缺失/多余/非 canonical JSON/跨代次/摘要失配均阻断；输出只有 `PRE_CLEAR_DIGEST_CHAIN_STRUCTURALLY_MATCHED`，始终标记 `vmOriginalsAuthenticated=false`、`verificationFactsRecomputed=false`、`maintenanceMarkerAbsentObserved=false`、`installationComplete=false`、`canExecute=false`。
 
