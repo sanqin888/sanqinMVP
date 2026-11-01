@@ -1,8 +1,16 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## 2026-10-31：FI-MAC-1B2a 安装交互请求帧单次序列模型（本地待审）
+## 2026-10-31：FI-MAC-1B2b 快照操作者证据离线同代次校验（本地待审）
 
-**FI_MAC_1B2A_LOCAL / CI_NOT_RUN / LIVE_PEER_OPEN / NOT_INSTALLED。** PR #3073 最终 head `7b62644c35e89e52ee7fb42b985ad708623a91c7` 经 [CI #7843](https://github.com/sanqin888/sanqinMVP/actions/runs/41254772514) SUCCESS，已合并 `dev` `e751c8f6416aedce5af00e703480340ccedccb2d`。在原 Mac first-install 模块旁新增仅离线调用的纯请求帧校验模型 `ops/release/sanq_install_frames.py`，不修改现有 VM `installation-submit/run/cleanup`、release/public CLI 或 Mac 已交付 `status/check-target` 的实际行为。
+**FI_MAC_1B2B_LOCAL / CI_NOT_RUN / LIVE_OPERATOR_PEER_OPEN / NOT_INSTALLED。** [PR #3074](https://github.com/sanqin888/sanqinMVP/pull/3074) 最终 head `81c1361498b805dbfb7bb82c5f28e0a267e1ad21` 的 [CI #7845](https://github.com/sanqin888/sanqinMVP/actions/runs/41258526051) SUCCESS，squash 合并 `dev` `1d51884cd227041bb50d6ecd2121b58699d22b0c`。从该基线新增 `ops/release/sanq_install_evidence.py`，只提供**内存、无网络、单次** `EvidenceReview`，供未来 Mac 操作者在已由 FI-MAC-1B2a 核验的同一个 snapshot challenge 下，对其自行取得的 canonical `sanq-minimal-snapshot-evidence-reply` 原始内容进行结构比对；不进入 VM 提交、更新、授权或回复阶段。
+
+校验既有 VM `_installation_snapshot_reply_value` / `_installation_snapshot_content_value` 的同代次 `installationId/intentSha256/writersSha256/archiveSha256/receiptSha256/challenge`；手动 Lightsail `InstanceSnapshot` ARN/快照挑战名称/`available` 状态/来源实例与账户区域、`isFromAutoSnapshot=false`、无附加磁盘、原单系统盘大小/可用区，操作者 `operator-authenticated-aws-session` 自述字段，以及挑战准备 → 请求发出 → 创建 → 可用观察 → 收到响应的时间顺序。输入重复/污染/越界/字段篡改/旧代次或时间倒序均阻断该内存评审，不自动重试；只输出本次材料散列和明示的`awsOriginAuthenticated=false`、`snapshotAvailable=false`、`operatorReplyGenerated=false`、`canExecute=false`、`installationComplete=false`。这仅是操作者自述材料**结构匹配**，不认证 AWS 会话、创建或存在性、可信时间、快照的恢复能力，也不把验证结果包装成 VM 可接受的回复。
+
+原 `sanq-install.sh status/check-target`、FI-MAC-1B2a 3 帧模型、VM installer、两锁、17+Manifest、root/SSH 权限和任何业务模块均不修改；无新依赖/常驻服务/数据库迁移。真实 Mac 双向 SSH live peer、独立 AWS 来源验证、经人工批准的原始回执送达、离机强制同步、持久安装结果查询仍须后续各自验收；在完成前 `NO-GO`。详见 [首次安装 Mac 运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+
+## 2026-10-31：FI-MAC-1B2a 安装交互请求帧单次序列模型（已合并 dev）
+
+**FI_MAC_1B2A_SOURCE_CI_VERIFIED / PR_3074_MERGED_DEV / LIVE_PEER_OPEN / NOT_INSTALLED。** PR #3073 最终 head `7b62644c35e89e52ee7fb42b985ad708623a91c7` 经 [CI #7843](https://github.com/sanqin888/sanqinMVP/actions/runs/41254772514) SUCCESS，已合并 `dev` `e751c8f6416aedce5af00e703480340ccedccb2d`。在原 Mac first-install 模块旁新增仅离线调用的纯请求帧校验模型 `ops/release/sanq_install_frames.py`，不修改现有 VM `installation-submit/run/cleanup`、release/public CLI 或 Mac 已交付 `status/check-target` 的实际行为。
 
 对本次唯一进程内会话仅容许依序观察三个 **VM → Mac 请求**：固定首帧 `sanq-minimal-install-target-request` (准确 sourceSha/retentionId/30s/权限 false)；`sanq-minimal-snapshot-evidence-request` (固定 targetInputSha256、实例绑定、同一 installationId/challenge、1800s/权限 false)；`sanq-minimal-snapshot-index-transfer` (原同一安装 ID、retention/source、challenge、同源摘要、索引真实 canonical bytes/hash/长度、VM 固定原件路径和 false 权限)。任何乱序、重复、非规范 JSON、外来 source/retention/安装 ID、快照挑战或离机索引、字段不完整和权限 true 均 fail-closed，并使该内存模型终止；不收养新运行代次。
 

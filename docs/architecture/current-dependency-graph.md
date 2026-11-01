@@ -1,6 +1,10 @@
 # Current 12-context dependency graph
 
-## 2026-10-31：FI-MAC-1B2a 仅 Mac 受控安装请求协议模型（本地待审）
+## 2026-10-31：FI-MAC-1B2b 只读快照证据比较（本地待审）
+
+仅在 Runtime/Ops 的 Mac 离线评审侧新增 `sanq_install_evidence.py`，使用已合并的 `sanq_install_frames.py` 提供的同代次会话模型，不新增业务模块依赖、第二安装权威或 VM API/持久化表/常驻进程；不修改 root、SSH、AWS、Docker、systemd 或四个业务部署单元的职责及公共合同。该模块的校验通过只能说明结构匹配，所有云/发布/安装/恢复许可继续 false。生产与真实受控操作通道未开启。
+
+## 2026-10-31：FI-MAC-1B2a 仅 Mac 受控安装请求协议模型（已合并 dev）
 
 在 Runtime/Ops 原有所有权下添加独立离线模型 `sanq_install_frames.py`，只校验 VM 安装器已存在的 3 阶段请求原字节、身份绑定和单次会话顺序；无 SSH 执行、回复生成、状态持久化、服务/unit/sudoers、数据库/支付/业务模块依赖或迁移，不新增任何应用权威、依赖或 VM helper。未来的真实双向交互必须单独审查和按原权限边界连接，不得将该离线成功视为安装/恢复授权。
 

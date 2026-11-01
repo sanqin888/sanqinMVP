@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
-## 2026-10-31 — FI-MAC-1B2a 安装请求帧离线单次序列校验（本地待审）
+## 2026-10-31 — FI-MAC-1B2b 同代次 AWS 快照证据离线结构比较（本地待审）
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / LIVE_PEER_OPEN / NOT_INSTALLED。** PR #3073 head `7b62644c35e89e52ee7fb42b985ad708623a91c7` 已于 CI #7843 SUCCESS 后合并 dev `e751c8f6416aedce5af00e703480340ccedccb2d`；在最新 dev 上新建 `feat/runtime-fi-mac1b2-frame-contract-20261031`。新增纯离线 `ops/release/sanq_install_frames.py`，为既有 VM 安装器 3 段请求（首帧目标、快照证据挑战、离机索引传递）建立准确来源/保留/安装 ID/挑战/原件摘要及顺序的单次会话观察；回传观测均无安装/快照/恢复权威，不会产生 Mac 回复或执行 SSH。新增 `test_sanq_deploy_install_frames.py` 负向夹具覆盖错源、错挑战、错安装 ID、乱序、重复、篡改索引/哈希/原件路径、请求放宽许可和非规范/过大 JSON。文档更新以区分离线协议模型与未完成的受控活 SSH、AWS、离机 ACK/持久凭据、首次生产安装；现有 Mac 双命令和 VM bootstrap 均不变，业务/架构、17+Manifest、九 helper、两锁及暂停研究保持。MCP-workspace 未开放 lint/build/test；未推远端、未执行生产/AWS/DB。
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** [PR #3074](https://github.com/sanqin888/sanqinMVP/pull/3074) 最终 head `81c1361498b805dbfb7bb82c5f28e0a267e1ad21` 的 CI #7845 SUCCESS 后合并 dev `1d51884cd227041bb50d6ecd2121b58699d22b0c`。新建分支 `feat/runtime-fi-mac1b2b-evidence-review-20261031`，在原 FI-MAC-1B2a 单次源/保留/快照挑战确认后新增 `EvidenceReview`：只接受 canonical 操作者证据原字节，与原安装 ID、intent/writers/archive/receipt 哈希、挑战名字、Lightsail 手动快照目标/磁盘/区域、操作者自述和时间次序比对。只回结构观察、输入摘要，严格禁真实 SSH、AWS、确认回执、持久记录、安装或自动恢复；所有云来源、快照可用性、安装许可为 false。新增 `test_sanq_deploy_install_evidence.py` 负向模型覆盖跨代次/篡改/顺序/伪布尔/超限/重复材料。同步安装合同、中文操作说明和依赖图。CI/真机未执行；无新依赖/迁移；生产 VM/AWS/数据库未操作。后续优先受控 Mac 活 SSH 与手工材料、离机耐久回执的完整接口；首次生产安装继续 NO-GO。
+
+## 2026-10-31 — FI-MAC-1B2a 安装请求帧离线单次序列校验（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3074_MERGED_DEV / LIVE_PEER_OPEN / NOT_INSTALLED。** PR #3073 head `7b62644c35e89e52ee7fb42b985ad708623a91c7` 已于 CI #7843 SUCCESS 后合并 dev `e751c8f6416aedce5af00e703480340ccedccb2d`；在最新 dev 上新建 `feat/runtime-fi-mac1b2-frame-contract-20261031`。新增纯离线 `ops/release/sanq_install_frames.py`，为既有 VM 安装器 3 段请求（首帧目标、快照证据挑战、离机索引传递）建立准确来源/保留/安装 ID/挑战/原件摘要及顺序的单次会话观察；回传观测均无安装/快照/恢复权威，不会产生 Mac 回复或执行 SSH。新增 `test_sanq_deploy_install_frames.py` 负向夹具覆盖错源、错挑战、错安装 ID、乱序、重复、篡改索引/哈希/原件路径、请求放宽许可和非规范/过大 JSON。文档更新以区分离线协议模型与未完成的受控活 SSH、AWS、离机 ACK/持久凭据、首次生产安装；现有 Mac 双命令和 VM bootstrap 均不变，业务/架构、17+Manifest、九 helper、两锁及暂停研究保持。MCP-workspace 未执行 lint/build/test；最终经 PR #3074 的 CI #7845 验收并合并 dev；Mac 真机及生产/AWS/DB 未执行。
 
 ## 2026-10-31 — FI-MAC-1B1 安装目标材料本地预检
 
