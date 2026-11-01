@@ -152,7 +152,7 @@ def retain_index(round_review, evidence_review, transfer_raw, directory, *,
             finally:
                 os.close(fd)
         # The VM's _snapshot_index_ack_value validates these exact v1 fields.
-        return frames._canonical({
+        ack = frames._canonical({
             "schemaVersion": 1, "kind": "sanq-minimal-snapshot-index-ack",
             "installationId": index["installationId"],
             "snapshotReviewSha256": index["snapshotReviewSha256"],
@@ -162,6 +162,8 @@ def retain_index(round_review, evidence_review, transfer_raw, directory, *,
             "operatorConfirmedOffHost": True, "clientIndexDurable": True,
             "syncMethod": "darwin-fullfsync" if fullsync is not None else "posix-fsync",
             "canExecute": False, "recoveryReady": False})
+        round_review.offhost_ack_sha = hashlib.sha256(ack).hexdigest()
+        return ack
     except BaseException:
         round_review.failed = True
         raise
