@@ -1,12 +1,20 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## 2026-10-31：FI-MAC-1B2b 快照操作者证据离线同代次校验（本地待审）
+## 2026-10-31：FI-MAC-1B2c 单代次 Mac 离机索引落盘与原生 ACK（本地待审）
 
-**FI_MAC_1B2B_LOCAL / CI_NOT_RUN / LIVE_OPERATOR_PEER_OPEN / NOT_INSTALLED。** [PR #3074](https://github.com/sanqin888/sanqinMVP/pull/3074) 最终 head `81c1361498b805dbfb7bb82c5f28e0a267e1ad21` 的 [CI #7845](https://github.com/sanqin888/sanqinMVP/actions/runs/41258526051) SUCCESS，squash 合并 `dev` `1d51884cd227041bb50d6ecd2121b58699d22b0c`。从该基线新增 `ops/release/sanq_install_evidence.py`，只提供**内存、无网络、单次** `EvidenceReview`，供未来 Mac 操作者在已由 FI-MAC-1B2a 核验的同一个 snapshot challenge 下，对其自行取得的 canonical `sanq-minimal-snapshot-evidence-reply` 原始内容进行结构比对；不进入 VM 提交、更新、授权或回复阶段。
+**FI_MAC_1B2C_LOCAL / CI_NOT_RUN / MAC_FSYNC_NOT_TESTED / LIVE_SSH_PEER_OPEN / NOT_INSTALLED。** [PR #3075](https://github.com/sanqin888/sanqinMVP/pull/3075) 最终 head `c50651512e3b286aa2fe94117903631fdbaed8ff` 的 [CI #7850](https://github.com/sanqin888/sanqinMVP/actions/runs/41263390290) SUCCESS，已 squash 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。本切片从该 `origin/dev` 基线添加纯本地、尚未挂入 CLI 的 `ops/release/sanq_install_offhost.py`：只有同一 `Review` 完成三帧、同一 `EvidenceReview` 已核快照声称材料、第三帧**原始字节** SHA-256 与原会话完全相符、索引中的 ARN/名称/创建与可用观察时间/可用区均与先前证据声称一致、操作者显式确认目标目录在 Mac 本地离开 VM，才尝试落盘。失败/不确定结果消耗本轮，不重试、不覆盖、不清理部分文件。
+
+落盘严格要求非 root Linux/Darwin、操作者预先准备的绝对路径、可信非符号链接目录链、本人独占 0700 最终目录、≥1 MiB 余量；以固定 `snapshot-index-<installationId>.json` 在目录 FD 下 `O_EXCL|O_NOFOLLOW` 创建 0600 原 canonical 索引，文件及目录 fsync，Darwin 还必须成功 `F_FULLFSYNC`，之后按 FD/路径元数据和原字节读回比对。全部完成后才返回**原 VM `_snapshot_index_ack_value` 所接受的** `sanq-minimal-snapshot-index-ack` canonical 字节，`operatorConfirmedOffHost/clientIndexDurable=true` 仅陈述操作者确认和本机同步完成；`canExecute/recoveryReady=false`。本地证据与 ACK 不认证 AWS 来源、SSH 对端、实际 VM 收件或恢复能力，且当前模块不会发出 ACK；真实 Mac 文件系统/电源故障耐久性仍待验收。
+
+这是 Runtime/Ops 内部兼容增量，不变更 VM installer/权威合同、`sanq-install.sh` 公共命令、sudoers、两锁、17+Manifest、业务部署单元、依赖、schema 或持久状态权威。测试在 Linux 临时私有目录中模拟创建/回读、对照原 VM ACK 验证器、错代次/证据/路径/权限、覆盖、fsync 与 Darwin fullsync 故障；MCP-workspace 不可运行测试，待 GitHub CI 和 Mac 真机验证。**真实受控 SSH 双向操作者通道、独立 AWS 来源核实、VM 回执送达、持久安装完成链审计及生产安装均仍 OPEN/NO-GO。** 详见 [Mac 首次安装运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+
+## 2026-10-31：FI-MAC-1B2b 快照操作者证据离线同代次校验（已合并 dev）
+
+**FI_MAC_1B2B_SOURCE_CI_VERIFIED / PR_3075_MERGED_DEV / LIVE_OPERATOR_PEER_OPEN / NOT_INSTALLED。** [PR #3074](https://github.com/sanqin888/sanqinMVP/pull/3074) 最终 head `81c1361498b805dbfb7bb82c5f28e0a267e1ad21` 的 [CI #7845](https://github.com/sanqin888/sanqinMVP/actions/runs/41258526051) SUCCESS，squash 合并 `dev` `1d51884cd227041bb50d6ecd2121b58699d22b0c`。从该基线新增 `ops/release/sanq_install_evidence.py`，只提供**内存、无网络、单次** `EvidenceReview`，供未来 Mac 操作者在已由 FI-MAC-1B2a 核验的同一个 snapshot challenge 下，对其自行取得的 canonical `sanq-minimal-snapshot-evidence-reply` 原始内容进行结构比对；不进入 VM 提交、更新、授权或回复阶段。
 
 校验既有 VM `_installation_snapshot_reply_value` / `_installation_snapshot_content_value` 的同代次 `installationId/intentSha256/writersSha256/archiveSha256/receiptSha256/challenge`；手动 Lightsail `InstanceSnapshot` ARN/快照挑战名称/`available` 状态/来源实例与账户区域、`isFromAutoSnapshot=false`、无附加磁盘、原单系统盘大小/可用区，操作者 `operator-authenticated-aws-session` 自述字段，以及挑战准备 → 请求发出 → 创建 → 可用观察 → 收到响应的时间顺序。输入重复/污染/越界/字段篡改/旧代次或时间倒序均阻断该内存评审，不自动重试；只输出本次材料散列和明示的`awsOriginAuthenticated=false`、`snapshotAvailable=false`、`operatorReplyGenerated=false`、`canExecute=false`、`installationComplete=false`。这仅是操作者自述材料**结构匹配**，不认证 AWS 会话、创建或存在性、可信时间、快照的恢复能力，也不把验证结果包装成 VM 可接受的回复。
 
-原 `sanq-install.sh status/check-target`、FI-MAC-1B2a 3 帧模型、VM installer、两锁、17+Manifest、root/SSH 权限和任何业务模块均不修改；无新依赖/常驻服务/数据库迁移。真实 Mac 双向 SSH live peer、独立 AWS 来源验证、经人工批准的原始回执送达、离机强制同步、持久安装结果查询仍须后续各自验收；在完成前 `NO-GO`。详见 [首次安装 Mac 运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+原 `sanq-install.sh status/check-target`、FI-MAC-1B2a 3 帧模型、VM installer、两锁、17+Manifest、root/SSH 权限和任何业务模块均不修改；无新依赖/常驻服务/数据库迁移。本批 PR #3075 已经 CI #7850 SUCCESS 并合并 dev `ba5a07f7508a4b22444609c15134fc30d842b4c6`，但 Mac 真机未实测。真实 Mac 双向 SSH live peer、独立 AWS 来源验证、经人工批准的原始回执送达、离机强制同步、持久安装结果查询仍须后续各自验收；在完成前 `NO-GO`。详见 [首次安装 Mac 运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
 
 ## 2026-10-31：FI-MAC-1B2a 安装交互请求帧单次序列模型（已合并 dev）
 
