@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
-## 2026-10-31 — FI-MAC-1A 首次安装受限 Mac 状态观察（本地待审）
+## 2026-10-31 — FI-MAC-1B1 安装目标材料本地预检
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** 新分支 `feat/runtime-fi-mac1a-install-readonly-status-20261031` 从最新 dev 建立；新增 `sanq-install.sh`/`sanq_install.py`，复用原 Mac 受限 profile、唯一加密身份 Agent 选择及 SSH 传输，只查询准确 source-sha/retention-id 的固定 systemd unit；校验 run/cleanup manager 身份，不将任何查询/任务成功结果升级为安装完成、可执行或可恢复许可。新增离线否定夹具及 [运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。Ops 边界、VM helper、17+Manifest、原两锁、数据库/业务及永久门禁不变；安装提交交互与持久核查继续 OPEN。MCP-workspace 不执行项目测试，尚未推送/PR/CI/真机、未更改生产。等待用户审阅后再进入远端交付。
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** 从 PR #3072 合并后的 dev 建立功能分支 `feat/runtime-fi-mac1b-install-operator-result-20261031`。在 FI-MAC-1A 独立 Mac 入口中新增纯本地 `check-target`，只读本人 home 固定 `sanq-install-target.json`，严格核原件权限/FD 身份/规范 JSON 与 VM 既有单系统盘实例目标 v1 结构；核 `sshTarget`、主机 key 指纹与已有受保护 Mac profile 完全一致，输出原字节摘要及请求 source/retention，仅作为人工核查依据。新增拒绝路径/错实例/错 key/非规范文件和不联网等离线测试定义，更新安装合同与中文运行说明；无安装 submit、真实双向 SSH/快照/离机回执、持久完成确认，均保持 OPEN。Runtime/Ops 单一所有权、原 VM/17+Manifest/九 helper/双锁/业务/数据库及 CI 不变，不需要迁移；MCP workspace 不允许运行 lint/build/test，未推送、未改生产。下一批 FI-MAC-1B2 实施受控交互及结果链审阅，仍需本地审阅/远端授权与生产单独批准。
+
+## 2026-10-31 — FI-MAC-1A 首次安装受限 Mac 状态观察（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3072_MERGED_DEV / NOT_INSTALLED。** PR #3072 最终 head `4676ae56144d5dfaee3babd51fc902d37fe791fa` 经 CI #7842 SUCCESS，squash 合并 dev `6e9deea1243cef3addf3bda382f58e5025c1e769`。原分支 `feat/runtime-fi-mac1a-install-readonly-status-20261031` 从最新 dev 建立；新增 `sanq-install.sh`/`sanq_install.py`，复用原 Mac 受限 profile、唯一加密身份 Agent 选择及 SSH 传输，只查询准确 source-sha/retention-id 的固定 systemd unit；校验 run/cleanup manager 身份，不将任何查询/任务成功结果升级为安装完成、可执行或可恢复许可。新增离线否定夹具及 [运行手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。Ops 边界、VM helper、17+Manifest、原两锁、数据库/业务及永久门禁不变；安装提交交互与持久核查继续 OPEN。MCP-workspace 未执行项目测试；GitHub CI 已完成并全绿，Mac 真机首次安装只读状态查询尚未实测，生产 VM 未更改；后续安装交互与持久结果查询仍属另一个工作包。
 
 ## 2026-10-31 — Runtime Mac 加密身份选择修复（仅本地源码）
 
