@@ -1,6 +1,12 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
-## FI-MAC-1B2d：未来安装 SSH 实时管道适配层（本地待审、禁止生产调用）
+## FI-MAC-1B3a：首次安装 PRE-CLEAR 原件离线完整性审阅（本地待审）
+
+新模块 `ops/release/sanq_install_result.py` 的 `review_preclear_records(originals, installation_id=..., source_sha=..., retention_id=...)` **仅为后续受限 VM 只读取证模块准备的内存审阅 API**，没有新增 shell/CLI 命令，不联网，也不读取真实 VM 文件。输入严格由 7 个具备精确固定名称的原始字节组成，缺失/多余/非 canonical JSON/跨代次/摘要失配均阻断；输出只有 `PRE_CLEAR_DIGEST_CHAIN_STRUCTURALLY_MATCHED`，始终标记 `vmOriginalsAuthenticated=false`、`verificationFactsRecomputed=false`、`maintenanceMarkerAbsentObserved=false`、`installationComplete=false`、`canExecute=false`。
+
+记录目录即使包含合法 `completion.json`，它也只是 VM 清除维护标记之前写出的 `PREPARED_BEFORE_MARKER_CLEAR` 原件，不能证明原 systemd 任务完整退出、维护标记已清除、容器健康或本次未被旧事务/故障替换。这个模型只能重算原六份材料摘要及由 intent 生成的 marker **预期摘要**，无法观察 marker 的当前文件存在性、来源身份或恢复能力。特别是 `verificationSha256` 来自原 VM 在内存中构造的事实，现有七个文件不能把它重算为认证结论。真实取证必须先补上原 VM/原 root 名称空间的有限只读协议、不可重用的事务身份及 maintenance/locks/systemd/应用验证，还要遵循现场独立授权。**没有生产首次安装或重试许可。**
+
+## FI-MAC-1B2d：未来安装 SSH 实时管道适配层（已合并 dev、禁止生产调用）
 
 `ops/release/sanq_install_live.py` 是**私有库，不是当前可运行的安装命令**。它准备了固定源提交、保留材料 ID 的 `/usr/bin/sudo -n -- /usr/bin/python3 -I -S -B /opt/sanq/install-bootstrap/<sha>/ops/release/install_minimal_executor.py installation-submit --source-sha <sha> --retention-id <id>`，绝不接受其他 SSH host、路径、任意远端 shell 或内部 run/cleanup；使用之前已验证的严格 SSH hostkey/agent 原件与选项，唯一差异是允许活 stdin/stdout 管道，不改变原 `sanq-deploy.sh` 标准输入关闭规则。
 

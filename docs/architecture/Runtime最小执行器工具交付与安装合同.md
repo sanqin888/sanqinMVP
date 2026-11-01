@@ -1,8 +1,18 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## 2026-11-01：FI-MAC-1B2d 单代次活 SSH 传输适配层（本地待审）
+## 2026-11-01：FI-MAC-1B3a 首次安装持久原件 PRE-CLEAR 离线摘要审阅（本地待审）
 
-**FI_MAC_1B2D_LOCAL / CI_NOT_RUN / LIVE_PRODUCTION_NOT_EXECUTED / INSTALL_CLI_DISABLED / NOT_INSTALLED。** FI-MAC-1B2c PR #3076 最终 HEAD `2e76a8d371e81cdc6215547751b9a832dd10ea8d` 经 [GitHub Actions run 41312398199](https://github.com/sanqin888/sanqinMVP/actions/runs/41312398199) SUCCESS，squash 合并 `dev` `df5c0eecb6e329bdd268081e40fd1d6601b3ed59`。在原 Ops/Mac 专属层新增私有 `sanq_install_live.py`，为**未来受审阅安装入口**准备一次性可双向通讯的 SSH 子进程、固定 VM `installation-submit --source-sha <40hex> --retention-id <64hex>` 命令及 3 组输入/输出帧。继续使用 `sanq_deploy.py` 的主机、公钥、SSH Agent 已加密身份选择、`-F /dev/null`、hostkey 与禁转发参数；仅为此新受限操作删除普通客户端的 `-n`，保留 `-T`。不修改或放宽原普通更新 SSH 客户端。
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / PRODUCTION_NOT_INSTALLED。** PR #3077 最终 head `bf05e3a282347ae76409b7a87985f0515e47a24a` 的 [GitHub Actions](https://github.com/sanqin888/sanqinMVP/actions/runs/41320794040) SUCCESS，squash 合并 dev `5c98c0a0ad329849024b78cbdf90e806a2bb35e8`。FI-MAC-1B2d 首次安装 SSH 私有 transport 已进入 dev，但仍未接入真实安装 CLI。
+
+在 Mac 只读内存分析层新增 `ops/release/sanq_install_result.py`：输入只能是由后续**另行审查的可信 VM 只读取证**提供的 7 个准确原始字节对象（`intent.json`、`writers.json`、`recovery.tar`、`recovery.json`、`snapshot-review.json`、`snapshot-offhost.json`、`completion.json`）；核 sourceSha/retentionId/installationId 精确一致，按 VM 既有 canonical JSON/v1 字段校验关键身份和 false 权限，重算六份原件 SHA-256，并重建 `active.json` 原始逻辑的标记摘要与 `completion.json.markerSha256` 比对。拒绝缺失文件、外来文件、重复键、非规范记录、摘要篡改和来源身份错代次；此模型不访问真实 VM、AWS 或 systemd、不读生产私有目录、不创建新状态权威。
+
+**最关键的架构事实：VM `completion.json` 是在清除 `active.json` 维护标记之前创建的，且该原件 `installationComplete=false`、`phase=PREPARED_BEFORE_MARKER_CLEAR`。** 该持久记录本身绝不表明维护标记已清除、任务成功、原业务容器健康。另有 `verificationSha256` 来自 VM 原流程**内存中的**最终 `facts`；此七文件集并不独立包含其原始字节，当前只能核该哈希格式，不能重算或认证；`recovery.tar` 与 snapshot/offhost 的完整语义验收仍归 VM 原有验证器，便携模型仅核部分结构与原字节摘要，明确返回 `verificationFactsRecomputed=false`、`vmOriginalsAuthenticated=false`、`vmSemanticValidationComplete=false`、`maintenanceMarkerAbsentObserved=false`、`installationComplete=false`，不将摘要一致升级为真实安装成功。
+
+**下一阶段 FI-MAC-1B3b** 须单独设计/审查 VM 侧 root 权限下的只读原件取证与稳定来源、准确事务代次、维护 marker 真实缺席与两锁、systemd 收口及必要应用健康证据；任何新增 sudoers/公共命令、生产执行/安装须另外审阅授权，不能通过离线一致性自动放行。无第三方依赖、DB 迁移、原 VM 命令或权限改动；MCP workspace 未运行测试，须 CI 与 Mac 真机审查。
+
+## 2026-11-01：FI-MAC-1B2d 单代次活 SSH 传输适配层（已合并 dev）
+
+**FI_MAC_1B2D_SOURCE_CI_VERIFIED / PR_3077_MERGED_DEV / LIVE_PRODUCTION_NOT_EXECUTED / INSTALL_CLI_DISABLED / NOT_INSTALLED。** FI-MAC-1B2c PR #3076 最终 HEAD `2e76a8d371e81cdc6215547751b9a832dd10ea8d` 经 [GitHub Actions run 41312398199](https://github.com/sanqin888/sanqinMVP/actions/runs/41312398199) SUCCESS，squash 合并 `dev` `df5c0eecb6e329bdd268081e40fd1d6601b3ed59`。在原 Ops/Mac 专属层新增私有 `sanq_install_live.py`，为**未来受审阅安装入口**准备一次性可双向通讯的 SSH 子进程、固定 VM `installation-submit --source-sha <40hex> --retention-id <64hex>` 命令及 3 组输入/输出帧。继续使用 `sanq_deploy.py` 的主机、公钥、SSH Agent 已加密身份选择、`-F /dev/null`、hostkey 与禁转发参数；仅为此新受限操作删除普通客户端的 `-n`，保留 `-T`。不修改或放宽原普通更新 SSH 客户端。
 
 通过同一个 FI-MAC-1B2a `Review` 只接受按序的 target/snapshot/index 3 个 VM 原始请求。回传 target 必须是原本已核 SHA-256 的同一 target bytes；snapshot reply 必须精确匹配同一 `EvidenceReview.inspect` 通过的原件 SHA-256；第三回执必须匹配 FI-MAC-1B2c 经独占文件创建、fsync、只读回查才生成的 ACK SHA-256。三回合使用同一 source/retention/installation/challenge，不接受泛化远端命令、CLI 覆盖、错代次、重放/乱序、非 canonical 帧、任意提前许可。所有 IO 保持单 child、限定帧大小/超时、非阻塞 stdout/stderr、stderr 有界吞弃、异常失效，不自动 SSH 重连/重提 systemd service/清空原件/重开服务；关闭仅清理由**本次**创建的本地 SSH 进程，不停止不明身份远端安装 unit。读取全部 stdout 至 EOF 并核本地 SSH child 原生零退出后，只能声称 `SSH_CHILD_EXIT_ZERO_OBSERVED`，安装完成/可执行/已恢复等仍全部 false。
 

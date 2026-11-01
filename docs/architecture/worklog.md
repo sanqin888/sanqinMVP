@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
-## 2026-11-01 — FI-MAC-1B2d 固定活 SSH 管道与同代次原件投递（本地待审）
+## 2026-11-01 — FI-MAC-1B3a 安装持久完成 PRE-CLEAR 原件摘要结构审阅（本地待审）
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** FI-MAC-1B2c PR #3076 HEAD `2e76a8d371e81cdc6215547751b9a832dd10ea8d` 经 CI SUCCESS 合并 dev `df5c0eecb6e329bdd268081e40fd1d6601b3ed59`。从该最新 dev 创建 `feat/runtime-fi-mac1b2d-fixed-live-transport-20261101`。新增 `sanq_install_live.py` 只为未来已审阅 Mac 安装同伴构造固定 sudo/CPython/bootstrap 源/retention 的单命令 SSH，复用原严格 Agent/hostkey/受限 SSH 参数并且仅在新路径移除 `-n`；采用单一次性进程非阻塞、有界三帧收发，不允许在第一阶段以外的回应、异代次输入或未由目标/快照证据/离机持久保留确认的回复。修改 FI-MAC-1B2a/b/c 原件模型新增只读同源回执 SHA-256 供适配层核查，不改变 VM 或旧 CLI。新增 `test_sanq_deploy_install_live.py` 仅以本机 Python 子进程模拟 pipe，不连接真实 VM/SSH/AWS，覆盖异常/跨代次/未核验回复/额外输出/零退出误判/EOF/非零退出。代码尚未在 CI/真机跑通，MCP 工作区无测试执行权限；未新增依赖、数据库迁移、常驻权限/服务或业务变化，尚未推远端。安装入口仍未开放、live peer 未验收、持久结果核验 OPEN、生产安装 NO-GO；本批完成后按规则停在本地审阅。
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** PR #3077 head `bf05e3a282347ae76409b7a87985f0515e47a24a` 经 GitHub Actions run `41320794040` SUCCESS，squash 合并 dev `5c98c0a0ad329849024b78cbdf90e806a2bb35e8`。从最新 dev 建立 `feat/runtime-fi-mac1b3a-offline-completion-audit-20261101`。添加 `sanq_install_result.py`：只读核七份由未来可信取证提供的 VM 原件的 source/retention/installation ID、原始 SHA-256 互相绑定及 completion.markerSha256 对原 intent 的重建，拒绝缺失/多余/错代次、伪造授权、非规范 JSON/哈希及时间次序错误。新增本地离线负面模拟 `test_sanq_deploy_install_result.py`，覆盖篡改、字段与许可提升、跨代次、记录缺口；未调用 VM/AWS/系统服务。注意 VM completion 是 `PREPARED_BEFORE_MARKER_CLEAR`，所有成功授权保持 false；verificationSha256 基于内存 facts，当前离线不能复算；完整恢复语义、marker 已清除与真实健康仍未知。无依赖/权限/模式/架构/API/数据库变更；CI、Mac 真机未实测。下一切片审计如何仅用获授权的可信只读通道检查持久原件身份与维护状态，严格禁止以原件哈希一致替代安装完成。
+
+## 2026-11-01 — FI-MAC-1B2d 固定活 SSH 管道与同代次原件投递（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3077_MERGED_DEV / NOT_INSTALLED。** FI-MAC-1B2c PR #3076 HEAD `2e76a8d371e81cdc6215547751b9a832dd10ea8d` 经 CI SUCCESS 合并 dev `df5c0eecb6e329bdd268081e40fd1d6601b3ed59`。从该最新 dev 创建 `feat/runtime-fi-mac1b2d-fixed-live-transport-20261101`。新增 `sanq_install_live.py` 只为未来已审阅 Mac 安装同伴构造固定 sudo/CPython/bootstrap 源/retention 的单命令 SSH，复用原严格 Agent/hostkey/受限 SSH 参数并且仅在新路径移除 `-n`；采用单一次性进程非阻塞、有界三帧收发，不允许在第一阶段以外的回应、异代次输入或未由目标/快照证据/离机持久保留确认的回复。修改 FI-MAC-1B2a/b/c 原件模型新增只读同源回执 SHA-256 供适配层核查，不改变 VM 或旧 CLI。新增 `test_sanq_deploy_install_live.py` 仅以本机 Python 子进程模拟 pipe，不连接真实 VM/SSH/AWS，覆盖异常/跨代次/未核验回复/额外输出/零退出误判/EOF/非零退出。代码尚未在 CI/真机跑通，MCP 工作区无测试执行权限；未新增依赖、数据库迁移、常驻权限/服务或业务变化，尚未推远端。安装入口仍未开放、live peer 未验收、持久结果核验 OPEN、生产安装 NO-GO；本批完成后按规则停在本地审阅。
 
 ## 2026-10-31 — FI-MAC-1B2c Mac 本地离机索引原件保留与原生 ACK（已合并 dev）
 

@@ -1,6 +1,10 @@
 # Current 12-context dependency graph
 
-## 2026-11-01：FI-MAC-1B2d Mac 私有单代次活管道（本地待审）
+## 2026-11-01：FI-MAC-1B3a 只读安装 PRE-CLEAR 原件摘要模型（本地待审）
+
+Runtime/Ops Mac 侧新增纯内存 `sanq_install_result.py`，仅消费未来经独立可信采集的 VM 原件字节，复核既有 intent→writers→recovery→snapshot→offhost→pre-clear completion 部分摘要/代次约束，不写 VM 或建立第二安装 authority。当前无法证明 maintenance marker 清除、运行状态/来源或恢复；不增加公有 CLI/特权路径、业务依赖、Docker/Compose/数据库对象或权限，原 12 上下文依赖关系不变。前一 FI-MAC-1B2d PR #3077 已经 CI SUCCESS 合并 dev。
+
+## 2026-11-01：FI-MAC-1B2d Mac 私有单代次活管道（已合并 dev）
 
 继续归属 Runtime/Ops：新增受限 Mac-only `sanq_install_live.py`，仅组合既有 `sanq_deploy.py` 的固定主机/密钥/SSH Agent 参数与 FI-MAC-1B2a/b/c 三个证据/原件模型；没有业务上下文依赖、第二安装状态权威、VM helper 或生产守护进程。新传输路径不会接入现有普通 `sanq-install` 或 `sanq-deploy` 公共命令。系统公共权限、DB/Schema、17+Manifest、原两锁及唯一应用权威不变；未来真实首次安装另需权限和现场授权。原 FI-MAC-1B2c 已通过 PR #3076 CI 并合并 dev。
 
