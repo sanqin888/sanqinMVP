@@ -1,8 +1,16 @@
 # Runtime 最小执行器工具交付与安装合同
 
-## 2026-10-31：FI-MAC-1B2c 单代次 Mac 离机索引落盘与原生 ACK（本地待审）
+## 2026-11-01：FI-MAC-1B2d 单代次活 SSH 传输适配层（本地待审）
 
-**FI_MAC_1B2C_LOCAL / CI_NOT_RUN / MAC_FSYNC_NOT_TESTED / LIVE_SSH_PEER_OPEN / NOT_INSTALLED。** [PR #3075](https://github.com/sanqin888/sanqinMVP/pull/3075) 最终 head `c50651512e3b286aa2fe94117903631fdbaed8ff` 的 [CI #7850](https://github.com/sanqin888/sanqinMVP/actions/runs/41263390290) SUCCESS，已 squash 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。本切片从该 `origin/dev` 基线添加纯本地、尚未挂入 CLI 的 `ops/release/sanq_install_offhost.py`：只有同一 `Review` 完成三帧、同一 `EvidenceReview` 已核快照声称材料、第三帧**原始字节** SHA-256 与原会话完全相符、索引中的 ARN/名称/创建与可用观察时间/可用区均与先前证据声称一致、操作者显式确认目标目录在 Mac 本地离开 VM，才尝试落盘。失败/不确定结果消耗本轮，不重试、不覆盖、不清理部分文件。
+**FI_MAC_1B2D_LOCAL / CI_NOT_RUN / LIVE_PRODUCTION_NOT_EXECUTED / INSTALL_CLI_DISABLED / NOT_INSTALLED。** FI-MAC-1B2c PR #3076 最终 HEAD `2e76a8d371e81cdc6215547751b9a832dd10ea8d` 经 [GitHub Actions run 41312398199](https://github.com/sanqin888/sanqinMVP/actions/runs/41312398199) SUCCESS，squash 合并 `dev` `df5c0eecb6e329bdd268081e40fd1d6601b3ed59`。在原 Ops/Mac 专属层新增私有 `sanq_install_live.py`，为**未来受审阅安装入口**准备一次性可双向通讯的 SSH 子进程、固定 VM `installation-submit --source-sha <40hex> --retention-id <64hex>` 命令及 3 组输入/输出帧。继续使用 `sanq_deploy.py` 的主机、公钥、SSH Agent 已加密身份选择、`-F /dev/null`、hostkey 与禁转发参数；仅为此新受限操作删除普通客户端的 `-n`，保留 `-T`。不修改或放宽原普通更新 SSH 客户端。
+
+通过同一个 FI-MAC-1B2a `Review` 只接受按序的 target/snapshot/index 3 个 VM 原始请求。回传 target 必须是原本已核 SHA-256 的同一 target bytes；snapshot reply 必须精确匹配同一 `EvidenceReview.inspect` 通过的原件 SHA-256；第三回执必须匹配 FI-MAC-1B2c 经独占文件创建、fsync、只读回查才生成的 ACK SHA-256。三回合使用同一 source/retention/installation/challenge，不接受泛化远端命令、CLI 覆盖、错代次、重放/乱序、非 canonical 帧、任意提前许可。所有 IO 保持单 child、限定帧大小/超时、非阻塞 stdout/stderr、stderr 有界吞弃、异常失效，不自动 SSH 重连/重提 systemd service/清空原件/重开服务；关闭仅清理由**本次**创建的本地 SSH 进程，不停止不明身份远端安装 unit。读取全部 stdout 至 EOF 并核本地 SSH child 原生零退出后，只能声称 `SSH_CHILD_EXIT_ZERO_OBSERVED`，安装完成/可执行/已恢复等仍全部 false。
+
+**本批没有把 `open_live` 接入 `sanq-install.sh`，没有 `submit` 公开命令，也没有实际向 VM/AWS 发出请求。** 创建此私有传输层并不代表当前生产 sudoers 已授权执行命令；真实目标来源、AWS 快照人工真实性、完整工作流独立批准、live peer 端到端验收及持久安装完成审计依然 OPEN，不能照此直接操作生产。新增 Python 3.10/3.14 本地子进程管道夹具，不调用实际 SSH、systemd、VM 或 AWS；未在 MCP-workspace 运行，需 PR CI 验证、Mac 真机专项验收。原 VM 安装器/九 helper/17+Manifest/双锁/三永久 gate/依赖/数据库及业务模块均未修改。详见 [Mac 首次安装操作手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+
+## 2026-10-31：FI-MAC-1B2c 单代次 Mac 离机索引落盘与原生 ACK（已合并 dev）
+
+**FI_MAC_1B2C_SOURCE_CI_VERIFIED / PR_3076_MERGED_DEV / MAC_FSYNC_NOT_TESTED / LIVE_SSH_PEER_OPEN / NOT_INSTALLED。** [PR #3075](https://github.com/sanqin888/sanqinMVP/pull/3075) 最终 head `c50651512e3b286aa2fe94117903631fdbaed8ff` 的 [CI #7850](https://github.com/sanqin888/sanqinMVP/actions/runs/41263390290) SUCCESS，已 squash 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。本切片从该 `origin/dev` 基线添加纯本地、尚未挂入 CLI 的 `ops/release/sanq_install_offhost.py`：只有同一 `Review` 完成三帧、同一 `EvidenceReview` 已核快照声称材料、第三帧**原始字节** SHA-256 与原会话完全相符、索引中的 ARN/名称/创建与可用观察时间/可用区均与先前证据声称一致、操作者显式确认目标目录在 Mac 本地离开 VM，才尝试落盘。失败/不确定结果消耗本轮，不重试、不覆盖、不清理部分文件。
 
 落盘严格要求非 root Linux/Darwin、操作者预先准备的绝对路径、可信非符号链接目录链、本人独占 0700 最终目录、≥1 MiB 余量；以固定 `snapshot-index-<installationId>.json` 在目录 FD 下 `O_EXCL|O_NOFOLLOW` 创建 0600 原 canonical 索引，文件及目录 fsync，Darwin 还必须成功 `F_FULLFSYNC`，之后按 FD/路径元数据和原字节读回比对。全部完成后才返回**原 VM `_snapshot_index_ack_value` 所接受的** `sanq-minimal-snapshot-index-ack` canonical 字节，`operatorConfirmedOffHost/clientIndexDurable=true` 仅陈述操作者确认和本机同步完成；`canExecute/recoveryReady=false`。本地证据与 ACK 不认证 AWS 来源、SSH 对端、实际 VM 收件或恢复能力，且当前模块不会发出 ACK；真实 Mac 文件系统/电源故障耐久性仍待验收。
 

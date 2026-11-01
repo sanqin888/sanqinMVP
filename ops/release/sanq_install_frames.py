@@ -65,7 +65,7 @@ class Review:
     """
     __slots__ = ("source", "retention", "target", "target_sha", "phase",
                  "installation", "challenge", "snap", "failed",
-                 "index_transfer_sha", "offhost_attempted")
+                 "index_transfer_sha", "offhost_attempted", "offhost_ack_sha")
 
     def __init__(self, source, retention, target_raw):
         _need(_hex(source, 40) and _hex(retention, 64))
@@ -90,6 +90,7 @@ class Review:
         self.failed = False
         self.index_transfer_sha = None
         self.offhost_attempted = False
+        self.offhost_ack_sha = None
 
     def _target_request(self, frame):
         _need(set(frame) == {"schemaVersion", "kind", "sourceSha", "retentionId",

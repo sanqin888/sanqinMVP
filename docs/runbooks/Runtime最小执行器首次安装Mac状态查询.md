@@ -1,6 +1,14 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
-## FI-MAC-1B2c：Mac 离机索引落盘与原生 ACK（本地待审、尚无 CLI）
+## FI-MAC-1B2d：未来安装 SSH 实时管道适配层（本地待审、禁止生产调用）
+
+`ops/release/sanq_install_live.py` 是**私有库，不是当前可运行的安装命令**。它准备了固定源提交、保留材料 ID 的 `/usr/bin/sudo -n -- /usr/bin/python3 -I -S -B /opt/sanq/install-bootstrap/<sha>/ops/release/install_minimal_executor.py installation-submit --source-sha <sha> --retention-id <id>`，绝不接受其他 SSH host、路径、任意远端 shell 或内部 run/cleanup；使用之前已验证的严格 SSH hostkey/agent 原件与选项，唯一差异是允许活 stdin/stdout 管道，不改变原 `sanq-deploy.sh` 标准输入关闭规则。
+
+同一次会话中先读取 VM `sanq-minimal-install-target-request`，仅允许回复完全相同、提前已核实的原目标 JSON；再读取 `sanq-minimal-snapshot-evidence-request`，只有操作者手工 AWS 来源材料经 `EvidenceReview` 核验且原字节摘要一致才能发送；最后读取 `sanq-minimal-snapshot-index-transfer`，只有 `retain_index` 本机 O_EXCL、fsync、Mac fullfsync 适用时、原件读回全部成功，并且回执 SHA-256 与该同代次一致，才能发送第三帧。每步管道输入输出限定格式/预算/超时、失败即中止，未知结果永不自动重连或重交；最后必须读完 stdout 至 EOF，验证 SSH 本机子进程原生 0，**不将其升级为 VM 持久安装完成**。
+
+目前仅有离线本地子进程测试定义。**尚未提供公开的 `submit`/安装 CLI，没有实际 SSH 连接、没有生产新 sudoers/安装 bootstrap 来源验收，也不能声称手工 AWS 快照已经创建、离机材料可恢复或持久完成原件通过**。未来接入真实 CLI 时仍须独立审查冻结窗口、完整人工确认、仓库来源/身份、安装输出权限和持久只读结果；用户必须另行授权生产安装。本批不得在生产调用 `open_live`。生产首次安装保持 `NO-GO`。
+
+## FI-MAC-1B2c：Mac 离机索引落盘与原生 ACK（已合并 dev、尚无 CLI）
 
 新增 `ops/release/sanq_install_offhost.py` 的 `retain_index` **仅供后续经审阅的 Mac 双向交互 peer 在同一内存会话调用**；现在没有可操作的 `sanq-install.sh` 命令，也不得在生产运行。先以 FI-MAC-1B1 既有固定 SSH profile/目标原件预检，FI-MAC-1B2a 同一 `Review` 接收首帧与快照挑战；FI-MAC-1B2b 同一 `EvidenceReview` 核手工 AWS 快照**自述内容**，再由该 `Review` 校验第三帧完整原始 canonical 索引。仅当原第三帧字节摘要仍与该会话匹配、索引 ARN/快照名称/创建与可用观察时间/可用区与先前证据一致，且操作者明确确认本机目录确实**位于 Mac 而非 VM**，才允许本地持久化。仅凭 `operatorConfirmedOffHost=true` 不能认证来源或恢复能力。
 

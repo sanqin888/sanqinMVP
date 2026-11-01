@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
-## 2026-10-31 — FI-MAC-1B2c Mac 本地离机索引原件保留与原生 ACK（本地待审）
+## 2026-11-01 — FI-MAC-1B2d 固定活 SSH 管道与同代次原件投递（本地待审）
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** FI-MAC-1B2b PR #3075 head `c50651512e3b286aa2fe94117903631fdbaed8ff` 经 [CI #7850](https://github.com/sanqin888/sanqinMVP/actions/runs/41263390290) SUCCESS，squash 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。从最新 dev 创建本地 `feat/runtime-fi-mac1b2c-index-reply-review-20261031`，新增 Mac-only `sanq_install_offhost.py`：复用原三帧/快照证据审阅，将第三帧原字节与同代次、声称的快照 ARN/时间/可用区绑定；操作者确认 Mac 目录后，以固定叶文件 O_EXCL/0600 + fsync/可用时 Darwin F_FULLFSYNC + 原件读回保留索引，只有完全成功才输出 VM 原生 ACK。失败留存未知结果、不删除不重试。增加跨代次/伪确认/篡改/快照不一致/符号链接/目录权限/已有文件/fsync/readback/Darwin 负向夹具；未挂 CLI/SSH、未连接 AWS、未执行 VM/生产写入。Runtime/Ops 所有权与 12-context 依赖基线不变，无迁移/依赖/权限变化；MCP-workspace 无测试执行权限，CI 和 Mac 真机未验。详情见 [安装合同](Runtime最小执行器工具交付与安装合同.md) 和 [Mac 首次安装手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。下一步单独审阅真实受限双向 SSH 操作者 peer、AWS 来源、原生回执送达与持久完成审计；生产首用 NO-GO。
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** FI-MAC-1B2c PR #3076 HEAD `2e76a8d371e81cdc6215547751b9a832dd10ea8d` 经 CI SUCCESS 合并 dev `df5c0eecb6e329bdd268081e40fd1d6601b3ed59`。从该最新 dev 创建 `feat/runtime-fi-mac1b2d-fixed-live-transport-20261101`。新增 `sanq_install_live.py` 只为未来已审阅 Mac 安装同伴构造固定 sudo/CPython/bootstrap 源/retention 的单命令 SSH，复用原严格 Agent/hostkey/受限 SSH 参数并且仅在新路径移除 `-n`；采用单一次性进程非阻塞、有界三帧收发，不允许在第一阶段以外的回应、异代次输入或未由目标/快照证据/离机持久保留确认的回复。修改 FI-MAC-1B2a/b/c 原件模型新增只读同源回执 SHA-256 供适配层核查，不改变 VM 或旧 CLI。新增 `test_sanq_deploy_install_live.py` 仅以本机 Python 子进程模拟 pipe，不连接真实 VM/SSH/AWS，覆盖异常/跨代次/未核验回复/额外输出/零退出误判/EOF/非零退出。代码尚未在 CI/真机跑通，MCP 工作区无测试执行权限；未新增依赖、数据库迁移、常驻权限/服务或业务变化，尚未推远端。安装入口仍未开放、live peer 未验收、持久结果核验 OPEN、生产安装 NO-GO；本批完成后按规则停在本地审阅。
+
+## 2026-10-31 — FI-MAC-1B2c Mac 本地离机索引原件保留与原生 ACK（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3076_MERGED_DEV / NOT_INSTALLED。** FI-MAC-1B2b PR #3075 head `c50651512e3b286aa2fe94117903631fdbaed8ff` 经 [CI #7850](https://github.com/sanqin888/sanqinMVP/actions/runs/41263390290) SUCCESS，squash 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。从最新 dev 创建本地 `feat/runtime-fi-mac1b2c-index-reply-review-20261031`，新增 Mac-only `sanq_install_offhost.py`：复用原三帧/快照证据审阅，将第三帧原字节与同代次、声称的快照 ARN/时间/可用区绑定；操作者确认 Mac 目录后，以固定叶文件 O_EXCL/0600 + fsync/可用时 Darwin F_FULLFSYNC + 原件读回保留索引，只有完全成功才输出 VM 原生 ACK。失败留存未知结果、不删除不重试。增加跨代次/伪确认/篡改/快照不一致/符号链接/目录权限/已有文件/fsync/readback/Darwin 负向夹具；未挂 CLI/SSH、未连接 AWS、未执行 VM/生产写入。Runtime/Ops 所有权与 12-context 依赖基线不变，无迁移/依赖/权限变化；MCP-workspace 无测试执行权限，PR #3076 GitHub Actions 已 SUCCESS，Mac 真机未验。详情见 [安装合同](Runtime最小执行器工具交付与安装合同.md) 和 [Mac 首次安装手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。下一步单独审阅真实受限双向 SSH 操作者 peer、AWS 来源、原生回执送达与持久完成审计；生产首用 NO-GO。
 
 ## 2026-10-31 — FI-MAC-1B2b 同代次 AWS 快照证据离线结构比较（已合并 dev）
 

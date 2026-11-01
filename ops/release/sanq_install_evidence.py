@@ -36,7 +36,7 @@ class EvidenceReview:
     evidence. The input is untrusted and is not transformed into a VM reply.
     """
 
-    __slots__ = ("round", "finished", "failed", "snapshot_identity")
+    __slots__ = ("round", "finished", "failed", "snapshot_identity", "reply_sha256")
 
     def __init__(self, review):
         _need(type(review) is frames.Review and review.phase == 2
@@ -55,6 +55,7 @@ class EvidenceReview:
         self.finished = False
         self.failed = False
         self.snapshot_identity = None
+        self.reply_sha256 = None
 
     def inspect(self, raw, *, request_sent_at, reply_received_at):
         _need(not self.finished and not self.failed and self.round.phase == 2
@@ -120,6 +121,7 @@ class EvidenceReview:
             # Claimed identity only: no AWS authentication or VM receipt.
             self.snapshot_identity = (snapshot["arn"], snapshot["name"], created,
                                       observed, location["availabilityZone"])
+            self.reply_sha256 = hashlib.sha256(raw).hexdigest()
             self.finished = True
             return {"schemaVersion": 1, "kind": "sanq-mac-snapshot-evidence-observation",
                     "outcome": "SNAPSHOT_EVIDENCE_STRUCTURE_MATCHED",
