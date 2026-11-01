@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-10-31 — FI-MAC-1B2a 安装请求帧离线单次序列校验（本地待审）
+
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / LIVE_PEER_OPEN / NOT_INSTALLED。** PR #3073 head `7b62644c35e89e52ee7fb42b985ad708623a91c7` 已于 CI #7843 SUCCESS 后合并 dev `e751c8f6416aedce5af00e703480340ccedccb2d`；在最新 dev 上新建 `feat/runtime-fi-mac1b2-frame-contract-20261031`。新增纯离线 `ops/release/sanq_install_frames.py`，为既有 VM 安装器 3 段请求（首帧目标、快照证据挑战、离机索引传递）建立准确来源/保留/安装 ID/挑战/原件摘要及顺序的单次会话观察；回传观测均无安装/快照/恢复权威，不会产生 Mac 回复或执行 SSH。新增 `test_sanq_deploy_install_frames.py` 负向夹具覆盖错源、错挑战、错安装 ID、乱序、重复、篡改索引/哈希/原件路径、请求放宽许可和非规范/过大 JSON。文档更新以区分离线协议模型与未完成的受控活 SSH、AWS、离机 ACK/持久凭据、首次生产安装；现有 Mac 双命令和 VM bootstrap 均不变，业务/架构、17+Manifest、九 helper、两锁及暂停研究保持。MCP-workspace 未开放 lint/build/test；未推远端、未执行生产/AWS/DB。
+
 ## 2026-10-31 — FI-MAC-1B1 安装目标材料本地预检
 
 **LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** 从 PR #3072 合并后的 dev 建立功能分支 `feat/runtime-fi-mac1b-install-operator-result-20261031`。在 FI-MAC-1A 独立 Mac 入口中新增纯本地 `check-target`，只读本人 home 固定 `sanq-install-target.json`，严格核原件权限/FD 身份/规范 JSON 与 VM 既有单系统盘实例目标 v1 结构；核 `sshTarget`、主机 key 指纹与已有受保护 Mac profile 完全一致，输出原字节摘要及请求 source/retention，仅作为人工核查依据。新增拒绝路径/错实例/错 key/非规范文件和不联网等离线测试定义，更新安装合同与中文运行说明；无安装 submit、真实双向 SSH/快照/离机回执、持久完成确认，均保持 OPEN。Runtime/Ops 单一所有权、原 VM/17+Manifest/九 helper/双锁/业务/数据库及 CI 不变，不需要迁移；MCP workspace 不允许运行 lint/build/test，未推送、未改生产。下一批 FI-MAC-1B2 实施受控交互及结果链审阅，仍需本地审阅/远端授权与生产单独批准。
