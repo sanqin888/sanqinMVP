@@ -1,6 +1,14 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
-## FI-MAC-1B2a：三阶段请求帧离线审阅模型（待 CI / Mac / 真实通道验证）
+## FI-MAC-1B2b：手工 AWS 快照证据同代次离线比对（本地待审）
+
+新增 `ops/release/sanq_install_evidence.py` 的 `EvidenceReview`，供 **后续** 完成 Mac 双向交互实现时复用。目前尚无 CLI 子命令，不读取现场快照、不请求 AWS、不发送 `sanq-minimal-snapshot-evidence-reply` 或生成 `sanq-minimal-snapshot-index-ack`。只在同一内存会话 FI-MAC-1B2a 完成前两帧、`phase=2` 且未失败时构造评审。
+
+输入仅为外部操作者**自行保存的原始 canonical JSON 回复数据**和由调用方传入的请求发出/回应收到时间（这些时间与操作声明都不是可信 AWS 来源证明）；模块检查来源/保留代次快照挑战、`installationId` 以及原 4 份 SHA-256、快照 ARN/固定 challenge 名称、手动/available/系统盘大小/可用区、身份确认声明及 prepared ≤ sent ≤ created ≤ observed ≤ received。拒绝错误代次、重复证据、自动快照、未 available、错误磁盘/地域、伪布尔、字段遗漏/重复、非规范 JSON、时间倒序和超限内容；失败后本次 `EvidenceReview` 不可再次调用。
+
+观察通过只输出原证据的 SHA-256、声称的快照 ARN/状态及明确 `operatorClaimStructurallyMatched=true`；**不代表 AWS 真实已认证、快照存在/可恢复、已保存离机材料或 VM 已接受回执**。返回 `awsOriginAuthenticated/snapshotAvailable/offHostRetentionConfirmed/trustedTimeProven/operatorReplyGenerated/installationComplete/canExecute/readyToInstall/restoreProven=false`；不提供重新提交/继续任务的许可。真实 SSH `--pipe` 操作者同伴、一次性原始回复传递、人工 AWS 来源核验、离机 fsync 回执和任务退出后持久结果链均仍 OPEN，生产首次安装 NO-GO。
+
+## FI-MAC-1B2a：三阶段请求帧离线审阅模型（GitHub CI 已通过，Mac / 真实通道未验收）
 
 本切片在 `ops/release/sanq_install_frames.py` 实现**纯内存、只观察 VM 请求的模型**。它尚未接入 `sanq-install.sh` 的公共命令，不读 SSH 标准输入、不运行 `installation-submit`、不调用 AWS API 或写入离机材料，不产生任何可发送的确认帧。FI-MAC-1B1 的 `check-target` 在其前提供独立的固定 SSH 主机/主机密钥和用户原始目标材料本地结构预检，但该预检仍不能认证 AWS 来源。
 
