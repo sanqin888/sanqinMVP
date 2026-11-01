@@ -1,5 +1,17 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
+## FI-MAC-1B2a：三阶段请求帧离线审阅模型（待 CI / Mac / 真实通道验证）
+
+本切片在 `ops/release/sanq_install_frames.py` 实现**纯内存、只观察 VM 请求的模型**。它尚未接入 `sanq-install.sh` 的公共命令，不读 SSH 标准输入、不运行 `installation-submit`、不调用 AWS API 或写入离机材料，不产生任何可发送的确认帧。FI-MAC-1B1 的 `check-target` 在其前提供独立的固定 SSH 主机/主机密钥和用户原始目标材料本地结构预检，但该预检仍不能认证 AWS 来源。
+
+单次模型的准确接收次序：
+
+1. `sanq-minimal-install-target-request`：先绑定由操作者另行确认的 40 位 sourceSha 和 64 位 retentionId，严格核 30 秒目标请求、权限字段 false。
+2. `sanq-minimal-snapshot-evidence-request`：同时核准确目标原字节 SHA-256、实例身份、challenge/installationId、存储绑定摘要、1800 秒快照等待；**不能用挑战自动创建或确认云快照**。
+3. `sanq-minimal-snapshot-index-transfer`：对索引字节重算 SHA-256 和长度，核同一 source/retention/installationId/challenge、四份原摘要、目标/快照绑定与本来就为 false 的离机/执行许可；不能凭索引接收即签发 `operatorConfirmedOffHost/clientIndexDurable` 回执。
+
+请求格式不规范、乱序/重放、错误身份/快照挑战、外来索引或任何权限升级均拒绝并终止当前内存模型。**观察三帧成功只能说明本次模型校验成立，不表示目标 VM 的这三帧曾实际发送、AWS 手工快照存在或离机保存已完成。** 无自动重试、无审阅替代物、无生产写入许可。下一小批应针对真实 SSH `--pipe` 活通道、受限三阶段操作者证据来源与 durable fsync、精确事务完成原件只读查询分别设计适配，生产首次安装仍为 NO-GO。
+
 ## FI-MAC-1B1：操作者目标材料本地预检（本地待审）
 
 首次安装正式发送任何 VM 交互帧之前，可先对独立 AWS 会话取得并人工审阅的目标材料进行严格本地结构检查。**该动作没有 SSH 连接，不会访问 AWS API，也不能证实来源真实性**。

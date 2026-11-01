@@ -1,5 +1,13 @@
 # Runtime 最小执行器工具交付与安装合同
 
+## 2026-10-31：FI-MAC-1B2a 安装交互请求帧单次序列模型（本地待审）
+
+**FI_MAC_1B2A_LOCAL / CI_NOT_RUN / LIVE_PEER_OPEN / NOT_INSTALLED。** PR #3073 最终 head `7b62644c35e89e52ee7fb42b985ad708623a91c7` 经 [CI #7843](https://github.com/sanqin888/sanqinMVP/actions/runs/41254772514) SUCCESS，已合并 `dev` `e751c8f6416aedce5af00e703480340ccedccb2d`。在原 Mac first-install 模块旁新增仅离线调用的纯请求帧校验模型 `ops/release/sanq_install_frames.py`，不修改现有 VM `installation-submit/run/cleanup`、release/public CLI 或 Mac 已交付 `status/check-target` 的实际行为。
+
+对本次唯一进程内会话仅容许依序观察三个 **VM → Mac 请求**：固定首帧 `sanq-minimal-install-target-request` (准确 sourceSha/retentionId/30s/权限 false)；`sanq-minimal-snapshot-evidence-request` (固定 targetInputSha256、实例绑定、同一 installationId/challenge、1800s/权限 false)；`sanq-minimal-snapshot-index-transfer` (原同一安装 ID、retention/source、challenge、同源摘要、索引真实 canonical bytes/hash/长度、VM 固定原件路径和 false 权限)。任何乱序、重复、非规范 JSON、外来 source/retention/安装 ID、快照挑战或离机索引、字段不完整和权限 true 均 fail-closed，并使该内存模型终止；不收养新运行代次。
+
+该模型**不读取 SSH、发送回复、创建快照、提交安装、进行真实离机 fsync、签发完成凭证、允许重试或清理事故证据**；三帧观察全通过仍一律输出 `operatorReplyGenerated=false`、`snapshotAvailable/offHostRetentionConfirmed/installationComplete/canExecute/readyToInstall/restoreProven=false`。需要先通过 FI-MAC-1B1 的用户真实 AWS 目标文件/固定 SSH profile 比对，再由后续受控双向通道在同一内存作用域使用模型；不能仅凭模型代替实际独立 AWS 来源核实或持久回执。未来需要完整 Mac 受限 SSH 交互执行、三种回复格式、安全写入本机离机索引及准确完成证据查询；新 sudoers/生产权限/模块边界均未授权。详见 [首次安装 Mac 状态/帧预检手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。
+
 ## 2026-10-31：FI-MAC-1B1 操作者 AWS 目标材料本地预检（本地待审）
 
 **FI_MAC_1B1_LOCAL / CI_NOT_RUN / MAC_NOT_TESTED / LIVE_INSTALL_PEER_OPEN / NOT_INSTALLED。** 基于 PR #3072 已合并 `dev` 的 FI-MAC-1A，只扩展原独立 Mac `sanq-install` 入口的 `check-target`，不修改普通更新客户端或 VM 安装器。`check-target --source-sha <40hex> --retention-id <64hex>` 只从本人 home 中固定文件 `sanq-install-target.json` 读取严格 canonical JSON（单链接、本人 0400/0600、≤64KiB、nofollow、FD/目录身份首尾重核），不接受目标路径或 SSH 参数覆盖。精确比对 `~/.sanq-deploy` 固定主机及已独立核验的主机公钥指纹；参照 VM 既有 `sanq-minimal-pre-snapshot-target` v1 结构核实例 ARN/region/account、单系统盘、挂载和 operatorConfirmed 原生布尔。结果只输出请求身份、原字节摘要、结构判断；`awsOriginAuthenticated`、`operatorEvidenceIndependentlyVerified`、`canExecute`、`readyToInstall`、`installationComplete`、`restoreProven` 恒 false。该检查无法替代操作者真实 AWS 会话、云 API 原始响应/来源独立审查、现场存储绑定、快照及离机耐久验证，禁止自动提交。

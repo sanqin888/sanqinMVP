@@ -1,5 +1,9 @@
 # Current 12-context dependency graph
 
+## 2026-10-31：FI-MAC-1B2a 仅 Mac 受控安装请求协议模型（本地待审）
+
+在 Runtime/Ops 原有所有权下添加独立离线模型 `sanq_install_frames.py`，只校验 VM 安装器已存在的 3 阶段请求原字节、身份绑定和单次会话顺序；无 SSH 执行、回复生成、状态持久化、服务/unit/sudoers、数据库/支付/业务模块依赖或迁移，不新增任何应用权威、依赖或 VM helper。未来的真实双向交互必须单独审查和按原权限边界连接，不得将该离线成功视为安装/恢复授权。
+
 ## 2026-10-31：FI-MAC-1B1 安装目标材料只读检查（本地待审）
 
 在原 Runtime/Ops 所有权下为独立 Mac 首次安装客户端新增本地 `check-target` 预检：严格核本人 home 固定 AWS 目标文件权限/规范 JSON、VM v1 字段结构以及与已有受保护 SSH profile 的唯一目标与主机密钥绑定；不导入其他业务上下文、不建立第二状态权威或凭结构授予 AWS 来源、发布或恢复权限。不新增远端命令/VM helper/依赖/服务/数据库对象，12-context 依赖边界及基线未变化。FI-MAC-1A 已由 PR #3072 经 CI SUCCESS 合并 dev `6e9deea1`；本新增切片仅本地源码/模拟测试、CI 和 Mac 尚未验收。
