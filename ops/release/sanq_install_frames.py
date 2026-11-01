@@ -64,7 +64,8 @@ class Review:
     authorizes live task submission.
     """
     __slots__ = ("source", "retention", "target", "target_sha", "phase",
-                 "installation", "challenge", "snap", "failed")
+                 "installation", "challenge", "snap", "failed",
+                 "index_transfer_sha", "offhost_attempted")
 
     def __init__(self, source, retention, target_raw):
         _need(_hex(source, 40) and _hex(retention, 64))
@@ -87,6 +88,8 @@ class Review:
         self.phase = 0
         self.installation = self.challenge = self.snap = None
         self.failed = False
+        self.index_transfer_sha = None
+        self.offhost_attempted = False
 
     def _target_request(self, frame):
         _need(set(frame) == {"schemaVersion", "kind", "sourceSha", "retentionId",
@@ -203,6 +206,8 @@ class Review:
                 outcome = self._snapshot_request(frame)
             else:
                 outcome = self._index_transfer(frame)
+                # Bind later local retention to the exact third-frame bytes.
+                self.index_transfer_sha = hashlib.sha256(raw).hexdigest()
             return {"schemaVersion": 1, "kind": "sanq-mac-install-peer-frame-observation",
                     "outcome": outcome, "requestSourceSha": self.source,
                     "retentionId": self.retention, "phase": self.phase,

@@ -1,8 +1,12 @@
 # SanQ 项目持续工作日志
 
-## 2026-10-31 — FI-MAC-1B2b 同代次 AWS 快照证据离线结构比较（本地待审）
+## 2026-10-31 — FI-MAC-1B2c Mac 本地离机索引原件保留与原生 ACK（本地待审）
 
-**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** [PR #3074](https://github.com/sanqin888/sanqinMVP/pull/3074) 最终 head `81c1361498b805dbfb7bb82c5f28e0a267e1ad21` 的 CI #7845 SUCCESS 后合并 dev `1d51884cd227041bb50d6ecd2121b58699d22b0c`。新建分支 `feat/runtime-fi-mac1b2b-evidence-review-20261031`，在原 FI-MAC-1B2a 单次源/保留/快照挑战确认后新增 `EvidenceReview`：只接受 canonical 操作者证据原字节，与原安装 ID、intent/writers/archive/receipt 哈希、挑战名字、Lightsail 手动快照目标/磁盘/区域、操作者自述和时间次序比对。只回结构观察、输入摘要，严格禁真实 SSH、AWS、确认回执、持久记录、安装或自动恢复；所有云来源、快照可用性、安装许可为 false。新增 `test_sanq_deploy_install_evidence.py` 负向模型覆盖跨代次/篡改/顺序/伪布尔/超限/重复材料。同步安装合同、中文操作说明和依赖图。CI/真机未执行；无新依赖/迁移；生产 VM/AWS/数据库未操作。后续优先受控 Mac 活 SSH 与手工材料、离机耐久回执的完整接口；首次生产安装继续 NO-GO。
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / NOT_INSTALLED。** FI-MAC-1B2b PR #3075 head `c50651512e3b286aa2fe94117903631fdbaed8ff` 经 [CI #7850](https://github.com/sanqin888/sanqinMVP/actions/runs/41263390290) SUCCESS，squash 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。从最新 dev 创建本地 `feat/runtime-fi-mac1b2c-index-reply-review-20261031`，新增 Mac-only `sanq_install_offhost.py`：复用原三帧/快照证据审阅，将第三帧原字节与同代次、声称的快照 ARN/时间/可用区绑定；操作者确认 Mac 目录后，以固定叶文件 O_EXCL/0600 + fsync/可用时 Darwin F_FULLFSYNC + 原件读回保留索引，只有完全成功才输出 VM 原生 ACK。失败留存未知结果、不删除不重试。增加跨代次/伪确认/篡改/快照不一致/符号链接/目录权限/已有文件/fsync/readback/Darwin 负向夹具；未挂 CLI/SSH、未连接 AWS、未执行 VM/生产写入。Runtime/Ops 所有权与 12-context 依赖基线不变，无迁移/依赖/权限变化；MCP-workspace 无测试执行权限，CI 和 Mac 真机未验。详情见 [安装合同](Runtime最小执行器工具交付与安装合同.md) 和 [Mac 首次安装手册](../runbooks/Runtime最小执行器首次安装Mac状态查询.md)。下一步单独审阅真实受限双向 SSH 操作者 peer、AWS 来源、原生回执送达与持久完成审计；生产首用 NO-GO。
+
+## 2026-10-31 — FI-MAC-1B2b 同代次 AWS 快照证据离线结构比较（已合并 dev）
+
+**SOURCE_CI_VERIFIED / PR_3075_MERGED_DEV / NOT_INSTALLED。** [PR #3074](https://github.com/sanqin888/sanqinMVP/pull/3074) 最终 head `81c1361498b805dbfb7bb82c5f28e0a267e1ad21` 的 CI #7845 SUCCESS 后合并 dev `1d51884cd227041bb50d6ecd2121b58699d22b0c`。新建分支 `feat/runtime-fi-mac1b2b-evidence-review-20261031`，在原 FI-MAC-1B2a 单次源/保留/快照挑战确认后新增 `EvidenceReview`：只接受 canonical 操作者证据原字节，与原安装 ID、intent/writers/archive/receipt 哈希、挑战名字、Lightsail 手动快照目标/磁盘/区域、操作者自述和时间次序比对。只回结构观察、输入摘要，严格禁真实 SSH、AWS、确认回执、持久记录、安装或自动恢复；所有云来源、快照可用性、安装许可为 false。新增 `test_sanq_deploy_install_evidence.py` 负向模型覆盖跨代次/篡改/顺序/伪布尔/超限/重复材料。同步安装合同、中文操作说明和依赖图。PR #3075 的 CI #7850 SUCCESS 并已合并 dev `ba5a07f7508a4b22444609c15134fc30d842b4c6`；Mac 真机未执行；无新依赖/迁移；生产 VM/AWS/数据库未操作。后续优先受控 Mac 活 SSH 与手工材料、离机耐久回执的完整接口；首次生产安装继续 NO-GO。
 
 ## 2026-10-31 — FI-MAC-1B2a 安装请求帧离线单次序列校验（已合并 dev）
 

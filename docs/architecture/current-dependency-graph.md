@@ -1,6 +1,10 @@
 # Current 12-context dependency graph
 
-## 2026-10-31：FI-MAC-1B2b 只读快照证据比较（本地待审）
+## 2026-10-31：FI-MAC-1B2c Mac 单代次离机索引与原生 ACK（本地待审）
+
+Runtime/Ops 的离线 Mac 模型增加独立 `sanq_install_offhost.py` 本地文件同步边界；只消费已有 `Review` 与 `EvidenceReview` 的同一内存会话、原始第三帧索引和人工确认，使用原 VM v1 ACK 字段，**不新增第二安装权威或 VM 公共合同**。不连接 SSH/AWS、不改业务部署单元、业务依赖、schema、systemd、root/sudoers、17+Manifest 或永久状态；12-context 依赖图与基线未变化。真实 Mac/CI、远端收件及生产验收仍未完成。FI-MAC-1B2b PR #3075 已由 CI #7850 SUCCESS 合并 `dev` `ba5a07f7508a4b22444609c15134fc30d842b4c6`。
+
+## 2026-10-31：FI-MAC-1B2b 只读快照证据比较（已合并 dev）
 
 仅在 Runtime/Ops 的 Mac 离线评审侧新增 `sanq_install_evidence.py`，使用已合并的 `sanq_install_frames.py` 提供的同代次会话模型，不新增业务模块依赖、第二安装权威或 VM API/持久化表/常驻进程；不修改 root、SSH、AWS、Docker、systemd 或四个业务部署单元的职责及公共合同。该模块的校验通过只能说明结构匹配，所有云/发布/安装/恢复许可继续 false。生产与真实受控操作通道未开启。
 

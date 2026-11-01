@@ -1,6 +1,14 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
-## FI-MAC-1B2b：手工 AWS 快照证据同代次离线比对（本地待审）
+## FI-MAC-1B2c：Mac 离机索引落盘与原生 ACK（本地待审、尚无 CLI）
+
+新增 `ops/release/sanq_install_offhost.py` 的 `retain_index` **仅供后续经审阅的 Mac 双向交互 peer 在同一内存会话调用**；现在没有可操作的 `sanq-install.sh` 命令，也不得在生产运行。先以 FI-MAC-1B1 既有固定 SSH profile/目标原件预检，FI-MAC-1B2a 同一 `Review` 接收首帧与快照挑战；FI-MAC-1B2b 同一 `EvidenceReview` 核手工 AWS 快照**自述内容**，再由该 `Review` 校验第三帧完整原始 canonical 索引。仅当原第三帧字节摘要仍与该会话匹配、索引 ARN/快照名称/创建与可用观察时间/可用区与先前证据一致，且操作者明确确认本机目录确实**位于 Mac 而非 VM**，才允许本地持久化。仅凭 `operatorConfirmedOffHost=true` 不能认证来源或恢复能力。
+
+操作者应事先在 Mac 上单独准备一个本人拥有的、**0700 且非软链接**的绝对路径目录（不要使用生产 VM、系统目录、`~/.sanq-deploy` 受保护 profile）；目录及祖先不能是不可信可写/可替换的链接。模块不创建目录、不接收任意文件名、不自动发送网络回复。目标 `snapshot-index-<installationId>.json` 只允许首次创建为 0600；文件和目录 fsync、Darwin `F_FULLFSYNC`、FD/路径原件读回全部成功后，才在内存中返回原 VM 既有 `sanq-minimal-snapshot-index-ack` canonical 字节。已有文件、部分写入、同步/读回失败均保持现场原件并阻断本轮，**不得删除或把未知结果当作未发生**。
+
+返回的 ACK 包含同一安装 ID、snapshotReviewSha256、indexSha256/indexBytes、transferChallenge 和同步方式；`operatorConfirmedOffHost/clientIndexDurable=true` 表示操作者声称与本机文件操作成功，`canExecute/recoveryReady=false`。真实 AWS 会话/快照真实性、SSH 对端、ACK 交付、VM 是否接受、持久完成原件与恢复能力尚无证明；Linux CI 临时目录不能代替 Mac APFS `F_FULLFSYNC`/断电验收。下一步仍需单独审阅 live peer/VM 原件只读审计和明确的生产授权。**首次安装 NO-GO。**
+
+## FI-MAC-1B2b：手工 AWS 快照证据同代次离线比对（已合并 dev，未实测 Mac）
 
 新增 `ops/release/sanq_install_evidence.py` 的 `EvidenceReview`，供 **后续** 完成 Mac 双向交互实现时复用。目前尚无 CLI 子命令，不读取现场快照、不请求 AWS、不发送 `sanq-minimal-snapshot-evidence-reply` 或生成 `sanq-minimal-snapshot-index-ack`。只在同一内存会话 FI-MAC-1B2a 完成前两帧、`phase=2` 且未失败时构造评审。
 
