@@ -1,4 +1,10 @@
-# FI-MAC-1B3b：首次安装可信只读取证与权限边界审计（待单独授权）
+# FI-MAC-1B3b：首次安装可信只读取证与权限边界审计
+
+## 2026-11-02 — 权限边界 A 的受限代码开发获批（本地待审）
+
+用户已经明确授权**新增受限 root 只读查询入口的代码**。在最新 `dev` 的本地新分支内实现了 VM 安装 owner 内独立 `installation-evidence-query`：固定精确 `--source-sha` / `--retention-id`、原 bootstrap 来源和 root 约束、原双锁/受限原件读取/维护 marker 与 manager 状态检测；不引入可执行任意命令或用户路径，不修改现有安装、清理或更新职责。只输出脱敏结构观察，历史清理终态/当前可运行/可恢复仍保持 false。详情见 [Runtime 最小执行器安装合同](Runtime最小执行器工具交付与安装合同.md) 的 FI-MAC-1B3b 条目。
+
+本批**只批准开发**，没有 sudoers 规则变更、没有普通 Mac 公开查询命令、没有部署或生产测试。若需要将此入口提供给 Mac 的 Ubuntu SSH 操作员，下一次审阅仍须明确界定 sudoers 固定参数、源及解释器所有权、主机访问、上线/撤销、泄漏与锁竞争风险。后清 marker 后仍可信的历史终态（权限边界 B）未获授权；当前只读观察不等于历史成功证书。离线聚焦测试尚未通过 GitHub CI。
 
 > 2026-11-01，本地方案审阅；**DESIGN_ONLY / NO_PRIVILEGE_CHANGE / NO_PRIVILEGED_IMPLEMENTATION / PRODUCTION_NOT_INSTALLED**。本文件不是安装、生产 SSH、sudoers 或恢复操作授权。
 

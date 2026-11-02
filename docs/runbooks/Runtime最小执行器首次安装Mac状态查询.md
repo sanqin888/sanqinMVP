@@ -1,5 +1,11 @@
 # FI-MAC-1A：首次安装 Mac 只读状态查询
 
+## 2026-11-02 FI-MAC-1B3b：受限 root 只读报告命令（源码本地待审，生产不可使用）
+
+在 VM 安装器 owner 内预备 `installation-evidence-query --source-sha <准确40小写hex> --retention-id <准确64小写hex>`，仅由具 root、固定独立受信 bootstrap 来源、`/usr/bin/python3 -I -S -B` 的受权操作环境调用。它不接受任意路径/host/unit/FD/命令，不调用 submit/run/cleanup，不创建或删除目录/文件，不导出原始恢复归档；保留原双锁和全部变更指纹。只报告当前已有原件结构和读时 marker/manager 观察，不能证明历史 clean exit、恢复、AWS 来源或业务健康。异常返回 `BLOCKED` 无具体文件内容；unit 回收不代表历史成功。
+
+**尚未配置 sudoers allowlist，尚未提供 Mac 公开 CLI，更未安装到生产 VM；下面只是将来 root-only 命令的接口模型，不是供生产执行的步骤。** 将来需单独审阅精确固定 source/retention、执行文件权限、来源与系统解释器、部署/回滚/撤销和 Mac 只读验收；任何生产首次安装仍要求维护窗口的另一笔明确授权。现场目前缺少 `/opt/sanq/deploy-state`，只读查询不能据此宣称安装成功。生产 NO-GO。
+
 ## FI-MAC-1B3b：可信 VM 原件只读取证权限审计（设计中，禁止执行）
 
 FI-MAC-1B3a PR #3078 已经 [CI #7856](https://github.com/sanqin888/sanqinMVP/actions/runs/41325902899) SUCCESS 并合并 `dev` `c71cd2ea`，但 Mac 的 `status` 仍只能读固定 systemd 属性，不能访问 root 保护的原件目录。VM `_private_session` 强制 root、依次独占 `.release.lock` 与 `.prepare.lock`；`completion.json` 在 marker 删除之前写入，原 unit 可能已回收。**禁止用 status=0、unit not-found、SSH 子进程退出零、B3a 哈希一致或 PRE-CLEAR completion 当作生产安装成功/可重试许可。**
