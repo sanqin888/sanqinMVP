@@ -7358,6 +7358,206 @@ def _installation_task_submit(retention_id, source_sha, *, input_fd=0, output_fd
         return 1
 
 
+
+# FI-MAC-1B3b: root-only, fixed read report. No install/resume/repair entrypoint.
+# This remains an explicitly privileged CLI, NOT an ordinary Mac status command.
+INSTALL_QUERY_KIND = "sanq-minimal-install-privileged-read-observation"
+
+
+def _installation_query_manager(source_sha, retention_id, invocation_id):
+    """Inspect the exact read-only systemd unit, never infer past clean exit."""
+    _need(type(invocation_id) is str and re.fullmatch(r"[a-f0-9]{32}", invocation_id)
+          and invocation_id != "0" * 32, "invalid stored manager generation")
+    raw = _bounded_host_client(_installation_task_show_args(retention_id),
+                               deadline=time.monotonic() + 20)
+    _need(type(raw) is str and 0 < len(raw.encode("utf-8")) <= 65536
+          and all(char == "\n" or 32 <= ord(char) < 127 for char in raw),
+          "unreviewed installation manager output")
+    properties = {}
+    for line in raw.splitlines():
+        key, separator, value = line.partition("=")
+        _need(separator == "=" and key in INSTALL_TASK_KEYS and key not in properties,
+              "ambiguous installation manager status")
+        properties[key] = value
+    _need(set(properties) == set(INSTALL_TASK_KEYS), "incomplete manager query")
+    loaded = properties["LoadState"] == "loaded"
+    if loaded:
+        _need(properties["Transient"] == "yes" and properties["Type"] == "oneshot"
+              and properties["InvocationID"] == invocation_id
+              and _installation_task_exec_matches(properties["ExecStart"],
+                  _installation_task_argv(
+                      source_sha, retention_id, "run"))
+              and _installation_task_exec_matches(properties["ExecStopPost"],
+                  _installation_task_argv(
+                      source_sha, retention_id, "cleanup"))
+              and properties["ActiveState"] in ("inactive", "failed"),
+              "live or foreign manager cannot establish historical result")
+    else:
+        _need(properties["LoadState"] == "not-found"
+              and properties["InvocationID"] == ""
+              and properties["ExecStart"] == "" and properties["ExecStopPost"] == "",
+              "unloaded manager has contradictory identity")
+    return raw, loaded
+
+
+def _installation_evidence_readonly(retention_id, source_sha, *, fetch=release.github_json):
+    """Read a single existing first-install generation under original root locks.
+
+    All records stay on VM. Even a fully matching pre-clear record is NOT an
+    authenticated historical systemd exit or a release from maintenance.
+    No create=True, no file writes, no journald/proc read or arbitrary argv.
+    """
+    source = _bootstrap_invocation(release.require_sha(source_sha))
+    retained_id = _installation_task_id(retention_id)
+    with _private_session() as folders:
+        _material_jobs_idle(folders)
+        _need(not os.listdir(folders["maintenance"]), "maintenance marker or foreign member exists")
+        anchor = _state_parent()
+        try:
+            with _private_directory(anchor, "deploy-state") as state, \
+                 _private_directory(folders["installations"], retained_id) as materials:
+                kit, old, retained = _retained_contents(materials, retained_id)
+                _need(retained["sourceSha"] == source, "retained source differs")
+                with _bound_bootstrap_sources(kit, source, fetch=fetch) as source_check, \
+                     _existing_installation_task_namespace(state) as namespace:
+                    identities = os.listdir(namespace)
+                    _need(len(identities) == 1 and
+                          re.fullmatch(r"[a-f0-9]{64}", identities[0]) is not None,
+                          "unexpected installation transaction inventory")
+                    identity = identities[0]
+                    with _private_directory(namespace, identity) as root:
+                        names = {"intent.json", "writers.json", INSTALL_TASK_ORIGINALS_FILE,
+                                 "recovery", SNAPSHOT_REVIEW_FILE, SNAPSHOT_OFFHOST_FILE,
+                                 INSTALL_COMPLETION_FILE}
+                        _need(set(os.listdir(root)) == names, "incomplete or foreign installation record")
+                        intent = _installation_record_read(root, "intent.json", identity)
+                        writers = _installation_record_read(root, "writers.json", identity)
+                        _installation_writers_match(intent, writers, identity)
+                        original = _installation_record_value(intent, identity)
+                        _need(original["targetSourceSha"] == source
+                              and original["retentionId"] == retained_id,
+                              "installation identity differs from requested source/retention")
+
+                        # Derive only a RECORD comparison context, not live manager
+                        # authority. Validate all canonical bytes below and report
+                        # manager historical success as unproven regardless.
+                        fd = os.open(INSTALL_TASK_ORIGINALS_FILE,
+                                     os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+                        try:
+                            handoff_raw, _ = _bootstrap_read(fd, root, INSTALL_TASK_ORIGINALS_FILE)
+                        finally:
+                            os.close(fd)
+                        _need(len(handoff_raw) <= MAX_INSTALL_RECORD, "handoff original exceeds budget")
+                        handoff = json.loads(handoff_raw, object_pairs_hook=_unique)
+                        _need(type(handoff) is dict and set(handoff) == {
+                            "schemaVersion", "kind", "sourceSha", "retentionId", "installationId",
+                            "unit", "invocationId", "intentSha256", "writersSha256",
+                            "installationComplete", "canExecute", "restoreProven"}
+                            and handoff["schemaVersion"] == 1
+                            and handoff["kind"] == "sanq-install-task-originals-binding"
+                            and handoff["sourceSha"] == source and handoff["retentionId"] == retained_id
+                            and handoff["installationId"] == identity
+                            and handoff["intentSha256"] == _hash(intent)
+                            and handoff["writersSha256"] == _hash(writers)
+                            and handoff["unit"] == INSTALL_TASK_PREFIX + retained_id + ".service"
+                            and all(handoff[key] is False for key in (
+                                "installationComplete", "canExecute", "restoreProven"))
+                            and handoff_raw == _json(handoff),
+                            "task association is not same-generation canonical evidence")
+                        context = {"sourceSha": source, "retentionId": retained_id,
+                            "unit": handoff["unit"], "invocationId": handoff["invocationId"],
+                            "role": "run", "managerContextObserved": True,
+                            "installationComplete": False, "canExecute": False}
+                        association = _installation_task_handoff_read(
+                            root, context, intent, writers, identity)
+
+                        with _installation_recovery_directory(root) as recovery:
+                            _need(set(os.listdir(recovery)) == RECOVERY_FILES,
+                                  "incomplete or foreign recovery inventory")
+                            files = {name: _installation_recovery_read(recovery, name)
+                                     for name in RECOVERY_FILES}
+                            recovery_identity = _directory_identity(os.fstat(recovery))
+                        snapshot = _snapshot_review_read(root)
+                        offhost = _snapshot_offhost_record_read(root)
+                        completion = _installation_record_read(root, INSTALL_COMPLETION_FILE, identity)
+                        _need(_installation_completion_value(completion, identity)["phase"]
+                              == "PREPARED_BEFORE_MARKER_CLEAR",
+                              "completion is not a pre-clear audit")
+                        lock_ids = tuple(
+                            _installed_fingerprint(os.stat(name, dir_fd=folder, follow_symlinks=False))
+                            for folder, name in (
+                                (folders["jobs"], ".release.lock"),
+                                (folders["plans"], ".prepare.lock")))
+                        directories = [(anchor, "deploy-state", state),
+                            (state, INSTALLATION_RUNS, namespace),
+                            (namespace, identity, root),
+                            (folders["installations"], retained_id, materials)]
+                        directory_ids = tuple(_directory_identity(os.fstat(fd))
+                                              for _, _, fd in directories)
+                        manager_first = _installation_query_manager(source, retained_id, handoff["invocationId"])
+                        def verify():
+                            source_check()
+                            _material_jobs_idle(folders)
+                            _need(not os.listdir(folders["maintenance"]),
+                                  "maintenance marker appeared during readonly query")
+                            _need(os.listdir(namespace) == [identity]
+                                  and set(os.listdir(root)) == names
+                                  and _retained_contents(materials, retained_id) == (kit, old, retained),
+                                  "installation read identity changed")
+                            _need(tuple(
+                                _installed_fingerprint(os.stat(name, dir_fd=folder, follow_symlinks=False))
+                                for folder, name in (
+                                    (folders["jobs"], ".release.lock"),
+                                    (folders["plans"], ".prepare.lock"))) == lock_ids,
+                                "original lock path changed")
+                            for (parent, name, fd), original_id in zip(directories, directory_ids):
+                                path = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                                _private_info(path, directory=True)
+                                _need(original_id == _directory_identity(os.fstat(fd))
+                                      == _directory_identity(path),
+                                      "privileged evidence directory changed")
+                            _need(_installation_owned_run(namespace, identity, saved_writers=writers,
+                                  recovery=(files, recovery_identity),
+                                  snapshot_review=snapshot, snapshot_offhost=offhost,
+                                  completion=completion, task_handoff=(context, *association)) == intent,
+                                  "original record validation changed")
+                            _need(_installation_query_manager(source, retained_id, handoff["invocationId"])
+                                  == manager_first, "installation manager changed during query")
+                            source_check()
+                        verify()
+                        # A manager may have been collected; neither outcome
+                        # yields a durable post-clear success certificate.
+                        return {"schemaVersion": 1, "kind": INSTALL_QUERY_KIND,
+                            "outcome": "STRUCTURALLY_CONSISTENT_UNDER_PRIVILEGED_READ",
+                            "requestedSourceSha": source, "retentionId": retained_id,
+                            "installationId": identity,
+                            "preclearCompletionSha256": _hash(completion),
+                            "privilegedOriginalsStructurallyMatched": True,
+                            "maintenanceMarkerAbsentAtRead": True,
+                            "managerUnitLoaded": manager_first[1],
+                            "managerHistoricalCleanExitProven": False,
+                            "verificationFactsRecomputed": False,
+                            "awsOriginAuthenticated": False,
+                            "offHostRestoreProven": False,
+                            "installationComplete": False, "canExecute": False,
+                            "readyToInstall": False, "restoreProven": False}
+        finally:
+            os.close(anchor)
+
+
+def _installation_evidence_query_cli(argv, *, fetch=release.github_json):
+    """Exact fixed CLI arguments. Zero only for an actual observation, not success."""
+    _need(type(argv) is list and len(argv) == 5
+          and argv[0] == "installation-evidence-query"
+          and argv[1] == "--source-sha" and argv[3] == "--retention-id",
+          "unreviewed root read-only query arguments")
+    _need(type(argv[2]) is str and type(argv[4]) is str
+          and re.fullmatch(r"[a-f0-9]{40}", argv[2]) is not None
+          and re.fullmatch(r"[a-f0-9]{64}", argv[4]) is not None,
+          "invalid exact query identity")
+    return _installation_evidence_readonly(argv[4], argv[2], fetch=fetch)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -7374,9 +7574,18 @@ def main(argv=None):
         sub = commands.add_parser("installation-" + role, allow_abbrev=False)
         sub.add_argument("--source-sha", required=True)
         sub.add_argument("--retention-id", required=True)
-    args = parser.parse_args(argv)
+    query = commands.add_parser("installation-evidence-query", allow_abbrev=False)
+    query.add_argument("--source-sha", required=True)
+    query.add_argument("--retention-id", required=True)
+    supplied = sys.argv[1:] if argv is None else argv
+    args = parser.parse_args(supplied)
     fetch = lambda path: release.github_json(path, token=os.environ.get("GITHUB_TOKEN") or None)
     try:
+        if args.command == "installation-evidence-query":
+            # Query never calls submit, run or cleanup; no success inference.
+            result = _installation_evidence_query_cli(supplied, fetch=fetch)
+            print(json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=True))
+            return 0
         if args.command == "installation-submit":
             return _installation_task_submit(args.retention_id, args.source_sha, fetch=fetch)
         if args.command in ("installation-run", "installation-cleanup"):
@@ -7405,7 +7614,13 @@ def main(argv=None):
         return 0
     except (release.ReleaseContractError, ValueError, OSError, EOFError, TypeError, KeyError,
             RecursionError, SyntaxError, tarfile.TarError):
-        print("Delivery material review blocked; preserve artifacts. No host install or automatic retry.")
+        if args.command == "installation-evidence-query":
+            print(json.dumps({"schemaVersion": 1, "kind": INSTALL_QUERY_KIND,
+                "outcome": "BLOCKED", "installationComplete": False,
+                "canExecute": False, "readyToInstall": False, "restoreProven": False},
+                sort_keys=True, separators=(",", ":")))
+        else:
+            print("Delivery material review blocked; preserve artifacts. No host install or automatic retry.")
         return 1
 
 

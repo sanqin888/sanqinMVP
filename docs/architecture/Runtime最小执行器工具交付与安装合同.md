@@ -1,5 +1,15 @@
 # Runtime 最小执行器工具交付与安装合同
 
+## 2026-11-02：FI-MAC-1B3b 受限 VM root 只读证据查询入口（本地代码待审）
+
+**LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / SUDOERS_NOT_INSTALLED / PRODUCTION_NO_GO。** 用户已明确批准**开发**单用途 root 只读取证入口（原权限边界 A），但未授权生产部署、现场执行、扩大写权限或新增持久后清标记终态（权限边界 B）。新本地分支 `feat/runtime-fi-mac1b3b-root-readonly-report-20261102` 基于已合并 PR #3079 的最新 `origin/dev`。
+
+在 **原 VM 安装器 owner** `ops/release/install_minimal_executor.py` 中新增唯一固定命令 `installation-evidence-query --source-sha <40小写hex> --retention-id <64小写hex>`，严格 argv 顺序/数量，仍须已有 `/usr/bin/python3 -I -S -B`、root 和受信固定 `/opt/sanq/install-bootstrap/<sha>/` 的五来源约束；与写入型 `installation-submit` 独立，绝不调用 submit/run/cleanup。只打开既有 root `deploy-state` / `installation-runs`，使用**原** `_private_session(create=False)`、`.release.lock` 和 `.prepare.lock` 非阻塞双独占锁，使用原受限 FD/NOFOLLOW、目录/lock 指纹、保留材料哈希/来源核对、唯一事务原件、recovery/snapshot/offhost 的原 VM 完整审阅器。缺失、重复、外来文件、跨代次、变更、持锁失败、maintenance marker 存在、任意源校验失败均返回无详情的 `BLOCKED`，保留现场不修改。
+
+使用原固定 `systemctl show sanq-runtime-install-<retention>.service` 属性表检查当前 manager；不接受活动/异代次/非 transient unit。已回收 unit 仅为**当前未找到**，不作为历史 success。读完重查双锁、原件和目录/保留材料、marker、manager；输出只包含同代次身份、前置 completion 摘要、是否两次观察到 marker 缺席、是否当前 unit loaded 和所有失败封闭字段。即使返回 `STRUCTURALLY_CONSISTENT_UNDER_PRIVILEGED_READ`，`managerHistoricalCleanExitProven=false`、`verificationFactsRecomputed=false`、`installationComplete=false`、`canExecute=false`、`readyToInstall=false`、`restoreProven=false`；返回没有私密恢复归档、数据库/环境/密钥、调用方控制路径或状态改变指令。
+
+**本批不修改任何 sudoers，不引入可由普通 Mac 客户端调用的查询命令，不修改安装记录持久化合同、Docker/服务、Manifest、Python 依赖或数据库**。将来 sudoers allowlist 的**准确 source/retention 实参、所有权/权限、加载和撤销**必须在独立生产投放审阅下完成；既有 production VM 缺少 `/opt/sanq/deploy-state`，当前任何 root 原件读取仍不能成功，属 `BLOCKED` 而不是安装失败结论。仅本地离线 Python 测试定义，MCP-workspace 不能执行；GitHub CI 和真实 Mac/VM 权限专项验收仍待进行。原权限评审见 [FI-MAC-1B3b 设计](Runtime首次安装可信只读取证权限评审.md)。
+
 ## 2026-11-01：FI-MAC-1B3b 可信 VM 只读取证权限边界（本地设计，待独立批准）
 
 **DESIGN_ONLY / PRIVILEGE_REVIEW_REQUIRED / NO_PRIVILEGED_IMPLEMENTATION / PRODUCTION_NOT_INSTALLED。** FI-MAC-1B3a [PR #3078](https://github.com/sanqin888/sanqinMVP/pull/3078) 最终 HEAD `ab047022e11f97019aedff78cb0940b2de5e6164` 的 [CI #7856](https://github.com/sanqin888/sanqinMVP/actions/runs/41325902899) 全部必需检查 SUCCESS，已 squash 合并 `dev` `c71cd2eaa0c5c5847c14e14bcdb8379993ebb80e`。审计发现现有 VM `_private_session` 强制 root 并持原两把排他锁，Mac 现有 `status` 只允许固定非特权 `systemctl show`；因此无新权限时无法可信地读取 root 原件、判维护标记真实缺席或核历史 cleanup 完成。`completion.json` 仍是 PRE-CLEAR 原件，且 unit 可能被 manager 回收；原字节摘要一致不是历史成功证明。

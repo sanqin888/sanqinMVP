@@ -1,5 +1,9 @@
 # Current 12-context dependency graph
 
+## 2026-11-02：FI-MAC-1B3b root 只读查询最小实现（本地待审）
+
+用户批准 A 类受限权限入口代码开发。新入口只添加到原 Runtime/Ops 安装 owner 的 `install_minimal_executor.py`，调用同 owner 既有原两锁、原件恢复与来源审阅器和固定 systemd show 读客户端；不新增业务模块导入、共享合同、数据库/容器/HTTP 依赖或第二状态权威。未更改 sudoers、Mac 公共 CLI、持久化结构，故 12-context 依赖基线不变。历史 cleanup 成功与来源/恢复的独立事实仍待验收，不能升级完成语义。
+
 ## 2026-11-01：FI-MAC-1B3b root 私有原件权限评审（本地设计）
 
 PR #3078 CI SUCCESS、已合并 `dev` `c71cd2ea`。本批只在 Runtime/Ops 文档设计可信 VM 只读取证边界：现有 root `_private_session`、两把独占锁、固定事务目录与 `completion.json` PRE-CLEAR 语义不可由 Mac 非特权 status 替代；需单独批准新增特权入口或人工 root 现场取证。没有新增代码、导入、权限、CLI、业务/数据库/部署单元、依赖图节点或第二状态权威，12-context 基线不变。详见 [权限评审](Runtime首次安装可信只读取证权限评审.md)。

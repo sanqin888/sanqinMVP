@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-11-02 — FI-MAC-1B3b root 限定只读查询代码（本地待审）
+
+**LOCAL_CODE / CI_NOT_RUN / NO_PR / NO_PRODUCTION_WRITE。** 用户已明确批准 root 最小只读查询代码，基于 PR #3079 已合并的最新 `origin/dev` 创建 `feat/runtime-fi-mac1b3b-root-readonly-report-20261102`。在原安装器中新增唯一 `installation-evidence-query` 精确双身份入参，仅通过原 root/bootstrap 校验、root 私有目录与已有非阻塞两锁，审阅同一事务原件、任务记录、恢复/快照离机收据、维护 marker 与当前 manager；原件摘要/目录指纹/锁路径双重核验，输出最小数据，任何异常 BLOCKED。历史完成、可执行/恢复全部 false。新增离线聚焦负向测试 `test_installation_evidence_query.py`，覆盖 argv/越权请求、manager 回收/错代次/活动、篡改、marker/第二事务、拒绝调用写路径。同步更新合同、权限评审、依赖图和 Mac 操作手册。未修改 sudoers/持久合同/业务数据库/服务、未 SSH/生产读或写；MCP-workspace 不开放测试执行，需 CI 和独立现场审批。持久后清 marker 历史终态 B 未授权。详见 [FI-MAC-1B3b 权限评审](Runtime首次安装可信只读取证权限评审.md)。
+
 ## 2026-11-01 — FI-MAC-1B3b 可信 VM 原件取证权限评审（本地方案，未推送）
 
 **DESIGN_ONLY / PRIVILEGE_CHANGE_NOT_AUTHORIZED / NOT_INSTALLED。** FI-MAC-1B3a PR #3078 最终 HEAD `ab047022e11f97019aedff78cb0940b2de5e6164` 经 [CI #7856](https://github.com/sanqin888/sanqinMVP/actions/runs/41325902899) SUCCESS，squash 合并 `dev` `c71cd2eaa0c5c5847c14e14bcdb8379993ebb80e`。从该最新 `origin/dev` 建立本地 `feat/runtime-fi-mac1b3b-privileged-read-audit-plan-20261101`。审计原 root `_private_session` 的两锁、`installation-runs` 事务/七原件、维护 marker、cleanup 角色和 systemd 回收后历史成功证明缺口；在 [FI-MAC-1B3b 权限评审](Runtime首次安装可信只读取证权限评审.md) 提出最小 root 只读入口的独立权限审批、受限输出与隐私防护、失败/UNKNOWN 语义、负向测试矩阵及不扩权的人工替代方案。仅文档，未改 sudoers/VM/CLI/持久合同、无测试运行/远端 PR/生产操作；12-context 依赖基线不变，无数据库迁移。当前可信历史取证仍 BLOCKED，生产首次安装 NO-GO；停止等待权限范围及远端交付的另行授权。
