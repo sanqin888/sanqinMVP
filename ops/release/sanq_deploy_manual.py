@@ -172,17 +172,17 @@ def _transport(target, operation, environment, identity_path, deadline):
 
 
 def _execute(target, operation, original, terminal_identity):
-    target["check"]()
-    _need((os.fstat(0).st_dev, os.fstat(0).st_ino) == terminal_identity,
-          "operator terminal changed")
-    environment = transport._environment(target["home"])
-    deadline = time.monotonic() + operation["timeout"]
     try:
+        target["check"]()
+        _need((os.fstat(0).st_dev, os.fstat(0).st_ino) == terminal_identity,
+              "operator terminal changed")
+        environment = transport._environment(target["home"])
+        deadline = time.monotonic() + operation["timeout"]
         with transport._agent_identity(target, environment) as identity_path:
             return _transport(target, operation, environment, identity_path, deadline)
     finally:
         # SSH switches the user's real terminal to raw mode during PTY use.
-        # Restore it even on a failed SSH process, timeout or interrupt.
+        # Restore it even on failed local validation, SSH, timeout or interrupt.
         termios.tcsetattr(0, termios.TCSANOW, original)
 
 
