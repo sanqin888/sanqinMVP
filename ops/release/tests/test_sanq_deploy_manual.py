@@ -99,7 +99,7 @@ class ExactManualOperations(unittest.TestCase):
                      ("apply", PLAN), ("rollback", PLAN),
                      ("status", PLAN + ";id"), ("status", PLAN.upper())):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises((SystemExit, existing.ClientError)):
+                with self.assertRaises((SystemExit, manual.transport.ClientError)):
                     self.operation(*args)
 
     def test_manual_ssh_forces_pty_but_retains_all_pinned_transport_constraints(self):
@@ -123,7 +123,7 @@ class ExactManualOperations(unittest.TestCase):
             dict(operation, command="apply"),
             dict(operation, manualSudo=False),
         ):
-            with self.subTest(invalid=invalid), self.assertRaises(existing.ClientError):
+            with self.subTest(invalid=invalid), self.assertRaises(manual.transport.ClientError):
                 manual._ssh_argv(target(), invalid)
 
     def test_original_client_remains_closed_to_stdin_and_still_noninteractive(self):
@@ -242,7 +242,7 @@ class InteractiveTTYTests(ManualLocalFixture):
         self.child = FakeSSH(code=None)
         self.spawn.return_value = self.child
         op = manual._operation(["status", PLAN])
-        with self.assertRaises(existing.ClientError):
+        with self.assertRaises(manual.transport.ClientError):
             manual._transport(target(), op, {}, None, time.monotonic() + 0.02)
         self.assertEqual(self.child.term_calls, 1)
         self.spawn.assert_called_once()
@@ -252,18 +252,18 @@ class InteractiveTTYTests(ManualLocalFixture):
         self.assertEqual(manual._safe_text(b"\xe4", decoder), "")
         self.assertEqual(manual._safe_text(b"\xb8\xad\r", decoder), "中\r\n")
         self.assertEqual(manual._safe_text(b"", decoder, final=True), "")
-        with self.assertRaises(existing.ClientError):
+        with self.assertRaises(manual.transport.ClientError):
             manual._safe_text(b"\x07", manual.codecs.getincrementaldecoder("utf-8")("strict"))
 
     def test_expired_deadline_never_spawns_ssh(self):
         op = manual._operation(["status", PLAN])
-        with self.assertRaises(existing.ClientError):
+        with self.assertRaises(manual.transport.ClientError):
             manual._transport(target(), op, {}, None, time.monotonic() - 1)
         self.spawn.assert_not_called()
 
     def test_local_identity_drift_denies_before_ssh_and_restores_tty(self):
         op = manual._operation(["status", PLAN])
-        with self.assertRaises(existing.ClientError):
+        with self.assertRaises(manual.transport.ClientError):
             manual._execute(target(), op, self.initial, (-1, -1))
         self.spawn.assert_not_called()
         self.tcset.assert_called_once_with(0, termios.TCSANOW, self.initial)
