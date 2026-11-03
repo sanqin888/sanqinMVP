@@ -1,5 +1,15 @@
 # Runtime 最小执行器工具交付与安装合同
 
+## 2026-11-03：Mac 人工 sudo TTY 通道与现有非交互边界并存（本地待审）
+
+**USER_APPROVED_ARCH_CHANGE / LOCAL_CODE / CI_NOT_RUN / NO_PR / NO_PRODUCTION_WRITE。** 用户在 2026-11-03 明确授权方案 C（单独显式人工 SSH TTY sudo 密码通道），不授权放宽旧 `ssh -n -T`、`sudo -n`、增加全局免密 sudo、修改生产实例或使用生产 Runtime 更新。现有部署工具未安装在生产；root 查询 PR #3080 已 CI SUCCESS 合并 `dev` `19237f13`，仍非生产验收。
+
+在 Mac Runtime/Ops adapter 中新增 `ops/release/sanq-deploy-manual.sh` 和 `sanq_deploy_manual.py`，**保持现有 `sanq_deploy.py` 与 `sanq-deploy.sh` 完全不变**。手动 wrapper 通过隔离 Python3.14.10 加载已审 `sanq_deploy.py` 的 `_operation`、`_profile`、`_agent_identity`、`_environment`、`_ssh_argv`；沿用原准确 plan/发布/回滚/查询/确认 flag，禁止任意远端 shell/路径/host/其他 SSH 参数。只对人工新通道替换 SSH 的 `-n -T` 为 `-tt`，并以 `sudo -k -p` 让远端 SSH PTY 直接提示密码；Mac Python 不接受密码输入、`sudo -S` 或 askpass，且每次要求真实本机 TTY。严格保留原 hostkey pin、唯一 SSH Agent 身份、禁止转发及单次进程模型。
+
+SSH 输出为非结构化人工显示：限定字节数、时限、UTF-8 与终端控制字符，不原样转发不可控 Escape，流式可见的字节不能在失败时收回。信号/超时/非零 exit/来源漂移均只给出未知状态并恢复 TTY；即使 exit=0，也只能说明 SSH 原生子进程返回，VM 任务及发布成功必须以原 VM 权威状态证实，绝不自动重提。新增 `ops/release/tests/test_sanq_deploy_manual.py` 只使用离线假进程/管道，未执行实际 SSH；现场真实密码不进入测试、仓库、日志、内存状态或凭据文件。
+
+此新增通道是对旧 Mac 传输安全边界的**并列显式扩展**，不是原非交互客户端的兼容性放宽；不添加 VM root entry、sudoers allowlist、root-owned shell、持久状态、依赖、API/Prisma/CI 工作流、九 helper/17 Bundle 或业务部署单元，不改原首次安装 `installation-submit` 的实时证据帧。仍需 GitHub Actions 和本机真实 Mac 验证；生产 sudoers 由独立授权的维护阶段配置，具体旧规则、cloud-init 和后续备份仍为外部门禁。实施预案参见 [sudo 密码切换就绪包](../runbooks/runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md)。
+
 ## 2026-11-02：FI-MAC-1B3b 受限 VM root 只读证据查询入口（本地代码待审）
 
 **LOCAL_SOURCE_AUTHORED / CI_NOT_RUN / NO_PR / SUDOERS_NOT_INSTALLED / PRODUCTION_NO_GO。** 用户已明确批准**开发**单用途 root 只读取证入口（原权限边界 A），但未授权生产部署、现场执行、扩大写权限或新增持久后清标记终态（权限边界 B）。新本地分支 `feat/runtime-fi-mac1b3b-root-readonly-report-20261102` 基于已合并 PR #3079 的最新 `origin/dev`。
