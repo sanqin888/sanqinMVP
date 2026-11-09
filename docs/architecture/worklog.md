@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-11-03 — Mac Runtime 显式人工 sudo TTY 认证适配（本地实现）
+
+**USER_APPROVED_OPTION_C / LOCAL_CODE_TESTS_AUTHORED / CI_NOT_RUN / NO_PR / PRODUCTION_SUDOERS_UNCHANGED。** 用户授权保留原非交互 Mac SSH 路径并新增独立人工 TTY sudo 密码认证通道；仓库分支 `docs/runtime-ubuntu-sudo-password-cutover-readiness-20261102`（从最新合并 PR #3080 的 `origin/dev` 建立），原 sudo 密码切换只读审计和现场回执已保留在 [切换预案](../runbooks/runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md)。新增 `ops/release/sanq-deploy-manual.sh`、`sanq_deploy_manual.py`，复用旧 CLI 的准确白名单/确认 flag、SSH hostkey/身份/环境/禁转发、单次超时；只在新客户端要求本地真实终端、`ssh -tt` 和远端 `sudo -k -p`，stdin 直交 SSH，Python 不处理密码；有界解码、拒绝危险控制字节及恢复 tty，失败/未知结果不自动重试。新增 `test_sanq_deploy_manual.py` 的本地 fake-SSH/TTY 否定测试；同步发布合同、Mac 手册和依赖图，12-context/owner/数据库/依赖/部署单元/九 VM helper/原业务 state 不变。不改变旧 `sanq_deploy.py`、VM 系统或 sudoers/cloud-init/SSH，未在 MCP-workspace 执行 lint/test/build，也未在真实 Mac 或生产执行密码交互/发布/回滚。当前仅本地审阅，未推远端 PR，必须 GitHub CI 全绿后仍经 Mac 真机验收及单独生产授权。此前 FI-MAC-1B3b [PR #3080](https://github.com/sanqin888/sanqinMVP/pull/3080) 经 CI #41502316067 SUCCESS 并合并 dev `19237f13704ec0b708a9b4b114559af9c3b2ef43`；生产首次安装继续 NO-GO。
+
 ## 2026-11-02 — FI-MAC-1B3b root 限定只读查询代码（本地待审）
 
 **LOCAL_CODE / CI_NOT_RUN / NO_PR / NO_PRODUCTION_WRITE。** 用户已明确批准 root 最小只读查询代码，基于 PR #3079 已合并的最新 `origin/dev` 创建 `feat/runtime-fi-mac1b3b-root-readonly-report-20261102`。在原安装器中新增唯一 `installation-evidence-query` 精确双身份入参，仅通过原 root/bootstrap 校验、root 私有目录与已有非阻塞两锁，审阅同一事务原件、任务记录、恢复/快照离机收据、维护 marker 与当前 manager；原件摘要/目录指纹/锁路径双重核验，输出最小数据，任何异常 BLOCKED。历史完成、可执行/恢复全部 false。新增离线聚焦负向测试 `test_installation_evidence_query.py`，覆盖 argv/越权请求、manager 回收/错代次/活动、篡改、marker/第二事务、拒绝调用写路径。同步更新合同、权限评审、依赖图和 Mac 操作手册。未修改 sudoers/持久合同/业务数据库/服务、未 SSH/生产读或写；MCP-workspace 不开放测试执行，需 CI 和独立现场审批。持久后清 marker 历史终态 B 未授权。详见 [FI-MAC-1B3b 权限评审](Runtime首次安装可信只读取证权限评审.md)。

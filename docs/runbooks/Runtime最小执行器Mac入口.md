@@ -1,5 +1,24 @@
 # Runtime 最小执行器 Mac 入口
 
+## 2026-11-03：人工 sudo 密码认证独立通道（MCP 本地源码待审；生产禁止使用）
+
+**LOCAL_SOURCE_AUTHORED / TESTS_AUTHORED_NOT_RUN / NO_PR / NOT_INSTALLED / SUDOERS_UNCHANGED。** 用户明确批准方案 C：原 `sanq-deploy.sh` 继续固定 `ssh -n -T`、`sudo -n`、关闭 stdin 和输出整体捕获，不更改其行为；另加同属于 Mac Runtime/Ops 的独立 `sanq-deploy-manual.sh` 与 `sanq_deploy_manual.py`，必须由普通 Mac 账户在真实交互终端运行。没有新增 VM root/helper、sudoers、cloud-init、常驻进程或应用状态。
+
+人工通道**完全复用原 `sanq_deploy.py` 的 CLI 白名单**（准确 plan、show、status、logs、apply、rollback 等参数），沿用固定 host/user/port、hostkey、SSH Agent 本地密钥选择、禁止代理和转发、最小环境及单次请求约束；只在新通道中把 `ssh -n -T` 变为 `ssh -tt`，并把固定 VM `sudo -n` 变为 `sudo -k -p 'SanQ sudo password for ubuntu: '`。后者忽略缓存、仅在 sudoers 要求时交互认证；**如果生产旧 `NOPASSWD:ALL` 尚未撤销，不会保证提示输入密码**。既有 VM 源与准确 SQL/兼容确认门禁仍是唯一执行权威。
+
+```sh
+# 下列为未来经 CI 与真实 Mac 审阅后的候选调用形式；目前不要连接生产执行。
+/bin/sh ops/release/sanq-deploy-manual.sh status <准确64位plan-id>
+/bin/sh ops/release/sanq-deploy-manual.sh apply <准确64位plan-id> --confirm-release
+# SQL 仍要求 --approve-sql <准确64位摘要>，rollback 仍要求独立确认/兼容摘要
+```
+
+人工终端 `stdin` **直接由 SSH 继承**；本地 Python 既不读取也不打印、缓存、通过 argv/env/askpass/`sudo -S` 转交密码，不建立无头服务/自动认证。只在真实 Mac TTY 下允许执行。SSH PTY 输出使用非阻塞双流读取、UTF-8 严格解码、危险控制字符及 Unicode 双向覆盖拒绝、有限字节预算（stdout 4MiB／stderr 64KiB）、全程 deadline；仅将通过清洗的输出立即显示于本机终端，并在结束/异常时尽力关闭本次 SSH 子进程、恢复原始本地终端状态。**此为人类观察输出，不能作为机器可解析的 JSON 权威，也不能保证已显示内容在后续失败时撤销。**
+
+sudo 提示只在固定 SSH 密钥/hostkey 核验之后到达；用户必须在真实提示出现后手工输入密码。退出零仅代表 SSH 原生退出，**不代表 VM 发布完成、SQL 成功、退款/账务/应用健康或允许重试**。断线/超时/失败/输出拒绝均保留 UNKNOWN，不自动再次执行 `apply` / `rollback`；使用原 plan-id 独立核 VM 结果。FI-MAC-1B3b root 私有原件查询、首次安装 `installation-submit`、VM 来源安装与生产 sudoers/cloud-init 配置均**不在本次开放范围**。
+
+**验收门禁**：新增 `test_sanq_deploy_manual.py` 用本地 fake-SSH 管道覆盖白名单、PTY 参数、终端拦截、密码不经过 Python、危险输出/超限、错误与状态未知和终端恢复；MCP-workspace 未执行，须以后续 GitHub Actions 的 Mac CPython 3.14.10 + VM 3.10 及本机用户真实终端验收为准。待源码审阅、远端 PR 全绿、生产现有 `NOPASSWD:ALL` 撤销、真实目标与安装来源验收及另行现场授权之前，**任何生产人工发布/回滚均 NO-GO**。
+
 > **2026-10-31 实测补充：** 原 Mac `dev` 已更新至 `a8b8d2ea`（PR #3071）；Mac Python3.14.10 `local-check` 通过，Agent 包含多身份时 SanQ 正式 `status` 客户端成功进入 VM 执行 Python（远端提示 `/opt/sanq/runtime/ops/release/release_task.py` 不存在，退出2）。本机 `~/.sanq-ssh-*` 临时目录清理通过、`~/.sanq-deploy` 保持三文件。故 SSH 身份/传输与清理已实际验证，但 VM 普通更新工具未安装、真实安装/发布均未执行。新 FI-MAC-1A 只读**首次安装**任务查询见 [独立手册](Runtime最小执行器首次安装Mac状态查询.md)；该切片本地待审、未 CI/真机验收，不改变旧发布入口。
 
 ## 2026-10-31：加密 OpenSSH 身份在旧版 Mac 的 Agent 选择修复（本地待审）

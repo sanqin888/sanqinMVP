@@ -1,5 +1,9 @@
 # Current 12-context dependency graph
 
+## 2026-11-03：Mac Runtime 人工 sudo TTY transport（本地代码）
+
+只在既有 Runtime/Ops 的 Mac 入口新增独立人工 `sanq_deploy_manual.py` 和 shell launcher，复用原同 owner 非交互客户端解析、配置、身份和安全 SSH 参数；原 `sanq_deploy.py`、VM 执行器、backup helper、部署单元和公共业务 API 保持不变。新增的安全交互边界为受显式人工控制的 TTY 与远端 `sudo -k -p`，不新增第二执行/状态权威、不引入业务上下文跨边导入、数据库、云服务或常驻控制器。现有 12-context 依赖图节点/SCC/债务基线未改变；外部 sudoers 切换及生产安装仍需单独审批，原 CLI 自动化不应视为已兼容新密码策略。详见 [Mac 入口](../runbooks/Runtime最小执行器Mac入口.md) 与 [权限切换预案](../runbooks/runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md)。
+
 ## 2026-11-02：FI-MAC-1B3b root 只读查询最小实现（本地待审）
 
 用户批准 A 类受限权限入口代码开发。新入口只添加到原 Runtime/Ops 安装 owner 的 `install_minimal_executor.py`，调用同 owner 既有原两锁、原件恢复与来源审阅器和固定 systemd show 读客户端；不新增业务模块导入、共享合同、数据库/容器/HTTP 依赖或第二状态权威。未更改 sudoers、Mac 公共 CLI、持久化结构，故 12-context 依赖基线不变。历史 cleanup 成功与来源/恢复的独立事实仍待验收，不能升级完成语义。
