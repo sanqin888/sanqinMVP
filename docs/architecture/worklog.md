@@ -1,5 +1,56 @@
 # SanQ 项目持续工作日志
 
+## 2026-11-11 — 隔离 VM 方案 A/B 独立初始化与普通重启均通过（未推送）
+
+**最新独立 B 普通 reboot 回执（完成）**：B-INIT 后在 VirtualBox 实验克隆仅执行 `sudo reboot`，Mac 强制只用公钥成功再次登录（首次 `00~ssh` 粘贴错误与测试无关）；cloud-init `done / errors=[] / DataSourceNoCloud`、instance `iid-sanq-sudo-baseline-001` 保持。`90-cloud-init-users` mtime 保持 `2026-11-11 19:41:56.227999594 +0000`、内容仍 `ubuntu ALL=(ALL:ALL) ALL`，`NO_NOPASSWD_RULES`；`sudo -k; sudo -n id -u` 要求密码、退出 1，普通 sudo 提示密码后可读取 root 文件，`ubuntu P` 与 `visudo -c` PASS。有效 sshd：公钥 yes、密码 no、keyboard-interactive no；Mac 公钥指纹一致，仅 Host-only `192.168.56.0/24` 无默认路由。**LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_INIT_AND_REBOOT_PASS / PRODUCTION_CUTOVER_NO-GO**。B 为从 A 前快照恢复重建的独立实验，不是顺序试验。下一阶段仅生产现场只读差异审计、快照/恢复/备份 helper/Runtime TTY/真实 cloud-init datasource 检查；禁止从实验 PASS 直接推生产切换。本地只更新文档、无代码或远端交付。
+
+**最新 B-INIT 真实回执**：操作者从 A 前快照独立恢复、重建 NoCloud+B，`B_MERGE_PREFLIGHT: PASS` 后在 VirtualBox 克隆机完成 `cloud-init clean --reboot`，Mac 强制公钥 SSH 登录成功；`cloud-init done / errors=[] / DataSourceNoCloud / iid-sanq-sudo-baseline-001`。cloud-init 25.2 在 `2026-11-11 19:41:56 UTC` 新建 `90-cloud-init-users`，实际 `ubuntu ALL=(ALL:ALL) ALL`，全 sudoers 无 NOPASSWD；`sudo -k; sudo -n id -u` 退出 1、交互 sudo 通过，`ubuntu P`、`visudo -c` OK；对应 `sshd -T -C user=ubuntu,addr=192.168.56.1` 显示公钥 yes / 密码 no / keyboard-interactive no；公钥指纹相符，无默认路由。**LAB_B_INIT_PASS / LAB_B_NORMAL_REBOOT_PENDING**，下一步仅实验 VM 普通 `reboot` 验证时间戳/登录/权限/网络持久性。生产仍 NO-GO；本次仅文档变更、未提交推远端。
+
+**独立 B 恢复同基线后重新验收（最新）**：用户从 A 前快照恢复后已重建 NoCloud 与单独 `system_info.default_user` B 配置；用 cloud-init 25.2 合并读取做 12 项基础/密钥/用户/模块/seed 对照，全部 PASS，`B_MERGE_PREFLIGHT: PASS`。这次结果属于**恢复后的独立 B 基线**，与之前 A→B 顺序预检不同。尚未重跑 B cloud-init 和普通 reboot；尤其恢复后 SSH 曾有 `passwordauthentication yes`，后续必须实测 `ssh_pwauth:false` 是否生效，不能以 sudo 成功代替 SSH key-only 验收。下步仅在新实验快照/控制台已确认后 B-INIT，生产 NO-GO。
+
+**B 快照恢复后 SSH 认证边界核实**：实验 VM `sshd -T -C user=ubuntu,addr=192.168.56.1,host=192.168.56.1` 实际 `pubkeyauthentication yes / passwordauthentication yes / kbdinteractiveauthentication no / authenticationmethods any`；Mac 强制 publickey、禁止密码与键盘交互的 SSH 单次命令输出 `ubuntu`。公钥认证 PASS，但快照基线允许 SSH 账户密码登录，key-only NOT YET PASS；下一步重建 B 的 NoCloud `ssh_pwauth:false`，必须在重新初始化后实测生效。未接触生产。
+
+**B 快照恢复后的公钥恢复及新风险**：`authorized_keys` 实际为 `0 bytes 0600`；Mac 经 SCP 传输的 `.pub` 指纹与既有记录一致，实验 VM 已备份旧文件并安装有效公钥，新 SSH 会话 `whoami=ubuntu`、指纹核验通过。**但 SCP 在安装公钥前曾提示 Ubuntu 账户密码并登录，意味着当时允许密码认证回退**；不能将公钥文件修复自动表述为 SSH 仅密钥认证。下一步优先核 `sshd -T -C` 与仅公钥连接；之后重建 NoCloud+B，并复核 `ssh_pwauth:false` 真正生效。未动生产、未发 PR。
+
+**B 恢复后 SSH 文件异常**：用户已连上实验 VM，但 `ssh-keygen -lf ~/.ssh/authorized_keys` 返回并非有效公钥文件；`ubuntu P` 与 Host-only 无默认路由正常。现保留已有 SSH 会话、准备备份该文件并通过 Mac `scp` 仅传输经核验公钥，后续必须再次验证从独立 SSH 会话登录后才能创建 NoCloud+B。尚未 B init，未接触生产。
+
+**恢复后基线复核**：cloud-init 25.2、`DataSourceNone`、`done / errors=[]`、`ubuntu P` 与 Host-only 无默认路由确认；NoCloud seed、98 datasource drop-in、A/B drop-in 全部 MISSING，现有 `authorized_keys` 被 ssh-keygen 判定不是有效公钥文件。此前 B 12/12 属于被恢复掉的状态；下一步先经 VirtualBox 控制台恢复 Mac 公钥，再重建 B 的 NoCloud/配置并重验；禁止直接 clean。生产无动作。
+
+**实验机恢复到 A 前快照**：用户已恢复 `SanQ-SUDO-LAB-01` 的早期快照。实验 VM 当前 `90-cloud-init-users` 不存在、schema 指向 `iid-datasource-none`、`visudo -c` 只检查系统 sudoers 与 README 且 PASS；缺文件符合原基线，不是 B 失败。此前 B 12/12 合并测试发生在恢复前，不能继承为恢复后状态。现优先只读确认 cloud-init 版本、NoCloud seed/drop-in 是否随快照消失、公钥与网络隔离，然后在同一起点重建 B 并重新静态核验，最后才可单独执行隔离 VM 的 B-INIT。未进行生产操作或远端交付。
+
+**B 合并配置验收更新**：用户在隔离 VM 以 cloud-init 25.2 内建 `read_conf_with_confd` 和原始配置/NoCloud seed 做只读差异检查，`user_name / password_unlocked / password_sudo / ssh_keys_preserved / distro_unchanged / network_unchanged / paths_unchanged / groups_unchanged / shell_unchanged / modules_unchanged / top_level_A_absent / seed_users_default` 12 项均 PASS，最终 `B_MERGE_PREFLIGHT: PASS`。这不是 B 真实初始化；sudoers 仍为 A 的历史输出。B 接下来必须确认可恢复快照/控制台，按实际选择独立快照对照或 A→B 顺序验证，再做仅实验机 cloud-init 重初始化。生产仍 NO-GO。
+
+**B 追加重启前回执**：`A_DISABLED / B_PRESENT`，B 内 SSH ED25519 指纹与已验证的 Mac 身份匹配；`ubuntu P` 且仅 Host-only IPv4 路由。尚未运行 B 重新初始化；下一步以 cloud-init 25.2 自身 `read_conf_with_confd` 只读合并检查 `system_info.default_user` 与其它基础设置。生产仍 NO-GO。
+
+**LAB_A_INIT_PASS / LAB_A_REBOOT_PASS / LAB_B_STATIC_PASS / LAB_B_REINIT_PENDING / PRODUCTION_CUTOVER_NO-GO。** 操作者在隔离 VirtualBox `SanQ-SUDO-LAB-01`（Ubuntu 22.04.5，cloud-init 25.2）通过 NoCloud `iid-sanq-sudo-baseline-001` 完成方案 A：顶层 `user` 指定 `ubuntu` 密码解锁、普通 `ALL=(ALL:ALL) ALL`、SSH 公钥；执行 `cloud-init clean --reboot` 后 `90-cloud-init-users` 新生成密码 sudo 规则、`sudo -k; sudo -n` 退出 1；普通 reboot 后以上规则、公钥 SSH、`ubuntu P`、NoCloud 身份、无外网默认路由保持。首次基线初始化曾清空 `authorized_keys`，通过 VirtualBox 控制台与 Host-only 公钥传输恢复，无密码 SSH 开放。方案 B `system_info.default_user` 已在实验 VM 写入、方案 A 已停用，`schema --system`、`visudo -c`、A 保存、密码状态静态检查 PASS；未做 B 的合并读回、重新初始化或普通重启；当前 VM 规则仍由 A 阶段生成，B 不得标 PASS。B 如未从同一快照重置只能算顺序试验。详细回执与剩余生产门禁已追加 [现场只读验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md) 和[sudo 切换预案](../runbooks/runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md)。本次仅扩充 MCP-workspace 原有暂存文档，未新增源码/依赖/迁移；未向生产 VM、AWS、运行中业务发出修改；未提交、推送或创建 PR。
+
+
+## 2026-11-09 — 方案 C 合并与 sudo 切换现场只读验收准备
+
+**独立 cloud-init 25.2 离线实验准备（真实用户回执）**：在 VirtualBox Full Clone `SanQ-SUDO-LAB-01` 上，Ubuntu Archive GPG + 签名索引 + 目标 deb SHA256 `6e8be438cd8da87f68be77c4f6d227b74098db209971c86964651cdf9b9bf645` 验证通过；`apt-get -s` 仅升级 cloud-init 一个包，无新包/卸载；实际 `dpkg -i` 已升 `24.2` → `25.2-0ubuntu1~22.04.1`，`cloud-init --version` 与 `dpkg-query` 同版，`dpkg --audit` 空。旧目录无法删除、debconf 回退 Readline 均未阻断安装。后续先停机形成升级后的全克隆快照、核真实 datasource 与基线 sudoers，再逐个候选 A/B 在快照副本或恢复的克隆中测试；尚未执行 cloud-init clean、sudoers 修改或生产动作。原 `SanQ-Runtime-Lab-Recovery-01` 保持完整。详细证据见 [现场只读验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md)。
+
+
+
+**第五轮**：操作者返回 `/etc/cloud/cloud.cfg:27 cloud_init_modules`、`:40 - users_groups`。已确定 cloud-init 用户管理模块配置存在，前次正则漏报已关闭；模块执行记录及 25.2 `users[0]` vs 顶层 `user` 合并优先级、重执行实际效果仍未验证。官方模块频率 once-per-instance，不能将正常重启等同重新应用旧规则。经对应 25.2 文档核验，下一步改为离线同版本候选 A/B 对照及生成 sudoers/账号锁定状态验证，未取得生产写授权。记录于 [现场验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md)。
+
+
+
+**第四轮现场回执与原探测纠错**：已确认两份现存 cloud-init drop-in 的简单用户/sudo key 无正则匹配；`sshd -T` 报公钥 `yes`、密码和键盘交互 `no`，只验证默认有效配置。第二条 grep 只显示 `cloud_init_modules:` 的原因是先前的探测正则错误使用 `users-groups`，而 cloud-init 实际模块名常见为 `users_groups`；原结果不能据此证明模块被禁用。已在 [现场验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md) 修正查询并补充唯一必要的只读复核命令。原计划生产权限切换仍 NO-GO；未运行云初始化/sudoers 变更或任何 VM 业务操作。
+
+
+
+**第三轮真实回执：** `cloud-init --version`、`dpkg-query` 均确认 `25.2-0ubuntu1~22.04.1`，cloud-init default 用户来自 `users: - default`；`cloud.cfg.d` 实际文件 `05_logging.cfg`、`README`、`90_dpkg.cfg`；`/etc/sudoers:50` 为 `%sudo ALL=(ALL:ALL) ALL`，第 54 行 `@includedir /etc/sudoers.d`，`sudo -n -l` 明确列全局 `ubuntu NOPASSWD:ALL` 和备份 helper 例外。新增**同版离线测试**门禁：cloud-init 25.2 `users[0]` 与顶层 `user`、云 datasource 与 cfg.d 合并/重跑持久行为、默认 sudoers 输出；只针对两个现有 `.cfg` 的用户权限 key 做生产只读取证。当前 Runtime 代码尚未在生产可见，临时 sudo 密码 canary、生产 sudoers/cloud-init 写入均 **NO-GO**，详见 [现场审阅包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md)。
+
+
+
+**三轮只读审查补充（用户要求继续）**：核对 cloud-init 官方文档中 `cc_users_groups` 的 `once-per-instance`、`user`/默认用户覆盖、已存在账户 `sudo`/`lock_passwd` 可重新应用、datasource 配置优先级，并验证 sudoers 的最后匹配规则与按字典序包含。既有真实回执证明 Mac `ssh -tt` 返回 `/dev/pts/1`，备份 timer 2026-11-09 正常触发与 service 最后成功，但 `/etc/cloud/cloud.cfg` 仍声明 `lock_passwd: True` 和全量 `NOPASSWD:ALL`；未来再初始化存在风险，**非普通重启必然发生**。在 [现场只读验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md) 增补同版本 cloud-init、`users: [default]`、cloud.cfg.d 文件清单与 sudoers 实际匹配的只读取证命令，不运行 cloud-init、不修改 VM、不进行任何生产 sudo 规则替换；Mac Runtime 工具尚不存在，不通过 `apply`/`rollback` 进行连接测试。本批文档本地待用户审阅，没有新的源码/API/schema/依赖或生产写入。
+
+**现场回执增量（同日）**：Mac 仓库 HEAD `9859b8e6`、工作树 clean、Python3.14.10、新人工客户端 `--help` 均 PASS；VM `visudo -c` 全部 parsed OK，`ubuntu P`；通用 `NOPASSWD:ALL` 和独立备份 helper 规则仍存在；当日 08:30:47 UTC 备份 service 最近记录 `success/0`；`release_task.py` 由操作者 `test -f` 返回 1。详细区分当前已验收和未验证项见 [现场只读验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md)。尚不满足 cloud-init/PTY/Runtime 安装/恢复的生产 sudoers 切换门禁；没有生产配置更改。
+
+
+
+**PR3081_MERGED_DEV / CI_SUCCESS / READONLY_AUDIT_PREPARED / NO_PRODUCTION_WRITE / CUTOVER_NO-GO。** PR #3081 最终 head `cdc195da52fd3bc6cc6f71a4faa46eb5b9ee552d` 的 [CI #41582786567](https://github.com/sanqin888/sanqinMVP/actions/runs/41582786567) SUCCESS，用户明确要求合并，已 squash 合入 `dev` `9859b8e6f1b01fbd8f293e8f50cd7e8c16eb1955`。方案 C Mac-only 独立人工 SSH PTY/sudo 密码通道源码和离线测试已交付，不代表真实 Mac/生产密码挑战通过，不改变原非交互客户端或 VM 工具部署状态。按既有 `AGENTS.md`/Runtime 交付合同，在最新 dev 创建新本地审阅分支 `docs/runtime-sudo-cutover-preflight-20261109`，编制 [sudo 权限切换现场只读验收包](../runbooks/Runtime-sudo权限切换现场只读验收-20261109.md) 并更新旧切换预案当前状态：分离真实 Mac 非特权 TTY 探测、生产 sudoers/cloud-init 顺序、备份当前运行、生产工具路径、快照/订单数据和回滚门禁。2026-11-09 MCP 只读 `system_status` 仅观察 docker active/磁盘剩余约 35GB，未获得 sudoers 和真实 backup 文件的本日回执。没有生产密码/sudoers/cloud-init/SSH/Runtime/容器写入，没有 `apply/rollback/install`、Mac 真实 SSH 测试或云快照操作。本批新文档无业务模块依赖、DB/schema/迁移、守护进程及兼容合同变化；MCP-workspace 无测试执行，本地审阅未推远端 PR；后续生产 sudoers 变更必须另获明确授权。
+
 ## 2026-11-03 — Mac Runtime 显式人工 sudo TTY 认证适配（本地实现）
 
 **USER_APPROVED_OPTION_C / LOCAL_CODE_TESTS_AUTHORED / CI_NOT_RUN / NO_PR / PRODUCTION_SUDOERS_UNCHANGED。** 用户授权保留原非交互 Mac SSH 路径并新增独立人工 TTY sudo 密码认证通道；仓库分支 `docs/runtime-ubuntu-sudo-password-cutover-readiness-20261102`（从最新合并 PR #3080 的 `origin/dev` 建立），原 sudo 密码切换只读审计和现场回执已保留在 [切换预案](../runbooks/runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md)。新增 `ops/release/sanq-deploy-manual.sh`、`sanq_deploy_manual.py`，复用旧 CLI 的准确白名单/确认 flag、SSH hostkey/身份/环境/禁转发、单次超时；只在新客户端要求本地真实终端、`ssh -tt` 和远端 `sudo -k -p`，stdin 直交 SSH，Python 不处理密码；有界解码、拒绝危险控制字节及恢复 tty，失败/未知结果不自动重试。新增 `test_sanq_deploy_manual.py` 的本地 fake-SSH/TTY 否定测试；同步发布合同、Mac 手册和依赖图，12-context/owner/数据库/依赖/部署单元/九 VM helper/原业务 state 不变。不改变旧 `sanq_deploy.py`、VM 系统或 sudoers/cloud-init/SSH，未在 MCP-workspace 执行 lint/test/build，也未在真实 Mac 或生产执行密码交互/发布/回滚。当前仅本地审阅，未推远端 PR，必须 GitHub CI 全绿后仍经 Mac 真机验收及单独生产授权。此前 FI-MAC-1B3b [PR #3080](https://github.com/sanqin888/sanqinMVP/pull/3080) 经 CI #41502316067 SUCCESS 并合并 dev `19237f13704ec0b708a9b4b114559af9c3b2ef43`；生产首次安装继续 NO-GO。

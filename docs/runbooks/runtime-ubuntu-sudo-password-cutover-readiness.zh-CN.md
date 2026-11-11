@@ -1,5 +1,30 @@
 # SanQ 生产 VM：ubuntu sudo 密码认证与精确免密授权切换预案
 
+## 2026-11-11：隔离同版本实验新进度（不替代生产授权）
+
+**最新完整结果（2026-11-11）：LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_INIT_AND_REBOOT_PASS / PRODUCTION_CUTOVER_NO-GO。** B 为从 A 前相同快照独立恢复后重建，不再依赖 A 阶段生成的 sudoers。执行 B cloud-init 首次初始化及**随后普通 `sudo reboot`（未 clean）**，两次都通过 Mac 强制公钥 SSH 登录；正常 reboot 后 NoCloud instance ID 不变、`cloud-init done/errors=[]`、`90-cloud-init-users` mtime 未变且仍为 `ubuntu ALL=(ALL:ALL) ALL`；全 sudoers 无 NOPASSWD，`sudo -k; sudo -n id -u` 退出 1，正常 sudo 密码认证成功，`ubuntu P`，`visudo -c` OK。SSH 对 Mac 来源有效配置 `pubkeyauthentication yes / passwordauthentication no / kbdinteractiveauthentication no`，公钥指纹匹配；仅 Host-only 网络、无默认外网路由。**B 与 A 都达到实验室 sudo 初始化及普通重启持久性目标；B 的 SSH 禁密码证据更完整，列为生产实施候选，不是生产授权。** 正式切换前仍须核实际 AWS datasource/vendor-data、备份 helper 精确 NOPASSWD 例外、配置优先级及最终匹配、最新业务恢复快照与数据恢复、Mac 人工 TTY/Runtime 生产环境和回滚闭环。以下此前“B 仍待初始化/重启”的段落为历史时点，不是现状。
+
+**2026-11-11 更新：LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_AND_INIT_PASS / LAB_B_NORMAL_REBOOT_PENDING / PRODUCTION_CUTOVER_NO-GO。** 操作者已从 A 前快照独立恢复并重建 NoCloud+B（`system_info.default_user`），重做 12/12 合并检查 PASS 后在 VirtualBox 实验机运行 `cloud-init clean --reboot`。cloud-init 25.2 `done / errors=[]`、NoCloud instance ID 与 seed 相符；新建 `90-cloud-init-users` 仅包含 `ubuntu ALL=(ALL:ALL) ALL`，无 NOPASSWD；`sudo -k; sudo -n id -u` 退出码 1、普通 sudo 验证密码通过，`ubuntu P`，`visudo -c` 全绿；Mac 强制公钥 SSH 成功，`sshd -T -C` 对 `ubuntu`/Mac 地址显示 `passwordauthentication no`、`pubkeyauthentication yes`、键盘交互 no，公钥指纹一致，VM 仅 Host-only 路由。尚需普通 reboot 后持久性验证；以上绝不解除生产备份/恢复、备份 helper 最小免密规则、生产真实 datasource/vendor-data、Mac 交互 TTY E2E 及部署授权门禁。以下较早状态段落仍为历史时点记录。
+
+**LAB_A_INIT_AND_REBOOT_PASS / LAB_B_STATIC_PASS / LAB_B_REINIT_PENDING / PRODUCTION_CUTOVER_NO-GO。** 操作者在独立 VirtualBox `SanQ-SUDO-LAB-01`（Ubuntu 22.04.5、cloud-init `25.2-0ubuntu1~22.04.1`、NoCloud）完成顶层 `user` 方案 A 的实际 `cloud-init clean --reboot` 和普通 `reboot`：两次均能以 Mac 公钥 SSH 登录，`90-cloud-init-users` 实际生成 `ubuntu ALL=(ALL:ALL) ALL`；清 sudo 缓存后的 `sudo -n` 要求密码（退出 1）、`ubuntu P`，sudoers 语法正常、无默认外网路由。首次 NoCloud 基线初始化曾使 `authorized_keys` 变为零字节，已仅在实验机通过控制台和公钥传输恢复；正式方案 A 已显式固定公钥后复测通过。
+
+方案 B 用 `system_info.default_user`，已经保存 A 回执并移出 A drop-in；`cloud-init schema --system`、`visudo -c`、A disabled/evidence saved、`ubuntu P` 静态检查通过，**尚未重新初始化/普通重启测试**，旧生成 sudoers 仍属 A 产物。下一步先核 B 的有效合并及其它 `system_info` 字段是否受影响，再从相同初态独立测试（如不能恢复，只能记录 A→B 顺序测试）。准确过程和非生产回执见[现场验收包](Runtime-sudo权限切换现场只读验收-20261109.md)。生产保留 G0 恢复、G2 精确备份 helper、G4 Mac 人工 TTY/密码认证、G5 Runtime 安装等门禁，不得从实验 PASS 推导生产变更许可。
+
+
+## 2026-11-09：第五轮用户模块存在性验收
+
+现场 `/etc/cloud/cloud.cfg:40` 明确为 `- users_groups`（模块清单起始于第 27 行），**USERS_GROUPS_MODULE_CONFIGURED=PASS**；这不证明模块在本日重新执行，也不代表后续云初始化持久权限方案通过。官方 25.2 既声明模块 `once-per-instance`，又在示例中标注 `users[0]` 与 `user` 指令的优先关系；当前 `users: [default]` 下不直接采用先前的顶层 `user` 覆盖候选。下一步必须同 Ubuntu/cloud-init 25.2 的可丢弃离线实验确认用户配置归一化、有效的 sudoers 输出和密码锁定行为。更详见 [现场只读验收包](Runtime-sudo权限切换现场只读验收-20261109.md)。**生产配置不变，CUTOVER_NO-GO**。
+
+## 2026-11-09：第三轮真实配置输出后的当前结论
+
+**SUDO_AUTHORITY_SOURCE_CONFIRMED / CLOUD_INIT_25_2_CONFIRMED / NO_CUTOVER_AUTHORIZATION。** 现场 `cloud-init` 为 Ubuntu 22.04 包 `25.2-0ubuntu1~22.04.1`，`/etc/cloud/cloud.cfg` 当前 `users: - default`。实际 cloud.cfg.d 仅列 `05_logging.cfg`、`90_dpkg.cfg`、`README`；这并不证明 datasource/user-data 不会覆盖默认用户。当前 `/etc/sudoers` 含 `%sudo ALL=(ALL:ALL) ALL` 与 `@includedir`，`sudo -n -l` 明确列普通管理员 ALL、`ubuntu NOPASSWD:ALL` 和 `sanq-backup` 仅 root helper 例外。源头已确认；离线候选需复核 cloud-init **25.2** 的 `user` 与 `users[0]` 实际合并语义，并查看仅两份 known drop-in 中用户权限 key，不准在生产直接写覆盖/重跑 cloud-init。准确输出、未完成门禁与只读命令已写入 [现场只读验收包](Runtime-sudo权限切换现场只读验收-20261109.md)。原有下文历史“尚未验证”应按本最新段落和现场包纠正；仍 **SUDO_CUTOVER_NO-GO**。
+
+## 2026-11-09：PR #3081 最终交付与下一阶段现场检查（最新状态）
+
+**PR3081_MERGED_DEV / CI_SUCCESS / LIVE_MAC_TTY_NOT_YET_VERIFIED / PRODUCTION_SUDOERS_UNCHANGED / SUDO_CUTOVER_NO-GO。** 用户明确批准方案 C，人工 sudo SSH TTY 客户端现已由 PR [#3081](https://github.com/sanqin888/sanqinMVP/pull/3081) 最终 head `cdc195da52fd3bc6cc6f71a4faa46eb5b9ee552d` 经 GitHub Actions [#41582786567](https://github.com/sanqin888/sanqinMVP/actions/runs/41582786567) SUCCESS 合并 `dev` `9859b8e6f1b01fbd8f293e8f50cd7e8c16eb1955`。此前本文中的 `LOCAL / NO_PR / CI_NOT_RUN` 状态均为相应历史时点记录，不应视作现状。
+
+下一阶段改为**生产现场只读验收**，先确认当前 backup timer/恢复快照/SSH/Mac 环境、sudoers 精确规则及 cloud-init 持久覆盖有效性；不能凭离线 CI 宣布生产 sudo 密码交互已验收。已编制 [2026-11-09 只读验收包](Runtime-sudo权限切换现场只读验收-20261109.md)，仅供操作者人工执行只读命令并回传；不包含生产 sudoers/cloud-init 写入授权。2026-11-02 的整机快照截至 2026-11-09 已不再代表最新业务交易恢复点，正式切换前须重新核恢复策略。Mac 人工认证通道允许单次 sudo TTY，但此前记录生产 Runtime 工具尚未安装，不可用 `apply/rollback/plan` 做连接验证。
+
 > 2026-11-02；**READINESS DESIGN / LOCAL ONLY / NO PRODUCTION CHANGE / NO SUDOERS INSTALL / NO BOOTSTRAP / NO RUNTIME INSTALL**。用户已批准方向：“保留 ubuntu 管理员身份、普通 sudo 要密码、仅精确自动化免密”。这不等于对生产账号、sudoers、SSH 或 cloud-init 的逐项写入授权。FI-MAC-1B3b PR #3080 最终 head `42fc7a78e8e91d8e8dbad3948b59975ec43a9ed3` CI run `41502316067` SUCCESS，并于 2026-11-02 squash 合并 `dev` `19237f13704ec0b708a9b4b114559af9c3b2ef43`；**尚未进入生产**。
 
 ## 1. 用户生产 SSH 原始只读观察（不把终端转录当独立认证）
