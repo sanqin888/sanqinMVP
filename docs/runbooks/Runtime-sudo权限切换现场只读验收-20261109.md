@@ -66,6 +66,54 @@
 
 将来获准切换时，先准备 root 私有的活动策略与相关 cloud-init 配置原字节备份，登记路径、SHA-256、属主和权限。会话 A 在改动前取得并验证 root 权限，保留作原位回退；会话 B 使用新开的 Mac 公钥 SSH 验证冷缓存下普通 sudo 拒绝免密、人工密码成功、备份专用规则和新 SSH 登录。若验证失败，由 A 恢复原件并复验完整策略；如果将来已安装新的持久化 drop-in，同步撤回该文件。当前摘要采集与候选检查无落盘备份，与切换窗口回退就绪是两项回执。
 
+### 生产原字节回退包准备
+
+**`ROLLBACK_CAPTURE_PASS`。** 操作者在 `sanq-web` 创建 root 私有回退包 `/root/sanq-sudo-rollback.BbOnNCW8`，保存四份 sudoers 文件、`/etc/cloud/cloud.cfg` 和当前两份 `cloud.cfg.d/*.cfg`，共 7 份。脚本逐一校验原件与副本的字节、属主和权限，验证副本 SHA-256 清单，并确认四份 sudoers 副本与本节生产审阅基线一致。捕获前的活动策略 `visudo -c` 全部通过，拟用的 `99-sanq-sudo-password.cfg` 当时不存在。
+
+`files.sha256` 清单的 SHA-256 为 `ff4834615c7ae5aaa3e6d45c4ac47421d66b64c7b297f3d3d4e7fdd3a77b53c9`。该包供原位回退使用；实际切换窗口应重新核对活动文件与包内副本。候选安装和生产实际认证尚未执行，切换保持 `NO-GO`。
+
+### VirtualBox 双 SSH 会话原位回退回执
+
+**`LAB_ROLLBACK_PASS`。** 在 `sanq-runtime-lab`，会话 A 提前保留 root shell，保存实验机 `/etc/sudoers.d/90-cloud-init-users` 原件，将既有密码规则写成等效的显式 `PASSWD:` 候选，先核候选语法，再原子替换活动文件。完整 sudoers 检查通过，输出 `LAB_CANDIDATE_ACTIVE`。候选启用期间，会话 B 清除 sudo 认证缓存后执行 `sudo -n /usr/bin/id -u`，返回密码要求及 `LAB_SUDO_N_RC=1`；交互输入实验机账户密码后，`sudo /usr/bin/id -u` 输出 `0`。
+
+| 对象 | SHA-256 |
+| --- | --- |
+| 原件及恢复后的活动文件 | `440bbb4bc6bf04d2d23681996a89c827ae33ea8eaec1d435a16e58de9881d8ac` |
+| 临时活动候选 | `1763291b1c254172444bb87cd30d24dd882966039b43dd4ef0f08f8e434ce657` |
+
+会话 A 原位恢复后，原字节比较、`root:root 0440` 元数据检查及完整 `visudo -c` 均通过。此回执覆盖隔离机的文件替换、跨会话密码验证及原位回退。实验起点已要求 sudo 密码。生产原字节回退包的捕获回执见上一节。独立 AWS 救援及生产认证仍待现场验证，切换保持 `NO-GO`。
+
+### 生产切换窗口前的双 SSH 会话只读核对
+
+**生产双 SSH 会话只读预检通过。** 会话 A 在 `sanq-web` 验证回退包清单摘要、包内 7 份文件及当前活动文件的 SHA-256，输出 `ROLLBACK_BUNDLE_AND_LIVE_MATCH`。会话 B 的 TTY 为 `/dev/pts/0`，`ubuntu` 密码状态为 `P`。返回 A 后 `id -u` 仍为 `0`。
+
+- `sanq-backup.timer` 为 `active`，最近一次触发于 2026-11-14 08:30:10 UTC，下次计划于 2026-11-15 08:30:00 UTC。
+- `sanq-backup.service` 返回 `Result=success` 和 `ExecMainStatus=0`，结束于 2026-11-14 08:31:51 UTC（多伦多 03:31:51 EST）。结果对应现行 sudo 策略下的自然调度。
+
+正式切换窗口需重新核对活动文件与回退包，并重建两个独立 SSH 会话。生产 sudo 密码挑战、Mac Runtime 人工通道和独立 AWS 救援仍待验收，生产切换保持 `NO-GO`。
+
+### 生产切换与回退顺序（待审阅）
+
+**执行状态 `NO-GO`。** 独立 AWS 救援路径及 Mac Runtime 人工认证留待合并演练。正式窗口以该轮回执、届时可用的恢复点和实际生产执行授权为准。
+
+1. **窗口预检。** 从 Mac 建立两个禁用连接复用的独立公钥 SSH 会话。A 先取得并保留 root shell，B 保持 `ubuntu`。重核回退包清单、包内 7 份原件、活动文件的 SHA-256、属主和权限，以及拟用的 cloud-init drop-in 仍缺席。复核 `visudo -c`、SSH 仅公钥、最近定时备份和下一次触发时间。若基线漂移，审阅变化后重建候选及回退材料。
+2. **当前实例策略。** A 由已校验的原件只替换 `90-cloud-init-users` 的预期一行，复核候选摘要 `d839670689b90c5cfd36309339b1ba4067d25cff8592d983314a0daf712d5252`。候选以 `root:root 0440` 在同文件系统暂存并通过 `visudo` 语法检查；按已审阅的 include 顺序复核完整策略后原子替换，再运行完整 `visudo -c`。
+3. **实际认证。** 在独立公钥 SSH 会话 B 运行 `sudo -k`，确认 `sudo -n /usr/bin/id -u` 因要求密码而退出 1，交互 sudo 提示密码并输出 `0`。用 `sudo -l` 核对普通 sudo 和备份专用授权，核验备份条目的摘要和匹配顺序，并验证新开公钥 SSH 会话。真实备份由下一次自然调度验收。
+4. **持久化。** 当前实例认证通过后，再安装经 AWS 测试机验收的方案 B drop-in。核对有效合并和 SSH 配置，生产不运行 `cloud-init clean` 或 `cloud-init single`。复核备份定时触发后服务退出码和对应批次归档，并按切换手册的窗口要求保留 A 至验收收口。
+
+方案 B 候选 `99-sanq-sudo-password.cfg` 的精确文本如下，采用 UTF-8、LF 和末尾换行。115 字节，SHA-256 为 `3617cb7d07f492bd88fea70238da79fc4c184fb62918df1c1dccee7d4bccf6de`。届时以 AWS 同平台演练及实机复核结果审定。
+
+```yaml
+#cloud-config
+system_info:
+  default_user:
+    name: ubuntu
+    lock_passwd: false
+    sudo: ["ALL=(ALL:ALL) ALL"]
+```
+
+**原位回退。** 语法、认证、新公钥会话、持久化合并或备份验证失败时，A 从已验证原件原子恢复 `90-cloud-init-users`，复核原摘要 `ce77628b58ced2e80b4edeea9d4654bd4609669fa77c49f39ac7582852c3dd96` 和 `root:root 0440`，随后检查完整 sudoers。若本轮已安装方案 B，核对确为本轮 drop-in 后撤回。再用独立 SSH 会话确认原有 sudo 行为。若 A 已丢失且无法提权，进入已验收的独立 AWS 救援路径。
+
 ## 2026-11-11：隔离 VM cloud-init 方案 A / 独立方案 B 初始化及普通重启均通过（操作者终端回执）
 
 > **LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_INIT_AND_REBOOT_PASS / PRODUCTION_CUTOVER_NO-GO。** 以下仅记录 VirtualBox 实验机，不表示生产云 VM 已更新 sudoers/cloud-init、生产 Mac CLI 真实密码认证已验收或生产恢复链已准备好。本节按新证据追加，以下 2026-11-09 记录仍保留其当时状态。
