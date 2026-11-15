@@ -1,5 +1,71 @@
 # Runtime sudo 权限切换：现场只读验收包（2026-11-09）
 
+## 2026-11-14 · G2 备份专用 sudo 规则实验与生产脚本来源比对
+
+**G2_SUDO_POLICY_LAB_PASS / PRODUCTION_CUTOVER_NO-GO**
+
+操作者在隔离 VirtualBox `sanq-runtime-lab`（sudo 1.9.9）临时安装与生产规则同样匹配 helper 路径和归档名的 sudoers 条目，以及仅检查参数的模拟 helper。每项测试前清除 sudo 认证缓存。最终退出码依次为 `NORMAL_RC=1`、`VALID_HELPER_RC=0`、`INVALID_NAME_RC=1`、`EXTRA_ARG_RC=23`。普通 root 命令需要密码，合法备份名免密进入模拟 helper，格式明显不符的名称在 sudo 层被拒绝，两个参数由模拟 helper 拒绝。前次额外参数用例在 sudo 层提前被拒绝，修正测试输入后取得上述结果。移除临时规则及 helper 后 `visudo -c` 全部通过，输出 `LAB_CLEANUP_DONE`。
+
+从 Runtime Bundle 的固定源码提交 `a84b72007e6b4e82c981101e56c897355757c0ff` 取得两个 Git 文件的原始字节并计算 SHA-256。两项均与 [H16/H17 的 Bundle 和生产实装记录](../architecture/Runtime更新-R2-A1-HOST-READ-002启动入口与实装身份审计.md) 一致，也与本轮 G2 生产只读取证所报的摘要一致。
+
+| 生产实装路径 | 审阅源码路径 | SHA-256 |
+| --- | --- | --- |
+| `/home/ubuntu/backup-db.sh` | `ops/backup/backup-db.sh` | `fee7556667376a417a995f0a2bf4aa2c9241dac0eeb4b3022067be0467345437` |
+| `/usr/local/sbin/sanq-backup-protected-nginx` | `ops/backup/sanq-backup-protected-nginx` | `df91e37ca252afad9bfe665d6f3e72239d957c8f11767e38dc6ce51ac5226322` |
+
+**生产实装静态比对通过。** 操作者在 `sanq-web` 现场执行只读 `stat` 和 `sha256sum`。`/home/ubuntu/backup-db.sh` 为普通文件、`ubuntu:ubuntu`、`0750`，`/usr/local/sbin/sanq-backup-protected-nginx` 为普通文件、`root:root`、`0755`。两份当前 SHA-256 均与上表中从固定 Git 提交独立复算的摘要一致。
+
+生产仍保留 `NOPASSWD:ALL`。切换后的首次定时备份以及 Mac 人工 sudo 通道仍待现场验收。
+
+## 2026-11-14 · G0 Lightsail 手动快照现场回执
+
+操作者提供的 Lightsail 实例快照页显示，实例位于加拿大（蒙特利尔）区域 `ca-central-1`、可用区 `ca-central-1a`，手动快照列表有以下两个条目。
+
+| 手动快照 | 控制台创建时间（EST，UTC−05:00） | 列出的磁盘 |
+| --- | --- | --- |
+| `Sanq-AWS-1794697663` | 2026-11-14 18:07 | 60 GB SSD 系统磁盘 |
+| `Sanq-AWS-1794427910` | 2026-11-11 15:12 | 60 GB SSD 系统磁盘 |
+
+**G0 快照可用性核对通过。** 操作者通过 AWS CloudShell 执行 [Lightsail `get-instance-snapshot`](https://docs.aws.amazon.com/cli/latest/reference/lightsail/get-instance-snapshot.html)，返回 `Name=Sanq-AWS-1794697663`、`Source=Sanq-AWS`、`Region=ca-central-1`、`State=available`、`CreatedAt=2026-11-14T23:07:50.268000+00:00`（多伦多 18:07:50 EST）。`Sanq-AWS` 为 Lightsail 来源资源名，`sanq-web` 为此前 VM 内取证使用的 Linux 主机名。
+
+**G0 远端归档清单核对通过。** 操作者在 `sanq-web` 通过 `rclone lsf` 核对数据库、加密配置及加密 Nginx 三个远端目录。三类归档各有 5 个文件，2026-11-10 至 2026-11-14 的五组时间戳逐组对应。选取最新批次 `20261114_083010`，包含 `sanqin_db_20261114_083010.sql.gz`、`sanqin_config_20261114_083010.tar.gz` 和 `sanqin_nginx_20261114_083010.tar.gz`。
+
+**G0 离机归档读取与 gzip 完整性通过。** 操作者在 Mac 只读挂载 `sanq-rclone-crypt-escrow-20261001.dmg`，使用其中 rclone 配置的私有临时副本，从 Google Drive 读取 `20261114_083010` 批次三个远端对象。数据库归档读取，以及加密配置和 Nginx 归档的解密流，均通过 `gzip -t`。此次验证独立于生产 VM 和此前的 VirtualBox 恢复机。
+
+**G0 离机 PostgreSQL 15 逻辑恢复通过。** 操作者在 Mac 用 Postgres.app 15.20 启动全新临时数据库实例，经专用 Unix socket 导入同批次 SQL，`DB_RESTORE=PASS`。查询结果为 `_prisma_migrations` 205 条、未解决 0 条，`Order` 3248 条、`PaymentTransaction` 0 条、`AccountingJournalEntry` 2174 条。`PaymentTransaction` 的零行结果与 [2026-10-09 离机验收](runtime-backup-cutover-c4p2d-acceptance.zh-CN.md#41-d1--macbook-独立恢复-20261009_033755)一致；该历史值用于解释此表计数，未用于断言当前恢复点的全渠道支付或全部业务数据一致性。演练使用 `NOLOGIN` 占位角色，正式角色及登录恢复另行验收。
+
+**G0 从实例快照进入恢复配置页通过。** 操作者在 Lightsail 打开 `Sanq-AWS-1794697663` 的[新实例配置页](https://docs.aws.amazon.com/lightsail/latest/userguide/lightsail-how-to-create-instance-from-snapshot.html)，截图显示蒙特利尔 `ca-central-1a`、双栈、通用型 2 GB RAM / 2 vCPU / 60 GB SSD（12 美元/月），页面选用 SSH 密钥 `id_ed25519_lightsail`，自动快照未勾选。现场停在提交前，实例启动和 SSH 登录仍待验证。
+
+**独立救援演练可合并安排，当前继续准备。** [sudo 切换手册 G0](runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md#3-切换前-gate均须留真实回执) 将系统盘挂载列为灾难恢复备选。切换前须确认可行的独立救援方式，并落实两个 SSH 会话与 sudo 配置原字节回退。当前已取得整机快照可用、恢复配置页可打开和离机 PG15 导入的回执。生产切换保持 `NO-GO`。
+
+| 合并验证项 | 暂定目标与回执 |
+| --- | --- |
+| sudo G0 / Runtime G06 | 在 `ca-central-1a` 新建干净 Ubuntu 救援机并验证独立 SSH；如选择[系统盘救援路径](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-create-an-instance-root-volume-snapshot.html)，再将系统盘快照派生的数据盘只读挂载，记录 sudoers/SSH 配置的可读性。 |
+| sudo G3 / G4 / G5 | 复用这台干净 AWS 测试机。对齐生产 Ubuntu、cloud-init 和 sudo 版本，核对实际 datasource、SSH 密钥登录、方案 B 和正常重启；按 Runtime 工具安装合同核对来源，用独立 Mac SSH profile 验证真实 TTY 密码挑战及固定只读状态查询。实际验证以工具与配置就绪为准。 |
+| Runtime G07 / AWS S03–S05、S09 | 在同一批 AWS 演练中，以已落实首启隔离与维护冻结的来源快照创建独立目标，验证快照来源、覆盖、恢复数据和首启无业务副作用。生成独立目标需要另一实例身份；可复用同一演练窗口和证据，现有 VirtualBox C2 维持限定关闭。 |
+
+11 月 14 日的整机快照来自运行中的生产机，启动前的业务冻结未验证。Lightsail 实例防火墙控制入站流量，允许出站；保持该快照用于灾难恢复，待首启隔离方案就绪再安排整机启动演练。参见 [Lightsail 防火墙](https://docs.aws.amazon.com/lightsail/latest/userguide/understanding-firewall-and-port-mappings-in-amazon-lightsail.html) 及 [Runtime AWS 快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md)。本段为批次方案，AWS 实例和救援盘尚未创建。
+
+## 生产 sudo 候选与原位回退准备
+
+操作者确认先继续现有环境的准备，系统盘救援与需新 AWS 实例的测试留待同一批验收。当前取证范围包括活动 sudoers 的原字节摘要、属主、权限和完整语法，以及内存中合成的候选策略。拟将 `90-cloud-init-users` 中 `ubuntu ALL=(ALL) NOPASSWD:ALL` 换成 `ubuntu ALL=(ALL:ALL) ALL`，并按现有顺序纳入 `sanq-backup`。使用生产同一版本的 `visudo -c -s -f -` 检查完整候选输入；该检查验证语法，运行时认证、文件属主权限和自动备份行为分别留回执。
+
+**生产 sudoers 基线与候选语法核对通过。** `sanq-web` 上 `visudo -c` 对主文件和三个条目均返回 `parsed OK`。四份活动文件均为普通文件、`root:root 0440`。完整内存候选由该机 `visudo -c -s -f -` 解析，返回 `stdin: parsed OK` 和 `SUDO_CANDIDATE_SYNTAX_PASS`。
+
+| 对象 | SHA-256 |
+| --- | --- |
+| `/etc/sudoers` | `5ae1d5673f987e403c3d08a209798e737169f5f89286862963b6b28d09fb619c` |
+| `/etc/sudoers.d/90-cloud-init-users` 原件 | `ce77628b58ced2e80b4edeea9d4654bd4609669fa77c49f39ac7582852c3dd96` |
+| `/etc/sudoers.d/README` | `016d919662c52917d4bb5976f50519011c333ab3b0ba686370bba16dec88baf5` |
+| `/etc/sudoers.d/sanq-backup` | `232cc78d3db075f94a54590ac9517c46e8c611f04d74d29f8ba3796ca987630c` |
+| `90-cloud-init-users` 候选 | `d839670689b90c5cfd36309339b1ba4067d25cff8592d983314a0daf712d5252` |
+
+候选摘要对应将来拟替换的单个文件。此次 `visudo` 检查覆盖按顺序组合的完整候选；原件 SHA-256 用于确认切换时的输入和回退后的字节。生产策略认证和回退尚未执行。
+
+方案 B 的持久化候选沿用 `system_info.default_user`，只覆盖 `name: ubuntu`、`lock_passwd: false` 和 `sudo: ["ALL=(ALL:ALL) ALL"]`。既有生产内存合并回执已通过；正式切换将当前 sudoers 与未来 cloud-init 实例初始化作为两项验收。生产写入及重跑 cloud-init 仍处于 `NO-GO`。
+
+将来获准切换时，先准备 root 私有的活动策略与相关 cloud-init 配置原字节备份，登记路径、SHA-256、属主和权限。会话 A 在改动前取得并验证 root 权限，保留作原位回退；会话 B 使用新开的 Mac 公钥 SSH 验证冷缓存下普通 sudo 拒绝免密、人工密码成功、备份专用规则和新 SSH 登录。若验证失败，由 A 恢复原件并复验完整策略；如果将来已安装新的持久化 drop-in，同步撤回该文件。当前摘要采集与候选检查无落盘备份，与切换窗口回退就绪是两项回执。
+
 ## 2026-11-11：隔离 VM cloud-init 方案 A / 独立方案 B 初始化及普通重启均通过（操作者终端回执）
 
 > **LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_INIT_AND_REBOOT_PASS / PRODUCTION_CUTOVER_NO-GO。** 以下仅记录 VirtualBox 实验机，不表示生产云 VM 已更新 sudoers/cloud-init、生产 Mac CLI 真实密码认证已验收或生产恢复链已准备好。本节按新证据追加，以下 2026-11-09 记录仍保留其当时状态。
