@@ -1,5 +1,9 @@
 # SanQ 项目持续工作日志
 
+## 2026-11-22 — Runtime G3 cloud-init / Lightsail 配置幂等性根因与最小候选（MCP 本地审阅）
+
+基于 PR #3085 合并 `dev@31e3ac6b`、既有 AWS 2026-11-22 终端回执与 cloud-init 25.2 上游源码，确定 `90-cloud-init-users` 的**完整规则块判定后追加**机制，并区分 Lightsail user-data 对 `TrustedUserCAKeys` 的无条件追加。保持 SanQ 方案 B、Mac Runtime/backup 权限及平台 SSH CA 所有权不变；提出未来一次性使用官方完整 sudo 规则块的候选，与 SSH CA 重复现状须**明确风险接受**的受控门禁。新建 `ops/runtime/tests/test_cloud_init_g3_model.py` 纯离线模型回归、G3 运行手册，同步 2026-11-22 AWS 报告、sudo 现场验收与切换预案。仅 Runtime/Ops 内部测试与文档，不修改架构/依赖、sudoers、sshd、user-data、CI 或 Runtime 发布；当前分支 `audit/runtime-g3-cloudinit-lightsail-idempotence-20261122` **未提交/未推送/无 PR**，MCP 不开放测试执行，**CI_NOT_RUN / AWS_NEW_RETEST_NOT_RUN / G3_SOURCE_READY=NO / PRODUCTION_SUDO_CUTOVER_NO-GO**。详见 [G3 收口](../runbooks/Runtime-G3-cloud-init与Lightsail幂等性收口-20261122.md)。下一阶段正式 Mac Runtime G4/G5 端到端仅已规划，未开始。
+
 ## 2026-11-11 — 隔离 VM 方案 A/B 独立初始化与普通重启均通过（未推送）
 
 **最新独立 B 普通 reboot 回执（完成）**：B-INIT 后在 VirtualBox 实验克隆仅执行 `sudo reboot`，Mac 强制只用公钥成功再次登录（首次 `00~ssh` 粘贴错误与测试无关）；cloud-init `done / errors=[] / DataSourceNoCloud`、instance `iid-sanq-sudo-baseline-001` 保持。`90-cloud-init-users` mtime 保持 `2026-11-11 19:41:56.227999594 +0000`、内容仍 `ubuntu ALL=(ALL:ALL) ALL`，`NO_NOPASSWD_RULES`；`sudo -k; sudo -n id -u` 要求密码、退出 1，普通 sudo 提示密码后可读取 root 文件，`ubuntu P` 与 `visudo -c` PASS。有效 sshd：公钥 yes、密码 no、keyboard-interactive no；Mac 公钥指纹一致，仅 Host-only `192.168.56.0/24` 无默认路由。**LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_INIT_AND_REBOOT_PASS / PRODUCTION_CUTOVER_NO-GO**。B 为从 A 前快照恢复重建的独立实验，不是顺序试验。下一阶段仅生产现场只读差异审计、快照/恢复/备份 helper/Runtime TTY/真实 cloud-init datasource 检查；禁止从实验 PASS 直接推生产切换。本地只更新文档、无代码或远端交付。

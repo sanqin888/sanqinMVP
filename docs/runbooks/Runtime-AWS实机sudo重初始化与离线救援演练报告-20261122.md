@@ -6,6 +6,10 @@
 >
 > 相关合同：[sudo 生产现场只读验收与回退](Runtime-sudo权限切换现场只读验收-20261109.md)、[sudo 切换就绪与权限边界](runtime-ubuntu-sudo-password-cutover-readiness.zh-CN.md)、[Runtime Mac 人工入口](Runtime最小执行器Mac入口.md)、[AWS 快照与维护冻结](../architecture/Runtime更新-AWS快照与维护冻结方案.md)。本轮属于 **Runtime/Ops 实验与取证**，未改变代码、业务模块、数据库、CI 或生产配置。
 
+## G3 后续静态复核索引（2026-11-22；不改写本轮 AWS 结果）
+
+已在独立工作包 [G3 cloud-init / Lightsail 配置幂等性收口](Runtime-G3-cloud-init与Lightsail幂等性收口-20261122.md) 分析 cloud-init 25.2 完整规则块检测与 Lightsail user-data 的追加行为，提出 sudoers 官方规则块最小候选，并对 SSH CA 重复提出单独风险接受门禁。本报告下文记录的 AWS 真实 **1→2、幂等性 FAIL** 不变；G3 新候选尚未执行 AWS 动态复测，正式 Mac Runtime E2E 与生产权限切换仍 **NO-GO**。
+
 ## 1. 目标、环境与边界
 
 本轮集中验证：① cloud-init 25.2 下方案 B 密码 sudo 的实际生效、原位回退、普通重启持久性和重新初始化行为；② Mac 普通 SSH TTY sudo 认证与终端恢复；③ Lightsail 实例快照恢复为**新实例身份**后 sudo/SSH 仍可用；④ 从系统盘快照恢复独立数据盘、附加另一实例并以只读方式访问故障源系统配置；⑤ 删除本轮所有付费实验资源。
