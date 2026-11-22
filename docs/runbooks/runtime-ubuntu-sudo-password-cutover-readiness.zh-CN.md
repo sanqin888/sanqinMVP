@@ -1,5 +1,9 @@
 # SanQ 生产 VM：ubuntu sudo 密码认证与精确免密授权切换预案
 
+## 2026-11-22：G3 配置幂等性复核（本地候选，非生产授权）
+
+2026-11-22 AWS 实机报告确认方案 B 在正常重启、重新初始化及快照新实例后均保持密码 sudo，但 cloud-init sudoers 与 Lightsail SSH CA 配置出现追加重复。后续 [G3 静态根因、方案比较和动态验收合同](Runtime-G3-cloud-init与Lightsail幂等性收口-20261122.md) 提出与 cloud-init 25.2 **完整生成规则块**相匹配的候选，不再把旧单行 sudoers SHA 当作最终安装目标；不触碰 Lightsail 平台脚本，SSH CA 重复的有限风险接受尚待明确决定。未执行新的 AWS 复测、正式 Mac Runtime 人工客户端端到端或生产配置切换，**G3_SOURCE_READY=NO / PRODUCTION_SUDO_CUTOVER_NO-GO**。下文 11 月 11 日与之前的历史状态不因本条改写。
+
 ## 2026-11-11：隔离同版本实验新进度（不替代生产授权）
 
 **最新完整结果（2026-11-11）：LAB_A_INIT_AND_REBOOT_PASS / LAB_B_MERGE_INIT_AND_REBOOT_PASS / PRODUCTION_CUTOVER_NO-GO。** B 为从 A 前相同快照独立恢复后重建，不再依赖 A 阶段生成的 sudoers。执行 B cloud-init 首次初始化及**随后普通 `sudo reboot`（未 clean）**，两次都通过 Mac 强制公钥 SSH 登录；正常 reboot 后 NoCloud instance ID 不变、`cloud-init done/errors=[]`、`90-cloud-init-users` mtime 未变且仍为 `ubuntu ALL=(ALL:ALL) ALL`；全 sudoers 无 NOPASSWD，`sudo -k; sudo -n id -u` 退出 1，正常 sudo 密码认证成功，`ubuntu P`，`visudo -c` OK。SSH 对 Mac 来源有效配置 `pubkeyauthentication yes / passwordauthentication no / kbdinteractiveauthentication no`，公钥指纹匹配；仅 Host-only 网络、无默认外网路由。**B 与 A 都达到实验室 sudo 初始化及普通重启持久性目标；B 的 SSH 禁密码证据更完整，列为生产实施候选，不是生产授权。** 正式切换前仍须核实际 AWS datasource/vendor-data、备份 helper 精确 NOPASSWD 例外、配置优先级及最终匹配、最新业务恢复快照与数据恢复、Mac 人工 TTY/Runtime 生产环境和回滚闭环。以下此前“B 仍待初始化/重启”的段落为历史时点，不是现状。

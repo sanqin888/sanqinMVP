@@ -1,5 +1,9 @@
 # Runtime sudo 权限切换：现场只读验收包（2026-11-09）
 
+## 2026-11-22 · G3 后续静态根因与候选更新（本地待审）
+
+[G3 收口方案](Runtime-G3-cloud-init与Lightsail幂等性收口-20261122.md) 已定位 cloud-init 25.2 对**含注释的完整 sudo 规则块**进行包含判断；之前只含一条密码规则的候选会在重新初始化时新增第二条。以下 2026-11-14 的单行候选 SHA `d8396706…` 仅保留为历史证据，**不得直接当作新的幂等候选部署**。Lightsail user-data 的 `TrustedUserCAKeys` 追加属于另一所有者；未经明确风险接受或平台配置变更审批，G3 不能关闭。仅新建本地离线模型测试与说明文档，未进行新的 AWS/生产操作；正式切换仍 **NO-GO**。
+
 ## 2026-11-22 · AWS 实机演练结果索引（更新记录）
 
 **`AWS_LAB_EVIDENCE_RECORDED / PRODUCTION_SUDO_CUTOVER_NO-GO`。** 本轮已在隔离 Lightsail 实例完成方案 B 密码 sudo、原位回退、普通重启、cloud-init 25.2 完整重新初始化、实例快照恢复为新身份、Mac 公钥 SSH 恢复及根盘快照的只读离线救援；两台实验实例、三份实例快照、临时数据盘和磁盘快照均在 AWS 控制面定向核查删除。**重新初始化出现密码 sudo 与 `TrustedUserCAKeys` 规则重复，配置幂等性 `FAIL`；正式 `sanq-deploy-manual.sh` 远端端到端 `PENDING`；未实施生产 sudo 切换、生产快照启动、业务数据库整机恢复或切换后备份验收。**
