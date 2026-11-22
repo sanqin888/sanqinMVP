@@ -1,5 +1,11 @@
 # Runtime sudo 权限切换：现场只读验收包（2026-11-09）
 
+## 2026-11-22 · AWS 实机演练结果索引（更新记录）
+
+**`AWS_LAB_EVIDENCE_RECORDED / PRODUCTION_SUDO_CUTOVER_NO-GO`。** 本轮已在隔离 Lightsail 实例完成方案 B 密码 sudo、原位回退、普通重启、cloud-init 25.2 完整重新初始化、实例快照恢复为新身份、Mac 公钥 SSH 恢复及根盘快照的只读离线救援；两台实验实例、三份实例快照、临时数据盘和磁盘快照均在 AWS 控制面定向核查删除。**重新初始化出现密码 sudo 与 `TrustedUserCAKeys` 规则重复，配置幂等性 `FAIL`；正式 `sanq-deploy-manual.sh` 远端端到端 `PENDING`；未实施生产 sudo 切换、生产快照启动、业务数据库整机恢复或切换后备份验收。**
+
+完整身份、SHA-256、命令回执、PASS/FAIL 边界与资源清理证据见 [2026-11-22 AWS 实机演练报告](Runtime-AWS实机sudo重初始化与离线救援演练报告-20261122.md)。下文的 2026-11-14 演练清单与「待安排 AWS 窗口」属**当时的历史规划**，不应作为 2026-11-22 的当前执行状态；此前生产只读基线、原字节回退和备份回执仍按各自观测日期解释。
+
 ## 2026-11-14 · G2 备份专用 sudo 规则实验与生产脚本来源比对
 
 **G2_SUDO_POLICY_LAB_PASS / PRODUCTION_CUTOVER_NO-GO**
@@ -45,6 +51,19 @@
 | Runtime G07 / AWS S03–S05、S09 | 在同一批 AWS 演练中，以已落实首启隔离与维护冻结的来源快照创建独立目标，验证快照来源、覆盖、恢复数据和首启无业务副作用。生成独立目标需要另一实例身份；可复用同一演练窗口和证据，现有 VirtualBox C2 维持限定关闭。 |
 
 11 月 14 日的整机快照来自运行中的生产机，启动前的业务冻结未验证。Lightsail 实例防火墙控制入站流量，允许出站；保持该快照用于灾难恢复，待首启隔离方案就绪再安排整机启动演练。参见 [Lightsail 防火墙](https://docs.aws.amazon.com/lightsail/latest/userguide/understanding-firewall-and-port-mappings-in-amazon-lightsail.html) 及 [Runtime AWS 快照与维护冻结方案](../architecture/Runtime更新-AWS快照与维护冻结方案.md)。本段为批次方案，AWS 实例和救援盘尚未创建。
+
+### AWS 合并演练执行清单（待审阅）
+
+**当前状态：准备完成，待操作者安排 AWS 窗口。** 复用 `ROLLBACK_BUNDLE_AND_LIVE_MATCH`、VirtualBox 回退、离机 PG15 与备份证据，下一轮只采集新实例能提供的回执。
+
+1. **控制面只读预检。** 查询 `Sanq-AWS` 的 `blueprintId`、`bundleId`、`location.availabilityZone`，列出 `ca-central-1` 当前 Active Ubuntu OS 蓝图，并通过 `dpkg-query` 固定现机 Ubuntu、`cloud-init`、`sudo` 的基线。蓝图不可用或版本不一致时，按差异列表审阅等价性，再确定试验对象。
+2. **共享的干净救援与测试主机。** 在 `ca-central-1a` 用干净 Ubuntu OS 蓝图创建独立实例（建议名 `sanq-runtime-sudo-lab`）。使用试验 SSH 身份，独立核实 Ed25519 hostkey，Mac 直连检验公钥和 TTY。记录发行版、包、datasource、控制面实例身份及回执。测试实例的连接配置与生产 `sanqaws` 分开。
+3. **G0 / G06 救援。** 若选系统盘救援方案，先按 AWS 路径从系统盘快照创建数据盘，挂到这台救援机并只读核对固定 sudoers/sshd 配置。记录盘类型、来源、挂载选项和可读性。独立 SSH 回执覆盖救援机登录，数据盘读取回执覆盖从失联源机取回配置。
+4. **G3 方案 B。** 在新实例保留有 root 权限的 A 会话及原配置，检查实际 AWS datasource、SSH 公钥认证及基线 sudo，再核对方案 B 的合并值、目标文件摘要和完整 `visudo -c`。对 AWS 首次初始化行为单独取证，只有在实际观察到相应模块执行后标为首启通过；另取普通重启后的登录、sudo 与备份专用规则回执。若当前主机是在首次启动后才放入 drop-in，仍以普通重启和有效配置的观察结果记账。
+5. **G4 / G5 Mac 与 Runtime。** 先按安装合同核定受审 Runtime 来源、安装路径及 VM 端固定只读入口，再用隔离的 Mac 测试账户和其专属 `~/.sanq-deploy/` profile 调用 `sanq-deploy-manual.sh status <试验 plan-id>`。记录真实密码提示、固定只读查询返回、退出状态及本机 TTY 恢复。若只有有效格式而无真实任务的 test ID，未知任务仅可作为认证与传输回执；安装目标、业务任务成功各需自己的回执。仅通过普通 `ssh -tt` 或返回 `id -u` 归到基础 SSH／账户认证。
+6. **G07 / S03–S05、S09。** 待首启冻结与恢复数据来源就绪，用合格快照创建独立恢复目标；记录来源链、磁盘覆盖、首启隔离、实际数据可读性与业务/定时器未被触发。整机启动证据属于该独立目标。11 月 14 日运行态生产快照保留作灾难恢复点。
+
+开机、系统盘快照/数据盘和完整恢复目标属于后续的 AWS 实操。当前仅整理演练步骤，生产 sudo 切换保持 `NO-GO`。
 
 ## 生产 sudo 候选与原位回退准备
 
